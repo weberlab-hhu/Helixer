@@ -49,7 +49,7 @@ class MetaInfoGenome(object):
         self.acquired_from = acquired_from
         self.total_bp = 0
         self.gc_content = 0
-        self.cannonical_kmer_content = 0
+        self.cannonical_kmer_content = {}
         self.ambiguous_content = 0
 
 
@@ -67,10 +67,11 @@ class MetaInfoGenome(object):
 
     def add_sequence_meta_info(self, seq_met_info):
         self.total_bp += seq_met_info.total_bp
-        self.gc_content += seq_met_info.total_bp
+        self.gc_content += seq_met_info.gc_content
         # todo, add kmer counts
         #for kmer in seq_met_info
-        #self.cannonical_kmer_content += seq_met_info.cannonical_kmer_content
+        self.cannonical_kmer_content = add_paired_dictionaries(self.cannonical_kmer_content,
+                                                               seq_met_info.cannonical_kmer_content)
         self.ambiguous_content += seq_met_info.ambiguous_content
 
 
@@ -145,6 +146,20 @@ class MerCounter(object):
 def gen_mers(sequence, k):
     for i in range(len(sequence) - k):
         yield sequence[i:(i+k)]
+
+
+def add_paired_dictionaries(add_to, add_from):
+    print('add_to', add_to, type(add_to))
+    print('add_from', add_from, type(add_from))
+    add_to = copy.deepcopy(add_to)
+    for key in add_from:
+        if key not in add_to:
+            add_to[key] = copy.deepcopy(add_from[key])
+        elif isinstance(add_to[key], dict):
+            add_to[key] = add_paired_dictionaries(add_to[key], add_from[key])
+        else:
+            add_to[key] += add_from[key]
+    return add_to
 
 
 def main(gff3, fasta, fileout):
