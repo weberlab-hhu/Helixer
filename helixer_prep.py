@@ -3,6 +3,7 @@ from dustdas import gffhelper, fastahelper
 import argparse
 import itertools
 import copy
+import sys
 
 
 def gff3_to_json(gff3):
@@ -34,6 +35,108 @@ class AnnotationSequence(object):
     def __init__(self, seqid, ):
         pass
 
+
+class GenericData(object):
+    """Handles basic to/from json conversions for self and any sub data it holds"""
+    # todo!
+    def __init__(self):
+        # attribute name, exported_to_json, expected_inner_type, data_structure
+        self.spec = [('spec', False, tuple, list), ]
+
+    def to_jsonable(self):
+        out = {}
+        for key in copy.deepcopy(self.__dict__):
+            new, is_exported = self.prep_4_export(key)
+            if is_exported:
+                out[key] = new
+            #if isinstance(out[key], GenericData):
+            #    out[key] = out[key].to_json()
+        return out
+
+    def load_jsonable(self):
+        # need someway to determine cases that could/should be converted back to objects as opposed to
+        # staying in nested dict/list format. basically, when to call load_json and with which object... :-(
+        pass
+
+    def prep_4_export(self, key):
+        key_spec = [s for s in self.spec if s[0] == key]
+        assert len(key_spec) == 1, "{} attribute has {} instead of 1 matches in spec".format(key, len(key_spec))
+        _, is_exported, expected_type, data_structure = key_spec[0]
+        # if this attribute does not hold further GenericData items, it must be kept json-able, just return as is.
+        raw = self.__getattribute__(key)
+        if not issubclass(expected_type, GenericData):
+            out = raw
+        elif data_structure is None:
+            out = self._prep_none(expected_type, raw)
+        elif data_structure in (list, tuple):  # maybe could also have set and iter, but idk why you'd need this
+            out = self._prep_list_like(expected_type, raw)
+        elif data_structure is dict:
+            out = self._prep_dict(expected_type, raw)
+        else:
+            raise ValueError("no export method prepared for data_structure of type: {}".format(data_structure))
+        return copy.deepcopy(out), is_exported
+
+    @staticmethod
+    def _prep_none(expected_type, raw):
+        out = raw
+        assert isinstance(out, expected_type), "type: ({}) differs from expectation in spec ({})".format(
+            type(out), expected_type
+        )
+        if issubclass(expected_type, GenericData):
+            out = out.to_jsonable()
+        return out
+
+    def _prep_list_like(self, expected_type, raw):
+        out = []
+        for item in raw:
+            out.append(self._prep_none(expected_type, item))
+        return out
+
+    def _prep_dict(self, expected_type, raw):
+        out = {}
+        for key in raw:
+            out[key] = self._prep_none(expected_type, raw[key])
+        return out
+
+
+
+
+class StructuredData(GenericData):
+    def __init__(self, json=None, *args, **kwargs):
+        super().__init__()
+        self.data_type = 'generic'
+        self.data = []
+        self.meta_info = None
+
+    # todo!
+    def to_json(self):
+        pass
+
+    def load_json(self):
+        pass
+
+
+class StructuredGenome(StructuredData):
+    """Handles meta info for genome and included sequences"""
+    def __init__(self, fasta=None, json=None):
+        super().__init__()
+        self.data_type = 'sequences'
+        if (json is None) and (fasta is not None):
+            # starting fresh and importing everything
+            self.meta_info = MetaInfoGenome(fasta)
+            self.data = []
+        elif (fasta is None) and (json is not None):
+            # loading everything from json
+            raise NotImplementedError("please get back to implementing this!")
+        else:
+            raise ValueError("json XOR fasta should be None")
+
+
+class MetaInfoGeneric(object):
+    # todo
+
+    def to_json(self):
+        pass
 
 class MetaInfoGenome(object):
     def __init__(self, fasta_path=None, species=None, accession=None, version=None, acquired_from=None):
@@ -68,8 +171,6 @@ class MetaInfoGenome(object):
     def add_sequence_meta_info(self, seq_met_info):
         self.total_bp += seq_met_info.total_bp
         self.gc_content += seq_met_info.gc_content
-        # todo, add kmer counts
-        #for kmer in seq_met_info
         self.cannonical_kmer_content = add_paired_dictionaries(self.cannonical_kmer_content,
                                                                seq_met_info.cannonical_kmer_content)
         self.ambiguous_content += seq_met_info.ambiguous_content
@@ -149,8 +250,6 @@ def gen_mers(sequence, k):
 
 
 def add_paired_dictionaries(add_to, add_from):
-    print('add_to', add_to, type(add_to))
-    print('add_from', add_from, type(add_from))
     add_to = copy.deepcopy(add_to)
     for key in add_from:
         if key not in add_to:
