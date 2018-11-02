@@ -17,9 +17,11 @@ def gff3_to_json(gff3):
 
 def fasta_to_json(fasta):
     fh = fastahelper.FastaParser()
-    meta_genome = MetaInfoGenome(fasta)
+    meta_genome = MetaInfoGenome()
+    meta_genome.maybe_add_info_from_fasta(fasta)
     for infos, seq in fh.read_fasta(fasta):
-        mis = MetaInfoSequence(fasta_header=infos, sequence=seq)
+        mis = MetaInfoSequence()
+        mis.add_sequence(fasta_header=infos, sequence=seq)
         meta_genome.add_sequence_meta_info(mis)
         print(mis.to_json())
         #x = reverse_complement(seq)
@@ -31,17 +33,14 @@ def fasta_to_json(fasta):
     print(meta_genome.__dict__)
 
 
-class AnnotationSequence(object):
-    def __init__(self, seqid, ):
-        pass
-
-
 class GenericData(object):
     """Handles basic to/from json conversions for self and any sub data it holds"""
-    # todo!
     def __init__(self):
         # attribute name, exported_to_json, expected_inner_type, data_structure
-        self.spec = [('spec', False, tuple, list), ]
+        # where data structure is always `None` and type the result of `type(self.attr)` unless `expected_inner_type`
+        # is an instance of this class (GenericData), then `data_structure` denotes any grouping class (e.g. list),
+        # or is still `None` if not grouped at all
+        self.spec = [('spec', False, list, None), ]
 
     def to_jsonable(self):
         out = {}
@@ -60,15 +59,11 @@ class GenericData(object):
                 key
             )
             self.__setattr__(key, cleaned)
-        # need someway to determine cases that could/should be converted back to objects as opposed to
-        # staying in nested dict/list format. basically, when to call load_json and with which object... :-(
 
     def _prep_main(self, key, raw, towards_json=True):
         _, is_exported, expected_type, data_structure = self.get_key_spec(key)
-        # if this attribute does not hold further GenericData items, it must be kept json-able, just return as is.
-        if not issubclass(expected_type, GenericData):
-            out = raw
-        elif data_structure is None:
+
+        if data_structure is None:
             out = self._prep_none(expected_type, raw, towards_json)
         elif data_structure in (list, tuple):  # maybe could also have set and iter, but idk why you'd need this
             out = self._prep_list_like(expected_type, raw, data_structure, towards_json)
@@ -77,14 +72,6 @@ class GenericData(object):
         else:
             raise ValueError("no export method prepared for data_structure of type: {}".format(data_structure))
         return copy.deepcopy(out), is_exported
-
-    def json_2_object(self, key, json_dict):
-        _, is_exported, expected_type, data_structure = self.get_key_spec(key)
-        raw = json_dict[key]
-        if not issubclass(expected_type, GenericData):
-            out = raw
-        elif data_structure is None:
-            pass
 
     def get_key_spec(self, key):
         key_spec = [s for s in self.spec if s[0] == key]
@@ -133,62 +120,53 @@ class GenericData(object):
         return out
 
 
-
-
-class StructuredData(GenericData):
-    def __init__(self, json=None, *args, **kwargs):
-        super().__init__()
-        self.data_type = 'generic'
-        self.data = []
-        self.meta_info = None
-
-    # todo!
-    def to_json(self):
-        pass
-
-    def load_json(self):
-        pass
-
-
-class StructuredGenome(StructuredData):
+class StructuredGenome(GenericData):
     """Handles meta info for genome and included sequences"""
-    def __init__(self, fasta=None, json=None):
+    def __init__(self):
         super().__init__()
-        self.data_type = 'sequences'
-        if (json is None) and (fasta is not None):
-            # starting fresh and importing everything
-            self.meta_info = MetaInfoGenome(fasta)
-            self.data = []
-        elif (fasta is None) and (json is not None):
-            # loading everything from json
-            raise NotImplementedError("please get back to implementing this!")
-        else:
-            raise ValueError("json XOR fasta should be None")
+        # todo, make GenericData more specific below
+        self.spec += [("sequences", True, GenericData, list),
+                      ("meta_info", True, GenericData, None)]
+        self.meta_info = MetaInfoGenome()
+        self.sequences = []
+
+    def add_fasta(self, fasta):
+        self.meta_info.maybe_add_info_from_fasta(fasta)
+        fh = fastahelper.FastaParser()
+        for infos, seq in fh.read_fasta(fasta):
+            mis = MetaInfoSequence()
+            mis.add_sequence(fasta_header=infos, sequence=seq)
+            self.meta_info.add_sequence_meta_info(mis)
+            # todo, save sequences and their meta info while going through!
+            # todo, was here!
 
 
-class MetaInfoGeneric(object):
-    # todo
-
-    def to_json(self):
-        pass
-
-class MetaInfoGenome(object):
-    def __init__(self, fasta_path=None, species=None, accession=None, version=None, acquired_from=None):
-        self.species = None
-        if fasta_path is not None:
-            # todo parse more guesses out of this
-            self.species = self.species_from_path(fasta_path)
-        # include anything the user has set
-        if species is not None:
-            self.species = species
-        self.accession = accession
-        self.version = version
-        self.acquired_from = acquired_from
+class MetaInfoGenome(GenericData):
+    def __init__(self):
+        super().__init__()
+        self.spec += [('species', True, str, None),
+                      ('accession', True, str, None),
+                      ('version', True, str, None),
+                      ('acquired_from', True, str, None),
+                      ('total_bp', True, int, None),
+                      ('gc_content', True, int, None),
+                      ('cannonical_kmer_content', True, dict, None),
+                      ('ambiguous_content', True, int, None)]
+        # will need to be set
+        self.species = ""
+        self.accession = ""
+        self.version = ""
+        self.acquired_from = ""
+        # will be calculated as sequences are added
         self.total_bp = 0
         self.gc_content = 0
         self.cannonical_kmer_content = {}
         self.ambiguous_content = 0
 
+    def maybe_add_info_from_fasta(self, fasta):
+        # todo, could possibly parse out version info or accession or whatever??
+        if not self.species:
+            self.species = self.species_from_path(fasta)
 
     @staticmethod
     def species_from_path(fasta_path):
@@ -210,14 +188,26 @@ class MetaInfoGenome(object):
         self.ambiguous_content += seq_met_info.ambiguous_content
 
 
-class MetaInfoSequence(object):
-    def __init__(self, fasta_header, sequence, id_delim=' ', smallest_mer=2, largest_mer=2):
+class MetaInfoSequence(GenericData):
+    def __init__(self):
+        super().__init__()
+        self.spec += [("deprecated_header", True, str, None),
+                      ("seqid", True, str, None),
+                      ("total_bp", True, int, None),
+                      ("cannonical_kmer_content", True, dict, None),
+                      ("gc_content", True, int, None),
+                      ("ambiguous_content", True, int, None)]
+        self.deprecated_header = ""
+        self.seqid = ""
+        self.total_bp = 0
+        self.gc_content = 0
+        self.cannonical_kmer_content = {}
+        self.ambiguous_content = 0
+
+    def add_sequence(self, fasta_header, sequence, id_delim=' ', smallest_mer=2, largest_mer=2):
         self.deprecated_header = fasta_header
         self.seqid = fasta_header.split(id_delim)[0]
         self.total_bp = len(sequence)
-        self.gc_content = None
-        self.cannonical_kmer_content = None
-        self.ambiguous_content = None
         self.calculate_and_set_meta(sequence.lower(), smallest_mer, largest_mer)
 
     def calculate_and_set_meta(self, sequence, smallest_mer, largest_mer):
