@@ -76,4 +76,19 @@ def test_to_json_4_recursive_generic_datas():
 
 
 def test_from_json_gdata():
-    assert False # todo!
+    # make sure we get the same after export, as export->import->export
+    x = SimpleGData()
+    xjson = x.to_jsonable()
+    xjson['a_string'] = 'new_string'
+    y = SimpleGData()
+    y.load_jsonable(xjson)
+    assert y.to_jsonable() == xjson
+    # check as above but for more complicated data holder
+    holds = HoldsGdata()
+    holds.a_gdata = y
+    holdsjson = holds.to_jsonable()
+    assert holdsjson["a_gdata"]["a_string"] == 'new_string'
+    print(holdsjson)
+    yholds = HoldsGdata()
+    yholds.load_jsonable(holdsjson)
+    assert yholds.to_jsonable() == holdsjson

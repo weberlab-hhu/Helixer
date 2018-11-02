@@ -46,56 +46,90 @@ class GenericData(object):
     def to_jsonable(self):
         out = {}
         for key in copy.deepcopy(self.__dict__):
-            new, is_exported = self.prep_4_export(key)
+            raw = self.__getattribute__(key)
+            cleaned, is_exported = self._prep_main(key, raw, towards_json=True)
             if is_exported:
-                out[key] = new
-            #if isinstance(out[key], GenericData):
-            #    out[key] = out[key].to_json()
+                out[key] = cleaned
         return out
 
-    def load_jsonable(self):
+    def load_jsonable(self, jsonable):
+        for key in jsonable:
+            raw = jsonable[key]
+            cleaned, is_exported = self._prep_main(key, raw, towards_json=False)
+            assert is_exported, "Expected only exported attributes to be found in the json, error at {}".format(
+                key
+            )
+            self.__setattr__(key, cleaned)
         # need someway to determine cases that could/should be converted back to objects as opposed to
         # staying in nested dict/list format. basically, when to call load_json and with which object... :-(
-        pass
 
-    def prep_4_export(self, key):
-        key_spec = [s for s in self.spec if s[0] == key]
-        assert len(key_spec) == 1, "{} attribute has {} instead of 1 matches in spec".format(key, len(key_spec))
-        _, is_exported, expected_type, data_structure = key_spec[0]
+    def _prep_main(self, key, raw, towards_json=True):
+        _, is_exported, expected_type, data_structure = self.get_key_spec(key)
         # if this attribute does not hold further GenericData items, it must be kept json-able, just return as is.
-        raw = self.__getattribute__(key)
         if not issubclass(expected_type, GenericData):
             out = raw
         elif data_structure is None:
-            out = self._prep_none(expected_type, raw)
+            out = self._prep_none(expected_type, raw, towards_json)
         elif data_structure in (list, tuple):  # maybe could also have set and iter, but idk why you'd need this
-            out = self._prep_list_like(expected_type, raw)
+            out = self._prep_list_like(expected_type, raw, data_structure, towards_json)
         elif data_structure is dict:
-            out = self._prep_dict(expected_type, raw)
+            out = self._prep_dict(expected_type, raw, towards_json)
         else:
             raise ValueError("no export method prepared for data_structure of type: {}".format(data_structure))
         return copy.deepcopy(out), is_exported
 
+    def json_2_object(self, key, json_dict):
+        _, is_exported, expected_type, data_structure = self.get_key_spec(key)
+        raw = json_dict[key]
+        if not issubclass(expected_type, GenericData):
+            out = raw
+        elif data_structure is None:
+            pass
+
+    def get_key_spec(self, key):
+        key_spec = [s for s in self.spec if s[0] == key]
+        assert len(key_spec) == 1, "{} attribute has {} instead of 1 matches in spec".format(key, len(key_spec))
+        return key_spec[0]
+
     @staticmethod
-    def _prep_none(expected_type, raw):
-        out = raw
-        assert isinstance(out, expected_type), "type: ({}) differs from expectation in spec ({})".format(
-            type(out), expected_type
+    def _confirm_type(expected_type, to_check):
+        assert isinstance(to_check, expected_type), "type: ({}) differs from expectation in spec ({})".format(
+            type(to_check), expected_type
         )
+
+    def _prep_none(self, expected_type, raw, towards_json=True):
+        if towards_json:
+            return self._prep_none_to_json(expected_type, raw)
+        else:
+            return self._prep_none_from_json(expected_type, raw)
+
+    def _prep_none_to_json(self, expected_type, raw):
+        out = raw
+        self._confirm_type(expected_type, out)
         if issubclass(expected_type, GenericData):
             out = out.to_jsonable()
         return out
 
-    def _prep_list_like(self, expected_type, raw):
-        out = []
-        for item in raw:
-            out.append(self._prep_none(expected_type, item))
+    def _prep_none_from_json(self, expected_type, raw):
+        out = raw
+        if issubclass(expected_type, GenericData):
+            out = expected_type()
+            out.load_jsonable(raw)
+        self._confirm_type(expected_type, out)
         return out
 
-    def _prep_dict(self, expected_type, raw):
+    def _prep_list_like(self, expected_type, raw, data_structure, towards_json=True):
+        out = []
+        for item in raw:
+            out.append(self._prep_none(expected_type, item, towards_json))
+        if not towards_json:
+            out = data_structure(out)
+        return out
+
+    def _prep_dict(self, expected_type, raw, towards_json=True):
         out = {}
         for key in raw:
-            out[key] = self._prep_none(expected_type, raw[key])
+            out[key] = self._prep_none(expected_type, raw[key], towards_json)
         return out
 
 
