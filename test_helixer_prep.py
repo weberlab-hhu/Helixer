@@ -1,6 +1,43 @@
 import helixer_prep
 
 
+# testing: counting kmers
+def test_gen_mers():
+    seq = 'atatat'
+    # expect (at x 3) and  (ta x 2)
+    mers = list(helixer_prep.gen_mers(seq, 2))
+    assert len(mers) == 5
+    assert mers[-1] == 'at'
+    # expect just 2, w and w/o first/last
+    mers = list(helixer_prep.gen_mers(seq, 5))
+    assert len(mers) == 2
+    assert mers[-1] == 'tatat'
+
+
+def test_count2mers():
+    mc = helixer_prep.MerCounter(2)
+    mers = ['aa', 'aa', 'aa']
+    for mer in mers:
+        mc.add_mer(mer)
+    counted = mc.export()
+    assert counted['aa'] == 3
+
+    rc_mers = ['tt', 'tt']
+    for mer in rc_mers:
+        mc.add_mer(mer)
+    counted = mc.export()
+    assert counted['aa'] == 5
+
+    mc2 = helixer_prep.MerCounter(2)
+    seq = 'aaattt'
+    mc2.add_sequence(seq)
+    counted = mc2.export()
+    non0 = [x for x in counted if counted[x] > 0]
+    assert len(non0) == 2
+    assert counted['aa'] == 4
+    assert counted['at'] == 1
+
+
 # testing: add_paired_dictionaries
 def test_add_to_empty_dictionary():
     d1 = {'a': 1}

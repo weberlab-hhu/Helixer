@@ -16,21 +16,24 @@ def gff3_to_json(gff3):
 
 
 def fasta_to_json(fasta):
-    fh = fastahelper.FastaParser()
-    meta_genome = MetaInfoGenome()
-    meta_genome.maybe_add_info_from_fasta(fasta)
-    for infos, seq in fh.read_fasta(fasta):
-        mis = MetaInfoSequence()
-        mis.add_sequence(fasta_header=infos, sequence=seq)
-        meta_genome.add_sequence_meta_info(mis)
-        print(mis.to_json())
-        #x = reverse_complement(seq)
-        #for _ in gen_mers(seq, 2):
-        #    pass
-        #print(x[:20])
-        print(infos)
-        print(seq[:20])
-    print(meta_genome.__dict__)
+    sg = StructuredGenome()
+    sg.add_fasta(fasta)
+    print(sg.to_jsonable())
+    #fh = fastahelper.FastaParser()
+    #meta_genome = MetaInfoGenome()
+    #meta_genome.maybe_add_info_from_fasta(fasta)
+    #for infos, seq in fh.read_fasta(fasta):
+    #    mis = MetaInfoSequence()
+    #    mis.add_sequence(fasta_header=infos, sequence=seq)
+    #    meta_genome.add_sequence_meta_info(mis)
+    #    print(mis.to_json())
+    #    #x = reverse_complement(seq)
+    #    #for _ in gen_mers(seq, 2):
+    #    #    pass
+    #    #print(x[:20])
+    #    print(infos)
+    #    print(seq[:20])
+    #print(meta_genome.__dict__)
 
 
 class GenericData(object):
@@ -125,8 +128,8 @@ class StructuredGenome(GenericData):
     def __init__(self):
         super().__init__()
         # todo, make GenericData more specific below
-        self.spec += [("sequences", True, GenericData, list),
-                      ("meta_info", True, GenericData, None)]
+        self.spec += [("sequences", True, StructuredSequence, list),
+                      ("meta_info", True, MetaInfoGenome, None)]
         self.meta_info = MetaInfoGenome()
         self.sequences = []
 
@@ -134,11 +137,24 @@ class StructuredGenome(GenericData):
         self.meta_info.maybe_add_info_from_fasta(fasta)
         fh = fastahelper.FastaParser()
         for infos, seq in fh.read_fasta(fasta):
-            mis = MetaInfoSequence()
-            mis.add_sequence(fasta_header=infos, sequence=seq)
-            self.meta_info.add_sequence_meta_info(mis)
-            # todo, save sequences and their meta info while going through!
-            # todo, was here!
+            seq_holder = StructuredSequence()
+            seq_holder.add_sequence(fasta_header=infos, sequence=seq)
+            self.meta_info.add_sequence_meta_info(seq_holder.meta_info)
+            self.sequences.append(seq_holder)
+
+
+class StructuredSequence(GenericData):
+    def __init__(self):
+        super().__init__()
+        self.spec += [('sequence', True, str, None),
+                      ('meta_info', True, MetaInfoSequence, None)]
+        self.meta_info = MetaInfoSequence()
+        self.sequence = ''
+
+    def add_sequence(self, fasta_header, sequence):
+        self.meta_info = MetaInfoSequence()
+        self.meta_info.add_sequence(fasta_header=fasta_header, sequence=sequence)
+        self.sequence = sequence
 
 
 class MetaInfoGenome(GenericData):
@@ -225,8 +241,7 @@ class MetaInfoSequence(GenericData):
         self.cannonical_kmer_content = {}
         for k in range(smallest_mer, largest_mer + 1):
             mer_counter = MerCounter(k)
-            for mer in gen_mers(sequence, k):
-                mer_counter.add_mer(mer)
+            mer_counter.add_sequence(sequence)
             self.cannonical_kmer_content[k] = mer_counter.export()
         # record
         self.gc_content = gc
@@ -267,9 +282,13 @@ class MerCounter(object):
                     out.pop(key)
         return out
 
+    def add_sequence(self, sequence):
+        for mer in gen_mers(sequence, self.k):
+            self.add_mer(mer)
+
 
 def gen_mers(sequence, k):
-    for i in range(len(sequence) - k):
+    for i in range(len(sequence) - k + 1):
         yield sequence[i:(i+k)]
 
 
