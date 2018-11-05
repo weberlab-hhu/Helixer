@@ -16,9 +16,10 @@ def gff3_to_json(gff3):
     print(transcripts)
 
 
-def fasta_to_json(fasta, json):
+# todo, maybe this should be a method on the StructuredGenome...? or just in main
+def fasta_to_json(fasta, json, smallest_mer=2, largest_mer=2):
     sg = StructuredGenome()
-    sg.add_fasta(fasta)
+    sg.add_fasta(fasta, smallest_mer=smallest_mer, largest_mer=largest_mer)
     sg.to_json(json)
 
 
@@ -129,12 +130,13 @@ class StructuredGenome(GenericData):
         self.meta_info = MetaInfoGenome()
         self.sequences = []
 
-    def add_fasta(self, fasta):
+    def add_fasta(self, fasta, smallest_mer=2, largest_mer=2):
         self.meta_info.maybe_add_info_from_fasta(fasta)
         fh = fastahelper.FastaParser()
         for infos, seq in fh.read_fasta(fasta):
             seq_holder = StructuredSequence()
-            seq_holder.add_sequence(fasta_header=infos, sequence=seq)
+            seq_holder.add_sequence(fasta_header=infos, sequence=seq, smallest_mer=smallest_mer,
+                                    largest_mer=largest_mer)
             self.meta_info.add_sequence_meta_info(seq_holder.meta_info)
             self.sequences.append(seq_holder)
 
@@ -147,9 +149,10 @@ class StructuredSequence(GenericData):
         self.meta_info = MetaInfoSequence()
         self.sequence = []
 
-    def add_sequence(self, fasta_header, sequence):
+    def add_sequence(self, fasta_header, sequence, smallest_mer=2, largest_mer=2):
         self.meta_info = MetaInfoSequence()
-        self.meta_info.add_sequence(fasta_header=fasta_header, sequence=sequence)
+        self.meta_info.add_sequence(fasta_header=fasta_header, sequence=sequence, smallest_mer=smallest_mer,
+                                    largest_mer=largest_mer)
         self.sequence = list(chunk_str(sequence, 100))
 
 
@@ -336,17 +339,20 @@ def add_paired_dictionaries(add_to, add_from):
     return add_to
 
 
-def main(gff3, fasta, fileout, basedir):
+def main(gff3, fasta, basedir, smallest_mer=2, largest_mer=2):
     #annotation = gff3_to_json(gff3)
     paths = PathFinder(basedir, fasta=fasta, gff=gff3)
-    fasta_to_json(paths.fasta_in, paths.sequence_out)
+    fasta_to_json(paths.fasta_in, paths.sequence_out, smallest_mer=smallest_mer, largest_mer=largest_mer)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--basedir', help='organized output (& input) directory', required=True)
-    parser.add_argument('--gff3', help='gff3 formatted file to parse / standardize')
-    parser.add_argument('--fasta', help='fasta file to parse standardize')
-    parser.add_argument('-o', '--out', help='output prefix, defaults to "standardized"', default="standardized")
+    custominput = parser.add_argument_group("Override default with custom input location:")
+    custominput.add_argument('--gff3', help='gff3 formatted file to parse / standardize')
+    custominput.add_argument('--fasta', help='fasta file to parse standardize')
+    fasta_specific = parser.add_argument_group("Fasta meta_info customizable:")
+    fasta_specific.add_argument('--min_k', help='minumum size kmer to calculate from sequence', default=2)
+    fasta_specific.add_argument('--max_k', help='maximum size kmer to calculate from sequence', default=2)
     args = parser.parse_args()
-    main(args.gff3, args.fasta, args.out, args.basedir)
+    main(args.gff3, args.fasta, args.basedir, smallest_mer=args.min_k, largest_mer=args.max_k)
