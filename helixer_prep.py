@@ -4,6 +4,8 @@ import argparse
 import itertools
 import copy
 import sys
+import json
+import os
 
 
 def gff3_to_json(gff3):
@@ -15,10 +17,10 @@ def gff3_to_json(gff3):
     print(transcripts)
 
 
-def fasta_to_json(fasta):
+def fasta_to_json(fasta, json):
     sg = StructuredGenome()
     sg.add_fasta(fasta)
-    print(sg.to_jsonable())
+    sg.to_json(json)
     #fh = fastahelper.FastaParser()
     #meta_genome = MetaInfoGenome()
     #meta_genome.maybe_add_info_from_fasta(fasta)
@@ -44,6 +46,16 @@ class GenericData(object):
         # is an instance of this class (GenericData), then `data_structure` denotes any grouping class (e.g. list),
         # or is still `None` if not grouped at all
         self.spec = [('spec', False, list, None), ]
+
+    def to_json(self, json_path):
+        jsonable = self.to_jsonable()
+        with open(json_path, 'w') as f:
+            json.dump(jsonable, f)
+
+    def from_json(self, json_path):
+        with open(json_path) as f:
+            jsonable = json.load(f)
+        self.load_jsonable(jsonable)
 
     def to_jsonable(self):
         out = {}
@@ -242,13 +254,10 @@ class MetaInfoSequence(GenericData):
         for k in range(smallest_mer, largest_mer + 1):
             mer_counter = MerCounter(k)
             mer_counter.add_sequence(sequence)
-            self.cannonical_kmer_content[k] = mer_counter.export()
+            self.cannonical_kmer_content[str(k)] = mer_counter.export()
         # record
         self.gc_content = gc
         self.ambiguous_content = ambiguous
-
-    def to_json(self):
-        return self.__dict__
 
 
 class MerCounter(object):
@@ -287,6 +296,45 @@ class MerCounter(object):
             self.add_mer(mer)
 
 
+class PathFinder(object):
+    INPUT = 'input'
+    OUTPUT = 'output'
+
+    def __init__(self, basedir, fasta=None, gff=None):
+        # directories
+        self.basedir = basedir
+        self.input = '{}/{}/'.format(self.basedir, PathFinder.INPUT)
+        self.output = '{}/{}/'.format(self.basedir, PathFinder.OUTPUT)
+        for dir in [self.basedir, self.input, self.output]:
+            os.makedirs(dir, exist_ok=True)
+        # files
+        self.fasta_in = self._get_fa(fasta)
+        self.gff_in = self._get_gff(gff)
+        self.annotations_out = '{}annotation.json'.format(self.output)
+        self.sequence_out = '{}sequence.json'.format(self.output)
+
+    def _get_fa(self, provided):
+        if provided is not None:
+            return provided
+        maybe = os.listdir(self.input)
+        # todo, actual file type detection
+        maybe = [x for x in maybe if (x.endswith('.fa') or x.endswith('.fasta'))]
+        self._confirm_exactly_one(maybe, 'fasta')
+        return self.input + maybe[0]
+
+    def _get_gff(self, provided):
+        if provided is not None:
+            return provided
+        maybe = os.listdir(self.input)
+        maybe = [x for x in maybe if (x.endswith('.gff') or x.endswith('.gff3'))]
+        self._confirm_exactly_one(maybe, 'gff')
+        return self.input + maybe[0]
+
+    @staticmethod
+    def _confirm_exactly_one(possibilities, info):
+        assert len(possibilities) == 1, 'no(n) unique {} file found as input. Found: {}'.format(info, possibilities)
+
+
 def gen_mers(sequence, k):
     for i in range(len(sequence) - k + 1):
         yield sequence[i:(i+k)]
@@ -304,15 +352,17 @@ def add_paired_dictionaries(add_to, add_from):
     return add_to
 
 
-def main(gff3, fasta, fileout):
+def main(gff3, fasta, fileout, basedir):
     #annotation = gff3_to_json(gff3)
-    sequences = fasta_to_json(fasta)
+    paths = PathFinder(basedir, fasta=fasta, gff=gff3)
+    fasta_to_json(paths.fasta_in, paths.sequence_out)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--basedir', help='organized output (& input) directory', required=True)
     parser.add_argument('--gff3', help='gff3 formatted file to parse / standardize')
-    parser.add_argument('--fasta', help='fasta file to parse standardize', required=True)
+    parser.add_argument('--fasta', help='fasta file to parse standardize')
     parser.add_argument('-o', '--out', help='output prefix, defaults to "standardized"', default="standardized")
     args = parser.parse_args()
-    main(args.gff3, args.fasta, args.out)
+    main(args.gff3, args.fasta, args.out, args.basedir)

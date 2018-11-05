@@ -129,3 +129,18 @@ def test_from_json_gdata():
     yholds = HoldsGdata()
     yholds.load_jsonable(holdsjson)
     assert yholds.to_jsonable() == holdsjson
+
+
+# testing parsing matches
+def test_fa_matches_sequences_json():
+    fa_path = 'testdata/tester.fa'
+    json_path = 'testdata/tester.sequence.json'
+    sd_fa = helixer_prep.StructuredGenome()
+    sd_fa.add_fasta(fa_path)
+    sd_json = helixer_prep.StructuredGenome()
+    sd_json.from_json(json_path)
+    j_fa = sd_fa.to_jsonable()
+    j_json = sd_json.to_jsonable()
+    for key in j_fa:
+        assert j_fa[key] == j_json[key]
+    assert sd_fa.to_jsonable() == sd_json.to_jsonable()
