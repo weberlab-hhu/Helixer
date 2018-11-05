@@ -1,9 +1,8 @@
-from sequence_helpers import reverse_complement
+from sequence_helpers import reverse_complement, chunk_str
 from dustdas import gffhelper, fastahelper
 import argparse
 import itertools
 import copy
-import sys
 import json
 import os
 
@@ -21,21 +20,6 @@ def fasta_to_json(fasta, json):
     sg = StructuredGenome()
     sg.add_fasta(fasta)
     sg.to_json(json)
-    #fh = fastahelper.FastaParser()
-    #meta_genome = MetaInfoGenome()
-    #meta_genome.maybe_add_info_from_fasta(fasta)
-    #for infos, seq in fh.read_fasta(fasta):
-    #    mis = MetaInfoSequence()
-    #    mis.add_sequence(fasta_header=infos, sequence=seq)
-    #    meta_genome.add_sequence_meta_info(mis)
-    #    print(mis.to_json())
-    #    #x = reverse_complement(seq)
-    #    #for _ in gen_mers(seq, 2):
-    #    #    pass
-    #    #print(x[:20])
-    #    print(infos)
-    #    print(seq[:20])
-    #print(meta_genome.__dict__)
 
 
 class GenericData(object):
@@ -50,7 +34,7 @@ class GenericData(object):
     def to_json(self, json_path):
         jsonable = self.to_jsonable()
         with open(json_path, 'w') as f:
-            json.dump(jsonable, f)
+            json.dump(jsonable, f, indent=2, separators=(',', ': '))
 
     def from_json(self, json_path):
         with open(json_path) as f:
@@ -158,15 +142,15 @@ class StructuredGenome(GenericData):
 class StructuredSequence(GenericData):
     def __init__(self):
         super().__init__()
-        self.spec += [('sequence', True, str, None),
+        self.spec += [('sequence', True, list, None),
                       ('meta_info', True, MetaInfoSequence, None)]
         self.meta_info = MetaInfoSequence()
-        self.sequence = ''
+        self.sequence = []
 
     def add_sequence(self, fasta_header, sequence):
         self.meta_info = MetaInfoSequence()
         self.meta_info.add_sequence(fasta_header=fasta_header, sequence=sequence)
-        self.sequence = sequence
+        self.sequence = list(chunk_str(sequence, 100))
 
 
 class MetaInfoGenome(GenericData):

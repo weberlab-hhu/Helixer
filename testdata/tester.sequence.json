@@ -1,0 +1,82 @@
+{
+  "sequences": [
+    {
+      "sequence": [
+        "ATATATAT"
+      ],
+      "meta_info": {
+        "total_bp": 8,
+        "cannonical_kmer_content": {
+          "2": {
+            "at": 4,
+            "ambiguous_mers": 0,
+            "cc": 0,
+            "gc": 0,
+            "ta": 3,
+            "ag": 0,
+            "cg": 0,
+            "ca": 0,
+            "aa": 0,
+            "ga": 0,
+            "ac": 0
+          }
+        },
+        "deprecated_header": "sequence_01",
+        "seqid": "sequence_01",
+        "gc_content": 0,
+        "ambiguous_content": 0
+      }
+    },
+    {
+      "sequence": [
+        "GCGCGCGC"
+      ],
+      "meta_info": {
+        "total_bp": 8,
+        "cannonical_kmer_content": {
+          "2": {
+            "at": 0,
+            "ambiguous_mers": 0,
+            "cc": 0,
+            "gc": 4,
+            "ta": 0,
+            "ag": 0,
+            "cg": 3,
+            "ca": 0,
+            "aa": 0,
+            "ga": 0,
+            "ac": 0
+          }
+        },
+        "deprecated_header": "sequence_02",
+        "seqid": "sequence_02",
+        "gc_content": 8,
+        "ambiguous_content": 0
+      }
+    }
+  ],
+  "meta_info": {
+    "species": "tester",
+    "total_bp": 16,
+    "accession": "",
+    "cannonical_kmer_content": {
+      "2": {
+        "at": 4,
+        "ambiguous_mers": 0,
+        "cc": 0,
+        "gc": 4,
+        "ta": 3,
+        "ag": 0,
+        "cg": 3,
+        "ca": 0,
+        "aa": 0,
+        "ga": 0,
+        "ac": 0
+      }
+    },
+    "ambiguous_content": 0,
+    "gc_content": 8,
+    "version": "",
+    "acquired_from": ""
+  }
+}
