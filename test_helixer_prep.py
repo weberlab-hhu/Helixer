@@ -1,49 +1,14 @@
-import helixer_prep
+import sequences
+import structure
 
 
-# testing: counting kmers
-def test_gen_mers():
-    seq = 'atatat'
-    # expect (at x 3) and  (ta x 2)
-    mers = list(helixer_prep.gen_mers(seq, 2))
-    assert len(mers) == 5
-    assert mers[-1] == 'at'
-    # expect just 2, w and w/o first/last
-    mers = list(helixer_prep.gen_mers(seq, 5))
-    assert len(mers) == 2
-    assert mers[-1] == 'tatat'
-
-
-def test_count2mers():
-    mc = helixer_prep.MerCounter(2)
-    mers = ['aa', 'aa', 'aa']
-    for mer in mers:
-        mc.add_mer(mer)
-    counted = mc.export()
-    assert counted['aa'] == 3
-
-    rc_mers = ['tt', 'tt']
-    for mer in rc_mers:
-        mc.add_mer(mer)
-    counted = mc.export()
-    assert counted['aa'] == 5
-
-    mc2 = helixer_prep.MerCounter(2)
-    seq = 'aaattt'
-    mc2.add_sequence(seq)
-    counted = mc2.export()
-    non0 = [x for x in counted if counted[x] > 0]
-    assert len(non0) == 2
-    assert counted['aa'] == 4
-    assert counted['at'] == 1
-
-
+### structure ###
 # testing: add_paired_dictionaries
 def test_add_to_empty_dictionary():
     d1 = {'a': 1}
     d2 = {}
-    d1_2 = helixer_prep.add_paired_dictionaries(d1, d2)
-    d2_1 = helixer_prep.add_paired_dictionaries(d2, d1)
+    d1_2 = structure.add_paired_dictionaries(d1, d2)
+    d2_1 = structure.add_paired_dictionaries(d2, d1)
     assert d1 == d1_2
     assert d1 == d2_1
 
@@ -58,8 +23,8 @@ def test_add_nested_dictionaries():
     dsum = {'a': {'b': 2,
                   'a': {'b': 30}},
             'b': 400}
-    d1_2 = helixer_prep.add_paired_dictionaries(d1, d2)
-    d2_1 = helixer_prep.add_paired_dictionaries(d2, d1)
+    d1_2 = structure.add_paired_dictionaries(d1, d2)
+    d2_1 = structure.add_paired_dictionaries(d2, d1)
     print('d1_2', d1_2)
     print('d2_1', d2_1)
     print('dsum', dsum)
@@ -68,7 +33,7 @@ def test_add_nested_dictionaries():
 
 
 # testing: class GenericData
-class GDataTesting(helixer_prep.GenericData):
+class GDataTesting(structure.GenericData):
     def __init__(self):
         super().__init__()
         self.spec += [('expect', False, dict, None)]
@@ -131,13 +96,51 @@ def test_from_json_gdata():
     assert yholds.to_jsonable() == holdsjson
 
 
+### sequences ###
+# testing: counting kmers
+def test_gen_mers():
+    seq = 'atatat'
+    # expect (at x 3) and  (ta x 2)
+    mers = list(sequences.gen_mers(seq, 2))
+    assert len(mers) == 5
+    assert mers[-1] == 'at'
+    # expect just 2, w and w/o first/last
+    mers = list(sequences.gen_mers(seq, 5))
+    assert len(mers) == 2
+    assert mers[-1] == 'tatat'
+
+
+def test_count2mers():
+    mc = sequences.MerCounter(2)
+    mers = ['aa', 'aa', 'aa']
+    for mer in mers:
+        mc.add_mer(mer)
+    counted = mc.export()
+    assert counted['aa'] == 3
+
+    rc_mers = ['tt', 'tt']
+    for mer in rc_mers:
+        mc.add_mer(mer)
+    counted = mc.export()
+    assert counted['aa'] == 5
+
+    mc2 = sequences.MerCounter(2)
+    seq = 'aaattt'
+    mc2.add_sequence(seq)
+    counted = mc2.export()
+    non0 = [x for x in counted if counted[x] > 0]
+    assert len(non0) == 2
+    assert counted['aa'] == 4
+    assert counted['at'] == 1
+
+
 # testing parsing matches
 def test_fa_matches_sequences_json():
     fa_path = 'testdata/tester.fa'
     json_path = 'testdata/tester.sequence.json'
-    sd_fa = helixer_prep.StructuredGenome()
+    sd_fa = sequences.StructuredGenome()
     sd_fa.add_fasta(fa_path)
-    sd_json = helixer_prep.StructuredGenome()
+    sd_json = sequences.StructuredGenome()
     sd_json.from_json(json_path)
     j_fa = sd_fa.to_jsonable()
     j_json = sd_json.to_jsonable()
