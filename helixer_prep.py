@@ -156,27 +156,32 @@ class StructuredSequence(GenericData):
         self.sequence = list(chunk_str(sequence, 100))
 
 
-class MetaInfoGenome(GenericData):
+class MetaInfoSeqLike(GenericData):
     def __init__(self):
         super().__init__()
-        self.spec += [('species', True, str, None),
-                      ('accession', True, str, None),
-                      ('version', True, str, None),
-                      ('acquired_from', True, str, None),
-                      ('total_bp', True, int, None),
+        self.spec += [('total_bp', True, int, None),
                       ('gc_content', True, int, None),
                       ('cannonical_kmer_content', True, dict, None),
                       ('ambiguous_content', True, int, None)]
-        # will need to be set
-        self.species = ""
-        self.accession = ""
-        self.version = ""
-        self.acquired_from = ""
         # will be calculated as sequences are added
         self.total_bp = 0
         self.gc_content = 0
         self.cannonical_kmer_content = {}
         self.ambiguous_content = 0
+
+
+class MetaInfoGenome(MetaInfoSeqLike):
+    def __init__(self):
+        super().__init__()
+        self.spec += [('species', True, str, None),
+                      ('accession', True, str, None),
+                      ('version', True, str, None),
+                      ('acquired_from', True, str, None)]
+        # will need to be set
+        self.species = ""
+        self.accession = ""
+        self.version = ""
+        self.acquired_from = ""
 
     def maybe_add_info_from_fasta(self, fasta):
         # todo, could possibly parse out version info or accession or whatever??
@@ -203,21 +208,13 @@ class MetaInfoGenome(GenericData):
         self.ambiguous_content += seq_met_info.ambiguous_content
 
 
-class MetaInfoSequence(GenericData):
+class MetaInfoSequence(MetaInfoSeqLike):
     def __init__(self):
         super().__init__()
         self.spec += [("deprecated_header", True, str, None),
-                      ("seqid", True, str, None),
-                      ("total_bp", True, int, None),
-                      ("cannonical_kmer_content", True, dict, None),
-                      ("gc_content", True, int, None),
-                      ("ambiguous_content", True, int, None)]
+                      ("seqid", True, str, None)]
         self.deprecated_header = ""
         self.seqid = ""
-        self.total_bp = 0
-        self.gc_content = 0
-        self.cannonical_kmer_content = {}
-        self.ambiguous_content = 0
 
     def add_sequence(self, fasta_header, sequence, id_delim=' ', smallest_mer=2, largest_mer=2):
         self.deprecated_header = fasta_header
@@ -352,7 +349,7 @@ if __name__ == '__main__':
     custominput.add_argument('--gff3', help='gff3 formatted file to parse / standardize')
     custominput.add_argument('--fasta', help='fasta file to parse standardize')
     fasta_specific = parser.add_argument_group("Fasta meta_info customizable:")
-    fasta_specific.add_argument('--min_k', help='minumum size kmer to calculate from sequence', default=2)
-    fasta_specific.add_argument('--max_k', help='maximum size kmer to calculate from sequence', default=2)
+    fasta_specific.add_argument('--min_k', help='minumum size kmer to calculate from sequence', default=2, type=int)
+    fasta_specific.add_argument('--max_k', help='maximum size kmer to calculate from sequence', default=2, type=int)
     args = parser.parse_args()
     main(args.gff3, args.fasta, args.basedir, smallest_mer=args.min_k, largest_mer=args.max_k)
