@@ -3,15 +3,12 @@ import argparse
 import os
 
 import sequences
+import annotations
 
 
 def gff3_to_json(gff3):
-    gh = gffhelper.read_gff_file(infile=gff3)
-    transcripts = 0
-    for entry in gh:
-        if entry.type == 'transcript':
-            transcripts += 1
-    print(transcripts)
+    ag = annotations.AnnotatedGenome()
+    ag.add_gff(gff3)
 
 
 # todo, maybe this should be a method on the StructuredGenome...? or just in main
@@ -63,7 +60,9 @@ class PathFinder(object):
 def main(gff3, fasta, basedir, smallest_mer=2, largest_mer=2):
     #annotation = gff3_to_json(gff3)
     paths = PathFinder(basedir, fasta=fasta, gff=gff3)
-    fasta_to_json(paths.fasta_in, paths.sequence_out, smallest_mer=smallest_mer, largest_mer=largest_mer)
+    if not os.path.exists(paths.sequence_out):
+        fasta_to_json(paths.fasta_in, paths.sequence_out, smallest_mer=smallest_mer, largest_mer=largest_mer)
+    gff3_to_json(paths.gff_in)
 
 
 if __name__ == '__main__':
