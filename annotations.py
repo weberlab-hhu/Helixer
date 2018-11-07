@@ -26,7 +26,7 @@ class FeatureDecoder(object):
         self.transcript = 'transcript'
         self.primary_transcript = 'primary_transcript'
         self.pseudogenic_transcript = 'pseudogenic_transcript'  # which may or may not be transcribed, hard to say
-        self.transcribed = [self.mRNA, self.transcript, self.tRNA, self.primary_transcript, self.tRNA, self.miRNA,
+        self.transcribed = [self.mRNA, self.transcript, self.tRNA, self.primary_transcript, self.rRNA, self.miRNA,
                             self.snoRNA, self.snRNA, self.SRP_RNA, self.lnc_RNA, self.pre_miRNA, self.RNase_MRP_RNA,
                             self.pseudogenic_transcript]
 
@@ -41,12 +41,31 @@ class FeatureDecoder(object):
         self.three_prime_UTR = 'three_prime_UTR'
         self.coding_info = [self.cds, self.five_prime_UTR, self.three_prime_UTR]
 
+        # point annotations
+        self.TSS = 'TSS'  # transcription start site
+        self.TTS = 'TTS'  # transcription termination site
+        self.start_codon = 'start_codon'
+        self.stop_codon = 'stop_codon'
+        self.point_annotations = [self.TSS, self.TTS, self.start_codon, self.stop_codon]
+
         # regions (often but not always included so one knows the size of the chromosomes / contigs / whatever
         self.region = 'region'
         self.chormosome = 'chromosome'
         self.supercontig = 'supercontig'
         self.regions = [self.region, self.chormosome, self.supercontig]
 
+        # things that don't appear to really be annotations
+        self.match = 'match'
+        self.cDNA_match = 'cDNA_match'
+        self.ignorable = [self.match, self.cDNA_match]
+
+        # to be used when there are just obvious mistakes, like non-ATG start codon
+        self.error = 'error'
+
+        # and putting them together
+        self.on_sequence = self.sub_transcribed + self.coding_info + self.point_annotations
+        self.known = self.gene_level + self.transcribed + self.sub_transcribed + self.coding_info + \
+                     self.point_annotations + self.regions + self.ignorable + [self.error]
 
 
 class AnnotatedGenome(GenericData):
@@ -62,28 +81,35 @@ class AnnotatedGenome(GenericData):
 
     def add_gff(self, gff_file):
 
-        for entry_group in group_gff_by_gene(gff_file):
+        for entry_group in self.group_gff_by_gene(gff_file):
             new_sl = SuperLoci()
-            for entry in entry_group:
-                new_sl.add_gff_entry(entry, self.gffkey)
+            new_sl.add_gff_entry_group(entry_group, self.gffkey)
             self.super_loci.append(new_sl)
-            if new_sl.transcripts:
+            if not new_sl.transcripts and not new_sl.features:
                 print('{} from {} with {} transcripts and {} features'.format(new_sl.id,
                                                                               entry_group[0].source,
                                                                               len(new_sl.transcripts),
                                                                               len(new_sl.features)))
 
+    def useful_gff_entries(self, gff_file):
+        skipable = self.gffkey.regions + self.gffkey.ignorable
+        reader = gffhelper.read_gff_file(gff_file)
+        for entry in reader:
+            if entry.type not in self.gffkey.known:
+                raise ValueError("unrecognized feature type from gff: {}".format(entry.type))
+            if entry.type not in skipable:
+                yield entry
 
-def group_gff_by_gene(gff_file):
-    reader = gffhelper.read_gff_file(gff_file)
-    gene_group = [next(reader)]
-    for entry in reader:
-        if entry.type == 'gene':
-            yield gene_group
-            gene_group = [entry]
-        else:
-            gene_group.append(entry)
-    yield gene_group
+    def group_gff_by_gene(self, gff_file):
+        reader = self.useful_gff_entries(gff_file)
+        gene_group = [next(reader)]
+        for entry in reader:
+            if entry.type == 'gene':
+                yield gene_group
+                gene_group = [entry]
+            else:
+                gene_group.append(entry)
+        yield gene_group
 
 
 class MetaInfoAnnotation(GenericData):
@@ -131,10 +157,14 @@ class FeatureLike(GenericData):
         super().__init__()
         self.spec += [('id', True, str, None),
                       ('type', True, str, None),
-                      ('is_partial', True, bool, None)]
+                      ('is_partial', True, bool, None),
+                      ('is_reconstructed', True, bool, None),
+                      ('is_type_in_question', True, bool, None)]
         self.id = ''
         self.type = ''
-        self.is_partial = None
+        self.is_partial = False
+        self.is_reconstructed = False
+        self.is_type_in_question = False
 
 
 class SuperLoci(FeatureLike):
@@ -164,7 +194,7 @@ class SuperLoci(FeatureLike):
             transcript = Transcribed()
             transcript.add_data(self, entry)
             self.transcripts.append(transcript)
-        elif entry.type == gffkey.exon:
+        elif entry.type in gffkey.on_sequence:
             try:
                 transcript = self.get_matching_transcript(entry)
             except NoTranscriptError:
@@ -173,6 +203,11 @@ class SuperLoci(FeatureLike):
             feature.add_data(self, transcript, entry)
             self.features.append(feature)
             # todo, checkfor and collapse identical exons / features
+
+    def add_gff_entry_group(self, entries, gffkey):
+        for entry in entries:
+            self.add_gff_entry(entry, gffkey)
+        self.check_and_fix_structure()
 
     @staticmethod
     def one_parent(entry):
@@ -194,6 +229,24 @@ class SuperLoci(FeatureLike):
             else:
                 raise NoTranscriptError("can't find {} in {}".format(parent, [x.id for x in self.transcripts]))
         return transcript
+
+    def check_and_fix_structure(self):
+        # collapse identical final features
+
+        # check that all features have a 'transcribed' parent
+
+        # check that all non-exons are in regions covered by an exon
+
+        # if not check that they have the 'gene' as parent
+
+        # recreate transcribed / exon as necessary, but with reconstructed flag (also check for and mark pseudogenes)
+        pass  # todo
+
+    def implicit_to_explicit(self):
+        # make introns, tss, tts, and maybe start/stop codons
+        # add UTR if they are not there
+        # check start stop codons and splice sites against sequence and flag errors
+        pass
 
     def add_to_interval_tree(self, itree):
         pass  # todo, make sure at least all features are loaded to interval tree
@@ -263,7 +316,6 @@ class StructuredFeature(FeatureLike):
             pass
         self.super_loci = super_loci
         self.transcripts.append(transcript)
-
 
     def link_back(self, transcript):
         self.transcripts.append(transcript)
