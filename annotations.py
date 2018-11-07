@@ -4,15 +4,49 @@ from dustdas import gffhelper
 
 class FeatureDecoder(object):
     def __init__(self):
+        # gene like, generally having a collection of transcripts
         self.gene = 'gene'
         self.super_gene = 'super_gene'
+        self.ncRNA_gene = 'ncRNA_gene'
+        self.pseudogene = 'pseudogene'
+        self.gene_level = [self.gene, self.super_gene, self.ncRNA_gene, self.pseudogene]
+
+        # transcript like, generally having a collection of exons, indicating how they are spliced
+        # also ultimately, if not explicitly having a transcription start and termination site
         self.mRNA = 'mRNA'
+        self.tRNA = 'tRNA'
+        self.rRNA = 'rRNA'
+        self.miRNA = 'miRNA'
+        self.snoRNA = 'snoRNA'
+        self.snRNA = 'snRNA'
+        self.SRP_RNA = 'SRP_RNA'
+        self.lnc_RNA = 'lnc_RNA'
+        self.pre_miRNA = 'pre_miRNA'
+        self.RNase_MRP_RNA = 'RNase_MRP_RNA'
         self.transcript = 'transcript'
-        self.transcribed = [self.mRNA, self.transcript]
-        self.cds = 'CDS'
+        self.primary_transcript = 'primary_transcript'
+        self.pseudogenic_transcript = 'pseudogenic_transcript'  # which may or may not be transcribed, hard to say
+        self.transcribed = [self.mRNA, self.transcript, self.tRNA, self.primary_transcript, self.tRNA, self.miRNA,
+                            self.snoRNA, self.snRNA, self.SRP_RNA, self.lnc_RNA, self.pre_miRNA, self.RNase_MRP_RNA,
+                            self.pseudogenic_transcript]
+
+        # regions of original (both) or processed (exon) transcripts
         self.exon = 'exon'
         self.intron = 'intron'
-        self.coding_related = [self.gene, self.mRNA, self.exon, self.cds]
+        self.sub_transcribed = [self.exon, self.intron]
+
+        # sub-exon-level categorization (but should have transcribed as parent)
+        self.cds = 'CDS'
+        self.five_prime_UTR = 'five_prime_UTR'
+        self.three_prime_UTR = 'three_prime_UTR'
+        self.coding_info = [self.cds, self.five_prime_UTR, self.three_prime_UTR]
+
+        # regions (often but not always included so one knows the size of the chromosomes / contigs / whatever
+        self.region = 'region'
+        self.chormosome = 'chromosome'
+        self.supercontig = 'supercontig'
+        self.regions = [self.region, self.chormosome, self.supercontig]
+
 
 
 class AnnotatedGenome(GenericData):
@@ -28,19 +62,28 @@ class AnnotatedGenome(GenericData):
 
     def add_gff(self, gff_file):
 
-        new_sl = SuperLoci()  # todo better fix than blank at start
-        for entry in gffhelper.read_gff_file(gff_file):
-            if entry.type == 'gene':
-                self.super_loci.append(new_sl)
-                print('saving {} with {} transcripts and {} features'.format(new_sl.id, len(new_sl.transcripts),
-                                                                             len(new_sl.features)))
-                new_sl = SuperLoci()
+        for entry_group in group_gff_by_gene(gff_file):
+            new_sl = SuperLoci()
+            for entry in entry_group:
                 new_sl.add_gff_entry(entry, self.gffkey)
-                print(new_sl.id)
-            else:
-                print(new_sl.id)
-                new_sl.add_gff_entry(entry, self.gffkey)
-        self.super_loci.append(new_sl)
+            self.super_loci.append(new_sl)
+            if new_sl.transcripts:
+                print('{} from {} with {} transcripts and {} features'.format(new_sl.id,
+                                                                              entry_group[0].source,
+                                                                              len(new_sl.transcripts),
+                                                                              len(new_sl.features)))
+
+
+def group_gff_by_gene(gff_file):
+    reader = gffhelper.read_gff_file(gff_file)
+    gene_group = [next(reader)]
+    for entry in reader:
+        if entry.type == 'gene':
+            yield gene_group
+            gene_group = [entry]
+        else:
+            gene_group.append(entry)
+    yield gene_group
 
 
 class MetaInfoAnnotation(GenericData):
@@ -110,24 +153,18 @@ class SuperLoci(FeatureLike):
         self.ids = []
 
     def add_gff_entry(self, entry, gffkey):
-        if entry.type not in gffkey.coding_related:
-            pass
-        elif entry.type == gffkey.gene:
+        if entry.type == gffkey.gene:
             self.type = gffkey.gene
             gene_id = entry.get_ID()
-            print('set id to {}'.format(gene_id))
             self.id = gene_id
             self.ids.append(gene_id)
         elif entry.type in gffkey.transcribed:
-            print('transcript')
             parent = self.one_parent(entry)
             assert parent == self.id, "not True :( -- {} == {}".format(parent, self.id)
             transcript = Transcribed()
             transcript.add_data(self, entry)
             self.transcripts.append(transcript)
-            print(self.transcripts)
         elif entry.type == gffkey.exon:
-            print('exon')
             try:
                 transcript = self.get_matching_transcript(entry)
             except NoTranscriptError:
