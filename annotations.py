@@ -68,6 +68,37 @@ class FeatureDecoder(object):
                      self.point_annotations + self.regions + self.ignorable + [self.error]
 
 
+class IDMaker(object):
+    def __init__(self, prefix='', width=6):
+        self._counter = 0
+        self.prefix = prefix
+        self._seen = set()
+        self._width = width
+
+    @property
+    def seen(self):
+        return self._seen
+
+    def next_unique_id(self, suggestion=None):
+        if suggestion is not None:
+            suggestion = str(suggestion)
+            if suggestion not in self._seen:
+                self._seen.add(suggestion)
+                return suggestion
+        # you should only get here if a) there was no suggestion or b) it was not unique
+        return self._new_id()
+
+    def _new_id(self):
+        new_id = self._fmt_id()
+        self._seen.add(new_id)
+        self._counter += 1
+        return new_id
+
+    def _fmt_id(self):
+        to_format = '{}{:0' + str(self._width) + '}'
+        return to_format.format(self.prefix, self._counter)
+
+
 class AnnotatedGenome(GenericData):
     def __init__(self):
         super().__init__()
@@ -80,10 +111,11 @@ class AnnotatedGenome(GenericData):
         self.gffkey = FeatureDecoder()
 
     def add_gff(self, gff_file):
-
+        transcript_id_maker = IDMaker(prefix='trx')
+        feature_id_maker = IDMaker(prefix='ftr')
         for entry_group in self.group_gff_by_gene(gff_file):
             new_sl = SuperLoci()
-            new_sl.add_gff_entry_group(entry_group, self.gffkey)
+            new_sl.add_gff_entry_group(entry_group, self.gffkey, transcript_id_maker, feature_id_maker)
             self.super_loci.append(new_sl)
             if not new_sl.transcripts and not new_sl.features:
                 print('{} from {} with {} transcripts and {} features'.format(new_sl.id,
@@ -174,15 +206,25 @@ class SuperLoci(FeatureLike):
     # a max size defined at SuperLoci
     def __init__(self):
         super().__init__()
-        self.spec += [('transcripts', True, Transcribed, list),
-                      ('features', True, StructuredFeature, list),
-                      ('ids', True, list, None)]
-
-        self.transcripts = []
-        self.features = []
+        self.spec += [('transcripts', True, Transcribed, dict),
+                      ('features', True, StructuredFeature, dict),
+                      ('ids', True, list, None),
+                      ('_dummy_transcript', False, Transcribed, None)]
+        self.transcripts = {}
+        self.features = {}
         self.ids = []
+        self._dummy_transcript = None
 
-    def add_gff_entry(self, entry, gffkey):
+    def dummy_transcript(self, id_maker):
+        if self._dummy_transcript is not None:
+            return self._dummy_transcript
+        else:
+            transcript = Transcribed()
+            transcript.id = id_maker.next_unique_id()
+            self._dummy_transcript = transcript
+            return transcript
+
+    def add_gff_entry(self, entry, gffkey, feature_id_maker, transcript_id_maker):
         if entry.type == gffkey.gene:
             self.type = gffkey.gene
             gene_id = entry.get_ID()
@@ -190,24 +232,20 @@ class SuperLoci(FeatureLike):
             self.ids.append(gene_id)
         elif entry.type in gffkey.transcribed:
             parent = self.one_parent(entry)
-            assert parent == self.id, "not True :( -- {} == {}".format(parent, self.id)
+            assert parent == self.id, "not True :( [{} == {}]".format(parent, self.id)
             transcript = Transcribed()
             transcript.add_data(self, entry)
-            self.transcripts.append(transcript)
+            self.transcripts[transcript.id] = transcript
         elif entry.type in gffkey.on_sequence:
-            try:
-                transcript = self.get_matching_transcript(entry)
-            except NoTranscriptError:
-                transcript = None  # todo, should rather send entries to some other bin to be sorted later/mark
             feature = StructuredFeature()
-            feature.add_data(self, transcript, entry)
-            self.features.append(feature)
+            feature.add_data(self, entry, feature_id_maker, transcript_id_maker)
+            self.features[feature.id] = feature
             # todo, checkfor and collapse identical exons / features
 
-    def add_gff_entry_group(self, entries, gffkey):
+    def add_gff_entry_group(self, entries, gffkey, transcript_id_maker, feature_id_maker):
         for entry in entries:
-            self.add_gff_entry(entry, gffkey)
-        self.check_and_fix_structure()
+            self.add_gff_entry(entry, gffkey, feature_id_maker, transcript_id_maker)
+        self.check_and_fix_structure(transcript_id_maker)
 
     @staticmethod
     def one_parent(entry):
@@ -216,6 +254,7 @@ class SuperLoci(FeatureLike):
         return parents[0]
 
     def get_matching_transcript(self, entry):
+        # deprecating
         parent = self.one_parent(entry)
         try:
             transcript = self.transcripts[-1]
@@ -230,7 +269,9 @@ class SuperLoci(FeatureLike):
                 raise NoTranscriptError("can't find {} in {}".format(parent, [x.id for x in self.transcripts]))
         return transcript
 
-    def check_and_fix_structure(self):
+
+
+    def check_and_fix_structure(self, transcript_id_maker):
         # collapse identical final features
 
         # check that all features have a 'transcribed' parent
@@ -264,8 +305,7 @@ class Transcribed(FeatureLike):
     def __init__(self):
         super().__init__()
         self.spec += [('super_loci', False, SuperLoci, None),
-                      ('features', True, list, None),
-                      ('feature_objects', False, StructuredFeature, list)]
+                      ('features', True, list, None)]
 
         self.super_loci = None
         self.features = []
@@ -276,13 +316,11 @@ class Transcribed(FeatureLike):
         self.id = gff_entry.get_ID()
         self.type = gff_entry.type
 
-    def make_feature_objects(self):
-        pass  # todo link to features and link back
+    def link_to_feature(self, feature_id):
+        self.features.append(feature_id)
 
 
 class StructuredFeature(FeatureLike):
-    # todo, this will probably hold the graph (parent/child relations)
-    # todo, also basics like complete/incomplete/
     def __init__(self):
         super().__init__()
         self.spec += [('start', True, int, None),
@@ -291,31 +329,62 @@ class StructuredFeature(FeatureLike):
                       ('strand', True, str, None),
                       ('score', True, float, None),
                       ('source', True, str, None),
-                      ('transcripts', False, Transcribed, list),
+                      ('frame', True, str, None),
+                      ('transcripts', False, list, None),
                       ('super_loci', False, SuperLoci, None)]
 
         self.start = -1
         self.end = -1
         self.seqid = ''
         self.strand = '.'
+        self.frame = '.'
         self.score = -1.
         self.source = ''
         self.transcripts = []
         self.super_loci = None
 
-    def add_data(self, super_loci, transcript, gff_entry):
-        self.id = gff_entry.get_ID()
+    def add_data(self, super_loci, gff_entry, id_maker, transcript_id_maker):
+        fid = gff_entry.get_ID()
+        self.id = id_maker.next_unique_id(fid)
         self.type = gff_entry.type
         self.start = gff_entry.start
         self.end = gff_entry.end
         self.strand = gff_entry.strand
-        self.seqid = gff_entry.strand
+        self.seqid = gff_entry.seqid
         try:
             self.score = float(gff_entry.score)
         except ValueError:
             pass
         self.super_loci = super_loci
-        self.transcripts.append(transcript)
+        new_transcripts = gff_entry.get_Parent()
+        for transcript_id in new_transcripts:
+            try:
+                transcript = super_loci.transcripts[transcript_id]
+                transcript.link_to_feature(self.id)
+            except KeyError:
+                if transcript_id == super_loci.id:
+                    super_loci.dummy_transcript(transcript_id_maker).link_to_feature(self.id)
 
-    def link_back(self, transcript):
-        self.transcripts.append(transcript)
+    def link_transcript(self, transcript_id):
+        self.transcripts.append(transcript_id)
+
+    def fully_overlaps(self, other):
+        same_type = self.type == other.type
+        same_start = self.start == other.start
+        same_end = self.end == other.end
+        same_seq = self.seqid == other.seqid
+        same_strand = self.strand == other.strand
+        same_gene = self.super_loci is other.super_loci
+        out = False
+        if all([same_type, same_start, same_end, same_seq, same_strand, same_gene]):
+            out = True
+        return out
+
+    def merge(self, other):
+        pass
+
+    def de_link_from_transcript(self, transcript):
+        pass
+
+    def link_to_transcript(self, transcript):
+        pass

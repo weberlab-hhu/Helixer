@@ -1,6 +1,6 @@
 import sequences
 import structure
-
+import annotations
 
 ### structure ###
 # testing: add_paired_dictionaries
@@ -147,3 +147,21 @@ def test_fa_matches_sequences_json():
     for key in j_fa:
         assert j_fa[key] == j_json[key]
     assert sd_fa.to_jsonable() == sd_json.to_jsonable()
+
+
+### annotations ###
+def test_id_maker():
+    ider = annotations.IDMaker()
+    for i in range(5):
+        ider.next_unique_id()
+    assert len(ider.seen) == 5
+    # add a new id
+    suggestion = 'apple'
+    new_id = ider.next_unique_id(suggestion)
+    assert len(ider.seen) == 6
+    assert new_id == suggestion
+    # try and add an ID we've now seen before
+    new_id = ider.next_unique_id(suggestion)
+    assert len(ider.seen) == 7
+    assert new_id != suggestion
+
