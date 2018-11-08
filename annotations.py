@@ -1,5 +1,6 @@
 from structure import GenericData
 from dustdas import gffhelper
+import logging
 
 
 class FeatureDecoder(object):
@@ -104,18 +105,20 @@ class AnnotatedGenome(GenericData):
         super().__init__()
         self.spec += [('super_loci', True, SuperLoci, list),
                       ('meta_info', True, MetaInfoAnnoGenome, None),
-                      ('gffkey', False, FeatureDecoder, None)]
+                      ('gffkey', False, FeatureDecoder, None),
+                      ('transcript_ider', False, IDMaker, None),
+                      ('feature_ider', False, IDMaker, None)]
 
         self.super_loci = []
         self.meta_info = MetaInfoAnnoGenome()
         self.gffkey = FeatureDecoder()
+        self.transcript_ider = IDMaker(prefix='trx')
+        self.feature_ider = IDMaker(prefix='ftr')
 
     def add_gff(self, gff_file):
-        transcript_id_maker = IDMaker(prefix='trx')
-        feature_id_maker = IDMaker(prefix='ftr')
         for entry_group in self.group_gff_by_gene(gff_file):
-            new_sl = SuperLoci()
-            new_sl.add_gff_entry_group(entry_group, self.gffkey, transcript_id_maker, feature_id_maker)
+            new_sl = SuperLoci(self)
+            new_sl.add_gff_entry_group(entry_group)
             self.super_loci.append(new_sl)
             if not new_sl.transcripts and not new_sl.features:
                 print('{} from {} with {} transcripts and {} features'.format(new_sl.id,
@@ -204,27 +207,30 @@ class SuperLoci(FeatureLike):
     # this will define a group of exons that can possibly be made into transcripts
     # AKA this if you have to go searching through a graph for parents/children, at least said graph will have
     # a max size defined at SuperLoci
-    def __init__(self):
+    def __init__(self, genome):
         super().__init__()
         self.spec += [('transcripts', True, Transcribed, dict),
                       ('features', True, StructuredFeature, dict),
                       ('ids', True, list, None),
+                      ('genome', False, AnnotatedGenome, None),
                       ('_dummy_transcript', False, Transcribed, None)]
         self.transcripts = {}
         self.features = {}
         self.ids = []
         self._dummy_transcript = None
+        self.genome = genome
 
-    def dummy_transcript(self, id_maker):
+    def dummy_transcript(self):
         if self._dummy_transcript is not None:
             return self._dummy_transcript
         else:
             transcript = Transcribed()
-            transcript.id = id_maker.next_unique_id()
+            transcript.id = self.genome.transcript_ider.next_unique_id()
             self._dummy_transcript = transcript
             return transcript
 
-    def add_gff_entry(self, entry, gffkey, feature_id_maker, transcript_id_maker):
+    def add_gff_entry(self, entry):
+        gffkey = self.genome.gffkey
         if entry.type == gffkey.gene:
             self.type = gffkey.gene
             gene_id = entry.get_ID()
@@ -238,14 +244,15 @@ class SuperLoci(FeatureLike):
             self.transcripts[transcript.id] = transcript
         elif entry.type in gffkey.on_sequence:
             feature = StructuredFeature()
-            feature.add_data(self, entry, feature_id_maker, transcript_id_maker)
+            feature.add_data(self, entry)
             self.features[feature.id] = feature
             # todo, checkfor and collapse identical exons / features
 
-    def add_gff_entry_group(self, entries, gffkey, transcript_id_maker, feature_id_maker):
+    def add_gff_entry_group(self, entries):
+        entries = list(entries)
         for entry in entries:
-            self.add_gff_entry(entry, gffkey, feature_id_maker, transcript_id_maker)
-        self.check_and_fix_structure(transcript_id_maker)
+            self.add_gff_entry(entry)
+        self.check_and_fix_structure(entries)
 
     @staticmethod
     def one_parent(entry):
@@ -269,9 +276,25 @@ class SuperLoci(FeatureLike):
                 raise NoTranscriptError("can't find {} in {}".format(parent, [x.id for x in self.transcripts]))
         return transcript
 
+    def _mark_erroneous(self, entry):
+        assert entry.type in self.genome.gffkey.gene_level
+        feature = StructuredFeature()
+        feature.start = entry.start
+        feature.end = entry.end
+        feature.type = self.genome.gffkey.error
+        feature.id = self.genome.feature_ider.next_unique_id()
+        logging.warning(
+            '{species}:{seqid}, {start}-{end}:{gene_id} by {src}, No valid features found - marking erroneous'.format(
+                src=entry.source, species=self.genome.meta_info.species, seqid=entry.seqid, start=entry.start,
+                end=entry.end, gene_id=self.id
+            ))
+        self.features[feature.id] = feature
 
+    def check_and_fix_structure(self, entries):
+        # if it's empty (no bottom level features at all) mark as erroneous
+        if not self.features:
+            self._mark_erroneous(entries[0])
 
-    def check_and_fix_structure(self, transcript_id_maker):
         # collapse identical final features
 
         # check that all features have a 'transcribed' parent
@@ -343,9 +366,10 @@ class StructuredFeature(FeatureLike):
         self.transcripts = []
         self.super_loci = None
 
-    def add_data(self, super_loci, gff_entry, id_maker, transcript_id_maker):
+    def add_data(self, super_loci, gff_entry):
+        gffkey = super_loci.genome.gffkey
         fid = gff_entry.get_ID()
-        self.id = id_maker.next_unique_id(fid)
+        self.id = super_loci.genome.feature_ider.next_unique_id(fid)
         self.type = gff_entry.type
         self.start = gff_entry.start
         self.end = gff_entry.end
@@ -357,13 +381,33 @@ class StructuredFeature(FeatureLike):
             pass
         self.super_loci = super_loci
         new_transcripts = gff_entry.get_Parent()
+        if not new_transcripts:
+            self.type = gffkey.error  # todo, logging
+            logging.warning('{species}:{seqid}:{fid}:{new_id} - No Parents listed'.format(
+                species=super_loci.genome.meta_info.species, seqid=self.seqid, fid=fid, new_id=self.id
+            ))
         for transcript_id in new_transcripts:
             try:
                 transcript = super_loci.transcripts[transcript_id]
                 transcript.link_to_feature(self.id)
             except KeyError:
                 if transcript_id == super_loci.id:
-                    super_loci.dummy_transcript(transcript_id_maker).link_to_feature(self.id)
+                    # if we just skipped the transcript, and linked to gene, use dummy transcript in between
+                    transcript = super_loci.dummy_transcript()
+                    logging.info(
+                        '{species}:{seqid}:{fid}:{new_id} - Parent gene instead of transcript, recreating'.format(
+                            species=super_loci.genome.meta_info.species, seqid=self.seqid, fid=fid, new_id=self.id
+                        ))
+                    transcript.link_to_feature(self.id)
+                else:
+                    self.type = gffkey.error  # todo, logging
+                    transcript = None
+                    logging.warning(
+                        '{species}:{seqid}:{fid}:{new_id} - Parent: "{parent}" not found at loci'.format(
+                            species=super_loci.genome.meta_info.species, seqid=self.seqid, fid=fid, new_id=self.id,
+                            parent=transcript_id
+                        ))
+            self.transcripts.append(transcript)
 
     def link_transcript(self, transcript_id):
         self.transcripts.append(transcript_id)

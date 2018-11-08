@@ -1,4 +1,4 @@
-from dustdas import gffhelper
+import logging
 import argparse
 import os
 
@@ -58,6 +58,7 @@ class PathFinder(object):
 
 
 def main(gff3, fasta, basedir, smallest_mer=2, largest_mer=2):
+    logging.basicConfig(level=logging.WARNING)
     #annotation = gff3_to_json(gff3)
     paths = PathFinder(basedir, fasta=fasta, gff=gff3)
     if not os.path.exists(paths.sequence_out):
