@@ -300,7 +300,7 @@ class SuperLoci(FeatureLike):
         # collapse identical final features
         self.collapse_identical_features()
         # check that all non-exons are in regions covered by an exon
-
+        self.maybe_reconstruct_exons()
         # recreate transcribed / exon as necessary, but with reconstructed flag (also check for and mark pseudogenes)
         pass  # todo
 
@@ -316,8 +316,26 @@ class SuperLoci(FeatureLike):
                 if feature.fully_overlaps(features[o_key]):
                     feature.merge(features[o_key])  # todo logging debug
                     features.pop(o_key)
-                    logging.warning('removing {} from {} as it overlaps {}'.format(o_key, self.id, feature.id))
+                    logging.debug('removing {} from {} as it overlaps {}'.format(o_key, self.id, feature.id))
             i += 1
+
+    def maybe_reconstruct_exons(self):
+        """creates any exons necessary, so that all CDS/UTR is contained within an exon"""
+        # because introns will be determined from exons, every CDS etc, has to have an exon
+        new_exons = []
+        exons = self.exons()
+        coding_info = self.coding_info_features()
+        for f in coding_info:
+            if not any([f.is_contained_in(exon) for exon in exons]):
+                new_exons.append(f.reconstruct_exon())  # todo, logging info/debug?
+        for e in new_exons:
+            self.features[e.id] = e
+
+    def exons(self):
+        return [self.features[x] for x in self.features if self.features[x].type == self.genome.gffkey.exon]
+
+    def coding_info_features(self):
+        return [self.features[x] for x in self.features if self.features[x].type in self.genome.gffkey.coding_info]
 
     def implicit_to_explicit(self):
         # make introns, tss, tts, and maybe start/stop codons
@@ -443,6 +461,33 @@ class StructuredFeature(FeatureLike):
         if all(does_it_match + [same_gene]):
             out = True
         return out
+
+    def is_contained_in(self, other):
+        should_match = ['seqid', 'strand', 'frame']
+        does_it_match = [self.__getattribute__(x) == other.__getattribute__(x) for x in should_match]
+        same_gene = self.super_loci is other.super_loci
+        coordinates_within = self.start >= other.start and self.end <= other.end
+        return all(does_it_match + [coordinates_within, same_gene])
+
+    def reconstruct_exon(self):
+        """creates an exon exactly containing this feature"""
+        exon = StructuredFeature()
+        copy_over = copy.deepcopy(list(exon.__dict__.keys()))
+
+        for to_skip in ['type', 'super_loci', 'id', 'transcripts']:
+            copy_over.pop(copy_over.index(to_skip))
+
+        # handle can't just be copied things
+        exon.super_loci = self.super_loci
+        exon.type = self.super_loci.genome.gffkey.exon
+        exon.id = self.super_loci.genome.feature_ider.next_unique_id()
+        for t in self.transcripts:
+            exon.link_to_transcript_and_back(t)
+
+        # copy the rest
+        for item in copy_over:
+            exon.__setattr__(item, copy.deepcopy(self.__getattribute__(item)))
+        return exon
 
     def merge(self, other):
         assert self is not other
