@@ -1,6 +1,7 @@
 from structure import GenericData
 from dustdas import gffhelper
 import logging
+import copy
 
 
 class FeatureDecoder(object):
@@ -224,9 +225,11 @@ class SuperLoci(FeatureLike):
         if self._dummy_transcript is not None:
             return self._dummy_transcript
         else:
+            # setup new blank transcript
             transcript = Transcribed()
-            transcript.id = self.genome.transcript_ider.next_unique_id()
-            self._dummy_transcript = transcript
+            transcript.id = self.genome.transcript_ider.next_unique_id()  # add an id
+            self._dummy_transcript = transcript  # save to be returned by next call of dummy_transcript
+            self.transcripts[transcript.id] = transcript  # save into main dict of transcripts
             return transcript
 
     def add_gff_entry(self, entry):
@@ -296,20 +299,33 @@ class SuperLoci(FeatureLike):
             self._mark_erroneous(entries[0])
 
         # collapse identical final features
-
-        # check that all features have a 'transcribed' parent
-
+        self.collapse_identical_features()
         # check that all non-exons are in regions covered by an exon
-
-        # if not check that they have the 'gene' as parent
 
         # recreate transcribed / exon as necessary, but with reconstructed flag (also check for and mark pseudogenes)
         pass  # todo
+
+    def collapse_identical_features(self):
+        i = 0
+        features = self.features
+        while i < len(features) - 1:
+            # sort and copy keys so that removal of the merged from the dict causes neither sorting nor looping trouble
+            feature_keys = sorted(features.keys())
+            feature = features[feature_keys[i]]
+            for j in range(i, len(feature_keys)):
+                o_key = feature_keys[j]
+                if feature.fully_overlaps(features[o_key]):
+                    feature.merge(features[o_key])  # todo logging debug
+                    features.pop(o_key)
+            i += 1
 
     def implicit_to_explicit(self):
         # make introns, tss, tts, and maybe start/stop codons
         # add UTR if they are not there
         # check start stop codons and splice sites against sequence and flag errors
+        pass
+
+    def check_sequence_assumptions(self):
         pass
 
     def add_to_interval_tree(self, itree):
@@ -341,6 +357,9 @@ class Transcribed(FeatureLike):
 
     def link_to_feature(self, feature_id):
         self.features.append(feature_id)
+
+    def remove_feature(self, feature_id):
+        self.features.pop(self.features.index(feature_id))
 
 
 class StructuredFeature(FeatureLike):
@@ -382,11 +401,12 @@ class StructuredFeature(FeatureLike):
         self.super_loci = super_loci
         new_transcripts = gff_entry.get_Parent()
         if not new_transcripts:
-            self.type = gffkey.error  # todo, logging
+            self.type = gffkey.error
             logging.warning('{species}:{seqid}:{fid}:{new_id} - No Parents listed'.format(
                 species=super_loci.genome.meta_info.species, seqid=self.seqid, fid=fid, new_id=self.id
             ))
         for transcript_id in new_transcripts:
+            new_t_id = transcript_id
             try:
                 transcript = super_loci.transcripts[transcript_id]
                 transcript.link_to_feature(self.id)
@@ -399,36 +419,38 @@ class StructuredFeature(FeatureLike):
                             species=super_loci.genome.meta_info.species, seqid=self.seqid, fid=fid, new_id=self.id
                         ))
                     transcript.link_to_feature(self.id)
+                    new_t_id = transcript.id
                 else:
-                    self.type = gffkey.error  # todo, logging
-                    transcript = None
+                    self.type = gffkey.error
+                    new_t_id = None
                     logging.warning(
                         '{species}:{seqid}:{fid}:{new_id} - Parent: "{parent}" not found at loci'.format(
                             species=super_loci.genome.meta_info.species, seqid=self.seqid, fid=fid, new_id=self.id,
                             parent=transcript_id
                         ))
-            self.transcripts.append(transcript)
+            self.link_to_transcript_and_back(new_t_id)
 
-    def link_transcript(self, transcript_id):
+    def link_to_transcript_and_back(self, transcript_id):
+        transcript = self.super_loci.transcripts[transcript_id]  # get transcript
+        transcript.link_to_feature(self.id)  # link to and from self
         self.transcripts.append(transcript_id)
 
     def fully_overlaps(self, other):
-        same_type = self.type == other.type
-        same_start = self.start == other.start
-        same_end = self.end == other.end
-        same_seq = self.seqid == other.seqid
-        same_strand = self.strand == other.strand
+        should_match = ['type', 'start', 'end', 'seqid', 'strand', 'frame']
+        does_it_match = [self.__getattribute__(x) == other.__getattribute__(x) for x in should_match]
         same_gene = self.super_loci is other.super_loci
         out = False
-        if all([same_type, same_start, same_end, same_seq, same_strand, same_gene]):
+        if all(does_it_match + [same_gene]):
             out = True
         return out
 
     def merge(self, other):
-        pass
+        # move transcript reference from other to self
+        for transcript_id in copy.deepcopy(other.transcripts):
+            self.link_to_transcript_and_back(transcript_id)
+            other.de_link_from_transcript(transcript_id)
 
-    def de_link_from_transcript(self, transcript):
-        pass
-
-    def link_to_transcript(self, transcript):
-        pass
+    def de_link_from_transcript(self, transcript_id):
+        transcript = self.super_loci.transcripts[transcript_id]  # get transcript
+        transcript.remove_feature(self.id)  # drop other
+        self.transcripts.pop(self.transcripts.index(transcript_id))
