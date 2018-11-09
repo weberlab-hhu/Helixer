@@ -338,7 +338,7 @@ class SuperLoci(FeatureLike):
         return [self.features[x] for x in self.features if self.features[x].type in self.genome.gffkey.coding_info]
 
     def implicit_to_explicit(self):
-        # make introns, tss, tts, and maybe start/stop codons
+        # make introns, tss, tts, and maybe start/stop codons, utr if necessary
         # add UTR if they are not there
         # check start stop codons and splice sites against sequence and flag errors
         pass
