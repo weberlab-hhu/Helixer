@@ -401,6 +401,7 @@ class Transcribed(FeatureLike):
         if set_o_types == {exon, five_prime} or set_o_types == {exon}:
             # this should indicate we're good to go and have a transcription start site
             # todo, make TSS feature
+            # todo, WAS HERE, use StructuredFeature().clone()
             pass
         elif set_o_types == {exon, cds} or set_o_types == {cds}:
            # this could be first exon detected or start codon, ultimately, indeterminate
@@ -530,23 +531,29 @@ class StructuredFeature(FeatureLike):
 
     def reconstruct_exon(self):
         """creates an exon exactly containing this feature"""
-        exon = StructuredFeature()
-        copy_over = copy.deepcopy(list(exon.__dict__.keys()))
+        exon = self.clone()
+        exon.type = self.super_loci.genome.gffkey.exon
+        return exon
 
-        for to_skip in ['type', 'super_loci', 'id', 'transcripts']:
+    def clone(self, copy_transcripts=True):
+        """makes valid, independent clone/copy of this feature"""
+        new = StructuredFeature()
+        copy_over = copy.deepcopy(list(new.__dict__.keys()))
+
+        for to_skip in ['super_loci', 'id', 'transcripts']:
             copy_over.pop(copy_over.index(to_skip))
 
         # handle can't just be copied things
-        exon.super_loci = self.super_loci
-        exon.type = self.super_loci.genome.gffkey.exon
-        exon.id = self.super_loci.genome.feature_ider.next_unique_id()
-        for t in self.transcripts:
-            exon.link_to_transcript_and_back(t)
+        new.super_loci = self.super_loci
+        new.id = self.super_loci.genome.feature_ider.next_unique_id()
+        if copy_transcripts:
+            for transcript in self.transcripts:
+                new.link_to_transcript_and_back(transcript)
 
         # copy the rest
         for item in copy_over:
-            exon.__setattr__(item, copy.deepcopy(self.__getattribute__(item)))
-        return exon
+            new.__setattr__(item, copy.deepcopy(self.__getattribute__(item)))
+        return new
 
     def merge(self, other):
         assert self is not other
