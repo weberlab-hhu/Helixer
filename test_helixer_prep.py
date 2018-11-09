@@ -169,7 +169,7 @@ def test_id_maker():
 
 def setup_testable_super_loci():
     # features [--0--][1][---2---]
-    f_coord = [(0, 100), (110, 120), (200, 400)]
+    f_coord = [(1, 100), (111, 120), (201, 400)]
     # transcript X: [0, 1], Y: [0, 1, 2], Z: [0]
     t_ids = ['x', 'y', 'z']
     t_features = [(0, 1), (0, 1, 2), (0, )]
@@ -296,3 +296,14 @@ def feature_print(feature):
 
 def transcript_print(transcript):
     print('{}. --> {}'.format(transcript.id, transcript.features))
+
+def test_transcript_interpreter():
+    sl = setup_testable_super_loci()
+    sl.collapse_identical_features()
+    # change so that there are implicit UTRs
+    sl.features['ftr000001'].start = 11  # start first CDS later
+    sl.features['ftr000009'].end = 330  # end first CDS sooner
+    transcript = sl.transcripts['y']
+    transcript.decode_raw_features()
+    assert False
+

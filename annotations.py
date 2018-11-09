@@ -2,6 +2,7 @@ from structure import GenericData
 from dustdas import gffhelper
 import logging
 import copy
+import intervaltree
 
 
 class FeatureDecoder(object):
@@ -52,9 +53,9 @@ class FeatureDecoder(object):
 
         # regions (often but not always included so one knows the size of the chromosomes / contigs / whatever
         self.region = 'region'
-        self.chormosome = 'chromosome'
+        self.chromosome = 'chromosome'
         self.supercontig = 'supercontig'
-        self.regions = [self.region, self.chormosome, self.supercontig]
+        self.regions = [self.region, self.chromosome, self.supercontig]
 
         # things that don't appear to really be annotations
         self.match = 'match'
@@ -366,7 +367,6 @@ class Transcribed(FeatureLike):
 
         self.super_loci = None
         self.features = []
-        self.feature_objects = []
 
     def add_data(self, super_loci, gff_entry):
         self.super_loci = super_loci
@@ -378,6 +378,57 @@ class Transcribed(FeatureLike):
 
     def remove_feature(self, feature_id):
         self.features.pop(self.features.index(feature_id))
+
+    def decode_raw_features(self):
+        for intervals in self.organize_and_split_features():
+            print(intervals)
+            print([(x.data.id, x.data.type) for x in intervals])
+
+    def interpret_first_pos(self, intervals, plus_strand=True):
+        cds = self.super_loci.genome.gffkey.cds
+        five_prime = self.super_loci.genome.gffkey.five_prime_UTR
+        exon = self.super_loci.genome.gffkey.exon
+        observed_types = [x.data.type for x in intervals]
+        set_o_types = set(observed_types)
+        if plus_strand:
+            at = intervals[0].start
+        else:
+            at = intervals[0].end
+        if len(intervals) != 2:
+            raise ValueError('check interpretation by hand for transcript start with {}, {}'.format(
+                intervals, observed_types
+            ))
+        if set_o_types == {exon, five_prime} or set_o_types == {exon}:
+            # this should indicate we're good to go and have a transcription start site
+            # todo, make TSS feature
+            pass
+        elif set_o_types == {exon, cds} or set_o_types == {cds}:
+           # this could be first exon detected or start codon, ultimately, indeterminate
+           # todo make status_at feature
+           # todo make error feature (going backwards on sequence, so only if not at start)
+           pass
+        else:
+            raise ValueError('check interpretation of combination for transcript start with {}, {}'.format(
+                intervals, observed_types
+            ))
+        # return / set features, todo!
+
+    def organize_and_split_features(self):
+        tree = intervaltree.IntervalTree()
+        features = [self.super_loci.features[f] for f in self.features]
+        for f in features:
+            tree[f.py_start:f.py_end] = f
+        tree.split_overlaps()
+        # todo, minus strand
+        intervals = iter(sorted(tree))
+        out = [next(intervals)]
+        for interval in intervals:
+            if out[-1].begin == interval.begin:
+                out.append(interval)
+            else:
+                yield out
+                out = [interval]
+        yield out
 
 
 class StructuredFeature(FeatureLike):
@@ -402,6 +453,14 @@ class StructuredFeature(FeatureLike):
         self.source = ''
         self.transcripts = []
         self.super_loci = None
+
+    @property
+    def py_start(self):
+        return self.start - 1
+
+    @property
+    def py_end(self):
+        return self.end
 
     def add_data(self, super_loci, gff_entry):
         gffkey = super_loci.genome.gffkey
