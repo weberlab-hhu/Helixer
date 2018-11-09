@@ -165,3 +165,102 @@ def test_id_maker():
     assert len(ider.seen) == 7
     assert new_id != suggestion
 
+
+def setup_testable_super_loci():
+    # features [--0--][1][---2---]
+    f_coord = [(0, 100), (110, 120), (200, 400)]
+    # transcript X: [0, 1], Y: [0, 1, 2], Z: [0]
+    t_ids = ['x', 'y', 'z']
+    t_features = [(0, 1), (0, 1, 2), (0, )]
+    genome = annotations.AnnotatedGenome()
+    sl = annotations.SuperLoci(genome)
+
+    # setup transcripts and features
+    transcripts = []
+    features = []
+    for i in range(3):
+        t = annotations.Transcribed()
+        t.id = t_ids[i]
+        t.super_loci = sl
+        for j in t_features[i]:
+            e = annotations.StructuredFeature()
+            e.id = genome.feature_ider.next_unique_id()
+            e.transcripts = [t.id]
+            c = annotations.StructuredFeature()
+            c.transcripts = [t.id]
+            c.id = genome.feature_ider.next_unique_id()
+            print('transcript {}: [exon: {}, cds: {}, coord: {}]'.format(t.id, e.id, c.id, f_coord[j]))
+            e.super_loci = c.super_loci = sl
+            e.start, e.end = c.start, c.end = f_coord[j]
+            c.type = "CDS"
+            e.type = "exon"
+            t.features += [e.id, c.id]
+            features += [e, c]
+        transcripts.append(t)
+    for t in transcripts:
+        sl.transcripts[t.id] = t
+    for f in features:
+        sl.features[f.id] = f
+    # transcript x: [exon: ftr000000, cds: ftr000001, coord: (0, 100)]
+    # transcript x: [exon: ftr000002, cds: ftr000003, coord: (110, 120)]
+    # transcript y: [exon: ftr000004, cds: ftr000005, coord: (0, 100)]
+    # transcript y: [exon: ftr000006, cds: ftr000007, coord: (110, 120)]
+    # transcript y: [exon: ftr000008, cds: ftr000009, coord: (200, 400)]
+    # transcript z: [exon: ftr000010, cds: ftr000011, coord: (0, 100)]
+    return sl
+
+
+def test_feature_overlap_detection():
+    sl = setup_testable_super_loci()
+    assert sl.features['ftr000000'].fully_overlaps(sl.features['ftr000004'])
+    assert sl.features['ftr000005'].fully_overlaps(sl.features['ftr000001'])
+    # a few that should not overlap
+    assert not sl.features['ftr000000'].fully_overlaps(sl.features['ftr000001'])
+    assert not sl.features['ftr000000'].fully_overlaps(sl.features['ftr000002'])
+
+
+def test_collapse_identical_features():
+    # features [--0--][1][---2---]
+    # transcript X: [0, 1], Y: [0, 1, 2], Z: [0]
+    sl = setup_testable_super_loci()
+    # setup features
+    print(sl.__dict__)
+    print('features')
+    for key in sorted(sl.features):
+        feature_print(sl.features[key])
+    print('transcripts')
+    for key in sorted(sl.transcripts):
+        transcript_print(sl.transcripts[key])
+
+    # starting dimensions
+    # total
+    assert len(sl.transcripts.keys()) == 3
+    assert len(sl.features.keys()) == 12  # 2 x 6
+    # by transcript
+    assert len(sl.transcripts['y'].features) == 6
+    assert len(sl.transcripts['z'].features) == 2
+
+    # collapse
+    sl.collapse_identical_features()
+    # totals went down
+    assert len(sl.transcripts.keys()) == 3
+    assert len(sl.features.keys()) == 6  # 2 x 3
+    # transcripts kept numbers from before
+    assert len(sl.transcripts['y'].features) == 6
+    assert len(sl.transcripts['z'].features) == 2
+    # transcripts point to exact same features as sl has directly
+    f = []
+    for t in sl.transcripts:
+        f += sl.transcripts[t].features
+    feat_ids_frm_transcripts = set(f)
+    assert set(sl.features.keys()) == feat_ids_frm_transcripts
+
+
+# todo, make short / long print methods as part of object
+def feature_print(feature):
+    print('{} is {}: {}-{} on {}. --> {}'.format(
+        feature.id, feature.type, feature.start, feature.end, feature.seqid, feature.transcripts))
+
+
+def transcript_print(transcript):
+    print('{}. --> {}'.format(transcript.id, transcript.features))

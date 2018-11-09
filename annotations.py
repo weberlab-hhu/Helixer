@@ -249,7 +249,6 @@ class SuperLoci(FeatureLike):
             feature = StructuredFeature()
             feature.add_data(self, entry)
             self.features[feature.id] = feature
-            # todo, checkfor and collapse identical exons / features
 
     def add_gff_entry_group(self, entries):
         entries = list(entries)
@@ -312,11 +311,12 @@ class SuperLoci(FeatureLike):
             # sort and copy keys so that removal of the merged from the dict causes neither sorting nor looping trouble
             feature_keys = sorted(features.keys())
             feature = features[feature_keys[i]]
-            for j in range(i, len(feature_keys)):
+            for j in range(i + 1, len(feature_keys)):
                 o_key = feature_keys[j]
                 if feature.fully_overlaps(features[o_key]):
                     feature.merge(features[o_key])  # todo logging debug
                     features.pop(o_key)
+                    logging.warning('removing {} from {} as it overlaps {}'.format(o_key, self.id, feature.id))
             i += 1
 
     def implicit_to_explicit(self):
@@ -445,6 +445,7 @@ class StructuredFeature(FeatureLike):
         return out
 
     def merge(self, other):
+        assert self is not other
         # move transcript reference from other to self
         for transcript_id in copy.deepcopy(other.transcripts):
             self.link_to_transcript_and_back(transcript_id)
