@@ -7,6 +7,7 @@ import intervaltree
 
 class FeatureDecoder(object):
     def __init__(self):
+        self.error_buffer = 2000
         # gene like, generally having a collection of transcripts
         self.gene = 'gene'
         self.super_gene = 'super_gene'
@@ -49,7 +50,10 @@ class FeatureDecoder(object):
         self.TTS = 'TTS'  # transcription termination site
         self.start_codon = 'start_codon'
         self.stop_codon = 'stop_codon'
-        self.point_annotations = [self.TSS, self.TTS, self.start_codon, self.stop_codon]
+        self.donor_splice_site = 'donor_splice_site'
+        self.acceptor_splice_site = 'acceptor_splice_site'
+        self.point_annotations = [self.TSS, self.TTS, self.start_codon, self.stop_codon, self.donor_splice_site,
+                                  self.acceptor_splice_site]
 
         # regions (often but not always included so one knows the size of the chromosomes / contigs / whatever
         self.region = 'region'
@@ -62,13 +66,19 @@ class FeatureDecoder(object):
         self.cDNA_match = 'cDNA_match'
         self.ignorable = [self.match, self.cDNA_match]
 
-        # to be used when there are just obvious mistakes, like non-ATG start codon
+        # for mistakes or near-mistakes / marking partials
         self.error = 'error'
-
+        self.status_coding = 'status_coding'
+        self.status_intron = 'status_intron'
+        self.status_five_prime_UTR = 'status_five_prime_UTR'
+        self.status_three_prime_UTR = 'status_three_prime_UTR'
+        self.status_intergenic = 'status_intergenic'
+        self.statuses = [self.status_coding, self.status_intron, self.status_five_prime_UTR,
+                         self.status_three_prime_UTR, self.status_intergenic]
         # and putting them together
         self.on_sequence = self.sub_transcribed + self.coding_info + self.point_annotations
         self.known = self.gene_level + self.transcribed + self.sub_transcribed + self.coding_info + \
-                     self.point_annotations + self.regions + self.ignorable + [self.error]
+                     self.point_annotations + self.regions + self.ignorable + [self.error] + self.statuses
 
 
 class IDMaker(object):
@@ -107,17 +117,24 @@ class AnnotatedGenome(GenericData):
         super().__init__()
         self.spec += [('super_loci', True, SuperLoci, list),
                       ('meta_info', True, MetaInfoAnnoGenome, None),
+                      ('meta_info_sequences', True, MetaInfoAnnoSequence, dict),
                       ('gffkey', False, FeatureDecoder, None),
                       ('transcript_ider', False, IDMaker, None),
                       ('feature_ider', False, IDMaker, None)]
 
         self.super_loci = []
         self.meta_info = MetaInfoAnnoGenome()
+        self.meta_info_sequences = {}
         self.gffkey = FeatureDecoder()
         self.transcript_ider = IDMaker(prefix='trx')
         self.feature_ider = IDMaker(prefix='ftr')
 
-    def add_gff(self, gff_file):
+    def add_gff(self, gff_file, genome):
+        for seq in genome.sequences:
+            mi = MetaInfoAnnoSequence()
+            mi.seqid = seq.meta_info.seqid
+            mi.total_bp = seq.meta_info.total_bp
+            self.meta_info_sequences[mi.seqid] = mi
         for entry_group in self.group_gff_by_gene(gff_file):
             new_sl = SuperLoci(self)
             new_sl.add_gff_entry_group(entry_group)
@@ -185,8 +202,10 @@ class MetaInfoAnnoGenome(MetaInfoAnnotation):
 class MetaInfoAnnoSequence(MetaInfoAnnotation):
     def __init__(self):
         super().__init__()
-        self.spec += [('seqid', True, str, None)]
+        self.spec += [('seqid', True, str, None),
+                      ('total_bp', True, int, None)]
         self.seqid = ""
+        self.total_bp = 0
 
 
 class FeatureLike(GenericData):
@@ -379,15 +398,25 @@ class Transcribed(FeatureLike):
     def remove_feature(self, feature_id):
         self.features.pop(self.features.index(feature_id))
 
-    def decode_raw_features(self):
-        for intervals in self.organize_and_split_features():
-            print(intervals)
-            print([(x.data.id, x.data.type) for x in intervals])
+    def decode_raw_features(self, plus_strand=True):
+        interval_sets = list(self.organize_and_split_features())
+        if not plus_strand:
+            interval_sets.reverse()
+        new_features = self.interpret_first_pos(interval_sets[0], plus_strand)
+        for i in range(len(interval_sets) - 1):
+            ivals_before = interval_sets[i]
+            ivals_after = interval_sets[i + 1]
 
+            print(ivals_before)
+            print([(x.data.id, x.data.type) for x in ivals_before])
+
+    def interpret_border(self, ivals_before, ivals_after, plus_strand=True):
+        pass
+    
     def interpret_first_pos(self, intervals, plus_strand=True):
-        cds = self.super_loci.genome.gffkey.cds
-        five_prime = self.super_loci.genome.gffkey.five_prime_UTR
-        exon = self.super_loci.genome.gffkey.exon
+        cds = self.gffkey.cds
+        five_prime = self.gffkey.five_prime_UTR
+        exon = self.gffkey.exon
         observed_types = [x.data.type for x in intervals]
         set_o_types = set(observed_types)
         if plus_strand:
@@ -398,21 +427,45 @@ class Transcribed(FeatureLike):
             raise ValueError('check interpretation by hand for transcript start with {}, {}'.format(
                 intervals, observed_types
             ))
+        new_features = []
         if set_o_types == {exon, five_prime} or set_o_types == {exon}:
             # this should indicate we're good to go and have a transcription start site
-            # todo, make TSS feature
-            # todo, WAS HERE, use StructuredFeature().clone()
-            pass
+            feature0 = intervals[0].data.clone()
+            feature0.type = self.gffkey.TSS
+            new_features.append(feature0)
         elif set_o_types == {exon, cds} or set_o_types == {cds}:
-           # this could be first exon detected or start codon, ultimately, indeterminate
-           # todo make status_at feature
-           # todo make error feature (going backwards on sequence, so only if not at start)
-           pass
+            # this could be first exon detected or start codon, ultimately, indeterminate
+            cds_feature = [x for x in intervals if x.data.type == cds][0]
+            feature0 = cds_feature.clone()  # take CDS, so that 'frame' is maintained
+            feature0.type = self.gffkey.status_coding
+            new_features.append(feature0)
+            # mask a dummy region up-stream as it's very unclear whether it should be intergenic/intronic/utr
+            if plus_strand:
+                # unless we're at the start of the sequence
+                if at != 1:
+                    feature_e = cds_feature.clone()
+                    feature_e.type = self.gffkey.error
+                    feature_e.start = max(1, at - self.gffkey.error_buffer)
+                    feature_e.end = at - 1
+                    feature_e.frame = '.'
+                    new_features.insert(0, feature_e)
+            else:
+                end_of_sequence = self.get_seq_length(cds_feature.seqid)
+                if at != end_of_sequence:
+                    feature_e = cds_feature.clone()
+                    feature_e.type = self.gffkey.error
+                    feature_e.end = min(end_of_sequence, at + self.gffkey.error_buffer)
+                    feature_e.start = at + 1
+                    feature_e.frame = '.'
+                    new_features.insert(0, feature_e)
+
         else:
             raise ValueError('check interpretation of combination for transcript start with {}, {}'.format(
                 intervals, observed_types
             ))
         # return / set features, todo!
+        feature0.start = feature0.end = at
+        return new_features
 
     def organize_and_split_features(self):
         tree = intervaltree.IntervalTree()
@@ -430,6 +483,39 @@ class Transcribed(FeatureLike):
                 yield out
                 out = [interval]
         yield out
+
+    @property
+    def gffkey(self):
+        return self.super_loci.genome.gffkey
+
+    def get_seq_length(self, seqid):
+        return self.super_loci.genome.meta_info_sequences[seqid].total_bp
+
+    def get_status(self, last_seen, pre_intron):
+        # status has been explicitly set already (e.g. at sequence start, after error)
+        if last_seen in self.gffkey.statuses:
+            current = last_seen
+        # for change of transcribed/coding status, update current and pre_intron status
+        elif last_seen == self.gffkey.TSS:
+            current = self.gffkey.status_five_prime_UTR
+            pre_intron = current
+        elif last_seen == self.gffkey.start_codon:
+            current = self.gffkey.status_coding
+            pre_intron = current
+        elif last_seen == self.gffkey.stop_codon:
+            current = self.gffkey.status_three_prime_UTR
+            pre_intron = current
+        elif last_seen == self.gffkey.TTS:
+            current = self.gffkey.status_intergenic
+            pre_intron = current
+        # change splice status, update only current
+        elif last_seen == self.gffkey.donor_splice_site:
+            current = self.gffkey.status_intron
+        elif last_seen == self.gffkey.acceptor_splice_site:
+            current = pre_intron
+        else:
+            raise ValueError('do not know how to set status after feature of type {}'.format(last_seen))
+        return current, pre_intron
 
 
 class StructuredFeature(FeatureLike):
