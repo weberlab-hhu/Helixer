@@ -442,22 +442,48 @@ class Transcribed(FeatureLike):
         return out
 
     def interpret_transition(self, status_in, pre_intron_status, ivals_before, ivals_after, plus_strand=True):
-
-        before_types = [x.data.type for x in ivals_before]
-        after_types = [x.data.type for x in ivals_after]
+        sign = 1
+        if not plus_strand:
+            sign = -1
+        before_types = self.possible_types(ivals_before)
+        after_types = self.possible_types(ivals_after)
+        new_intervals = []
         # 5' UTR can hit either start codon or splice site
+        # todo, WAS HERE, start testing this!
         if status_in == self.gffkey.five_prime_UTR:
             # start codon
-            types_match_5p = before_types == {self.gffkey.five_prime_UTR, self.gffkey.exon}
-            if before_types == {self.gffkey.five_prime_UTR, self.gffkey.exon}:
-                pass  # TODO WAS HERE
-
+            if self.gffkey.five_prime_UTR in before_types and self.gffkey.cds in after_types:
+                cds_template = ivals_after[0].data
+                assert ivals_before[0].data.end == cds_template.begin  # make sure there is no gap
+                assert cds_template.frame == 1  # it better be std frame if it's a start codon
+                feature0 = cds_template.clone()
+                feature0.start = feature0.end = feature0.upstream()  # start codon is first bp of CDS started
+                feature0.type = self.gffkey.start_codon
+                new_intervals.append(feature0)
+            elif self.gffkey.five_prime_UTR in before_types and self.gffkey.five_prime_UTR in after_types:
+                donor_template = ivals_before[0].data
+                acceptor_template = ivals_after[0].data
+                # make sure there is a gap
+                assert donor_template.downstream() * sign < acceptor_template.upstream() * sign
+                donor = donor_template.clone()
+                # todo, check position of DSS/ASS to be consistent with Augustus, hopefully
+                donor.start = donor.end = donor.downstream() + (1 * sign)
+                acceptor = acceptor_template.clone()
+                acceptor.start = acceptor.end = acceptor.upstream() - (1 * sign)
+                new_intervals += [donor, acceptor]
+            else:
+                raise ValueError('wrong feature types after five prime: b: {}, a: {}'.format(
+                    [x.data.type for x in ivals_before], [x.data.type for x in ivals_after]))
+        # todo, transitioning from each status
+        # coding
+        # intron
+        # three prime
+        # intergenic?
+        # return intervals, pre_intron_status, (and current status?)
 
     def interpret_first_pos(self, intervals, plus_strand=True):
-        if plus_strand:
-            at = intervals[0].start
-        else:
-            at = intervals[0].end
+        at = intervals[0].data.upstream()
+
         new_features = []
         possible_types = self.possible_types(intervals)
         if self.gffkey.five_prime_UTR in possible_types:
@@ -686,3 +712,23 @@ class StructuredFeature(FeatureLike):
         transcript = self.super_loci.transcripts[transcript_id]  # get transcript
         transcript.remove_feature(self.id)  # drop other
         self.transcripts.pop(self.transcripts.index(transcript_id))
+
+    def is_plus_strand(self):
+        if self.strand == '+':
+            return True
+        elif self.strand == '-':
+            return False
+        else:
+            ValueError('strand should be +- {}'.format(self.strand))
+
+    def upstream(self):
+        if self.is_plus_strand():
+            return self.start
+        else:
+            return self.end
+
+    def downstream(self):
+        if self.is_plus_strand():
+            return self.end
+        else:
+            return self.start
