@@ -402,43 +402,77 @@ class Transcribed(FeatureLike):
         interval_sets = list(self.organize_and_split_features())
         if not plus_strand:
             interval_sets.reverse()
-        new_features = self.interpret_first_pos(interval_sets[0], plus_strand)
+        new_features, pre_intron_status = self.interpret_first_pos(interval_sets[0], plus_strand)
         for i in range(len(interval_sets) - 1):
+            status_in, pre_intron_status = self.get_status(new_features[-1], pre_intron_status)
             ivals_before = interval_sets[i]
             ivals_after = interval_sets[i + 1]
 
             print(ivals_before)
             print([(x.data.id, x.data.type) for x in ivals_before])
 
-    def interpret_border(self, ivals_before, ivals_after, plus_strand=True):
-        pass
-    
-    def interpret_first_pos(self, intervals, plus_strand=True):
+    def possible_types(self, intervals):
+        # shortcuts
         cds = self.gffkey.cds
         five_prime = self.gffkey.five_prime_UTR
         exon = self.gffkey.exon
+        three_prime = self.gffkey.three_prime_UTR
+
+        # what we see
         observed_types = [x.data.type for x in intervals]
         set_o_types = set(observed_types)
+        # check length
+        if len(intervals) not in [1, 2]:
+            raise ValueError('check interpretation by hand for transcript start with {}, {}'.format(
+                intervals, observed_types
+            ))
+        # interpret type combination
+        if set_o_types == {exon, five_prime} or set_o_types == {five_prime}:
+            out = [five_prime]
+        elif set_o_types == {exon, three_prime} or set_o_types == {three_prime}:
+            out = [three_prime]
+        elif set_o_types == {exon}:
+            out = [five_prime, three_prime]
+        elif set_o_types == {cds, exon} or set_o_types == {cds}:
+            out = [cds]
+        else:
+            raise ValueError('check interpretation of combination for transcript start with {}, {}'.format(
+                intervals, observed_types
+            ))
+        return out
+
+    def interpret_transition(self, status_in, pre_intron_status, ivals_before, ivals_after, plus_strand=True):
+
+        before_types = [x.data.type for x in ivals_before]
+        after_types = [x.data.type for x in ivals_after]
+        # 5' UTR can hit either start codon or splice site
+        if status_in == self.gffkey.five_prime_UTR:
+            # start codon
+            types_match_5p = before_types == {self.gffkey.five_prime_UTR, self.gffkey.exon}
+            if before_types == {self.gffkey.five_prime_UTR, self.gffkey.exon}:
+                pass  # TODO WAS HERE
+
+
+    def interpret_first_pos(self, intervals, plus_strand=True):
         if plus_strand:
             at = intervals[0].start
         else:
             at = intervals[0].end
-        if len(intervals) != 2:
-            raise ValueError('check interpretation by hand for transcript start with {}, {}'.format(
-                intervals, observed_types
-            ))
         new_features = []
-        if set_o_types == {exon, five_prime} or set_o_types == {exon}:
+        possible_types = self.possible_types(intervals)
+        if self.gffkey.five_prime_UTR in possible_types:
             # this should indicate we're good to go and have a transcription start site
             feature0 = intervals[0].data.clone()
             feature0.type = self.gffkey.TSS
             new_features.append(feature0)
-        elif set_o_types == {exon, cds} or set_o_types == {cds}:
+            pre_intron_status = self.gffkey.five_prime_UTR
+        elif self.gffkey.cds in possible_types:
             # this could be first exon detected or start codon, ultimately, indeterminate
-            cds_feature = [x for x in intervals if x.data.type == cds][0]
+            cds_feature = [x for x in intervals if x.data.type == self.gffkey.cds][0]
             feature0 = cds_feature.clone()  # take CDS, so that 'frame' is maintained
             feature0.type = self.gffkey.status_coding
             new_features.append(feature0)
+            pre_intron_status = self.gffkey.status_coding
             # mask a dummy region up-stream as it's very unclear whether it should be intergenic/intronic/utr
             if plus_strand:
                 # unless we're at the start of the sequence
@@ -458,14 +492,14 @@ class Transcribed(FeatureLike):
                     feature_e.start = at + 1
                     feature_e.frame = '.'
                     new_features.insert(0, feature_e)
-
         else:
-            raise ValueError('check interpretation of combination for transcript start with {}, {}'.format(
-                intervals, observed_types
-            ))
-        # return / set features, todo!
+            raise ValueError("why's this gene not start with 5' utr nor cds? types: {}, interpretations: {}".format(
+                [x.data.type for x in intervals], possible_types))
+
         feature0.start = feature0.end = at
-        return new_features
+        # need to return both the features, with [-1] producing last_seen,
+        # and the pre_intron status, basically (coding/not)
+        return new_features, pre_intron_status
 
     def organize_and_split_features(self):
         tree = intervaltree.IntervalTree()
