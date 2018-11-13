@@ -216,6 +216,7 @@ def setup_loci_with_utr():
     sl = setup_testable_super_loci()
     sl.collapse_identical_features()
     sl.features['ftr000001'].start = 11  # start first CDS later
+    sl.features['ftr000001'].frame = 1  # let's just assume the initial frame is correct
     sl.features['ftr000009'].end = 330  # end first CDS sooner
     return sl
 
@@ -314,24 +315,29 @@ def test_transcript_interpreter():
     sl.features['ftr000001'].start = 11  # start first CDS later
     sl.features['ftr000009'].end = 330  # end first CDS sooner
     transcript = sl.transcripts['y']
-    transcript.decode_raw_features()
-    # todo, finish # assert False
+    t_interp = annotations.TranscriptInterpreter(transcript)
+    t_interp.decode_raw_features()
+    # todo, finish #
+    assert False
 
 
 def test_transcript_get_first():
     # plus strand
     sl = setup_loci_with_utr()
     transcript = sl.transcripts['y']
-    i0 = transcript.intervals_5to3(plus_strand=True)[0]
-    features, status = transcript.interpret_first_pos(i0)
+    t_interp = annotations.TranscriptInterpreter(transcript)
+    i0 = t_interp.intervals_5to3(plus_strand=True)[0]
+    t_interp.interpret_first_pos(i0)
+    features = t_interp.clean_features
+    status = t_interp.status
     assert len(features) == 1
     f0 = features[0]
     feature_print(f0)
-    print(status)
+    print(status.__dict__)
     print(i0[0].data.strand)
     assert f0.start == 1
-    assert status == sl.genome.gffkey.five_prime_UTR
-    assert f0.frame == '.'
+    assert status.is_5p_utr()
+    assert f0.frame is None
     assert f0.strand == '+'
 
     # minus strand
@@ -340,16 +346,19 @@ def test_transcript_get_first():
         feature.strand = '-'
 
     transcript = sl.transcripts['y']
-    i0 = transcript.intervals_5to3(plus_strand=False)[0]
-    features, status = transcript.interpret_first_pos(i0)
+    t_interp = annotations.TranscriptInterpreter(transcript)
+    i0 = t_interp.intervals_5to3(plus_strand=False)[0]
+    t_interp.interpret_first_pos(i0)
+    features = t_interp.clean_features
+    status = t_interp.status
     assert len(features) == 1
     f0 = features[0]
     feature_print(f0)
     print(status)
     print(i0[0].data.strand)
     assert f0.start == 400
-    assert status == sl.genome.gffkey.five_prime_UTR
-    assert f0.frame == '.'
+    assert status.is_5p_utr()
+    assert f0.frame is None
     assert f0.strand == '-'
     # todo, test without utr as well
 
@@ -357,8 +366,8 @@ def test_transcript_get_first():
 def test_transcript_transition_from_5p():
     sl = setup_loci_with_utr()
     transcript = sl.transcripts['y']
-    ivals_sets = transcript.intervals_5to3(plus_strand=True)
-    features, status = transcript.interpret_first_pos(ivals_sets[0])
-    transcript.interpret_transition(last_feature=features[-1], pre_intron_status=status,
-                                    ivals_before=ivals_sets[0], ivals_after=ivals_sets[1], plus_strand=True)
+    t_interp = annotations.TranscriptInterpreter(transcript)
+    ivals_sets = t_interp.intervals_5to3(plus_strand=True)
+    t_interp.interpret_first_pos(ivals_sets[0])
+    t_interp.interpret_transition(ivals_before=ivals_sets[0], ivals_after=ivals_sets[1], plus_strand=True)
     assert False

@@ -687,7 +687,7 @@ class TranscriptInterpreter(object):
         # splice site
         elif self.gffkey.cds in after_types:
             self.handle_splice(ivals_before, ivals_after, sign)
-            
+
     def handle_from_intron(self):
         raise NotImplementedError  # todo later
 
@@ -760,7 +760,7 @@ class TranscriptInterpreter(object):
         possible_types = self.possible_types(intervals)
         if self.gffkey.five_prime_UTR in possible_types:
             # this should indicate we're good to go and have a transcription start site
-            tss = self.new_feature(template=i0.data, type=self.gffkey.TSS, start=at, end=at)
+            tss = self.new_feature(template=i0.data, type=self.gffkey.TSS, start=at, end=at, frame=None)
             self.clean_features.append(tss)
             self.status.saw_tss()
         elif self.gffkey.cds in possible_types:
@@ -774,13 +774,13 @@ class TranscriptInterpreter(object):
                 # unless we're at the start of the sequence
                 if at != 1:
                     feature_e = self.new_feature(template=cds_feature, type=self.gffkey.error,
-                                                 start=max(1, at - self.gffkey.error_buffer), end=at - 1, frame='.')
+                                                 start=max(1, at - self.gffkey.error_buffer), end=at - 1, frame=None)
                     self.clean_features.insert(0, feature_e)
             else:
                 end_of_sequence = self.get_seq_length(cds_feature.seqid)
                 if at != end_of_sequence:
                     feature_e = self.new_feature(template=cds_feature, type=self.gffkey.error, start=at + 1,
-                                                 end=min(end_of_sequence, at + self.gffkey.error_buffer), frame='.')
+                                                 end=min(end_of_sequence, at + self.gffkey.error_buffer), frame=None)
                     feature_e.type = self.gffkey.error
                     self.clean_features.insert(0, feature_e)
         else:
