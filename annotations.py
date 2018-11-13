@@ -52,8 +52,14 @@ class FeatureDecoder(object):
         self.stop_codon = 'stop_codon'
         self.donor_splice_site = 'donor_splice_site'
         self.acceptor_splice_site = 'acceptor_splice_site'
+        # use the following when the far side of a splice site is on a different strand and/or sequence
+        # does not imply an intron!
+        # e.g. for trans-splicing
+        self.trans_donor_splice_site = 'trans_donor_splice_site'
+        self.trans_acceptor_splice_site = 'trans_acceptor_splice_site'
         self.point_annotations = [self.TSS, self.TTS, self.start_codon, self.stop_codon, self.donor_splice_site,
-                                  self.acceptor_splice_site]
+                                  self.acceptor_splice_site, self.trans_donor_splice_site,
+                                  self.trans_acceptor_splice_site]
 
         # regions (often but not always included so one knows the size of the chromosomes / contigs / whatever
         self.region = 'region'
@@ -398,184 +404,6 @@ class Transcribed(FeatureLike):
     def remove_feature(self, feature_id):
         self.features.pop(self.features.index(feature_id))
 
-    def decode_raw_features(self, plus_strand=True):
-        interval_sets = list(self.organize_and_split_features())
-        if not plus_strand:
-            interval_sets.reverse()
-        new_features, pre_intron_status = self.interpret_first_pos(interval_sets[0], plus_strand)
-        for i in range(len(interval_sets) - 1):
-            status_in, pre_intron_status = self.get_status(new_features[-1], pre_intron_status)
-            ivals_before = interval_sets[i]
-            ivals_after = interval_sets[i + 1]
-
-            print(ivals_before)
-            print([(x.data.id, x.data.type) for x in ivals_before])
-
-    def possible_types(self, intervals):
-        # shortcuts
-        cds = self.gffkey.cds
-        five_prime = self.gffkey.five_prime_UTR
-        exon = self.gffkey.exon
-        three_prime = self.gffkey.three_prime_UTR
-
-        # what we see
-        observed_types = [x.data.type for x in intervals]
-        set_o_types = set(observed_types)
-        # check length
-        if len(intervals) not in [1, 2]:
-            raise ValueError('check interpretation by hand for transcript start with {}, {}'.format(
-                intervals, observed_types
-            ))
-        # interpret type combination
-        if set_o_types == {exon, five_prime} or set_o_types == {five_prime}:
-            out = [five_prime]
-        elif set_o_types == {exon, three_prime} or set_o_types == {three_prime}:
-            out = [three_prime]
-        elif set_o_types == {exon}:
-            out = [five_prime, three_prime]
-        elif set_o_types == {cds, exon} or set_o_types == {cds}:
-            out = [cds]
-        else:
-            raise ValueError('check interpretation of combination for transcript start with {}, {}'.format(
-                intervals, observed_types
-            ))
-        return out
-
-    def interpret_transition(self, status_in, pre_intron_status, ivals_before, ivals_after, plus_strand=True):
-        sign = 1
-        if not plus_strand:
-            sign = -1
-        before_types = self.possible_types(ivals_before)
-        after_types = self.possible_types(ivals_after)
-        new_intervals = []
-        # 5' UTR can hit either start codon or splice site
-        # todo, WAS HERE, start testing this!
-        if status_in == self.gffkey.five_prime_UTR:
-            # start codon
-            if self.gffkey.five_prime_UTR in before_types and self.gffkey.cds in after_types:
-                cds_template = ivals_after[0].data
-                assert ivals_before[0].data.end == cds_template.begin  # make sure there is no gap
-                assert cds_template.frame == 1  # it better be std frame if it's a start codon
-                feature0 = cds_template.clone()
-                feature0.start = feature0.end = feature0.upstream()  # start codon is first bp of CDS started
-                feature0.type = self.gffkey.start_codon
-                new_intervals.append(feature0)
-            elif self.gffkey.five_prime_UTR in before_types and self.gffkey.five_prime_UTR in after_types:
-                donor_template = ivals_before[0].data
-                acceptor_template = ivals_after[0].data
-                # make sure there is a gap
-                assert donor_template.downstream() * sign < acceptor_template.upstream() * sign
-                donor = donor_template.clone()
-                # todo, check position of DSS/ASS to be consistent with Augustus, hopefully
-                donor.start = donor.end = donor.downstream() + (1 * sign)
-                acceptor = acceptor_template.clone()
-                acceptor.start = acceptor.end = acceptor.upstream() - (1 * sign)
-                new_intervals += [donor, acceptor]
-            else:
-                raise ValueError('wrong feature types after five prime: b: {}, a: {}'.format(
-                    [x.data.type for x in ivals_before], [x.data.type for x in ivals_after]))
-        # todo, transitioning from each status
-        # coding
-        # intron
-        # three prime
-        # intergenic?
-        # return intervals, pre_intron_status, (and current status?)
-
-    def interpret_first_pos(self, intervals, plus_strand=True):
-        at = intervals[0].data.upstream()
-
-        new_features = []
-        possible_types = self.possible_types(intervals)
-        if self.gffkey.five_prime_UTR in possible_types:
-            # this should indicate we're good to go and have a transcription start site
-            feature0 = intervals[0].data.clone()
-            feature0.type = self.gffkey.TSS
-            new_features.append(feature0)
-            pre_intron_status = self.gffkey.five_prime_UTR
-        elif self.gffkey.cds in possible_types:
-            # this could be first exon detected or start codon, ultimately, indeterminate
-            cds_feature = [x for x in intervals if x.data.type == self.gffkey.cds][0]
-            feature0 = cds_feature.clone()  # take CDS, so that 'frame' is maintained
-            feature0.type = self.gffkey.status_coding
-            new_features.append(feature0)
-            pre_intron_status = self.gffkey.status_coding
-            # mask a dummy region up-stream as it's very unclear whether it should be intergenic/intronic/utr
-            if plus_strand:
-                # unless we're at the start of the sequence
-                if at != 1:
-                    feature_e = cds_feature.clone()
-                    feature_e.type = self.gffkey.error
-                    feature_e.start = max(1, at - self.gffkey.error_buffer)
-                    feature_e.end = at - 1
-                    feature_e.frame = '.'
-                    new_features.insert(0, feature_e)
-            else:
-                end_of_sequence = self.get_seq_length(cds_feature.seqid)
-                if at != end_of_sequence:
-                    feature_e = cds_feature.clone()
-                    feature_e.type = self.gffkey.error
-                    feature_e.end = min(end_of_sequence, at + self.gffkey.error_buffer)
-                    feature_e.start = at + 1
-                    feature_e.frame = '.'
-                    new_features.insert(0, feature_e)
-        else:
-            raise ValueError("why's this gene not start with 5' utr nor cds? types: {}, interpretations: {}".format(
-                [x.data.type for x in intervals], possible_types))
-
-        feature0.start = feature0.end = at
-        # need to return both the features, with [-1] producing last_seen,
-        # and the pre_intron status, basically (coding/not)
-        return new_features, pre_intron_status
-
-    def organize_and_split_features(self):
-        tree = intervaltree.IntervalTree()
-        features = [self.super_loci.features[f] for f in self.features]
-        for f in features:
-            tree[f.py_start:f.py_end] = f
-        tree.split_overlaps()
-        # todo, minus strand
-        intervals = iter(sorted(tree))
-        out = [next(intervals)]
-        for interval in intervals:
-            if out[-1].begin == interval.begin:
-                out.append(interval)
-            else:
-                yield out
-                out = [interval]
-        yield out
-
-    @property
-    def gffkey(self):
-        return self.super_loci.genome.gffkey
-
-    def get_seq_length(self, seqid):
-        return self.super_loci.genome.meta_info_sequences[seqid].total_bp
-
-    def get_status(self, last_seen, pre_intron):
-        # status has been explicitly set already (e.g. at sequence start, after error)
-        if last_seen in self.gffkey.statuses:
-            current = last_seen
-        # for change of transcribed/coding status, update current and pre_intron status
-        elif last_seen == self.gffkey.TSS:
-            current = self.gffkey.status_five_prime_UTR
-            pre_intron = current
-        elif last_seen == self.gffkey.start_codon:
-            current = self.gffkey.status_coding
-            pre_intron = current
-        elif last_seen == self.gffkey.stop_codon:
-            current = self.gffkey.status_three_prime_UTR
-            pre_intron = current
-        elif last_seen == self.gffkey.TTS:
-            current = self.gffkey.status_intergenic
-            pre_intron = current
-        # change splice status, update only current
-        elif last_seen == self.gffkey.donor_splice_site:
-            current = self.gffkey.status_intron
-        elif last_seen == self.gffkey.acceptor_splice_site:
-            current = pre_intron
-        else:
-            raise ValueError('do not know how to set status after feature of type {}'.format(last_seen))
-        return current, pre_intron
 
 
 class StructuredFeature(FeatureLike):
@@ -719,7 +547,7 @@ class StructuredFeature(FeatureLike):
         elif self.strand == '-':
             return False
         else:
-            ValueError('strand should be +- {}'.format(self.strand))
+            raise ValueError('strand should be +- {}'.format(self.strand))
 
     def upstream(self):
         if self.is_plus_strand():
@@ -732,3 +560,222 @@ class StructuredFeature(FeatureLike):
             return self.end
         else:
             return self.start
+
+    # inclusive and from 1 coordinates
+    def upstream_from_interval(self, interval):
+        if self.is_plus_strand():
+            return interval.begin + 1
+        else:
+            return interval.end
+
+    def downstream_from_interval(self, interval):
+        if self.is_plus_strand():
+            return interval.end
+        else:
+            return interval.begin + 1
+
+
+#### section TranscriptInterpreter, might end up in a separate file later
+class TranscriptStatus(object):
+    """can hold all the info on current status of a transcript"""
+    def __init__(self):
+        # initializes to 5' UTR
+        self.genic = True
+        self.in_intron = False
+        self.seen_start = False
+        self.seen_stop = False
+
+
+class TranscriptInterpreter(object):
+    """takes raw/from-gff transcript, and makes totally explicit"""
+    def __init__(self, transcript):
+        self.status = TranscriptStatus()
+        self.super_loci = transcript.super_loci
+        self.gffkey = transcript.super_loci.genome.gffkey
+        self.transcript = transcript
+        self.features = []  # will hold all the 'fixed' features
+
+    def get_status(self, last_seen, pre_intron):
+        # status has been explicitly set already (e.g. at sequence start, after error)
+        if last_seen in self.gffkey.statuses:
+            current = last_seen
+        # for change of transcribed/coding status, update current and pre_intron status
+        elif last_seen == self.gffkey.TSS:
+            current = self.gffkey.status_five_prime_UTR
+            pre_intron = current
+        elif last_seen == self.gffkey.start_codon:
+            current = self.gffkey.status_coding
+            pre_intron = current
+        elif last_seen == self.gffkey.stop_codon:
+            current = self.gffkey.status_three_prime_UTR
+            pre_intron = current
+        elif last_seen == self.gffkey.TTS:
+            current = self.gffkey.status_intergenic
+            pre_intron = current
+        # change splice status, update only current
+        elif last_seen == self.gffkey.donor_splice_site:
+            current = self.gffkey.status_intron
+        elif last_seen == self.gffkey.acceptor_splice_site:
+            current = pre_intron
+        else:
+            raise ValueError('do not know how to set status after feature of type {}'.format(last_seen))
+        return current, pre_intron
+
+    def interpret_transition(self, last_feature, pre_intron_status, ivals_before, ivals_after, plus_strand=True):
+        status_in = self.get_status(last_feature.type, pre_intron_status)
+        sign = 1
+        if not plus_strand:
+            sign = -1
+        before_types = self.possible_types(ivals_before)
+        after_types = self.possible_types(ivals_after)
+        new_features = []
+        # 5' UTR can hit either start codon or splice site
+        # todo, WAS HERE, start testing this!
+        if status_in == self.gffkey.five_prime_UTR:
+            # start codon
+            if self.gffkey.five_prime_UTR in before_types and self.gffkey.cds in after_types:
+                cds_template = ivals_after[0].data
+                assert ivals_before[0].data.end == cds_template.begin  # make sure there is no gap
+                assert cds_template.frame == 1  # it better be std frame if it's a start codon
+                feature0 = cds_template.clone()
+                feature0.start = feature0.end = feature0.upstream()  # start codon is first bp of CDS started
+                feature0.type = self.gffkey.start_codon
+                new_features.append(feature0)
+            # intron
+            elif self.gffkey.five_prime_UTR in before_types and self.gffkey.five_prime_UTR in after_types:
+                donor_template = ivals_before[0].data
+                acceptor_template = ivals_after[0].data
+                # make sure there is a gap
+                assert donor_template.downstream() * sign < acceptor_template.upstream() * sign
+                donor = donor_template.clone()
+                # todo, check position of DSS/ASS to be consistent with Augustus, hopefully
+                donor.start = donor.end = donor.downstream() + (1 * sign)
+                acceptor = acceptor_template.clone()
+                acceptor.start = acceptor.end = acceptor.upstream() - (1 * sign)
+                new_features += [donor, acceptor]
+            else:
+                raise ValueError('wrong feature types after five prime: b: {}, a: {}'.format(
+                    [x.data.type for x in ivals_before], [x.data.type for x in ivals_after]))
+        # todo, transitioning from each status
+        # coding
+        # intron
+        # three prime
+        # intergenic?
+        # return intervals, pre_intron_status, (and current status?)
+        return new_features,
+
+    def interpret_first_pos(self, intervals, plus_strand=True):
+        i0 = intervals[0]
+        at = i0.data.upstream_from_interval(i0)
+        print('at', at)
+        new_features = []
+        possible_types = self.possible_types(intervals)
+        if self.gffkey.five_prime_UTR in possible_types:
+            # this should indicate we're good to go and have a transcription start site
+            feature0 = i0.data.clone()
+            feature0.type = self.gffkey.TSS
+            new_features.append(feature0)
+            pre_intron_status = self.gffkey.five_prime_UTR
+        elif self.gffkey.cds in possible_types:
+            # this could be first exon detected or start codon, ultimately, indeterminate
+            cds_feature = [x for x in intervals if x.data.type == self.gffkey.cds][0]
+            feature0 = cds_feature.clone()  # take CDS, so that 'frame' is maintained
+            feature0.type = self.gffkey.status_coding
+            new_features.append(feature0)
+            pre_intron_status = self.gffkey.status_coding
+            # mask a dummy region up-stream as it's very unclear whether it should be intergenic/intronic/utr
+            if plus_strand:
+                # unless we're at the start of the sequence
+                if at != 1:
+                    feature_e = cds_feature.clone()
+                    feature_e.type = self.gffkey.error
+                    feature_e.start = max(1, at - self.gffkey.error_buffer)
+                    feature_e.end = at - 1
+                    feature_e.frame = '.'
+                    new_features.insert(0, feature_e)
+            else:
+                end_of_sequence = self.get_seq_length(cds_feature.seqid)
+                if at != end_of_sequence:
+                    feature_e = cds_feature.clone()
+                    feature_e.type = self.gffkey.error
+                    feature_e.end = min(end_of_sequence, at + self.gffkey.error_buffer)
+                    feature_e.start = at + 1
+                    feature_e.frame = '.'
+                    new_features.insert(0, feature_e)
+        else:
+            raise ValueError("why's this gene not start with 5' utr nor cds? types: {}, interpretations: {}".format(
+                [x.data.type for x in intervals], possible_types))
+
+        feature0.start = feature0.end = at
+        # need to return both the features, with [-1] producing last_seen,
+        # and the pre_intron status, basically (coding/not)
+        return new_features, pre_intron_status
+
+    def intervals_5to3(self, plus_strand=False):
+        interval_sets = list(self.organize_and_split_features())
+        if not plus_strand:
+            interval_sets.reverse()
+        return interval_sets
+
+    def decode_raw_features(self, plus_strand=True):
+        interval_sets = self.intervals_5to3(plus_strand)
+        new_features, pre_intron_status = self.interpret_first_pos(interval_sets[0], plus_strand)
+        for i in range(len(interval_sets) - 1):
+            status_in, pre_intron_status = self.get_status(new_features[-1].type, pre_intron_status)
+            ivals_before = interval_sets[i]
+            ivals_after = interval_sets[i + 1]
+
+            print(ivals_before)
+            print([(x.data.id, x.data.type) for x in ivals_before])
+
+    def possible_types(self, intervals):
+        # shortcuts
+        cds = self.gffkey.cds
+        five_prime = self.gffkey.five_prime_UTR
+        exon = self.gffkey.exon
+        three_prime = self.gffkey.three_prime_UTR
+
+        # what we see
+        observed_types = [x.data.type for x in intervals]
+        set_o_types = set(observed_types)
+        # check length
+        if len(intervals) not in [1, 2]:
+            raise ValueError('check interpretation by hand for transcript start with {}, {}'.format(
+                intervals, observed_types
+            ))
+        # interpret type combination
+        if set_o_types == {exon, five_prime} or set_o_types == {five_prime}:
+            out = [five_prime]
+        elif set_o_types == {exon, three_prime} or set_o_types == {three_prime}:
+            out = [three_prime]
+        elif set_o_types == {exon}:
+            out = [five_prime, three_prime]
+        elif set_o_types == {cds, exon} or set_o_types == {cds}:
+            out = [cds]
+        else:
+            raise ValueError('check interpretation of combination for transcript start with {}, {}'.format(
+                intervals, observed_types
+            ))
+        return out
+
+    def organize_and_split_features(self):
+        # todo, handle non-single seqid loci
+        tree = intervaltree.IntervalTree()
+        features = [self.super_loci.features[f] for f in self.features]
+        for f in features:
+            tree[f.py_start:f.py_end] = f
+        tree.split_overlaps()
+        # todo, minus strand
+        intervals = iter(sorted(tree))
+        out = [next(intervals)]
+        for interval in intervals:
+            if out[-1].begin == interval.begin:
+                out.append(interval)
+            else:
+                yield out
+                out = [interval]
+        yield out
+
+    def get_seq_length(self, seqid):
+        return self.super_loci.genome.meta_info_sequences[seqid].total_bp
+

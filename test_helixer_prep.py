@@ -195,6 +195,7 @@ def setup_testable_super_loci():
             e.start, e.end = c.start, c.end = f_coord[j]
             c.type = "CDS"
             e.type = "exon"
+            e.strand = c.strand = '+'
             t.features += [e.id, c.id]
             features += [e, c]
         transcripts.append(t)
@@ -208,6 +209,14 @@ def setup_testable_super_loci():
     # transcript y: [exon: ftr000006, cds: ftr000007, coord: (110, 120)]
     # transcript y: [exon: ftr000008, cds: ftr000009, coord: (200, 400)]
     # transcript z: [exon: ftr000010, cds: ftr000011, coord: (0, 100)]
+    return sl
+
+
+def setup_loci_with_utr():
+    sl = setup_testable_super_loci()
+    sl.collapse_identical_features()
+    sl.features['ftr000001'].start = 11  # start first CDS later
+    sl.features['ftr000009'].end = 330  # end first CDS sooner
     return sl
 
 
@@ -297,6 +306,7 @@ def feature_print(feature):
 def transcript_print(transcript):
     print('{}. --> {}'.format(transcript.id, transcript.features))
 
+
 def test_transcript_interpreter():
     sl = setup_testable_super_loci()
     sl.collapse_identical_features()
@@ -305,5 +315,50 @@ def test_transcript_interpreter():
     sl.features['ftr000009'].end = 330  # end first CDS sooner
     transcript = sl.transcripts['y']
     transcript.decode_raw_features()
-    assert False
+    # todo, finish # assert False
 
+
+def test_transcript_get_first():
+    # plus strand
+    sl = setup_loci_with_utr()
+    transcript = sl.transcripts['y']
+    i0 = transcript.intervals_5to3(plus_strand=True)[0]
+    features, status = transcript.interpret_first_pos(i0)
+    assert len(features) == 1
+    f0 = features[0]
+    feature_print(f0)
+    print(status)
+    print(i0[0].data.strand)
+    assert f0.start == 1
+    assert status == sl.genome.gffkey.five_prime_UTR
+    assert f0.frame == '.'
+    assert f0.strand == '+'
+
+    # minus strand
+    sl = setup_loci_with_utr()
+    for feature in sl.features.values():  # force minus strand
+        feature.strand = '-'
+
+    transcript = sl.transcripts['y']
+    i0 = transcript.intervals_5to3(plus_strand=False)[0]
+    features, status = transcript.interpret_first_pos(i0)
+    assert len(features) == 1
+    f0 = features[0]
+    feature_print(f0)
+    print(status)
+    print(i0[0].data.strand)
+    assert f0.start == 400
+    assert status == sl.genome.gffkey.five_prime_UTR
+    assert f0.frame == '.'
+    assert f0.strand == '-'
+    # todo, test without utr as well
+
+
+def test_transcript_transition_from_5p():
+    sl = setup_loci_with_utr()
+    transcript = sl.transcripts['y']
+    ivals_sets = transcript.intervals_5to3(plus_strand=True)
+    features, status = transcript.interpret_first_pos(ivals_sets[0])
+    transcript.interpret_transition(last_feature=features[-1], pre_intron_status=status,
+                                    ivals_before=ivals_sets[0], ivals_after=ivals_sets[1], plus_strand=True)
+    assert False
