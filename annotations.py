@@ -596,6 +596,7 @@ class TranscriptStatus(object):
 
     def saw_stop(self):
         self.seen_stop = True
+        self.frame = None
 
     def saw_tts(self):
         self.genic = False
@@ -668,9 +669,9 @@ class TranscriptInterpreter(object):
             # start codon
             self.handle_from_5p_utr(ivals_before, ivals_after, before_types, after_types, sign)
         elif self.status.is_coding():
-            self.handle_from_coding()
+            self.handle_from_coding(ivals_before, ivals_after, before_types, after_types, sign)
         elif self.status.is_3p_utr():
-            self.handle_from_3p_utr()
+            self.handle_from_3p_utr(ivals_before, ivals_after, before_types, after_types, sign)
         elif self.status.is_intronic():
             self.handle_from_intron()
         elif self.status.is_intergenic():
@@ -678,27 +679,32 @@ class TranscriptInterpreter(object):
         else:
             raise ValueError('unknown status {}'.format(self.status.__dict__))
 
-    def handle_from_coding(self):
-        pass  # todo
-
+    def handle_from_coding(self, ivals_before, ivals_after, before_types, after_types, sign):
+        assert self.gffkey.cds in before_types
+        # stop codon
+        if self.gffkey.three_prime_UTR in after_types:
+            self.handle_control_codon(ivals_before, ivals_after, sign, is_start=False)
+        # splice site
+        elif self.gffkey.cds in after_types:
+            self.handle_splice(ivals_before, ivals_after, sign)
+            
     def handle_from_intron(self):
         raise NotImplementedError  # todo later
 
-    def handle_from_3p_utr(self):
-        pass  # todo
+    def handle_from_3p_utr(self, ivals_before, ivals_after, before_types, after_types, sign):
+        assert self.gffkey.three_prime_UTR in before_types
+        # the only thing we should encounter is a splice site
+        if self.gffkey.three_prime_UTR in after_types:
+            self.handle_splice(ivals_before, ivals_after, sign)
+        else:
+            raise ValueError('wrong feature types after three prime: b: {}, a: {}'.format(
+                [x.data.type for x in ivals_before], [x.data.type for x in ivals_after]))
 
     def handle_from_5p_utr(self, ivals_before, ivals_after, before_types, after_types, sign):
         assert self.gffkey.five_prime_UTR in before_types
-        after0 = self.pick_one_interval(ivals_after)
         # start codon
         if self.gffkey.cds in after_types:
-            cds_template = after0.data
-            assert ivals_before[0].data.end == cds_template.begin  # make sure there is no gap
-            assert cds_template.frame == 1  # it better be std frame if it's a start codon
-            at = cds_template.upstream_from_interval(after0)
-            start_codon = self.new_feature(template=cds_template, start=at, end=at, type=self.gffkey.start_codon)
-            self.status.saw_start(frame=1)
-            self.clean_features.append(start_codon)
+            self.handle_control_codon(ivals_before, ivals_after, sign, is_start=True)
         # intron
         elif self.gffkey.five_prime_UTR in after_types:
             self.handle_splice(ivals_before, ivals_after, sign)
@@ -708,6 +714,26 @@ class TranscriptInterpreter(object):
 
     def handle_from_intergenic(self):
         raise NotImplementedError  # todo later
+
+    def handle_control_codon(self, ivals_before, ivals_after, sign, is_start=True):
+        target_type = None
+        if is_start:
+            target_type = self.gffkey.cds
+
+        after0 = self.pick_one_interval(ivals_after, target_type)
+        assert ivals_before[0].end == after0.begin  # make sure there is no gap
+        template = after0.data
+        if is_start:
+            assert template.frame == 1  # it better be std frame if it's a start codon
+            at = template.upstream_from_interval(after0)
+            start_codon = self.new_feature(template=template, start=at, end=at + 2 * sign, type=self.gffkey.start_codon)
+            self.status.saw_start(frame=1)
+            self.clean_features.append(start_codon)
+        else:
+            at = template.downstream_from_interval(after0) + 1 * sign
+            stop_codon = self.new_feature(template=template, start=at, end=at + 2 * sign, type=self.gffkey.stop_codon)
+            self.status.saw_stop()
+            self.clean_features.append(stop_codon)
 
     def handle_splice(self, ivals_before, ivals_after, sign):
         target_type = None
