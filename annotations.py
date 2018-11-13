@@ -580,7 +580,7 @@ class TranscriptStatus(object):
     """can hold and manipulate all the info on current status of a transcript"""
     def __init__(self):
         # initializes to intergenic
-        self.genic = False
+        self.genic = False  # todo, have some thoughts about how trans-splicing will fit in
         self.in_intron = False
         self.seen_start = False
         self.seen_stop = False
@@ -606,11 +606,20 @@ class TranscriptStatus(object):
     def splice_close(self):
         self.in_intron = False
 
-    def is_five_prime_UTR(self):
+    def is_5p_utr(self):
         return self.genic and not any([self.in_intron, self.seen_start, self.seen_stop])
+
+    def is_3p_utr(self):
+        return all([self.genic, self.seen_stop, self.seen_start]) and not self.in_intron
 
     def is_coding(self):
         return self.genic and self.seen_start and not any([self.in_intron, self.seen_stop])
+
+    def is_intronic(self):
+        return self.in_intron and self.genic
+
+    def is_intergenic(self):
+        return not self.genic
 
 
 class TranscriptInterpreter(object):
@@ -655,15 +664,28 @@ class TranscriptInterpreter(object):
         before_types = self.possible_types(ivals_before)
         after_types = self.possible_types(ivals_after)
         # 5' UTR can hit either start codon or splice site
-        if self.status.is_five_prime_UTR():
+        if self.status.is_5p_utr():
             # start codon
             self.handle_from_5p_utr(ivals_before, ivals_after, before_types, after_types, sign)
-        # todo, transitioning from each status
-        # coding
-        # intron
-        # three prime
-        # intergenic?
-        # return intervals, pre_intron_status, (and current status?)
+        elif self.status.is_coding():
+            self.handle_from_coding()
+        elif self.status.is_3p_utr():
+            self.handle_from_3p_utr()
+        elif self.status.is_intronic():
+            self.handle_from_intron()
+        elif self.status.is_intergenic():
+            self.handle_from_intergenic()
+        else:
+            raise ValueError('unknown status {}'.format(self.status.__dict__))
+
+    def handle_from_coding(self):
+        pass  # todo
+
+    def handle_from_intron(self):
+        raise NotImplementedError  # todo later
+
+    def handle_from_3p_utr(self):
+        pass  # todo
 
     def handle_from_5p_utr(self, ivals_before, ivals_after, before_types, after_types, sign):
         assert self.gffkey.five_prime_UTR in before_types
@@ -683,6 +705,9 @@ class TranscriptInterpreter(object):
         else:
             raise ValueError('wrong feature types after five prime: b: {}, a: {}'.format(
                 [x.data.type for x in ivals_before], [x.data.type for x in ivals_after]))
+
+    def handle_from_intergenic(self):
+        raise NotImplementedError  # todo later
 
     def handle_splice(self, ivals_before, ivals_after, sign):
         target_type = None
