@@ -726,12 +726,14 @@ class TranscriptInterpreter(object):
         if is_start:
             assert template.frame == 1  # it better be std frame if it's a start codon
             at = template.upstream_from_interval(after0)
-            start_codon = self.new_feature(template=template, start=at, end=at + 2 * sign, type=self.gffkey.start_codon)
+            start, end = min_max(at, at + 2 * sign)
+            start_codon = self.new_feature(template=template, start=start, end=end, type=self.gffkey.start_codon)
             self.status.saw_start(frame=1)
             self.clean_features.append(start_codon)
         else:
-            at = template.downstream_from_interval(after0) + 1 * sign
-            stop_codon = self.new_feature(template=template, start=at, end=at + 2 * sign, type=self.gffkey.stop_codon)
+            at = template.upstream_from_interval(after0) - 1 * sign
+            start, end = min_max(at, at - 2 * sign)
+            stop_codon = self.new_feature(template=template, start=start, end=end, type=self.gffkey.stop_codon)
             self.status.saw_stop()
             self.clean_features.append(stop_codon)
 
@@ -748,9 +750,11 @@ class TranscriptInterpreter(object):
         donor_at = donor_tmplt.downstream_from_interval(before0) + (1 * sign)
         acceptor_at = acceptor_tmplt.upstream_from_interval(after0) - (1 * sign)
         assert donor_at * sign < acceptor_at * sign  # todo, catch and handle null intron
-        donor = self.new_feature(template=donor_tmplt, start=donor_at, end=donor_at, frame=None)
+        donor = self.new_feature(template=donor_tmplt, start=donor_at, end=donor_at, frame=None,
+                                 type=self.gffkey.donor_splice_site)
         # todo, check position of DSS/ASS to be consistent with Augustus, hopefully
-        acceptor = self.new_feature(template=acceptor_tmplt, start=acceptor_at, end=acceptor_at)
+        acceptor = self.new_feature(template=acceptor_tmplt, start=acceptor_at, end=acceptor_at,
+                                    type=self.gffkey.acceptor_splice_site)
         self.clean_features += [donor, acceptor]
 
     def interpret_first_pos(self, intervals, plus_strand=True):
@@ -855,3 +859,6 @@ class TranscriptInterpreter(object):
     def get_seq_length(self, seqid):
         return self.super_loci.genome.meta_info_sequences[seqid].total_bp
 
+
+def min_max(x, y):
+    return min(x, y), max(x, y)
