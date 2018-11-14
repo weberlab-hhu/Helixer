@@ -767,7 +767,7 @@ class TranscriptInterpreter(object):
     def interpret_first_pos(self, intervals, plus_strand=True):
         i0 = self.pick_one_interval(intervals)
         at = i0.data.upstream_from_interval(i0)
-        print('at: ', at, plus_strand)
+
         possible_types = self.possible_types(intervals)
         if self.gffkey.five_prime_UTR in possible_types:
             # this should indicate we're good to go and have a transcription start site
@@ -838,9 +838,9 @@ class TranscriptInterpreter(object):
         for i in range(len(interval_sets) - 1):
             ivals_before = interval_sets[i]
             ivals_after = interval_sets[i + 1]
+            self.interpret_transition(ivals_before, ivals_after, plus_strand)
 
-            print(ivals_before)
-            print([(x.data.id, x.data.type) for x in ivals_before])
+        self.interpret_last_pos(intervals=interval_sets[-1])
 
     def possible_types(self, intervals):
         # shortcuts

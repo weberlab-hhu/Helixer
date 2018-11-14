@@ -304,7 +304,7 @@ def test_add_exon():
 
 
 def test_transcript_interpreter():
-    sl = setup_testable_super_loci()
+    sl = setup_loci_with_utr()
     sl.collapse_identical_features()
     # change so that there are implicit UTRs
     sl.features['ftr000001'].start = 11  # start first CDS later
@@ -312,8 +312,15 @@ def test_transcript_interpreter():
     transcript = sl.transcripts['y']
     t_interp = annotations.TranscriptInterpreter(transcript)
     t_interp.decode_raw_features()
-    # todo, finish #
-    assert False
+    # has all standard features
+    assert set([x.type for x in t_interp.clean_features]) == {sl.genome.gffkey.start_codon,
+                                                              sl.genome.gffkey.stop_codon,
+                                                              sl.genome.gffkey.TTS,
+                                                              sl.genome.gffkey.TSS,
+                                                              sl.genome.gffkey.donor_splice_site,
+                                                              sl.genome.gffkey.acceptor_splice_site}
+    assert t_interp.clean_features[-1].end == 400
+    assert t_interp.clean_features[0].start == 1
 
 
 def test_transcript_get_first():
@@ -415,3 +422,21 @@ def test_transcript_transition_from_5p_to_end():
     t_interp.interpret_last_pos(ivals_sets[4], plus_strand=True)
     assert features[-1].type == sl.genome.gffkey.TTS
     assert features[-1].start == 400
+
+
+def test_non_coding_transitions():
+    sl = setup_testable_super_loci()
+    # get single-exon no-CDS transcript
+    transcript = sl.transcripts['z']
+    transcript.remove_feature('ftr000011')
+    print(transcript.short_str())
+    t_interp = annotations.TranscriptInterpreter(transcript)
+    ivals_sets = t_interp.intervals_5to3(plus_strand=True)
+    assert len(ivals_sets) == 1
+    t_interp.interpret_first_pos(ivals_sets[0])
+    features = t_interp.clean_features
+    assert features[-1].type == sl.genome.gffkey.TSS
+    t_interp.interpret_last_pos(ivals_sets[0], plus_strand=True)
+    assert features[-1].type == sl.genome.gffkey.TTS
+    assert features[-1].start == 100
+    assert len(features) == 2
