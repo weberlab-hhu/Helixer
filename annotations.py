@@ -404,6 +404,8 @@ class Transcribed(FeatureLike):
     def remove_feature(self, feature_id):
         self.features.pop(self.features.index(feature_id))
 
+    def short_str(self):
+        return '{}. --> {}'.format(self.id, self.features)
 
 
 class StructuredFeature(FeatureLike):
@@ -436,6 +438,11 @@ class StructuredFeature(FeatureLike):
     @property
     def py_end(self):
         return self.end
+# to do, make short / long print methods as part of object
+
+    def short_str(self):
+        return '{} is {}: {}-{} on {}. --> {}'.format(self.id, self.type, self.start, self.end, self.seqid,
+                                                      self.transcripts)
 
     def add_data(self, super_loci, gff_entry):
         gffkey = super_loci.genome.gffkey

@@ -238,10 +238,10 @@ def test_collapse_identical_features():
     print(sl.__dict__)
     print('features')
     for key in sorted(sl.features):
-        feature_print(sl.features[key])
+        print(sl.features[key].short_str)
     print('transcripts')
     for key in sorted(sl.transcripts):
-        transcript_print(sl.transcripts[key])
+        print(sl.transcripts[key].short_str)
 
     # starting dimensions
     # total
@@ -298,16 +298,6 @@ def test_add_exon():
     assert len(sl.features.keys()) == old_len
 
 
-# todo, make short / long print methods as part of object
-def feature_print(feature):
-    print('{} is {}: {}-{} on {}. --> {}'.format(
-        feature.id, feature.type, feature.start, feature.end, feature.seqid, feature.transcripts))
-
-
-def transcript_print(transcript):
-    print('{}. --> {}'.format(transcript.id, transcript.features))
-
-
 def test_transcript_interpreter():
     sl = setup_testable_super_loci()
     sl.collapse_identical_features()
@@ -332,7 +322,7 @@ def test_transcript_get_first():
     status = t_interp.status
     assert len(features) == 1
     f0 = features[0]
-    feature_print(f0)
+    print(f0.short_str())
     print(status.__dict__)
     print(i0[0].data.strand)
     assert f0.start == 1
@@ -353,7 +343,7 @@ def test_transcript_get_first():
     status = t_interp.status
     assert len(features) == 1
     f0 = features[0]
-    feature_print(f0)
+    print(f0.short_str())
     print(status)
     print(i0[0].data.strand)
     assert f0.start == 400
