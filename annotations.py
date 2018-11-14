@@ -306,11 +306,8 @@ class SuperLoci(FeatureLike):
 
     def _mark_erroneous(self, entry):
         assert entry.type in self.genome.gffkey.gene_level
-        feature = StructuredFeature()
-        feature.start = entry.start
-        feature.end = entry.end
+        feature = entry.clone()
         feature.type = self.genome.gffkey.error
-        feature.id = self.genome.feature_ider.next_unique_id()
         logging.warning(
             '{species}:{seqid}, {start}-{end}:{gene_id} by {src}, No valid features found - marking erroneous'.format(
                 src=entry.source, species=self.genome.meta_info.species, seqid=entry.seqid, start=entry.start,
@@ -327,8 +324,20 @@ class SuperLoci(FeatureLike):
         self.collapse_identical_features()
         # check that all non-exons are in regions covered by an exon
         self.maybe_reconstruct_exons()
-        # recreate transcribed / exon as necessary, but with reconstructed flag (also check for and mark pseudogenes)
-        pass  # todo
+        # recreate transcribed / exon as necessary
+        # todo, but with reconstructed flag (also check for and mark pseudogenes)
+        for transcript in self.transcripts.values():
+            t_interpreter = TranscriptInterpreter(transcript)
+            t_interpreter.decode_raw_features()
+            transcript.delink_all_features()
+            self.add_features(t_interpreter.clean_features, transcript)
+        self.remove_transcriptless_features()
+
+    def add_features(self, features, transcript=None):
+        for feature in features:
+            self.features[feature.id] = feature
+            if transcript is not None:
+                feature.link_to_transcript_and_back(transcript.id)
 
     def collapse_identical_features(self):
         i = 0
@@ -356,6 +365,14 @@ class SuperLoci(FeatureLike):
                 new_exons.append(f.reconstruct_exon())  # todo, logging info/debug?
         for e in new_exons:
             self.features[e.id] = e
+
+    def remove_transcriptless_features(self):
+        to_remove = []
+        for f_key in self.features:
+            if not self.features[f_key].transcripts():
+                to_remove.append(f_key)
+        for f_key in to_remove:
+            self.features.pop(f_key)
 
     def exons(self):
         return [self.features[x] for x in self.features if self.features[x].type == self.genome.gffkey.exon]
@@ -407,6 +424,10 @@ class Transcribed(FeatureLike):
     def short_str(self):
         return '{}. --> {}'.format(self.id, self.features)
 
+    def delink_all_features(self):
+        for feature in self.features:
+            self.super_loci.features[feature].de_link_from_transcript(self)
+
 
 class StructuredFeature(FeatureLike):
     def __init__(self):
@@ -433,6 +454,7 @@ class StructuredFeature(FeatureLike):
 
     @property
     def py_start(self):
+        print(self.start, type(self.start))
         return self.start - 1
 
     @property
@@ -449,10 +471,14 @@ class StructuredFeature(FeatureLike):
         fid = gff_entry.get_ID()
         self.id = super_loci.genome.feature_ider.next_unique_id(fid)
         self.type = gff_entry.type
-        self.start = gff_entry.start
-        self.end = gff_entry.end
+        self.start = int(gff_entry.start)
+        self.end = int(gff_entry.end)
         self.strand = gff_entry.strand
         self.seqid = gff_entry.seqid
+        try:
+            self.frame = int(gff_entry.frame)  # todo was here, what's it called in a gff again?
+        except ValueError:
+            pass
         try:
             self.score = float(gff_entry.score)
         except ValueError:
