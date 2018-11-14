@@ -767,7 +767,7 @@ class TranscriptInterpreter(object):
     def interpret_first_pos(self, intervals, plus_strand=True):
         i0 = self.pick_one_interval(intervals)
         at = i0.data.upstream_from_interval(i0)
-
+        print('at: ', at, plus_strand)
         possible_types = self.possible_types(intervals)
         if self.gffkey.five_prime_UTR in possible_types:
             # this should indicate we're good to go and have a transcription start site
@@ -776,7 +776,7 @@ class TranscriptInterpreter(object):
             self.status.saw_tss()
         elif self.gffkey.cds in possible_types:
             # this could be first exon detected or start codon, ultimately, indeterminate
-            cds_feature = self.pick_one_interval(intervals, target_type=self.gffkey.cds)
+            cds_feature = self.pick_one_interval(intervals, target_type=self.gffkey.cds).data
             coding = self.new_feature(template=cds_feature, type=self.gffkey.status_coding, start=at, end=at)
             self.clean_features.append(coding)
             self.status.saw_start(frame=coding.frame)
@@ -785,18 +785,45 @@ class TranscriptInterpreter(object):
                 # unless we're at the start of the sequence
                 if at != 1:
                     feature_e = self.new_feature(template=cds_feature, type=self.gffkey.error,
-                                                 start=max(1, at - self.gffkey.error_buffer), end=at - 1, frame=None)
+                                                 start=max(1, at - self.gffkey.error_buffer - 1), end=at - 1, frame=None)
                     self.clean_features.insert(0, feature_e)
             else:
                 end_of_sequence = self.get_seq_length(cds_feature.seqid)
                 if at != end_of_sequence:
                     feature_e = self.new_feature(template=cds_feature, type=self.gffkey.error, start=at + 1,
-                                                 end=min(end_of_sequence, at + self.gffkey.error_buffer), frame=None)
+                                                 end=min(end_of_sequence, at + self.gffkey.error_buffer + 1), frame=None)
                     feature_e.type = self.gffkey.error
                     self.clean_features.insert(0, feature_e)
         else:
             raise ValueError("why's this gene not start with 5' utr nor cds? types: {}, interpretations: {}".format(
                 [x.data.type for x in intervals], possible_types))
+
+    def interpret_last_pos(self, intervals, plus_strand=True):
+        i0 = self.pick_one_interval(intervals)
+        at = i0.data.downstream_from_interval(i0)
+        possible_types = self.possible_types(intervals)
+        if self.gffkey.three_prime_UTR in possible_types:
+            # this should be transcription termination site
+            tts = self.new_feature(template=i0.data, type=self.gffkey.TTS, start=at, end=at, frame=None)
+            self.clean_features.append(tts)
+            self.status.saw_tts()
+        elif self.gffkey.cds in possible_types:
+            # may or may not be stop codon, but will just mark as error (unless at edge of sequence)
+            end_of_sequence = self.get_seq_length(i0.data.seqid)
+            if plus_strand:
+                if at != end_of_sequence:
+                    feature_e = self.new_feature(template=i0.data, type=self.gffkey.error, start=at + 1, frame=None,
+                                                 end=min(at + 1 + self.gffkey.error_buffer, end_of_sequence))
+                    self.clean_features.append(feature_e)
+            else:
+                if at != 1:
+                    feature_e = self.new_feature(template=i0.data, type=self.gffkey.error, end=at - 1, frame=None,
+                                                 start=max(1, at - self.gffkey.error_buffer - 1))
+                    self.clean_features.append(feature_e)
+        else:
+            raise ValueError("why's this gene not end with 3' utr/exon nor cds? types: {}, interpretations: {}".format(
+                [x.data.type for x in intervals], possible_types)
+            )
 
     def intervals_5to3(self, plus_strand=False):
         interval_sets = list(self.organize_and_split_features())

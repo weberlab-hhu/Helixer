@@ -174,6 +174,11 @@ def setup_testable_super_loci():
     t_ids = ['x', 'y', 'z']
     t_features = [(0, 1), (0, 1, 2), (0, )]
     genome = annotations.AnnotatedGenome()
+    # make a dummy sequence
+    seq_mi = annotations.MetaInfoAnnoSequence()
+    seq_mi.total_bp = 450
+    genome.meta_info_sequences[seq_mi.seqid] = seq_mi
+
     sl = annotations.SuperLoci(genome)
 
     # setup transcripts and features
@@ -338,7 +343,7 @@ def test_transcript_get_first():
     transcript = sl.transcripts['y']
     t_interp = annotations.TranscriptInterpreter(transcript)
     i0 = t_interp.intervals_5to3(plus_strand=False)[0]
-    t_interp.interpret_first_pos(i0)
+    t_interp.interpret_first_pos(i0, plus_strand=False)
     features = t_interp.clean_features
     status = t_interp.status
     assert len(features) == 1
@@ -350,7 +355,31 @@ def test_transcript_get_first():
     assert status.is_5p_utr()
     assert f0.frame is None
     assert f0.strand == '-'
-    # todo, test without utr as well
+
+    # test without UTR (x doesn't have last exon, and therefore will end in CDS)
+    transcript = sl.transcripts['x']
+    t_interp = annotations.TranscriptInterpreter(transcript)
+    i0 = t_interp.intervals_5to3(plus_strand=False)[0]
+    t_interp.interpret_first_pos(i0, plus_strand=False)
+    features = t_interp.clean_features
+    status = t_interp.status
+    assert len(features) == 2
+    f_err = features[0]
+    f_status_coding = features[1]
+    print(f_err.short_str())
+    print(status)
+    print(i0)
+    # should get status_coding instead of a start codon
+    assert f_status_coding.start == 120
+    assert f_status_coding.type == sl.genome.gffkey.status_coding
+    assert f_status_coding.strand == '-'
+    # region beyond exon should be marked erroneous
+    assert f_err.start == 121
+    assert f_err.end == 450
+    assert f_err.type == sl.genome.gffkey.error
+    assert status.is_coding()
+    assert status.seen_start
+    assert status.genic
 
 
 def test_transcript_transition_from_5p_to_end():
@@ -382,3 +411,7 @@ def test_transcript_transition_from_5p_to_end():
     t_interp.interpret_transition(ivals_before=ivals_sets[3], ivals_after=ivals_sets[4], plus_strand=True)
     assert features[-1].type == sl.genome.gffkey.stop_codon
     assert features[-1].start == 328
+    # hit transcription termination site
+    t_interp.interpret_last_pos(ivals_sets[4], plus_strand=True)
+    assert features[-1].type == sl.genome.gffkey.TTS
+    assert features[-1].start == 400
