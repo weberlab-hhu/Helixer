@@ -320,20 +320,28 @@ class SuperLoci(FeatureLike):
         if not self.features:
             self._mark_erroneous(entries[0])
 
+        for feature in self.features:
+            print('features in {}'.format(self.id))
+            print(self.features[feature].short_str())
         # collapse identical final features
-        self.collapse_identical_features()
+        #self.collapse_identical_features()  # todo, can I deprecate?
         # check that all non-exons are in regions covered by an exon
-        self.maybe_reconstruct_exons()
+        #self.maybe_reconstruct_exons()  # todo, can I deprecate?
         # recreate transcribed / exon as necessary
         # todo, but with reconstructed flag (also check for and mark pseudogenes)
         for transcript in self.transcripts.values():
+            old_features = copy.deepcopy(transcript.features)
             t_interpreter = TranscriptInterpreter(transcript)
             t_interpreter.decode_raw_features()
-            transcript.delink_all_features()
-            self.add_features(t_interpreter.clean_features, transcript)
+            print(old_features)
+            for f_id in old_features:
+                print(self.features[f_id].short_str())
+            #self.add_features(t_interpreter.clean_features, transcript)
+            transcript.delink_features(old_features)
         self.remove_transcriptless_features()
 
     def add_features(self, features, transcript=None):
+        # todo, deprecate
         for feature in features:
             self.features[feature.id] = feature
             if transcript is not None:
@@ -369,7 +377,7 @@ class SuperLoci(FeatureLike):
     def remove_transcriptless_features(self):
         to_remove = []
         for f_key in self.features:
-            if not self.features[f_key].transcripts():
+            if not self.features[f_key].transcripts:
                 to_remove.append(f_key)
         for f_key in to_remove:
             self.features.pop(f_key)
@@ -416,6 +424,7 @@ class Transcribed(FeatureLike):
         self.type = gff_entry.type
 
     def link_to_feature(self, feature_id):
+        assert feature_id not in self.features, "{} already in features {}".format(feature_id, self.features)
         self.features.append(feature_id)
 
     def remove_feature(self, feature_id):
@@ -424,9 +433,13 @@ class Transcribed(FeatureLike):
     def short_str(self):
         return '{}. --> {}'.format(self.id, self.features)
 
-    def delink_all_features(self):
-        for feature in self.features:
-            self.super_loci.features[feature].de_link_from_transcript(self)
+    def delink_features(self, features):
+        for feature in features:
+            try:
+                self.super_loci.features[feature].de_link_from_transcript(self.id)
+            except ValueError:
+                raise ValueError('{} not in {}'.format(self.id,
+                                                       self.super_loci.features[feature].transcripts))
 
 
 class StructuredFeature(FeatureLike):
@@ -438,7 +451,7 @@ class StructuredFeature(FeatureLike):
                       ('strand', True, str, None),
                       ('score', True, float, None),
                       ('source', True, str, None),
-                      ('phase', True, str, None),
+                      ('phase', True, int, None),
                       ('transcripts', False, list, None),
                       ('super_loci', False, SuperLoci, None)]
 
@@ -447,7 +460,7 @@ class StructuredFeature(FeatureLike):
         self.seqid = ''
         self.strand = '.'
         self.phase = None
-        self.score = -1.
+        self.score = None
         self.source = ''
         self.transcripts = []
         self.super_loci = None
@@ -478,7 +491,7 @@ class StructuredFeature(FeatureLike):
         if gff_entry.phase == '.':
             self.phase = None
         else:
-            self.phase = int(gff_entry.phase)  # todo was here, what's it called in a gff again?
+            self.phase = int(gff_entry.phase)
         try:
             self.score = float(gff_entry.score)
         except ValueError:
@@ -492,10 +505,7 @@ class StructuredFeature(FeatureLike):
             ))
         for transcript_id in new_transcripts:
             new_t_id = transcript_id
-            try:
-                transcript = super_loci.transcripts[transcript_id]
-                transcript.link_to_feature(self.id)
-            except KeyError:
+            if new_t_id not in super_loci.transcripts:
                 if transcript_id == super_loci.id:
                     # if we just skipped the transcript, and linked to gene, use dummy transcript in between
                     transcript = super_loci.dummy_transcript()
@@ -514,8 +524,11 @@ class StructuredFeature(FeatureLike):
                             parent=transcript_id
                         ))
             self.link_to_transcript_and_back(new_t_id)
+        print('feature {} has transcripts {}'.format(self.id, self.transcripts))
 
     def link_to_transcript_and_back(self, transcript_id):
+        assert transcript_id not in self.transcripts, "{} already in transcripts {}".format(transcript_id,
+                                                                                            self.transcripts)
         transcript = self.super_loci.transcripts[transcript_id]  # get transcript
         transcript.link_to_feature(self.id)  # link to and from self
         self.transcripts.append(transcript_id)
@@ -571,6 +584,7 @@ class StructuredFeature(FeatureLike):
 
     def de_link_from_transcript(self, transcript_id):
         transcript = self.super_loci.transcripts[transcript_id]  # get transcript
+        print('delinking:\n{}\nfrom: {}'.format(self.short_str(), transcript.short_str()))
         transcript.remove_feature(self.id)  # drop other
         self.transcripts.pop(self.transcripts.index(transcript_id))
 
@@ -754,10 +768,14 @@ class TranscriptInterpreter(object):
             target_type = self.gffkey.cds
 
         after0 = self.pick_one_interval(ivals_after, target_type)
-        assert ivals_before[0].end == after0.begin  # make sure there is no gap
+        before0 = self.pick_one_interval(ivals_before, None)
+        # make sure there is no gap
+        assert before0.data.downstream_from_interval(before0) + 1 * sign == after0.data.upstream_from_interval(after0), "{} != {} at putative start codon seq {}, gene {}, features {} {}".format(
+            before0.data.downstream_from_interval(before0), after0.data.upstream_from_interval(after0), after0.data.seqid, self.super_loci.id, before0.data.id, after0.data.id
+        )
         template = after0.data
         if is_start:
-            assert template.phase == 1  # it better be std phase if it's a start codon
+            assert template.phase == 0  # it better be std phase if it's a start codon
             at = template.upstream_from_interval(after0)
             start, end = min_max(at, at + 2 * sign)
             start_codon = self.new_feature(template=template, start=start, end=end, type=self.gffkey.start_codon)
@@ -881,7 +899,7 @@ class TranscriptInterpreter(object):
         # check length
         if len(intervals) not in [1, 2]:
             raise ValueError('check interpretation by hand for transcript start with {}, {}'.format(
-                intervals, observed_types
+                '\n'.join([ival.data.short_str() for ival in intervals]), observed_types
             ))
         # interpret type combination
         if set_o_types == {exon, five_prime} or set_o_types == {five_prime}:

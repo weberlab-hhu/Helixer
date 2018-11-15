@@ -11,6 +11,9 @@ class GenericData(object):
         # or is still `None` if not grouped at all
         self.spec = [('spec', False, list, None), ]
 
+    def __str__(self):
+        return str(self.__dict__)
+
     def to_json(self, json_path):
         jsonable = self.to_jsonable()
         with open(json_path, 'w') as f:

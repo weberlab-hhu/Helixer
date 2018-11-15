@@ -221,7 +221,7 @@ def setup_loci_with_utr():
     sl = setup_testable_super_loci()
     sl.collapse_identical_features()
     sl.features['ftr000001'].start = 11  # start first CDS later
-    sl.features['ftr000001'].phase = 1  # let's just assume the initial phase is correct
+    sl.features['ftr000001'].phase = 0  # let's just assume the initial phase is correct
     sl.features['ftr000009'].end = 330  # end first CDS sooner
     return sl
 
