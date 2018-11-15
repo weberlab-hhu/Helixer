@@ -221,7 +221,7 @@ def setup_loci_with_utr():
     sl = setup_testable_super_loci()
     sl.collapse_identical_features()
     sl.features['ftr000001'].start = 11  # start first CDS later
-    sl.features['ftr000001'].frame = 1  # let's just assume the initial frame is correct
+    sl.features['ftr000001'].phase = 1  # let's just assume the initial phase is correct
     sl.features['ftr000009'].end = 330  # end first CDS sooner
     return sl
 
@@ -339,7 +339,7 @@ def test_transcript_get_first():
     print(i0[0].data.strand)
     assert f0.start == 1
     assert status.is_5p_utr()
-    assert f0.frame is None
+    assert f0.phase is None
     assert f0.strand == '+'
 
     # minus strand
@@ -360,7 +360,7 @@ def test_transcript_get_first():
     print(i0[0].data.strand)
     assert f0.start == 400
     assert status.is_5p_utr()
-    assert f0.frame is None
+    assert f0.phase is None
     assert f0.strand == '-'
 
     # test without UTR (x doesn't have last exon, and therefore will end in CDS)

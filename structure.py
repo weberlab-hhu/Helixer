@@ -59,9 +59,11 @@ class GenericData(object):
 
     @staticmethod
     def _confirm_type(expected_type, to_check):
-        assert isinstance(to_check, expected_type), "type: ({}) differs from expectation in spec ({})".format(
-            type(to_check), expected_type
-        )
+        # allow either None or the expected_type
+        if to_check is not None:
+            assert isinstance(to_check, expected_type), "type: ({}) differs from expectation in spec ({})".format(
+                type(to_check), expected_type
+            )
 
     def _prep_none(self, expected_type, raw, towards_json=True):
         if towards_json:

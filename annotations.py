@@ -438,7 +438,7 @@ class StructuredFeature(FeatureLike):
                       ('strand', True, str, None),
                       ('score', True, float, None),
                       ('source', True, str, None),
-                      ('frame', True, str, None),
+                      ('phase', True, str, None),
                       ('transcripts', False, list, None),
                       ('super_loci', False, SuperLoci, None)]
 
@@ -446,7 +446,7 @@ class StructuredFeature(FeatureLike):
         self.end = -1
         self.seqid = ''
         self.strand = '.'
-        self.frame = '.'
+        self.phase = None
         self.score = -1.
         self.source = ''
         self.transcripts = []
@@ -475,10 +475,10 @@ class StructuredFeature(FeatureLike):
         self.end = int(gff_entry.end)
         self.strand = gff_entry.strand
         self.seqid = gff_entry.seqid
-        try:
-            self.frame = int(gff_entry.frame)  # todo was here, what's it called in a gff again?
-        except ValueError:
-            pass
+        if gff_entry.phase == '.':
+            self.phase = None
+        else:
+            self.phase = int(gff_entry.phase)  # todo was here, what's it called in a gff again?
         try:
             self.score = float(gff_entry.score)
         except ValueError:
@@ -521,7 +521,7 @@ class StructuredFeature(FeatureLike):
         self.transcripts.append(transcript_id)
 
     def fully_overlaps(self, other):
-        should_match = ['type', 'start', 'end', 'seqid', 'strand', 'frame']
+        should_match = ['type', 'start', 'end', 'seqid', 'strand', 'phase']
         does_it_match = [self.__getattribute__(x) == other.__getattribute__(x) for x in should_match]
         same_gene = self.super_loci is other.super_loci
         out = False
@@ -530,7 +530,7 @@ class StructuredFeature(FeatureLike):
         return out
 
     def is_contained_in(self, other):
-        should_match = ['seqid', 'strand', 'frame']
+        should_match = ['seqid', 'strand', 'phase']
         does_it_match = [self.__getattribute__(x) == other.__getattribute__(x) for x in should_match]
         same_gene = self.super_loci is other.super_loci
         coordinates_within = self.start >= other.start and self.end <= other.end
@@ -617,19 +617,19 @@ class TranscriptStatus(object):
         self.in_intron = False
         self.seen_start = False
         self.seen_stop = False
-        self.frame = None  # todo, proper tracking / handling
+        self.phase = None  # todo, proper tracking / handling
 
     def saw_tss(self):
         self.genic = True
 
-    def saw_start(self, frame):
+    def saw_start(self, phase):
         self.genic = True
         self.seen_start = True
-        self.frame = frame
+        self.phase = phase
 
     def saw_stop(self):
         self.seen_stop = True
-        self.frame = None
+        self.phase = None
 
     def saw_tts(self):
         self.genic = False
@@ -757,11 +757,11 @@ class TranscriptInterpreter(object):
         assert ivals_before[0].end == after0.begin  # make sure there is no gap
         template = after0.data
         if is_start:
-            assert template.frame == 1  # it better be std frame if it's a start codon
+            assert template.phase == 1  # it better be std phase if it's a start codon
             at = template.upstream_from_interval(after0)
             start, end = min_max(at, at + 2 * sign)
             start_codon = self.new_feature(template=template, start=start, end=end, type=self.gffkey.start_codon)
-            self.status.saw_start(frame=1)
+            self.status.saw_start(phase=1)
             self.clean_features.append(start_codon)
         else:
             at = template.upstream_from_interval(after0) - 1 * sign
@@ -783,7 +783,7 @@ class TranscriptInterpreter(object):
         donor_at = donor_tmplt.downstream_from_interval(before0) + (1 * sign)
         acceptor_at = acceptor_tmplt.upstream_from_interval(after0) - (1 * sign)
         assert donor_at * sign < acceptor_at * sign  # todo, catch and handle null intron
-        donor = self.new_feature(template=donor_tmplt, start=donor_at, end=donor_at, frame=None,
+        donor = self.new_feature(template=donor_tmplt, start=donor_at, end=donor_at, phase=None,
                                  type=self.gffkey.donor_splice_site)
         # todo, check position of DSS/ASS to be consistent with Augustus, hopefully
         acceptor = self.new_feature(template=acceptor_tmplt, start=acceptor_at, end=acceptor_at,
@@ -797,7 +797,7 @@ class TranscriptInterpreter(object):
         possible_types = self.possible_types(intervals)
         if self.gffkey.five_prime_UTR in possible_types:
             # this should indicate we're good to go and have a transcription start site
-            tss = self.new_feature(template=i0.data, type=self.gffkey.TSS, start=at, end=at, frame=None)
+            tss = self.new_feature(template=i0.data, type=self.gffkey.TSS, start=at, end=at, phase=None)
             self.clean_features.append(tss)
             self.status.saw_tss()
         elif self.gffkey.cds in possible_types:
@@ -805,19 +805,19 @@ class TranscriptInterpreter(object):
             cds_feature = self.pick_one_interval(intervals, target_type=self.gffkey.cds).data
             coding = self.new_feature(template=cds_feature, type=self.gffkey.status_coding, start=at, end=at)
             self.clean_features.append(coding)
-            self.status.saw_start(frame=coding.frame)
+            self.status.saw_start(phase=coding.phase)
             # mask a dummy region up-stream as it's very unclear whether it should be intergenic/intronic/utr
             if plus_strand:
                 # unless we're at the start of the sequence
                 if at != 1:
                     feature_e = self.new_feature(template=cds_feature, type=self.gffkey.error,
-                                                 start=max(1, at - self.gffkey.error_buffer - 1), end=at - 1, frame=None)
+                                                 start=max(1, at - self.gffkey.error_buffer - 1), end=at - 1, phase=None)
                     self.clean_features.insert(0, feature_e)
             else:
                 end_of_sequence = self.get_seq_length(cds_feature.seqid)
                 if at != end_of_sequence:
                     feature_e = self.new_feature(template=cds_feature, type=self.gffkey.error, start=at + 1,
-                                                 end=min(end_of_sequence, at + self.gffkey.error_buffer + 1), frame=None)
+                                                 end=min(end_of_sequence, at + self.gffkey.error_buffer + 1), phase=None)
                     feature_e.type = self.gffkey.error
                     self.clean_features.insert(0, feature_e)
         else:
@@ -830,7 +830,7 @@ class TranscriptInterpreter(object):
         possible_types = self.possible_types(intervals)
         if self.gffkey.three_prime_UTR in possible_types:
             # this should be transcription termination site
-            tts = self.new_feature(template=i0.data, type=self.gffkey.TTS, start=at, end=at, frame=None)
+            tts = self.new_feature(template=i0.data, type=self.gffkey.TTS, start=at, end=at, phase=None)
             self.clean_features.append(tts)
             self.status.saw_tts()
         elif self.gffkey.cds in possible_types:
@@ -838,12 +838,12 @@ class TranscriptInterpreter(object):
             end_of_sequence = self.get_seq_length(i0.data.seqid)
             if plus_strand:
                 if at != end_of_sequence:
-                    feature_e = self.new_feature(template=i0.data, type=self.gffkey.error, start=at + 1, frame=None,
+                    feature_e = self.new_feature(template=i0.data, type=self.gffkey.error, start=at + 1, phase=None,
                                                  end=min(at + 1 + self.gffkey.error_buffer, end_of_sequence))
                     self.clean_features.append(feature_e)
             else:
                 if at != 1:
-                    feature_e = self.new_feature(template=i0.data, type=self.gffkey.error, end=at - 1, frame=None,
+                    feature_e = self.new_feature(template=i0.data, type=self.gffkey.error, end=at - 1, phase=None,
                                                  start=max(1, at - self.gffkey.error_buffer - 1))
                     self.clean_features.append(feature_e)
         else:
