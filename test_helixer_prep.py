@@ -1,7 +1,8 @@
 import sequences
 import structure
 import annotations
-
+import helpers
+import pytest
 
 ### structure ###
 # testing: add_paired_dictionaries
@@ -440,3 +441,48 @@ def test_non_coding_transitions():
     assert features[-1].type == sl.genome.gffkey.TTS
     assert features[-1].start == 100
     assert len(features) == 2
+
+
+#### helpers
+def test_key_matching():
+    # identical
+    known = {'a', 'b', 'c'}
+    mapper, is_forward = helpers.two_way_key_match(known, known)
+    assert is_forward
+    assert mapper('a') == 'a'
+    assert isinstance(mapper, helpers.CheckMapper)
+    with pytest.raises(KeyError):
+        mapper('d')
+
+    # subset, should behave as before
+    mapper, is_forward = helpers.two_way_key_match(known, {'c'})
+    assert is_forward
+    assert mapper('a') == 'a'
+    assert isinstance(mapper, helpers.CheckMapper)
+    with pytest.raises(KeyError):
+        mapper('d')
+
+    # superset, should flip ordering
+    mapper, is_forward = helpers.two_way_key_match({'c'}, known)
+    assert not is_forward
+    assert mapper('a') == 'a'
+    assert isinstance(mapper, helpers.CheckMapper)
+    with pytest.raises(KeyError):
+        mapper('d')
+
+    # other is abbreviated from known
+    set1 = {'a.seq', 'b.seq', 'c.seq'}
+    set2 = {'a', 'b', 'c'}
+    mapper, is_forward = helpers.two_way_key_match(set1, set2)
+    assert is_forward
+    assert mapper('a') == 'a.seq'
+    assert isinstance(mapper, helpers.DictMapper)
+    with pytest.raises(KeyError):
+        mapper('d')
+
+    # cannot be safely differentiated
+    set1 = {'ab.seq', 'ba.seq', 'c.seq', 'a.seq', 'b.seq'}
+    set2 = {'a', 'b', 'c'}
+    with pytest.raises(helpers.NonMatchableIDs):
+        mapper, is_forward = helpers.two_way_key_match(set1, set2)
+        print(mapper.key_vals)
