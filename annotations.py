@@ -172,6 +172,8 @@ class AnnotatedGenome(GenericData):
         yield gene_group
 
 
+
+
 class MetaInfoAnnotation(GenericData):
     def __init__(self):
         super().__init__()
