@@ -78,3 +78,12 @@ def two_way_key_match(known_keys, other_keys):
         except NonMatchableIDs:
             raise e
     return mapper, forward
+
+
+def get_seqids_from_gff(gfffile):
+    seqids = set()
+    with open(gfffile) as f:
+        for line in f:
+            if not line.startswith('#'):
+                seqids.add(line.split('\t')[0])
+    return seqids

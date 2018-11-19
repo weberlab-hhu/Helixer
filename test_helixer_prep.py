@@ -443,6 +443,25 @@ def test_non_coding_transitions():
     assert len(features) == 2
 
 
+def test_errors_not_lost():
+    sl = setup_loci_with_utr()
+    feature_e = annotations.StructuredFeature()
+    feature_e.id = sl.genome.feature_ider.next_unique_id()
+    feature_e.super_loci = sl
+    sl.features[feature_e.id] = feature_e
+    feature_e.start, feature_e.end = 40, 80
+    feature_e.change_to_error()
+    print('what features did we start with::?')
+    for feature in sl.features:
+        print(feature)
+        print(sl.features[feature].short_str())
+    sl.check_and_fix_structure(entries=None)
+    print('---and what features did we leave?---')
+    for feature in sl.features:
+        print(feature)
+        print(sl.features[feature].short_str())
+    assert False
+
 #### helpers
 def test_key_matching():
     # identical
@@ -486,3 +505,8 @@ def test_key_matching():
     with pytest.raises(helpers.NonMatchableIDs):
         mapper, is_forward = helpers.two_way_key_match(set1, set2)
         print(mapper.key_vals)
+
+
+def test_gff_to_seqids():
+    x = helpers.get_seqids_from_gff('testdata/testerSl.gff3')
+    assert x == {'NC_015438.2', 'NC_015439.2', 'NC_015440.2'}
