@@ -356,21 +356,6 @@ class SuperLoci(FeatureLike):
             if transcript is not None:
                 feature.link_to_transcript_and_back(transcript.id)
 
-    def collapse_identical_features(self):
-        i = 0
-        features = self.features
-        while i < len(features) - 1:
-            # sort and copy keys so that removal of the merged from the dict causes neither sorting nor looping trouble
-            feature_keys = sorted(features.keys())
-            feature = features[feature_keys[i]]
-            for j in range(i + 1, len(feature_keys)):
-                o_key = feature_keys[j]
-                if feature.fully_overlaps(features[o_key]):
-                    feature.merge(features[o_key])  # todo logging debug
-                    features.pop(o_key)
-                    logging.debug('removing {} from {} as it overlaps {}'.format(o_key, self.id, feature.id))
-            i += 1
-
     def maybe_reconstruct_exons(self):
         """creates any exons necessary, so that all CDS/UTR is contained within an exon"""
         # because introns will be determined from exons, every CDS etc, has to have an exon

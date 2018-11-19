@@ -220,9 +220,10 @@ def setup_testable_super_loci():
 
 def setup_loci_with_utr():
     sl = setup_testable_super_loci()
-    sl.collapse_identical_features()
-    sl.features['ftr000001'].start = 11  # start first CDS later
-    sl.features['ftr000001'].phase = 0  # let's just assume the initial phase is correct
+    for key_1stCDS in ['ftr000001', 'ftr000005', 'ftr000011']:
+        sl.features[key_1stCDS].start = 11  # start first CDS later
+        sl.features[key_1stCDS].phase = 0  # let's just assume the initial phase is correct
+
     sl.features['ftr000009'].end = 330  # end first CDS sooner
     return sl
 
@@ -234,43 +235,6 @@ def test_feature_overlap_detection():
     # a few that should not overlap
     assert not sl.features['ftr000000'].fully_overlaps(sl.features['ftr000001'])
     assert not sl.features['ftr000000'].fully_overlaps(sl.features['ftr000002'])
-
-
-def test_collapse_identical_features():
-    # features [--0--][1][---2---]
-    # transcript X: [0, 1], Y: [0, 1, 2], Z: [0]
-    sl = setup_testable_super_loci()
-    # setup features
-    print(sl.__dict__)
-    print('features')
-    for key in sorted(sl.features):
-        print(sl.features[key].short_str)
-    print('transcripts')
-    for key in sorted(sl.transcripts):
-        print(sl.transcripts[key].short_str)
-
-    # starting dimensions
-    # total
-    assert len(sl.transcripts.keys()) == 3
-    assert len(sl.features.keys()) == 12  # 2 x 6
-    # by transcript
-    assert len(sl.transcripts['y'].features) == 6
-    assert len(sl.transcripts['z'].features) == 2
-
-    # collapse
-    sl.collapse_identical_features()
-    # totals went down
-    assert len(sl.transcripts.keys()) == 3
-    assert len(sl.features.keys()) == 6  # 2 x 3
-    # transcripts kept numbers from before
-    assert len(sl.transcripts['y'].features) == 6
-    assert len(sl.transcripts['z'].features) == 2
-    # transcripts point to exact same features as sl has directly
-    f = []
-    for t in sl.transcripts:
-        f += sl.transcripts[t].features
-    feat_ids_frm_transcripts = set(f)
-    assert set(sl.features.keys()) == feat_ids_frm_transcripts
 
 
 def test_add_exon():
@@ -306,9 +270,8 @@ def test_add_exon():
 
 def test_transcript_interpreter():
     sl = setup_loci_with_utr()
-    sl.collapse_identical_features()
     # change so that there are implicit UTRs
-    sl.features['ftr000001'].start = 11  # start first CDS later
+    sl.features['ftr000005'].start = 11  # start first CDS later
     sl.features['ftr000009'].end = 330  # end first CDS sooner
     transcript = sl.transcripts['y']
     t_interp = annotations.TranscriptInterpreter(transcript)
@@ -460,7 +423,8 @@ def test_errors_not_lost():
     for feature in sl.features:
         print(feature)
         print(sl.features[feature].short_str())
-    assert False
+    assert feature_e in sl.features.values()
+
 
 #### helpers
 def test_key_matching():
