@@ -180,7 +180,8 @@ def setup_testable_super_loci():
     seq_mi.total_bp = 450
     genome.meta_info_sequences[seq_mi.seqid] = seq_mi
 
-    sl = annotations.SuperLoci(genome)
+    sl = annotations.SuperLoci()
+    sl.genome = genome
 
     # setup transcripts and features
     transcripts = []
@@ -426,21 +427,32 @@ def test_errors_not_lost():
     assert feature_e in sl.features.values()
 
 
-def test_anno2json():
+def test_anno2json_and_back():
     # setup the sequence file
-    fa_path = 'testdata/testerSl.fa'
+    #fa_path = 'testdata/testerSl.fa'
     json_path = 'testdata/testerSl.sequence.json'
+    #sd_fa = sequences.StructuredGenome()
+    #sd_fa.add_fasta(fa_path)
+    #sd_fa.to_json(json_path)
     sd_fa = sequences.StructuredGenome()
-    sd_fa.add_fasta(fa_path)
-    sd_fa.to_json(json_path)
-
+    sd_fa.from_json(json_path)
 
     gfffile = 'testdata/testerSl.gff3'
     json_anno = 'testdata/testerSl.annotation.json'
     ag = annotations.AnnotatedGenome()
     ag.add_gff(gfffile, sd_fa, 'testdata/deletable')
     ag.to_json(json_anno)
-    assert False
+    ag_json = annotations.AnnotatedGenome()
+    ag_json.from_json(json_anno)
+    assert ag.to_jsonable() == ag_json.to_jsonable()
+    # check recursive load has worked out
+    assert ag_json.super_loci[0].genome is ag_json
+    # and same for super_loci
+    sl = ag_json.super_loci[0]
+    fkey = sorted(sl.features.keys())[0]
+    feature = sl.features[fkey]
+    assert feature.super_loci is sl
+    assert sl.genome.meta_info_sequences[feature.seqid].total_bp == 16000
 
 
 #### helpers

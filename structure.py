@@ -41,6 +41,7 @@ class GenericData(object):
                 key
             )
             self.__setattr__(key, cleaned)
+        self.clean_post_load()
 
     def _prep_main(self, key, raw, towards_json=True):
         _, is_exported, expected_type, data_structure = self.get_key_spec(key)
@@ -105,6 +106,9 @@ class GenericData(object):
         for key in raw:
             out[key] = self._prep_none(expected_type, raw[key], towards_json)
         return out
+
+    def clean_post_load(self):
+        pass  # subclasses should use this function for any necessary clean up (e.g. links back to parent objects)
 
 
 def add_paired_dictionaries(add_to, add_from):

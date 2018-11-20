@@ -154,7 +154,8 @@ class AnnotatedGenome(GenericData):
             raise NotImplementedError("Still need to implement backward match if fasta IDs are subset of gff IDs")
 
         for entry_group in self.group_gff_by_gene(gff_file):
-            new_sl = SuperLoci(self)
+            new_sl = SuperLoci()
+            new_sl.genome = self
             new_sl.add_gff_entry_group(entry_group, err_handle)
 
             self.super_loci.append(new_sl)
@@ -184,6 +185,10 @@ class AnnotatedGenome(GenericData):
             else:
                 gene_group.append(entry)
         yield gene_group
+
+    def clean_post_load(self):
+        for sl in self.super_loci:
+            sl.genome = self
 
 
 class MetaInfoAnnotation(GenericData):
@@ -248,7 +253,7 @@ class SuperLoci(FeatureLike):
     # this will define a group of exons that can possibly be made into transcripts
     # AKA this if you have to go searching through a graph for parents/children, at least said graph will have
     # a max size defined at SuperLoci
-    def __init__(self, genome):
+    def __init__(self):
         super().__init__()
         self.spec += [('transcripts', True, Transcribed, dict),
                       ('features', True, StructuredFeature, dict),
@@ -259,7 +264,7 @@ class SuperLoci(FeatureLike):
         self.features = {}
         self.ids = []
         self._dummy_transcript = None
-        self.genome = genome
+        self.genome = None
 
     def dummy_transcript(self):
         if self._dummy_transcript is not None:
@@ -405,9 +410,12 @@ class SuperLoci(FeatureLike):
     def add_to_interval_tree(self, itree):
         pass  # todo, make sure at least all features are loaded to interval tree
 
-    def load_jsonable(self, jsonable):
-        super().load_jsonable(jsonable)
-        # todo restore super_loci objects, transcript objects, feature_objects to self and children
+    def clean_post_load(self):
+        for key in self.transcripts:
+            self.transcripts[key].super_loci = self
+
+        for key in self.features:
+            self.features[key].super_loci = self
 
 
 class NoTranscriptError(Exception):
