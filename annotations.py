@@ -170,7 +170,7 @@ class AnnotatedGenome(GenericData):
         reader = gffhelper.read_gff_file(gff_file)
         for entry in reader:
             if entry.type not in self.gffkey.known:
-                raise ValueError("unrecognized feature type from gff: {}".format(entry.type))
+                raise ValueError("unrecognized feature type fr:qom gff: {}".format(entry.type))
             if entry.type not in skipable:
                 yield entry
 

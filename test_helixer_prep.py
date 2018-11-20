@@ -426,6 +426,23 @@ def test_errors_not_lost():
     assert feature_e in sl.features.values()
 
 
+def test_anno2json():
+    # setup the sequence file
+    fa_path = 'testdata/testerSl.fa'
+    json_path = 'testdata/testerSl.sequence.json'
+    sd_fa = sequences.StructuredGenome()
+    sd_fa.add_fasta(fa_path)
+    sd_fa.to_json(json_path)
+
+
+    gfffile = 'testdata/testerSl.gff3'
+    json_anno = 'testdata/testerSl.annotation.json'
+    ag = annotations.AnnotatedGenome()
+    ag.add_gff(gfffile, sd_fa, 'testdata/deletable')
+    ag.to_json(json_anno)
+    assert False
+
+
 #### helpers
 def test_key_matching():
     # identical

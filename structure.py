@@ -25,8 +25,9 @@ class GenericData(object):
         self.load_jsonable(jsonable)
 
     def to_jsonable(self):
+        print('to_jsonable', type(self))
         out = {}
-        for key in copy.deepcopy(self.__dict__):
+        for key in copy.deepcopy(list(self.__dict__.keys())):
             raw = self.__getattribute__(key)
             cleaned, is_exported = self._prep_main(key, raw, towards_json=True)
             if is_exported:
@@ -44,15 +45,17 @@ class GenericData(object):
 
     def _prep_main(self, key, raw, towards_json=True):
         _, is_exported, expected_type, data_structure = self.get_key_spec(key)
-
-        if data_structure is None:
-            out = self._prep_none(expected_type, raw, towards_json)
-        elif data_structure in (list, tuple):  # maybe could also have set and iter, but idk why you'd need this
-            out = self._prep_list_like(expected_type, raw, data_structure, towards_json)
-        elif data_structure is dict:
-            out = self._prep_dict(expected_type, raw, towards_json)
+        if is_exported:
+            if data_structure is None:
+                out = self._prep_none(expected_type, raw, towards_json)
+            elif data_structure in (list, tuple):  # maybe could also have set and iter, but idk why you'd need this
+                out = self._prep_list_like(expected_type, raw, data_structure, towards_json)
+            elif data_structure is dict:
+                out = self._prep_dict(expected_type, raw, towards_json)
+            else:
+                raise ValueError("no export method prepared for data_structure of type: {}".format(data_structure))
         else:
-            raise ValueError("no export method prepared for data_structure of type: {}".format(data_structure))
+            out = None
         return copy.deepcopy(out), is_exported
 
     def get_key_spec(self, key):

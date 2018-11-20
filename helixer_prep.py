@@ -6,9 +6,10 @@ import sequences
 import annotations
 
 
-def gff3_to_json(gff3, sequence, prob_path):
+def gff3_to_json(gff3, json, sequence, prob_path):
     ag = annotations.AnnotatedGenome()
     ag.add_gff(gff3, sequence, prob_path)
+    ag.to_json(json)
 
 
 # todo, maybe this should be a method on the StructuredGenome...? or just in main
@@ -74,7 +75,7 @@ def main(gff3, fasta, basedir, smallest_mer=2, largest_mer=2):
                                   largest_mer=largest_mer)
     else:
         sequences = load_sequence_json(paths.sequence_out)
-    gff3_to_json(paths.gff_in, sequences, paths.problems_out)
+    gff3_to_json(paths.gff_in, paths.annotations_out, sequences, paths.problems_out)
 
 
 if __name__ == '__main__':
