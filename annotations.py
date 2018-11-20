@@ -238,9 +238,9 @@ class FeatureLike(GenericData):
                       ('is_type_in_question', True, bool, None)]
         self.id = ''
         self.type = ''
-        self.is_partial = False
-        self.is_reconstructed = False
-        self.is_type_in_question = False
+        # self.is_partial = False
+        # self.is_reconstructed = False
+        # self.is_type_in_question = False
 
 
 class SuperLoci(FeatureLike):
@@ -462,7 +462,7 @@ class StructuredFeature(FeatureLike):
                       ('score', True, float, None),
                       ('source', True, str, None),
                       ('phase', True, int, None),
-                      ('transcripts', False, list, None),
+                      ('transcripts', True, list, None),
                       ('super_loci', False, SuperLoci, None)]
 
         self.start = -1
@@ -540,8 +540,8 @@ class StructuredFeature(FeatureLike):
     def add_erroneous_data(self, super_loci, gff_entry):
         self.super_loci = super_loci
         feature_e = self.clone()
-        feature_e.start = gff_entry.start
-        feature_e.end = gff_entry.end
+        feature_e.start = int(gff_entry.start)
+        feature_e.end = int(gff_entry.end)
         feature_e.strand = gff_entry.strand
         feature_e.seqid = gff_entry.seqid
         feature_e.change_to_error()

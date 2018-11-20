@@ -25,7 +25,6 @@ class GenericData(object):
         self.load_jsonable(jsonable)
 
     def to_jsonable(self):
-        print('to_jsonable', type(self))
         out = {}
         for key in copy.deepcopy(list(self.__dict__.keys())):
             raw = self.__getattribute__(key)
@@ -67,8 +66,9 @@ class GenericData(object):
     def _confirm_type(expected_type, to_check):
         # allow either None or the expected_type
         if to_check is not None:
-            assert isinstance(to_check, expected_type), "type: ({}) differs from expectation in spec ({})".format(
-                type(to_check), expected_type
+            assert isinstance(to_check, expected_type), \
+                "type: ({}) differs from expectation in spec ({}), for ({})".format(
+                type(to_check), expected_type, to_check
             )
 
     def _prep_none(self, expected_type, raw, towards_json=True):
