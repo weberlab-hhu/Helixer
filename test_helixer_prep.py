@@ -3,6 +3,7 @@ import structure
 import annotations
 import helpers
 import pytest
+import partitions
 
 ### structure ###
 # testing: add_paired_dictionaries
@@ -503,3 +504,24 @@ def test_key_matching():
 def test_gff_to_seqids():
     x = helpers.get_seqids_from_gff('testdata/testerSl.gff3')
     assert x == {'NC_015438.2', 'NC_015439.2', 'NC_015440.2'}
+
+
+#### partitions
+def test_stepper():
+    # evenly divided
+    s = partitions.Stepper(50, 10)
+    strt_ends = list(s.step_to_end())
+    assert len(strt_ends) == 5
+    assert strt_ends[0] == (0, 10)
+    assert strt_ends[-1] == (40, 50)
+    # a bit short
+    s = partitions.Stepper(49, 10)
+    strt_ends = list(s.step_to_end())
+    assert len(strt_ends) == 5
+    assert strt_ends[-1] == (39, 49)
+    # a bit long
+    s = partitions.Stepper(52, 10)
+    strt_ends = list(s.step_to_end())
+    assert len(strt_ends) == 6
+    assert strt_ends[-1] == (46, 52)
+
