@@ -6,9 +6,9 @@ import sequences
 import annotations
 
 
-def gff3_to_json(gff3, sequence):
+def gff3_to_json(gff3, sequence, prob_path):
     ag = annotations.AnnotatedGenome()
-    ag.add_gff(gff3, sequence)
+    ag.add_gff(gff3, sequence, prob_path)
 
 
 # todo, maybe this should be a method on the StructuredGenome...? or just in main
@@ -41,6 +41,7 @@ class PathFinder(object):
         self.gff_in = self._get_gff(gff)
         self.annotations_out = '{}annotation.json'.format(self.output)
         self.sequence_out = '{}sequence.json'.format(self.output)
+        self.problems_out = '{}problems.txt'.format(self.output)
 
     def _get_fa(self, provided):
         if provided is not None:
@@ -73,7 +74,7 @@ def main(gff3, fasta, basedir, smallest_mer=2, largest_mer=2):
                                   largest_mer=largest_mer)
     else:
         sequences = load_sequence_json(paths.sequence_out)
-    gff3_to_json(paths.gff_in, sequences)
+    gff3_to_json(paths.gff_in, sequences, paths.problems_out)
 
 
 if __name__ == '__main__':

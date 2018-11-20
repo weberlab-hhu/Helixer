@@ -138,7 +138,8 @@ class AnnotatedGenome(GenericData):
         self.feature_ider = IDMaker(prefix='ftr')
         self.mapper = helpers.Mapper()
 
-    def add_gff(self, gff_file, genome):
+    def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
+        err_handle = open(err_file, 'w')
         for seq in genome.sequences:
             mi = MetaInfoAnnoSequence()
             mi.seqid = seq.meta_info.seqid
@@ -154,13 +155,15 @@ class AnnotatedGenome(GenericData):
 
         for entry_group in self.group_gff_by_gene(gff_file):
             new_sl = SuperLoci(self)
-            new_sl.add_gff_entry_group(entry_group)
+            new_sl.add_gff_entry_group(entry_group, err_handle)
+
             self.super_loci.append(new_sl)
             if not new_sl.transcripts and not new_sl.features:
                 print('{} from {} with {} transcripts and {} features'.format(new_sl.id,
                                                                               entry_group[0].source,
                                                                               len(new_sl.transcripts),
                                                                               len(new_sl.features)))
+        err_handle.close()
 
     def useful_gff_entries(self, gff_file):
         skipable = self.gffkey.regions + self.gffkey.ignorable
@@ -175,7 +178,7 @@ class AnnotatedGenome(GenericData):
         reader = self.useful_gff_entries(gff_file)
         gene_group = [next(reader)]
         for entry in reader:
-            if entry.type == 'gene':
+            if entry.type in self.gffkey.gene_level:
                 yield gene_group
                 gene_group = [entry]
             else:
@@ -271,9 +274,13 @@ class SuperLoci(FeatureLike):
             return transcript
 
     def add_gff_entry(self, entry):
+        exceptions = entry.attrib_filter(tag="exception")
+        for exception in [x.value for x in exceptions]:
+            if 'trans-splicing' in exception:
+                raise TransSplicingError('trans-splice in attribute {} {}'.format(entry.get_ID(), entry.attribute))
         gffkey = self.genome.gffkey
-        if entry.type == gffkey.gene:
-            self.type = gffkey.gene
+        if entry.type in gffkey.gene_level:
+            self.type = entry.type
             gene_id = entry.get_ID()
             self.id = gene_id
             self.ids.append(gene_id)
@@ -288,11 +295,20 @@ class SuperLoci(FeatureLike):
             feature.add_data(self, entry)
             self.features[feature.id] = feature
 
-    def add_gff_entry_group(self, entries):
+    def _add_gff_entry_group(self, entries):
         entries = list(entries)
         for entry in entries:
             self.add_gff_entry(entry)
         self.check_and_fix_structure(entries)
+
+    def add_gff_entry_group(self, entries, ts_err_handle):
+        try:
+            self._add_gff_entry_group(entries)
+        except TransSplicingError as e:
+            self._mark_erroneous(entries[0])
+            logging.warning('skipping but noting trans-splicing: {}'.format(str(e)))
+            ts_err_handle.writelines([x.to_json() for x in entries])
+            # todo, log to file
 
     @staticmethod
     def one_parent(entry):
@@ -342,7 +358,6 @@ class SuperLoci(FeatureLike):
         for transcript in self.transcripts.values():
             old_features = copy.deepcopy(transcript.features)
             t_interpreter = TranscriptInterpreter(transcript)
-            print('working on:', transcript.id)
             t_interpreter.decode_raw_features()
 
             self.add_features(t_interpreter.clean_features, transcript=None)  # no transcript, as they're already linked
@@ -396,6 +411,10 @@ class SuperLoci(FeatureLike):
 
 
 class NoTranscriptError(Exception):
+    pass
+
+
+class TransSplicingError(Exception):
     pass
 
 
@@ -471,7 +490,11 @@ class StructuredFeature(FeatureLike):
 
     def add_data(self, super_loci, gff_entry):
         gffkey = super_loci.genome.gffkey
-        fid = gff_entry.get_ID()
+        try:
+            fid = gff_entry.get_ID()
+        except TypeError:
+            fid = None
+            logging.debug('no ID in attr {} in {}, making new unique ID'.format(gff_entry.attribute, super_loci.id))
         self.super_loci = super_loci
         self.id = super_loci.genome.feature_ider.next_unique_id(fid)
         self.type = gff_entry.type
@@ -513,7 +536,6 @@ class StructuredFeature(FeatureLike):
                             parent=transcript_id
                         ))
             self.link_to_transcript_and_back(new_t_id)
-        print('feature {} has transcripts {}'.format(self.id, self.transcripts))
 
     def add_erroneous_data(self, super_loci, gff_entry):
         self.super_loci = super_loci
@@ -697,14 +719,15 @@ class TranscriptInterpreter(object):
     def is_plus_strand(self):
         features = [self.super_loci.features[f] for f in self.transcript.features]
         seqids = [x.seqid for x in features]
-        assert [x == seqids[0] for x in seqids], "non matching seqids {}, for {}".format(seqids, self.super_loci.id)
+        if not all([x == seqids[0] for x in seqids]):
+            raise TransSplicingError("non matching seqids {}, for {}".format(seqids, self.super_loci.id))
         if all([x.strand == '+' for x in features]):
             return True
         elif all([x.strand == '-' for x in features]):
             return False
         else:
-            raise ValueError("Mixed strands at {} with {}".format(self.super_loci.id,
-                                                                  [(x.seqid, x.strand) for x in features]))
+            raise TransSplicingError("Mixed strands at {} with {}".format(self.super_loci.id,
+                                                                          [(x.seqid, x.strand) for x in features]))
 
     def interpret_transition(self, ivals_before, ivals_after, plus_strand=True):
         sign = 1
@@ -712,7 +735,6 @@ class TranscriptInterpreter(object):
             sign = -1
         before_types = self.possible_types(ivals_before)
         after_types = self.possible_types(ivals_after)
-        print('transitioning {} --> {}'.format(before_types, after_types))
         # 5' UTR can hit either start codon or splice site
         if self.status.is_5p_utr():
             # start codon
@@ -796,13 +818,23 @@ class TranscriptInterpreter(object):
                 self.handle_splice(ivals_before, ivals_after, sign)
 
             template = after0.data
-            assert template.phase == 0  # it better be std phase if it's a start codon
+            # it better be std phase if it's a start codon
             at = template.upstream_from_interval(after0)
-            start, end = min_max(at, at + 2 * sign)
-            start_codon = self.new_feature(template=template, start=start, end=end, type=self.gffkey.start_codon)
-            self.status.saw_start(phase=0)
-            self.clean_features.append(start_codon)
+            if template.phase == 0: # "non-0 phase @ {} in {}".format(template.id, template.super_loci.id)
+                start, end = min_max(at, at + 2 * sign)
+                start_codon = self.new_feature(template=template, start=start, end=end, type=self.gffkey.start_codon)
+                self.status.saw_start(phase=0)
+                self.clean_features.append(start_codon)
+            else:
+                upstream_buffered = before0.data.upstream_from_interval(before0) - sign * self.gffkey.error_buffer
+                err_start, err_end = min_max(at - 1 * sign, upstream_buffered)
+                feature_e = self.new_feature(template=template, type=self.gffkey.error,
+                                             start=err_start, end=err_end, phase=None)
+                coding_status = self.new_feature(template=template, type=self.gffkey.status_coding, start=at, end=at)
+                self.status.saw_start(template.phase)
+                self.clean_features += [feature_e, coding_status]
         else:
+            # todo, confirm phase for stop codon
             template = before0.data
             at = template.downstream_from_interval(before0)
             start, end = min_max(at, at - 2 * sign)
@@ -848,7 +880,6 @@ class TranscriptInterpreter(object):
     def interpret_first_pos(self, intervals, plus_strand=True):
         i0 = self.pick_one_interval(intervals)
         at = i0.data.upstream_from_interval(i0)
-        print([x.data.type for x in intervals], 'right before possible_types')
         possible_types = self.possible_types(intervals)
         if self.gffkey.five_prime_UTR in possible_types:
             # this should indicate we're good to go and have a transcription start site
@@ -915,10 +946,6 @@ class TranscriptInterpreter(object):
     def decode_raw_features(self):
         plus_strand = self.is_plus_strand()
         interval_sets = self.intervals_5to3(plus_strand)
-        for ivalset in interval_sets:
-            print('next:')
-            print([x.data.short_str() for x in ivalset])
-            print('--\n')
 
         self.interpret_first_pos(interval_sets[0], plus_strand)
         for i in range(len(interval_sets) - 1):
@@ -982,3 +1009,17 @@ class TranscriptInterpreter(object):
 
 def min_max(x, y):
     return min(x, y), max(x, y)
+
+
+def upstream(x, y, sign):
+    if (y - x) * sign >= 0:
+        return x
+    else:
+        return y
+
+
+def downstream(x, y, sign):
+    if (x - y) * sign >= 0:
+        return x
+    else:
+        return y
