@@ -2,6 +2,7 @@ from structure import GenericData, add_paired_dictionaries
 from dustdas import fastahelper
 import itertools
 import copy
+from partitions import CoordinateGenerator
 
 
 class StructuredGenome(GenericData):
@@ -38,6 +39,16 @@ class StructuredSequence(GenericData):
         self.meta_info.add_sequence(fasta_header=fasta_header, sequence=sequence, smallest_mer=smallest_mer,
                                     largest_mer=largest_mer)
         self.sequence = list(chunk_str(sequence, 100))
+
+    def divvy_up_coords(self):
+        # todo: add user seed in from above
+        # todo: hash full sequence
+        # todo: setup coord gen
+        pass
+
+    def divvy_up_sequence(self):
+        coords = self.divvy_up_coords()
+        # todo, actually split up sequence
 
 
 class MetaInfoSeqLike(GenericData):

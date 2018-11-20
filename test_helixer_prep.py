@@ -524,4 +524,9 @@ def test_stepper():
     strt_ends = list(s.step_to_end())
     assert len(strt_ends) == 6
     assert strt_ends[-1] == (46, 52)
+    # very short
+    s = partitions.Stepper(9, 10)
+    strt_ends = list(s.step_to_end())
+    assert len(strt_ends) == 1
+    assert strt_ends[-1] == (0, 9)
 
