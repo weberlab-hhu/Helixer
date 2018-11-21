@@ -2,6 +2,7 @@ from structure import GenericData, add_paired_dictionaries
 from dustdas import fastahelper
 import itertools
 import copy
+import hashlib
 from partitions import CoordinateGenerator
 
 
@@ -40,14 +41,21 @@ class StructuredSequence(GenericData):
                                     largest_mer=largest_mer)
         self.sequence = list(chunk_str(sequence, 100))
 
-    def divvy_up_coords(self):
-        # todo: add user seed in from above
-        # todo: hash full sequence
-        # todo: setup coord gen
-        pass
+    def full_sequence(self):
+        return ''.join(self.sequence)
 
-    def divvy_up_sequence(self):
-        coords = self.divvy_up_coords()
+    def seq_hash(self):
+        hash = hashlib.md5(self.full_sequence().encode('utf-8'))
+        return hash.hexdigest()
+
+    def divvy_up_coords(self, user_seed):
+        seed = self.seq_hash() + user_seed
+        cg = CoordinateGenerator(seed, max_len=2000000)
+        for coords in cg.divvy_coordinates(seed, len(self.sequence)):
+            yield coords
+
+    def divvy_up_sequence(self, user_seed):
+        coords = self.divvy_up_coords(user_seed)
         # todo, actually split up sequence
 
 
