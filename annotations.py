@@ -88,37 +88,6 @@ class FeatureDecoder(object):
                      self.point_annotations + self.regions + self.ignorable + [self.error] + self.statuses
 
 
-class IDMaker(object):
-    def __init__(self, prefix='', width=6):
-        self._counter = 0
-        self.prefix = prefix
-        self._seen = set()
-        self._width = width
-
-    @property
-    def seen(self):
-        return self._seen
-
-    def next_unique_id(self, suggestion=None):
-        if suggestion is not None:
-            suggestion = str(suggestion)
-            if suggestion not in self._seen:
-                self._seen.add(suggestion)
-                return suggestion
-        # you should only get here if a) there was no suggestion or b) it was not unique
-        return self._new_id()
-
-    def _new_id(self):
-        new_id = self._fmt_id()
-        self._seen.add(new_id)
-        self._counter += 1
-        return new_id
-
-    def _fmt_id(self):
-        to_format = '{}{:0' + str(self._width) + '}'
-        return to_format.format(self.prefix, self._counter)
-
-
 class AnnotatedGenome(GenericData):
     def __init__(self):
         super().__init__()
@@ -126,16 +95,16 @@ class AnnotatedGenome(GenericData):
                       ('meta_info', True, MetaInfoAnnoGenome, None),
                       ('meta_info_sequences', True, MetaInfoAnnoSequence, dict),
                       ('gffkey', False, FeatureDecoder, None),
-                      ('transcript_ider', False, IDMaker, None),
-                      ('feature_ider', False, IDMaker, None),
+                      ('transcript_ider', False, helpers.IDMaker, None),
+                      ('feature_ider', False, helpers.IDMaker, None),
                       ('mapper', False, helpers.Mapper, None)]
 
         self.super_loci = []
         self.meta_info = MetaInfoAnnoGenome()
         self.meta_info_sequences = {}
         self.gffkey = FeatureDecoder()
-        self.transcript_ider = IDMaker(prefix='trx')
-        self.feature_ider = IDMaker(prefix='ftr')
+        self.transcript_ider = helpers.IDMaker(prefix='trx')
+        self.feature_ider = helpers.IDMaker(prefix='ftr')
         self.mapper = helpers.Mapper()
 
     def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
