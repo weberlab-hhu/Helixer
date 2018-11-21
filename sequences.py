@@ -30,33 +30,66 @@ class StructuredGenome(GenericData):
 class StructuredSequence(GenericData):
     def __init__(self):
         super().__init__()
-        self.spec += [('sequence', True, list, None),
+        self.spec += [('slices', True, SequenceSlice, list),
                       ('meta_info', True, MetaInfoSequence, None)]
         self.meta_info = MetaInfoSequence()
-        self.sequence = []
+        self.slices = []
 
     def add_sequence(self, fasta_header, sequence, smallest_mer=2, largest_mer=2):
         self.meta_info = MetaInfoSequence()
         self.meta_info.add_sequence(fasta_header=fasta_header, sequence=sequence, smallest_mer=smallest_mer,
                                     largest_mer=largest_mer)
-        self.sequence = list(chunk_str(sequence, 100))
+        unsliced = SequenceSlice()
+        unsliced.add_sequence(sequence, self.meta_info.seqid)
+        self.slices.append(unsliced)
 
     def full_sequence(self):
-        return ''.join(self.sequence)
+        subseqs = []
+        for subseq in self.slices:
+            subseqs += subseq.sequence
+        return ''.join(subseqs)
 
     def seq_hash(self):
-        hash = hashlib.md5(self.full_sequence().encode('utf-8'))
-        return hash.hexdigest()
+        md5 = hashlib.md5(self.full_sequence().encode('utf-8'))
+        return md5.hexdigest()
 
     def divvy_up_coords(self, user_seed):
         seed = self.seq_hash() + user_seed
         cg = CoordinateGenerator(seed, max_len=2000000)
-        for coords in cg.divvy_coordinates(seed, len(self.sequence)):
+        for coords in cg.divvy_coordinates(seed, self.meta_info.total_bp):
             yield coords
 
     def divvy_up_sequence(self, user_seed):
         coords = self.divvy_up_coords(user_seed)
         # todo, actually split up sequence
+
+
+class SequenceSlice(GenericData):
+    def __init__(self):
+        super().__init__()
+        self.spec += [('sequence', True, list, None),
+                      ('start', True, int, None),
+                      ('end', True, int, None),
+                      ('processing_set', True, str, None),
+                      ('slice_id', True, str, None)]
+        self.start = None
+        self.end = None
+        self.sequence = []
+        self.processing_set = None
+        self.slice_id = None
+
+    def add_sequence(self, sequence, seqid):
+        self.sequence = list(chunk_str(sequence, 100))
+        self.slice_id = seqid
+        self.start = 1
+        self.end = len(sequence)
+
+    def add_slice(self, sequence, slice_id, start, end, processing_set):
+        self.sequence = list(chunk_str(sequence, 100))
+        self.slice_id = slice_id
+        self.start = start
+        self.end = end
+        self.processing_set = processing_set
 
 
 class MetaInfoSeqLike(GenericData):

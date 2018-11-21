@@ -143,6 +143,7 @@ def test_fa_matches_sequences_json():
     json_path = 'testdata/tester.sequence.json'
     sd_fa = sequences.StructuredGenome()
     sd_fa.add_fasta(fa_path)
+    # sd_fa.to_json(json_path)  # can uncomment when one intentionally changed the format, but check
     sd_json = sequences.StructuredGenome()
     sd_json.from_json(json_path)
     j_fa = sd_fa.to_jsonable()
@@ -153,22 +154,6 @@ def test_fa_matches_sequences_json():
 
 
 ### annotations ###
-def test_id_maker():
-    ider = annotations.IDMaker()
-    for i in range(5):
-        ider.next_unique_id()
-    assert len(ider.seen) == 5
-    # add a new id
-    suggestion = 'apple'
-    new_id = ider.next_unique_id(suggestion)
-    assert len(ider.seen) == 6
-    assert new_id == suggestion
-    # try and add an ID we've now seen before
-    new_id = ider.next_unique_id(suggestion)
-    assert len(ider.seen) == 7
-    assert new_id != suggestion
-
-
 def setup_testable_super_loci():
     # features [--0--][1][---2---]
     f_coord = [(1, 100), (111, 120), (201, 400)]
@@ -430,11 +415,12 @@ def test_errors_not_lost():
 
 def test_anno2json_and_back():
     # setup the sequence file
-    #fa_path = 'testdata/testerSl.fa'
     json_path = 'testdata/testerSl.sequence.json'
-    #sd_fa = sequences.StructuredGenome()
-    #sd_fa.add_fasta(fa_path)
-    #sd_fa.to_json(json_path)
+    # can uncomment the following 4 lines if one intentionally changed the format, but check
+    # fa_path = 'testdata/testerSl.fa'
+    # sd_fa = sequences.StructuredGenome()
+    # sd_fa.add_fasta(fa_path)
+    # sd_fa.to_json(json_path)
     sd_fa = sequences.StructuredGenome()
     sd_fa.from_json(json_path)
 
@@ -530,3 +516,18 @@ def test_stepper():
     assert len(strt_ends) == 1
     assert strt_ends[-1] == (0, 9)
 
+
+def test_id_maker():
+    ider = helpers.IDMaker()
+    for i in range(5):
+        ider.next_unique_id()
+    assert len(ider.seen) == 5
+    # add a new id
+    suggestion = 'apple'
+    new_id = ider.next_unique_id(suggestion)
+    assert len(ider.seen) == 6
+    assert new_id == suggestion
+    # try and add an ID we've now seen before
+    new_id = ider.next_unique_id(suggestion)
+    assert len(ider.seen) == 7
+    assert new_id != suggestion
