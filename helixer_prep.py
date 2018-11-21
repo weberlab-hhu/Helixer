@@ -43,6 +43,8 @@ class PathFinder(object):
         self.annotations_out = '{}annotation.json'.format(self.output)
         self.sequence_out = '{}sequence.json'.format(self.output)
         self.problems_out = '{}problems.txt'.format(self.output)
+        self.sliced_sequence_out = '{}sliced_sequence.json'.format(self.output)
+        self.sliced_annotations_out = '{}sliced_annotation.json'.format(self.output)
 
     def _get_fa(self, provided):
         if provided is not None:
@@ -66,7 +68,7 @@ class PathFinder(object):
         assert len(possibilities) == 1, 'no(n) unique {} file found as input. Found: {}'.format(info, possibilities)
 
 
-def main(gff3, fasta, basedir, smallest_mer=2, largest_mer=2):
+def main(gff3, fasta, basedir, smallest_mer=2, largest_mer=2, slice=True, seed='puma'):
     logging.basicConfig(level=logging.WARNING)
     #annotation = gff3_to_json(gff3)
     paths = PathFinder(basedir, fasta=fasta, gff=gff3)
@@ -76,6 +78,9 @@ def main(gff3, fasta, basedir, smallest_mer=2, largest_mer=2):
     else:
         sequences = load_sequence_json(paths.sequence_out)
     gff3_to_json(paths.gff_in, paths.annotations_out, sequences, paths.problems_out)
+    if slice:
+        sequences.divvy_each_sequence(seed)
+        sequences.to_json(paths.sliced_sequence_out)
 
 
 if __name__ == '__main__':
@@ -87,5 +92,10 @@ if __name__ == '__main__':
     fasta_specific = parser.add_argument_group("Fasta meta_info customizable:")
     fasta_specific.add_argument('--min_k', help='minumum size kmer to calculate from sequence', default=2, type=int)
     fasta_specific.add_argument('--max_k', help='maximum size kmer to calculate from sequence', default=2, type=int)
+    slicing = parser.add_argument_group("Split data into train/test/dev sets")
+    slicing.add_argument('--slice', action='store_true', help='use this flag to make additional split output files')
+    slicing.add_argument('--seed', default='puma',
+                         help="random seed is md5sum(sequence) + this parameter; don't change without cause")
     args = parser.parse_args()
-    main(args.gff3, args.fasta, args.basedir, smallest_mer=args.min_k, largest_mer=args.max_k)
+    main(args.gff3, args.fasta, args.basedir, smallest_mer=args.min_k, largest_mer=args.max_k, slice=args.slice,
+         seed=args.seed)

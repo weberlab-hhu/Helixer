@@ -4,6 +4,7 @@ import itertools
 import copy
 import hashlib
 from partitions import CoordinateGenerator
+import helpers
 
 
 class StructuredGenome(GenericData):
@@ -25,6 +26,10 @@ class StructuredGenome(GenericData):
                                     largest_mer=largest_mer)
             self.meta_info.add_sequence_meta_info(seq_holder.meta_info)
             self.sequences.append(seq_holder)
+
+    def divvy_each_sequence(self, user_seed):
+        for seq in self.sequences:
+            seq.divvy_up_sequence(user_seed)
 
 
 class StructuredSequence(GenericData):
@@ -60,7 +65,15 @@ class StructuredSequence(GenericData):
             yield coords
 
     def divvy_up_sequence(self, user_seed):
+        sequence = self.full_sequence()
         coords = self.divvy_up_coords(user_seed)
+        idmaker = helpers.IDMaker(prefix=self.meta_info.seqid + '_')
+        slices = []
+        for begin, end, pset in coords:
+            s = SequenceSlice()
+            s.add_slice(sequence[begin:end], idmaker.next_unique_id(), begin + 1, end, pset)
+            slices.append(s)
+        self.slices = slices
         # todo, actually split up sequence
 
 
@@ -90,6 +103,9 @@ class SequenceSlice(GenericData):
         self.start = start
         self.end = end
         self.processing_set = processing_set
+
+    def to_example(self):
+        raise NotImplementedError
 
 
 class MetaInfoSeqLike(GenericData):
