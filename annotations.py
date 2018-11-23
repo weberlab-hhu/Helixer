@@ -91,72 +91,26 @@ class FeatureDecoder(object):
 class AnnotatedGenome(GenericData):
     def __init__(self):
         super().__init__()
-        self.spec += [('super_loci', True, SuperLoci, list),
+        self.spec += [('super_loci_slices', True, SuperLociSlice, list),
                       ('meta_info', True, MetaInfoAnnoGenome, None),
-                      ('meta_info_sequences', True, MetaInfoAnnoSequence, dict),
                       ('gffkey', False, FeatureDecoder, None),
                       ('transcript_ider', False, helpers.IDMaker, None),
-                      ('feature_ider', False, helpers.IDMaker, None),
-                      ('mapper', False, helpers.Mapper, None)]
+                      ('feature_ider', False, helpers.IDMaker, None)]
 
-        self.super_loci = []
+        self.super_loci_slices = []
         self.meta_info = MetaInfoAnnoGenome()
-        self.meta_info_sequences = {}
         self.gffkey = FeatureDecoder()
         self.transcript_ider = helpers.IDMaker(prefix='trx')
         self.feature_ider = helpers.IDMaker(prefix='ftr')
-        self.mapper = helpers.Mapper()
 
     def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
-        err_handle = open(err_file, 'w')
-        for seq in genome.sequences:
-            mi = MetaInfoAnnoSequence()
-            mi.seqid = seq.meta_info.seqid
-            mi.total_bp = seq.meta_info.total_bp
-            self.meta_info_sequences[mi.seqid] = mi
-
-        gff_seq_ids = helpers.get_seqids_from_gff(gff_file)
-        mapper, is_forward = helpers.two_way_key_match(self.meta_info_sequences.keys(), gff_seq_ids)
-        self.mapper = mapper
-
-        if not is_forward:
-            raise NotImplementedError("Still need to implement backward match if fasta IDs are subset of gff IDs")
-
-        for entry_group in self.group_gff_by_gene(gff_file):
-            new_sl = SuperLoci()
-            new_sl.genome = self
-            new_sl.add_gff_entry_group(entry_group, err_handle)
-
-            self.super_loci.append(new_sl)
-            if not new_sl.transcripts and not new_sl.features:
-                print('{} from {} with {} transcripts and {} features'.format(new_sl.id,
-                                                                              entry_group[0].source,
-                                                                              len(new_sl.transcripts),
-                                                                              len(new_sl.features)))
-        err_handle.close()
-
-    def useful_gff_entries(self, gff_file):
-        skipable = self.gffkey.regions + self.gffkey.ignorable
-        reader = gffhelper.read_gff_file(gff_file)
-        for entry in reader:
-            if entry.type not in self.gffkey.known:
-                raise ValueError("unrecognized feature type fr:qom gff: {}".format(entry.type))
-            if entry.type not in skipable:
-                yield entry
-
-    def group_gff_by_gene(self, gff_file):
-        reader = self.useful_gff_entries(gff_file)
-        gene_group = [next(reader)]
-        for entry in reader:
-            if entry.type in self.gffkey.gene_level:
-                yield gene_group
-                gene_group = [entry]
-            else:
-                gene_group.append(entry)
-        yield gene_group
+        sls = SuperLociSlice()
+        sls.genome = self
+        sls.add_gff(gff_file, genome, err_file=err_file)
+        self.super_loci_slices.append(sls)
 
     def clean_post_load(self):
-        for sl in self.super_loci:
+        for sl in self.super_loci_slices:
             sl.genome = self
 
 
@@ -193,13 +147,13 @@ class MetaInfoAnnoGenome(MetaInfoAnnotation):
         self.acquired_from = ""
 
 
-class MetaInfoAnnoSequence(MetaInfoAnnotation):
-    def __init__(self):
-        super().__init__()
-        self.spec += [('seqid', True, str, None),
-                      ('total_bp', True, int, None)]
-        self.seqid = ""
-        self.total_bp = 0
+#class MetaInfoAnnoSequence(MetaInfoAnnotation):
+#    def __init__(self):
+#        super().__init__()
+#        self.spec += [('seqid', True, str, None),
+#                      ('total_bp', True, int, None)]
+#        self.seqid = ""
+#        self.total_bp = 0
 
 
 class FeatureLike(GenericData):
@@ -217,7 +171,110 @@ class FeatureLike(GenericData):
         # self.is_type_in_question = False
 
 
+class SuperLociSlice(GenericData):
+    def __init__(self):
+        super().__init__()
+        self.spec += [('processing_set', True, str, None),
+                      ('slice_id', True, str, None),
+                      ('super_loci', True, SuperLoci, list),
+                      ('genome', False, AnnotatedGenome, None),
+                      ('coordinates', True, CoordinateInfo, list),
+                      ('_seq_info', False, dict, None),
+                      ('mapper', False, helpers.Mapper, None)]
+        self.processing_set = None
+        self.slice_id = None
+        self.super_loci = []
+        self.genome = None
+        self.coordinates = []
+        self._seq_info = {}
+        self.mapper = helpers.Mapper()
+
+    @property
+    def gffkey(self):
+        return self.genome.gffkey
+
+    @property
+    def seq_info(self):
+        if not self._seq_info:
+            seq_info = {}
+            for x in self.coordinates:
+                seq_info[x.seqid] = x
+            self._seq_info = seq_info
+        return self._seq_info
+
+    def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
+        err_handle = open(err_file, 'w')
+        for seq in genome.sequences:
+            mi = CoordinateInfo()
+            mi.seqid = seq.meta_info.seqid
+            mi.start = 1
+            mi.end = seq.meta_info.total_bp
+            self.coordinates.append(mi)
+
+        gff_seq_ids = helpers.get_seqids_from_gff(gff_file)
+        mapper, is_forward = helpers.two_way_key_match(self.seq_info.keys(), gff_seq_ids)
+        self.mapper = mapper
+
+        if not is_forward:
+            raise NotImplementedError("Still need to implement backward match if fasta IDs are subset of gff IDs")
+
+        for entry_group in self.group_gff_by_gene(gff_file):
+            new_sl = SuperLoci()
+            new_sl.slice = self
+            new_sl.add_gff_entry_group(entry_group, err_handle)
+
+            self.super_loci.append(new_sl)
+            if not new_sl.transcripts and not new_sl.features:
+                print('{} from {} with {} transcripts and {} features'.format(new_sl.id,
+                                                                              entry_group[0].source,
+                                                                              len(new_sl.transcripts),
+                                                                              len(new_sl.features)))
+        err_handle.close()
+
+    def useful_gff_entries(self, gff_file):
+        skipable = self.gffkey.regions + self.gffkey.ignorable
+        reader = gffhelper.read_gff_file(gff_file)
+        for entry in reader:
+            if entry.type not in self.gffkey.known:
+                raise ValueError("unrecognized feature type fr:qom gff: {}".format(entry.type))
+            if entry.type not in skipable:
+                yield entry
+
+    def group_gff_by_gene(self, gff_file):
+        reader = self.useful_gff_entries(gff_file)
+        gene_group = [next(reader)]
+        for entry in reader:
+            if entry.type in self.gffkey.gene_level:
+                yield gene_group
+                gene_group = [entry]
+            else:
+                gene_group.append(entry)
+        yield gene_group
+
+    def add_slice(self, seqid, slice_id, start, end, processing_set):
+        pass #todo
+
+    def to_example(self):
+        raise NotImplementedError
+
+    def clean_post_load(self):
+        for sl in self.super_loci:
+            sl.slice = self
+
+
+class CoordinateInfo(GenericData):
+    def __init__(self):
+        super().__init__()
+        self.spec += [('seqid', True, str, None),
+                      ('start', True, int, None),
+                      ('end', True, int, None)]
+        self.start = None
+        self.end = None
+        self.seqid = None
+
+
 class SuperLoci(FeatureLike):
+    # todo, refactor to SuperLocus
     # normally a loci, some times a short list of loci for "trans splicing"
     # this will define a group of exons that can possibly be made into transcripts
     # AKA this if you have to go searching through a graph for parents/children, at least said graph will have
@@ -227,13 +284,17 @@ class SuperLoci(FeatureLike):
         self.spec += [('transcripts', True, Transcribed, dict),
                       ('features', True, StructuredFeature, dict),
                       ('ids', True, list, None),
-                      ('genome', False, AnnotatedGenome, None),
+                      ('slice', False, SuperLociSlice, None),
                       ('_dummy_transcript', False, Transcribed, None)]
         self.transcripts = {}
         self.features = {}
         self.ids = []
         self._dummy_transcript = None
-        self.genome = None
+        self.slice = None
+
+    @property
+    def genome(self):
+        return self.slice.genome
 
     def dummy_transcript(self):
         if self._dummy_transcript is not None:
@@ -478,7 +539,7 @@ class StructuredFeature(FeatureLike):
         self.start = int(gff_entry.start)
         self.end = int(gff_entry.end)
         self.strand = gff_entry.strand
-        self.seqid = self.super_loci.genome.mapper(gff_entry.seqid)
+        self.seqid = self.super_loci.slice.mapper(gff_entry.seqid)
         if gff_entry.phase == '.':
             self.phase = None
         else:
@@ -872,15 +933,18 @@ class TranscriptInterpreter(object):
             # mask a dummy region up-stream as it's very unclear whether it should be intergenic/intronic/utr
             if plus_strand:
                 # unless we're at the start of the sequence
-                if at != 1:
+                start_of_sequence = self.get_seq_start(cds_feature.seqid)
+                if at != start_of_sequence:
                     feature_e = self.new_feature(template=cds_feature, type=self.gffkey.error,
-                                                 start=max(1, at - self.gffkey.error_buffer - 1), end=at - 1, phase=None)
+                                                 start=max(start_of_sequence, at - self.gffkey.error_buffer - 1),
+                                                 end=at - 1, phase=None)
                     self.clean_features.insert(0, feature_e)
             else:
-                end_of_sequence = self.get_seq_length(cds_feature.seqid)
+                end_of_sequence = self.get_seq_end(cds_feature.seqid)
                 if at != end_of_sequence:
                     feature_e = self.new_feature(template=cds_feature, type=self.gffkey.error, start=at + 1,
-                                                 end=min(end_of_sequence, at + self.gffkey.error_buffer + 1), phase=None)
+                                                 end=min(end_of_sequence, at + self.gffkey.error_buffer + 1),
+                                                 phase=None)
                     feature_e.type = self.gffkey.error
                     self.clean_features.insert(0, feature_e)
         else:
@@ -898,16 +962,17 @@ class TranscriptInterpreter(object):
             self.status.saw_tts()
         elif self.gffkey.cds in possible_types:
             # may or may not be stop codon, but will just mark as error (unless at edge of sequence)
-            end_of_sequence = self.get_seq_length(i0.data.seqid)
+            start_of_sequence = self.get_seq_start(i0.data.seqid)
+            end_of_sequence = self.get_seq_end(i0.data.seqid)
             if plus_strand:
                 if at != end_of_sequence:
                     feature_e = self.new_feature(template=i0.data, type=self.gffkey.error, start=at + 1, phase=None,
                                                  end=min(at + 1 + self.gffkey.error_buffer, end_of_sequence))
                     self.clean_features.append(feature_e)
             else:
-                if at != 1:
+                if at != start_of_sequence:
                     feature_e = self.new_feature(template=i0.data, type=self.gffkey.error, end=at - 1, phase=None,
-                                                 start=max(1, at - self.gffkey.error_buffer - 1))
+                                                 start=max(start_of_sequence, at - self.gffkey.error_buffer - 1))
                     self.clean_features.append(feature_e)
         else:
             raise ValueError("why's this gene not end with 3' utr/exon nor cds? types: {}, interpretations: {}".format(
@@ -980,8 +1045,11 @@ class TranscriptInterpreter(object):
                 out = [interval]
         yield out
 
-    def get_seq_length(self, seqid):
-        return self.super_loci.genome.meta_info_sequences[seqid].total_bp
+    def get_seq_end(self, seqid):
+        return self.super_loci.slice.seq_info[seqid].end
+
+    def get_seq_start(self, seqid):
+        return self.super_loci.slice.seq_info[seqid].start
 
 
 def min_max(x, y):

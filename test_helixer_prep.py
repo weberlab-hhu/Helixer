@@ -161,13 +161,18 @@ def setup_testable_super_loci():
     t_ids = ['x', 'y', 'z']
     t_features = [(0, 1), (0, 1, 2), (0, )]
     genome = annotations.AnnotatedGenome()
+    # add a slice
+    sls = annotations.SuperLociSlice()
+    sls.genome = genome
     # make a dummy sequence
-    seq_mi = annotations.MetaInfoAnnoSequence()
-    seq_mi.total_bp = 450
-    genome.meta_info_sequences[seq_mi.seqid] = seq_mi
+    seq_mi = annotations.CoordinateInfo()
+    seq_mi.start = 1
+    seq_mi.end = 450
+    seq_mi.seqid = ''
+    sls.coordinates.append(seq_mi)
 
     sl = annotations.SuperLoci()
-    sl.genome = genome
+    sl.slice = sls
 
     # setup transcripts and features
     transcripts = []
@@ -433,13 +438,13 @@ def test_anno2json_and_back():
     ag_json.from_json(json_anno)
     assert ag.to_jsonable() == ag_json.to_jsonable()
     # check recursive load has worked out
-    assert ag_json.super_loci[0].genome is ag_json
+    assert ag_json.super_loci_slices[0].super_loci[0].genome is ag_json
     # and same for super_loci
-    sl = ag_json.super_loci[0]
+    sl = ag_json.super_loci_slices[0].super_loci[0]
     fkey = sorted(sl.features.keys())[0]
     feature = sl.features[fkey]
     assert feature.super_loci is sl
-    assert sl.genome.meta_info_sequences[feature.seqid].total_bp == 16000
+    assert sl.slice.seq_info[feature.seqid].end == 16000
 
 
 #### helpers
