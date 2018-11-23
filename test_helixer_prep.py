@@ -173,6 +173,7 @@ def setup_testable_super_loci():
 
     sl = annotations.SuperLocus()
     sl.slice = sls
+    sls.super_loci.append(sl)
 
     # setup transcripts and features
     transcripts = []
@@ -446,6 +447,21 @@ def test_anno2json_and_back():
     assert feature.super_locus is sl
     assert sl.slice.seq_info[feature.seqid].end == 16000
 
+
+def test_to_intervaltree():
+    sl = setup_loci_with_utr()
+    trees = sl.slice.load_to_interval_tree()
+    print(sl.slice.super_loci, 'loci')
+    # get a single tree
+    assert len(trees.keys()) == 1
+    tree = trees['']
+    for itvl in tree:
+        print(itvl)
+    assert len(tree) == len(sl.features)
+    minf = min([sl.features[f].py_start for f in sl.features])
+    maxf = max([sl.features[f].py_end for f in sl.features])
+    assert minf == min(tree).begin
+    assert maxf == max(tree).end
 
 #### helpers
 def test_key_matching():

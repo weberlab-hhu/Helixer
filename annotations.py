@@ -258,6 +258,16 @@ class SuperLociSlice(GenericData):
                 gene_group.append(entry)
         yield gene_group
 
+    def load_to_interval_tree(self):
+        trees = {}
+        for seqid in self.seq_info:
+            trees[seqid] = intervaltree.IntervalTree()
+        for sl in self.super_loci:
+            for fkey in sl.features:
+                feature = sl.features[fkey]
+                trees[feature.seqid][feature.py_start:feature.py_end] = feature
+        return trees
+
     def add_slice(self, seqid, slice_id, start, end, processing_set):
         pass #todo
 
