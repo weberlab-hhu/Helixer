@@ -173,10 +173,19 @@ class FeatureLike(GenericData):
                       ('is_type_in_question', True, bool, None)]
         self.id = ''
         self.type = ''
-        # self.is_partial = False
+        self.is_partial = False
         # self.is_reconstructed = False
         # self.is_type_in_question = False
 
+
+class OderedFeatures(FeatureLike):
+    def __init__(self):
+        super().__init__()
+        self.spec += [('next_feature_5p', True, str, None),
+                      ('next_feature_3p', True, str, None)]
+        self.next_feature_5p = None
+        self.next_feature_3p = None
+        
 
 class SuperLociSlice(GenericData):
     def __init__(self):
@@ -453,9 +462,6 @@ class SuperLocus(FeatureLike):
 
     def check_sequence_assumptions(self):
         pass
-
-    def add_to_interval_tree(self, itree):
-        pass  # todo, make sure at least all features are loaded to interval tree
 
     def clean_post_load(self):
         for key in self.transcripts:
