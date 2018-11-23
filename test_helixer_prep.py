@@ -171,7 +171,7 @@ def setup_testable_super_loci():
     seq_mi.seqid = ''
     sls.coordinates.append(seq_mi)
 
-    sl = annotations.SuperLoci()
+    sl = annotations.SuperLocus()
     sl.slice = sls
 
     # setup transcripts and features
@@ -180,7 +180,7 @@ def setup_testable_super_loci():
     for i in range(3):
         t = annotations.Transcribed()
         t.id = t_ids[i]
-        t.super_loci = sl
+        t.super_locus = sl
         for j in t_features[i]:
             e = annotations.StructuredFeature()
             e.id = genome.feature_ider.next_unique_id()
@@ -189,7 +189,7 @@ def setup_testable_super_loci():
             c.transcripts = [t.id]
             c.id = genome.feature_ider.next_unique_id()
             print('transcript {}: [exon: {}, cds: {}, coord: {}]'.format(t.id, e.id, c.id, f_coord[j]))
-            e.super_loci = c.super_loci = sl
+            e.super_locus = c.super_locus = sl
             e.start, e.end = c.start, c.end = f_coord[j]
             c.type = "CDS"
             e.type = "exon"
@@ -234,7 +234,7 @@ def test_add_exon():
 
     # add a cds that needs an exon
     new_cds = annotations.StructuredFeature()
-    new_cds.super_loci = sl
+    new_cds.super_locus = sl
     new_cds.id = sl.genome.feature_ider.next_unique_id()
     new_cds.start, new_cds.end, new_cds.type = 0, 108, sl.genome.gffkey.cds
     sl.features[new_cds.id] = new_cds
@@ -245,13 +245,13 @@ def test_add_exon():
     # and add contained features that have an exon
     # cds
     new_cds = annotations.StructuredFeature()
-    new_cds.super_loci = sl
+    new_cds.super_locus = sl
     new_cds.id = sl.genome.feature_ider.next_unique_id()
     new_cds.start, new_cds.end, new_cds.type = 21, 100, sl.genome.gffkey.cds
     sl.features[new_cds.id] = new_cds
     # five prime utr
     new_utr = annotations.StructuredFeature()
-    new_utr.super_loci = sl
+    new_utr.super_locus = sl
     new_utr.id = sl.genome.feature_ider.next_unique_id()
     new_utr.start, new_utr.end, new_utr.type = 1, 20, sl.genome.gffkey.five_prime_UTR
     sl.features[new_utr.id] = new_utr
@@ -402,7 +402,7 @@ def test_errors_not_lost():
     sl = setup_loci_with_utr()
     feature_e = annotations.StructuredFeature()
     feature_e.id = sl.genome.feature_ider.next_unique_id()
-    feature_e.super_loci = sl
+    feature_e.super_locus = sl
     sl.features[feature_e.id] = feature_e
     feature_e.start, feature_e.end = 40, 80
     feature_e.change_to_error()
@@ -443,7 +443,7 @@ def test_anno2json_and_back():
     sl = ag_json.super_loci_slices[0].super_loci[0]
     fkey = sorted(sl.features.keys())[0]
     feature = sl.features[fkey]
-    assert feature.super_loci is sl
+    assert feature.super_locus is sl
     assert sl.slice.seq_info[feature.seqid].end == 16000
 
 
