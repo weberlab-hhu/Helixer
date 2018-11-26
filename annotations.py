@@ -169,8 +169,9 @@ class FeatureLike(GenericData):
         self.spec += [('id', True, str, None),
                       ('type', True, str, None),
                       ('is_partial', True, bool, None),
-                      ('is_reconstructed', True, bool, None),
-                      ('is_type_in_question', True, bool, None)]
+                      #('is_reconstructed', True, bool, None),
+                      #('is_type_in_question', True, bool, None)
+                      ]
         self.id = ''
         self.type = ''
         self.is_partial = False
@@ -178,14 +179,14 @@ class FeatureLike(GenericData):
         # self.is_type_in_question = False
 
 
-class OderedFeatures(FeatureLike):
+class OrderedFeatures(FeatureLike):
     def __init__(self):
         super().__init__()
         self.spec += [('next_feature_5p', True, str, None),
                       ('next_feature_3p', True, str, None)]
         self.next_feature_5p = None
         self.next_feature_3p = None
-        
+
 
 class SuperLociSlice(GenericData):
     def __init__(self):
@@ -276,6 +277,34 @@ class SuperLociSlice(GenericData):
                 feature = sl.features[fkey]
                 trees[feature.seqid][feature.py_start:feature.py_end] = feature
         return trees
+
+    def slice_further(self, seqid, slice_id, start, end, processing_set, trees):
+        # setup new slice
+        new = SuperLociSlice()
+        mi = CoordinateInfo()
+        mi.seqid = seqid
+        mi.start = start
+        mi.end = end
+        new.coordinates = mi
+        new.slice_id = slice_id
+        new.processing_set = processing_set
+        # and get all features
+        tree = trees[seqid]
+        branch = tree[start - 1:end]  # back to python coordinates  # todo, double check this gets overlaps not contains
+        features_by_sl = {}
+        for intvl in branch:
+            sl_id = intvl.data.super_locus.id
+            if sl_id in features_by_sl:
+                features_by_sl[sl_id].append(intvl.data)
+            else:
+                features_by_sl[sl_id] = [intvl.data]
+        for sl_id in features_by_sl:
+            super_locus = features_by_sl[sl_id][0].super_locus
+            for transcript in super_locus.transcripts:
+                trimmed_transcript = transcript.reconcile_with_slice(seqid, start, end)  # todo
+                # todo, add transcript & features to new slice
+            # todo add sl
+
 
     def add_slice(self, seqid, slice_id, start, end, processing_set):
         pass #todo
@@ -512,6 +541,9 @@ class Transcribed(FeatureLike):
                 raise ValueError('{} not in {}'.format(self.id,
                                                        self.super_locus.features[feature].transcripts))
 
+    def reconcile_with_slice(self, seqid, start, end):
+        pass  #todo, WAS HERE, make valid (partial) transcript within slice
+    
 
 class StructuredFeature(FeatureLike):
     def __init__(self):
