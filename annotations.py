@@ -306,7 +306,6 @@ class SuperLociSlice(GenericData):
                 # todo, add transcript & features to new slice
             # todo add sl
 
-
     def add_slice(self, seqid, slice_id, start, end, processing_set):
         pass #todo
 
@@ -320,7 +319,8 @@ class SuperLociSlice(GenericData):
             sl.slice = self
 
     def __deepcopy__(self, memodict={}):
-        raise NotImplementedError
+        raise NotImplementedError  # todo
+
 
 class CoordinateInfo(GenericData):
     def __init__(self):
@@ -794,6 +794,71 @@ class StructuredFeature(FeatureLike):
             return interval.end
         else:
             return interval.begin + 1
+
+    def reconcile_with_slice(self, seqid, start, end):
+        overlap_status = OverlapStatus()
+        overlap_status.set_status(self, seqid, start, end)
+        status = overlap_status.status
+        if status == OverlapStatus.contained:
+            pass  # leave it alone
+        elif status == OverlapStatus.no_overlap:
+            pass  # todo, delete (and from transcripts / super_locus)
+        elif status == OverlapStatus.overlaps_upstream:
+            pass  # todo, crop, check phase
+        elif status == OverlapStatus.overlaps_downstream:
+            pass  # todo, just crop
+
+
+class OverlapStatus(object):
+    contained = 'contained'
+    no_overlap = 'no_overlap'
+    overlaps_upstream = 'overlaps_upstream'
+    overlaps_downstream = 'overlaps_downstream'
+    accepted_stati = (contained, no_overlap, overlaps_upstream, overlaps_downstream)
+
+    def __init__(self):
+        self._status = None
+
+    @property
+    def status(self):
+        return self._status
+
+    @status.setter
+    def status(self, status):
+        assert status in OverlapStatus.accepted_stati
+        self._status = status
+
+    def set_status(self, feature, seqid, start, end):
+        err_str = 'Non handled overlap feature({}, {}, {}) vs slice({}, {}, {})'.format(
+                feature.seqid, feature.start, feature.end,
+                seqid, start, end
+            )
+        overlaps_at_start = False
+        overlaps_at_end = False
+        if feature.seqid != seqid:
+            out = OverlapStatus.no_overlap
+        elif feature.start >= start and feature.end <= end:
+            out = OverlapStatus.contained
+        elif feature.end < start or feature.start > end:
+            out = OverlapStatus.no_overlap
+        elif feature.start < start and feature.end >= start:
+            overlaps_at_start = True
+        elif feature.end > end and feature.start <= end:
+            overlaps_at_end = True
+        else:
+            raise ValueError(err_str)
+
+        plus_strand = feature.is_plus_strand()
+        if overlaps_at_start and overlaps_at_end:
+            raise ValueError(err_str + ' Overlaps both ends???')  # todo, test this properly and remove run time check
+
+        if (overlaps_at_start and plus_strand) or (overlaps_at_end and not plus_strand):
+            out = OverlapStatus.overlaps_upstream
+        if (overlaps_at_end and plus_strand) or (overlaps_at_start and not plus_strand):
+            out = OverlapStatus.overlaps_downstream
+        self.status = out
+
+
 
 
 #### section TranscriptInterpreter, might end up in a separate file later
