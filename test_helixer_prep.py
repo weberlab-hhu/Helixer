@@ -4,6 +4,8 @@ import annotations
 import helpers
 import pytest
 import partitions
+import copy
+
 
 ### structure ###
 # testing: add_paired_dictionaries
@@ -436,9 +438,13 @@ def test_anno2json_and_back():
     ag.add_gff(gfffile, sd_fa, 'testdata/deletable')
     ag.to_json(json_anno)
     ag_json = annotations.AnnotatedGenome()
+    print('i do not get it')
     ag_json.from_json(json_anno)
+    print('is it the call back to jsonable')
     assert ag.to_jsonable() == ag_json.to_jsonable()
     # check recursive load has worked out
+    print(ag_json.super_loci_slices[0].super_loci[0].slice, 'slice')
+    assert ag_json.super_loci_slices[0].super_loci[0].slice is ag_json.super_loci_slices[0]
     assert ag_json.super_loci_slices[0].super_loci[0].genome is ag_json
     # and same for super_loci
     sl = ag_json.super_loci_slices[0].super_loci[0]
@@ -462,6 +468,33 @@ def test_to_intervaltree():
     maxf = max([sl.features[f].py_end for f in sl.features])
     assert minf == min(tree).begin
     assert maxf == max(tree).end
+
+
+def test_deepcopies():
+    sl = setup_loci_with_utr()
+    sl2 = copy.deepcopy(sl)
+    assert sl is not sl2
+    for key in sl.__dict__:
+        val = sl.__getattribute__(key)
+        # most GenericData pieces should be objects, AKA, not is
+        if isinstance(val, structure.GenericData):
+            if key is not 'slice':  # slice points up, aka, should be the same
+                assert val is not sl2.__getattribute__(key)
+        elif isinstance(val, dict) or isinstance(val, list):
+            pass  # skipping as __eq__ etc not implemented
+        else:
+            # normal values should be identical
+            assert val == sl2.__getattribute__(key)
+
+    # same idea for one of the sub pieces skipped above
+    f = sl.features['ftr000010']
+    f2 = sl2.features['ftr000010']
+    for key in f.__dict__:
+        val = f.__getattribute__(key)
+        if not isinstance(val, structure.GenericData):
+            assert val == f2.__getattribute__(key)
+        else:
+            assert val is not f2.__getattribute__(key)
 
 
 #### helpers

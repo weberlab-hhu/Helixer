@@ -117,6 +117,7 @@ class AnnotatedGenome(GenericData):
         pass
 
     def clean_post_load(self):
+        print('cleaning anno genome')
         for sl in self.super_loci_slices:
             sl.genome = self
 
@@ -313,9 +314,13 @@ class SuperLociSlice(GenericData):
         raise NotImplementedError
 
     def clean_post_load(self):
+        print('cleaning slice', self.slice_id)
         for sl in self.super_loci:
+            print('did that make a call to deepcopy?')
             sl.slice = self
 
+    def __deepcopy__(self, memodict={}):
+        raise NotImplementedError
 
 class CoordinateInfo(GenericData):
     def __init__(self):
@@ -329,7 +334,6 @@ class CoordinateInfo(GenericData):
 
 
 class SuperLocus(FeatureLike):
-    # todo, refactor to SuperLocus
     # normally a loci, some times a short list of loci for "trans splicing"
     # this will define a group of exons that can possibly be made into transcripts
     # AKA this if you have to go searching through a graph for parents/children, at least said graph will have
@@ -493,11 +497,35 @@ class SuperLocus(FeatureLike):
         pass
 
     def clean_post_load(self):
+        print('cleaning sl', self.id)
         for key in self.transcripts:
             self.transcripts[key].super_locus = self
 
         for key in self.features:
             self.features[key].super_locus = self
+
+    def __deepcopy__(self, memodict={}):
+        print('copying sl: ', self.id)
+        new = SuperLocus()
+        copy_over = copy.deepcopy(list(new.__dict__.keys()))
+
+        for to_skip in ['slice']:
+            copy_over.pop(copy_over.index(to_skip))
+
+        # copy everything
+        for item in copy_over:
+            new.__setattr__(item, copy.deepcopy(self.__getattribute__(item)))
+
+        new.slice = self.slice
+
+        # fix point back references to point to new
+        for val in new.transcripts.values():
+            val.super_locus = new
+
+        for val in new.features.values():
+            val.super_locus = new
+
+        return new
 
 
 class NoTranscriptError(Exception):
@@ -543,7 +571,22 @@ class Transcribed(FeatureLike):
 
     def reconcile_with_slice(self, seqid, start, end):
         pass  #todo, WAS HERE, make valid (partial) transcript within slice
-    
+
+    def __deepcopy__(self, memodict={}):
+        new = Transcribed()
+        copy_over = copy.deepcopy(list(new.__dict__.keys()))
+
+        for to_skip in ['super_locus']:
+            copy_over.pop(copy_over.index(to_skip))
+
+        # copy everything
+        for item in copy_over:
+            new.__setattr__(item, copy.deepcopy(self.__getattribute__(item)))
+
+        new.super_locus = self.super_locus  # fix super_locus
+
+        return new
+
 
 class StructuredFeature(FeatureLike):
     def __init__(self):
@@ -690,6 +733,21 @@ class StructuredFeature(FeatureLike):
         # copy the rest
         for item in copy_over:
             new.__setattr__(item, copy.deepcopy(self.__getattribute__(item)))
+        return new
+
+    def __deepcopy__(self, memodict={}):
+        new = StructuredFeature()
+        copy_over = copy.deepcopy(list(new.__dict__.keys()))
+
+        for to_skip in ['super_locus']:
+            copy_over.pop(copy_over.index(to_skip))
+
+        # copy everything
+        for item in copy_over:
+            new.__setattr__(item, copy.deepcopy(self.__getattribute__(item)))
+
+        new.super_locus = self.super_locus  # fix super_locus
+
         return new
 
     def merge(self, other):
