@@ -56,7 +56,7 @@ class GenericData(object):
                 raise ValueError("no export method prepared for data_structure of type: {}".format(data_structure))
         else:
             out = None
-        return copy.deepcopy(out), is_exported
+        return out, is_exported
 
     def get_key_spec(self, key):
         key_spec = [s for s in self.spec if s[0] == key]
@@ -83,7 +83,7 @@ class GenericData(object):
         self._confirm_type(expected_type, out)
         if issubclass(expected_type, GenericData):
             out = out.to_jsonable()
-        return out
+        return copy.deepcopy(out)
 
     def _prep_none_from_json(self, expected_type, raw):
         out = raw
