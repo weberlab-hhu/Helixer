@@ -180,14 +180,6 @@ class FeatureLike(GenericData):
         # self.is_type_in_question = False
 
 
-class OrderedFeatures(FeatureLike):
-    def __init__(self):
-        super().__init__()
-        self.spec += [('next_feature_5p', True, str, None),
-                      ('next_feature_3p', True, str, None)]
-        self.next_feature_5p = None
-        self.next_feature_3p = None
-
 
 class SuperLociSlice(GenericData):
     def __init__(self):
@@ -341,11 +333,15 @@ class SuperLocus(FeatureLike):
     def __init__(self):
         super().__init__()
         self.spec += [('transcripts', True, Transcribed, dict),
+                      ('proteins', True, Translated, dict),
                       ('features', True, StructuredFeature, dict),
+                      ('ordered_features', False, OrderedFeatures, dict),
                       ('ids', True, list, None),
                       ('slice', False, SuperLociSlice, None),
                       ('_dummy_transcript', False, Transcribed, None)]
         self.transcripts = {}
+        self.proteins = {}
+        self.ordered_features = {}  # this is here for import from gff only
         self.features = {}
         self.ids = []
         self._dummy_transcript = None
@@ -536,14 +532,18 @@ class TransSplicingError(Exception):
     pass
 
 
-class Transcribed(FeatureLike):
+class OrderedFeatures(FeatureLike):
     def __init__(self):
         super().__init__()
         self.spec += [('super_locus', False, SuperLocus, None),
-                      ('features', True, list, None)]
+                      ('features', True, list, None),
+                      ('next_feature_5p', True, str, None),
+                      ('next_feature_3p', True, str, None)]
 
         self.super_locus = None
         self.features = []
+        self.next_feature_5p = None
+        self.next_feature_3p = None
 
     def add_data(self, super_locus, gff_entry):
         self.super_locus = super_locus
@@ -573,7 +573,7 @@ class Transcribed(FeatureLike):
         pass  #todo, WAS HERE, make valid (partial) transcript within slice
 
     def __deepcopy__(self, memodict={}):
-        new = Transcribed()
+        new = type(self)()
         copy_over = copy.deepcopy(list(new.__dict__.keys()))
 
         for to_skip in ['super_locus']:
@@ -586,6 +586,22 @@ class Transcribed(FeatureLike):
         new.super_locus = self.super_locus  # fix super_locus
 
         return new
+
+
+class Transcribed(OrderedFeatures):
+    def __init__(self):
+        super().__init__()
+        self.spec += [('proteins', True, list, None)]
+
+        self.proteins = []  # list of protein IDs, matching subset of keys in self.super_locus.proteins
+
+
+class Translated(OrderedFeatures):
+    def __init__(self):
+        super().__init__()
+        self.spec += [('transcripts', True, list, None)]
+
+        self.transcripts = []  # list of transcript IDs, matching subset of keys in self.super_locus.transcripts
 
 
 class StructuredFeature(FeatureLike):
