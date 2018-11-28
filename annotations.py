@@ -795,22 +795,47 @@ class StructuredFeature(FeatureLike):
         else:
             return interval.begin + 1
 
-    def reconcile_with_slice(self, seqid, start, end):
-        overlap_status = OverlapStatus()
-        overlap_status.set_status(self, seqid, start, end)
-        status = overlap_status.status
+    def reconcile_with_slice(self, seqid, start, end, status, last_before_slice):
+        #overlap_status = OverlapStatus()
+        #overlap_status.set_status(self, seqid, start, end)
+        #status = overlap_status.status
         if status == OverlapStatus.contained:
             pass  # leave it alone
         elif status == OverlapStatus.no_overlap:
+            # todo, if it is the last feature before the slice (aka, if the next one is contained)
+            if last_before_slice:
+                self.shift_phase(start, end)
+                pass  # todo, change to 1bp status_at (w/ phase if appropriate)
             pass  # todo, delete (and from transcripts / super_locus)
         elif status == OverlapStatus.overlaps_upstream:
-            pass  # todo, crop, check phase
+            self.shift_phase(start, end)
+            self.crop(start, end)
         elif status == OverlapStatus.overlaps_downstream:
-            pass  # todo, just crop
+            # just crop
+            self.crop(start, end)
+
+    def length_outside_slice(self, start, end):
+        if self.is_plus_strand():
+            length_outside_slice = start - self.start
+        else:
+            length_outside_slice = self.end - end
+        return length_outside_slice
+
+    def crop(self, start, end):
+        if self.start < start:
+            self.start = start
+        if self.end > end:
+            self.end = end
+
+    def shift_phase(self, start, end):
+        if self.phase is not None:
+            l_out = self.length_outside_slice(start, end)
+            self.phase = (l_out - self.phase) % 3
 
 
 class OverlapStatus(object):
     contained = 'contained'
+    contains = 'contains'
     no_overlap = 'no_overlap'
     overlaps_upstream = 'overlaps_upstream'
     overlaps_downstream = 'overlaps_downstream'
@@ -839,6 +864,8 @@ class OverlapStatus(object):
             out = OverlapStatus.no_overlap
         elif feature.start >= start and feature.end <= end:
             out = OverlapStatus.contained
+        elif feature.start < start and feature.end > end:
+            out = OverlapStatus.contains
         elif feature.end < start or feature.start > end:
             out = OverlapStatus.no_overlap
         elif feature.start < start and feature.end >= start:
@@ -909,13 +936,37 @@ class TranscriptStatus(object):
         return not self.genic
 
 
-class TranscriptInterpreter(object):
-    """takes raw/from-gff transcript, and makes totally explicit"""
+class TranscriptInterpBase(object):
     def __init__(self, transcript):
         self.status = TranscriptStatus()
-        self.super_locus = transcript.super_locus
-        self.gffkey = transcript.super_locus.genome.gffkey
         self.transcript = transcript
+
+    @property
+    def super_locus(self):
+        return self.transcript.super_locus
+
+    @property
+    def gffkey(self):
+        return self.transcript.super_locus.genome.gffkey
+
+
+class TranscriptTrimmer(TranscriptInterpBase):
+    """takes pre-cleaned/explicit transcripts and crops to what fits in a slice"""
+    def __init__(self, transcript):
+        super().__init__(transcript)
+
+    def crop_to_slice(self, seqid, start, end):
+        """crops transcript in place"""
+        pass
+
+    def transition_5p_to_3p(self):
+        pass
+
+
+class TranscriptInterpreter(TranscriptInterpBase):
+    """takes raw/from-gff transcript, and makes totally explicit"""
+    def __init__(self, transcript):
+        super().__init__(transcript)
         self.clean_features = []  # will hold all the 'fixed' features
 
     @staticmethod

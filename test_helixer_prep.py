@@ -478,7 +478,7 @@ def test_deepcopies():
         val = sl.__getattribute__(key)
         # most GenericData pieces should be objects, AKA, not is
         if isinstance(val, structure.GenericData):
-            if key is not 'slice':  # slice points up, aka, should be the same
+            if key is not 'slice':  # slice points up, aka, should be the same as we only copied from super locus lev.
                 assert val is not sl2.__getattribute__(key)
         elif isinstance(val, dict) or isinstance(val, list):
             pass  # skipping as __eq__ etc not implemented
