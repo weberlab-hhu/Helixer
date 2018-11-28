@@ -429,7 +429,7 @@ class SuperLocus(FeatureLike):
         # recreate transcribed / exon as necessary
         # todo, but with reconstructed flag (also check for and mark pseudogenes)
         to_remove = []
-        for transcript in self.transcripts.values():
+        for transcript in self.ordered_features.values():
             old_features = copy.deepcopy(transcript.features)
             t_interpreter = TranscriptInterpreter(transcript)
             t_interpreter.decode_raw_features()
@@ -439,11 +439,16 @@ class SuperLocus(FeatureLike):
             to_remove += old_features
         self.remove_features(to_remove)
 
-    def add_features(self, features, transcript=None):
+    def add_features(self, features, link_to_transcripts=None, link_to_proteins=None, link_to_ordered_features=None):
+        link_to_transcripts = none_to_list(link_to_transcripts)
+        link_to_proteins = none_to_list(link_to_proteins)
+        link_to_ordered_features = none_to_list(link_to_ordered_features)
+
         for feature in features:
             self.features[feature.id] = feature
-            if transcript is not None:
+            for transcript in link_to_transcripts:
                 feature.link_to_transcript_and_back(transcript.id)
+            # todo, mod to be generic to transcript/protein/of WAS HERE!
 
     def maybe_reconstruct_exons(self):
         """creates any exons necessary, so that all CDS/UTR is contained within an exon"""
@@ -599,6 +604,8 @@ class StructuredFeature(FeatureLike):
                       ('source', True, str, None),
                       ('phase', True, int, None),
                       ('transcripts', True, list, None),
+                      ('proteins', True, list, None),
+                      ('ordered_features', False, list, None),
                       ('super_locus', False, SuperLocus, None)]
 
         self.start = -1
@@ -609,6 +616,8 @@ class StructuredFeature(FeatureLike):
         self.score = None
         self.source = ''
         self.transcripts = []
+        self.proteins = []
+        self.ordered_features = []
         self.super_locus = None
 
     @property
@@ -1283,6 +1292,14 @@ class TranscriptInterpreter(TranscriptInterpBase):
 
 def min_max(x, y):
     return min(x, y), max(x, y)
+
+
+def none_to_list(x):
+    if x is None:
+        return []
+    else:
+        assert isinstance(x, list)
+        return x
 
 
 def upstream(x, y, sign):
