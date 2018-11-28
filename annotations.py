@@ -356,11 +356,11 @@ class SuperLocus(FeatureLike):
             return self._dummy_transcript
         else:
             # setup new blank transcript
-            transcript = Transcribed()
+            transcript = OrderedFeatures()
             transcript.id = self.genome.transcript_ider.next_unique_id()  # add an id
             transcript.super_locus = self
             self._dummy_transcript = transcript  # save to be returned by next call of dummy_transcript
-            self.transcripts[transcript.id] = transcript  # save into main dict of transcripts
+            self.ordered_features[transcript.id] = transcript  # save into main dict of transcripts
             return transcript
 
     def add_gff_entry(self, entry):
@@ -377,9 +377,9 @@ class SuperLocus(FeatureLike):
         elif entry.type in gffkey.transcribed:
             parent = self.one_parent(entry)
             assert parent == self.id, "not True :( [{} == {}]".format(parent, self.id)
-            transcript = Transcribed()
+            transcript = OrderedFeatures()
             transcript.add_data(self, entry)
-            self.transcripts[transcript.id] = transcript
+            self.ordered_features[transcript.id] = transcript
         elif entry.type in gffkey.on_sequence:
             feature = StructuredFeature()
             feature.add_data(self, entry)
@@ -405,22 +405,6 @@ class SuperLocus(FeatureLike):
         parents = entry.get_Parent()
         assert len(parents) == 1
         return parents[0]
-
-    def get_matching_transcript(self, entry):
-        # deprecating
-        parent = self.one_parent(entry)
-        try:
-            transcript = self.transcripts[-1]
-            assert parent == transcript.id
-        except IndexError:
-            raise NoTranscriptError("0 transcripts found")
-        except AssertionError:
-            transcripts = [x for x in self.transcripts if x.id == parent]
-            if len(transcripts) == 1:
-                transcript = transcripts[0]
-            else:
-                raise NoTranscriptError("can't find {} in {}".format(parent, [x.id for x in self.transcripts]))
-        return transcript
 
     def _mark_erroneous(self, entry):
         assert entry.type in self.genome.gffkey.gene_level
