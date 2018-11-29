@@ -547,6 +547,20 @@ def test_gff_to_seqids():
     assert x == {'NC_015438.2', 'NC_015439.2', 'NC_015440.2'}
 
 
+def test_swap_type():
+    sl = setup_loci_with_utr()
+    transcript = sl.transcripts['x']
+    old_n_transcripts = len(sl.transcripts)
+    ori_transcript_features = copy.deepcopy(transcript.features)
+    protein = transcript.swap_type('proteins')
+    assert len(sl.transcripts) == old_n_transcripts - 1
+    assert len(sl.proteins) == 1
+    assert transcript.id not in sl.transcripts
+    assert transcript.id == protein.id
+    assert ori_transcript_features == protein.features
+    assert transcript.super_locus is protein.super_locus
+
+
 #### partitions
 def test_stepper():
     # evenly divided
