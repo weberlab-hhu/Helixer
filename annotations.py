@@ -433,22 +433,19 @@ class SuperLocus(FeatureLike):
             old_features = copy.deepcopy(transcript.features)
             t_interpreter = TranscriptInterpreter(transcript)
             t_interpreter.decode_raw_features()
-
-            self.add_features(t_interpreter.clean_features, transcript=None)  # no transcript, as they're already linked
+            # no transcript, as they're already linked
+            self.add_features(t_interpreter.clean_features, ordered_features=None)
             transcript.delink_features(old_features)
             to_remove += old_features
         self.remove_features(to_remove)
 
-    def add_features(self, features, link_to_transcripts=None, link_to_proteins=None, link_to_ordered_features=None):
-        link_to_transcripts = none_to_list(link_to_transcripts)
-        link_to_proteins = none_to_list(link_to_proteins)
-        link_to_ordered_features = none_to_list(link_to_ordered_features)
+    def add_features(self, features, ordered_features=None, ordered_type='ordered_features'):
+        ordered_features = none_to_list(ordered_features)
 
         for feature in features:
             self.features[feature.id] = feature
-            for transcript in link_to_transcripts:
-                feature.link_to_transcript_and_back(transcript.id)
-            # todo, mod to be generic to transcript/protein/of WAS HERE!
+            for ordered_f in ordered_features:
+                feature.link_to_ordered_feature_and_back(ordered_f.id, ordered_type)
 
     def maybe_reconstruct_exons(self):
         """creates any exons necessary, so that all CDS/UTR is contained within an exon"""
@@ -522,6 +519,8 @@ class TransSplicingError(Exception):
 
 
 class OrderedFeatures(FeatureLike):
+    of_type = 'ordered_features'
+
     def __init__(self):
         super().__init__()
         self.spec += [('super_locus', False, SuperLocus, None),
@@ -552,11 +551,14 @@ class OrderedFeatures(FeatureLike):
 
     def delink_features(self, features):
         for feature in features:
+            of_type = type(self).of_type
             try:
-                self.super_locus.features[feature].de_link_from_transcript(self.id)
+                self.super_locus.features[feature].de_link_from_ordered_feature(self.id,
+                                                                                ordered_type=of_type)
             except ValueError:
-                raise ValueError('{} not in {}'.format(self.id,
-                                                       self.super_locus.features[feature].transcripts))
+                feature_ordered_fs = self.super_locus.features[feature].__getattribute__(of_type)
+                raise ValueError("{} not in feature's {}: {}".format(self.id, of_type,
+                                                                     feature_ordered_fs))
 
     def reconcile_with_slice(self, seqid, start, end):
         pass  #todo, WAS HERE, make valid (partial) transcript within slice
@@ -578,6 +580,8 @@ class OrderedFeatures(FeatureLike):
 
 
 class Transcribed(OrderedFeatures):
+    of_type = 'transcripts'
+
     def __init__(self):
         super().__init__()
         self.spec += [('proteins', True, list, None)]
@@ -586,6 +590,8 @@ class Transcribed(OrderedFeatures):
 
 
 class Translated(OrderedFeatures):
+    of_type = 'proteins'
+
     def __init__(self):
         super().__init__()
         self.spec += [('transcripts', True, list, None)]
@@ -630,8 +636,8 @@ class StructuredFeature(FeatureLike):
 # to do, make short / long print methods as part of object
 
     def short_str(self):
-        return '{} is {}: {}-{} on {}. --> {}'.format(self.id, self.type, self.start, self.end, self.seqid,
-                                                      self.transcripts)
+        return '{} is {}: {}-{} on {}. --> {}|{}|{}'.format(self.id, self.type, self.start, self.end, self.seqid,
+                                                            self.transcripts, self.proteins, self.ordered_features)
 
     def add_data(self, super_locus, gff_entry):
         gffkey = super_locus.genome.gffkey
@@ -663,7 +669,7 @@ class StructuredFeature(FeatureLike):
             ))
         for transcript_id in new_transcripts:
             new_t_id = transcript_id
-            if new_t_id not in super_locus.transcripts:
+            if new_t_id not in super_locus.ordered_features:
                 if transcript_id == super_locus.id:
                     # if we just skipped the transcript, and linked to gene, use dummy transcript in between
                     transcript = super_locus.dummy_transcript()
@@ -680,7 +686,7 @@ class StructuredFeature(FeatureLike):
                             species=super_locus.genome.meta_info.species, seqid=self.seqid, fid=fid, new_id=self.id,
                             parent=transcript_id
                         ))
-            self.link_to_transcript_and_back(new_t_id)
+            self.link_to_ordered_and_back(new_t_id, 'ordered_features')
 
     def add_erroneous_data(self, super_locus, gff_entry):
         self.super_locus = super_locus
@@ -695,12 +701,16 @@ class StructuredFeature(FeatureLike):
     def change_to_error(self):
         self.type = self.super_locus.genome.gffkey.error
 
-    def link_to_transcript_and_back(self, transcript_id):
+    def link_to_ordered_and_back(self, transcript_id, ordered_type='ordered_features'):
+        assert ordered_type in ['transcripts', 'proteins', 'ordered_features']
         assert transcript_id not in self.transcripts, "{} already in transcripts {}".format(transcript_id,
                                                                                             self.transcripts)
-        transcript = self.super_locus.transcripts[transcript_id]  # get transcript
-        transcript.link_to_feature(self.id)  # link to and from self
-        self.transcripts.append(transcript_id)
+        sl_ordered_fs = self.super_locus.__getattribute__(ordered_type)
+        ordered_f = sl_ordered_fs[transcript_id]  # get transcript
+        ordered_f.link_to_feature(self.id)  # link to and from self
+        # get ordered feature holder (transcripts / proteins, ordered_features)
+        ordered_fs = self.__getattribute__(ordered_type)
+        ordered_fs.append(transcript_id)
 
     def fully_overlaps(self, other):
         should_match = ['type', 'start', 'end', 'seqid', 'strand', 'phase']
@@ -724,7 +734,7 @@ class StructuredFeature(FeatureLike):
         exon.type = self.super_locus.genome.gffkey.exon
         return exon
 
-    def clone(self, copy_transcripts=True):
+    def clone(self, copy_ordered_features=True):
         """makes valid, independent clone/copy of this feature"""
         new = StructuredFeature()
         copy_over = copy.deepcopy(list(new.__dict__.keys()))
@@ -735,9 +745,13 @@ class StructuredFeature(FeatureLike):
         # handle can't just be copied things
         new.super_locus = self.super_locus
         new.id = self.super_locus.genome.feature_ider.next_unique_id()
-        if copy_transcripts:
+        if copy_ordered_features:
             for transcript in self.transcripts:
-                new.link_to_transcript_and_back(transcript)
+                new.link_to_ordered_and_back(transcript, 'transcripts')
+            for protein in self.proteins:
+                new.link_to_ordered_and_back(protein, 'proteins')
+            for ordf in self.ordered_features:
+                new.link_to_ordered_and_back(ordf, 'ordered_features')
 
         # copy the rest
         for item in copy_over:
@@ -762,14 +776,20 @@ class StructuredFeature(FeatureLike):
     def merge(self, other):
         assert self is not other
         # move transcript reference from other to self
-        for transcript_id in copy.deepcopy(other.transcripts):
-            self.link_to_transcript_and_back(transcript_id)
-            other.de_link_from_transcript(transcript_id)
+        for fset in ['transcripts', 'ordered_features', 'proteins']:
+            for ordf in copy.deepcopy(other.__getattribute__(fset)):
+                self.link_to_ordered_and_back(ordf, fset)
+                other.de_link_from_transcript(ordf)
 
-    def de_link_from_transcript(self, transcript_id):
-        transcript = self.super_locus.transcripts[transcript_id]  # get transcript
-        transcript.remove_feature(self.id)  # drop other
-        self.transcripts.pop(self.transcripts.index(transcript_id))
+    def de_link_from_ordered_feature(self, ordered_feature_id, ordered_type='ordered_features'):
+        assert ordered_type in ['transcripts', 'proteins', 'ordered_features']
+        sl_ordered_fs = self.super_locus.__getattribute__(ordered_type)
+        ordered_f = sl_ordered_fs[ordered_feature_id]  # get transcript
+        ordered_f.remove_feature(self.id)  # drop other
+
+        # and drop from local ordered feature set
+        ordered_fs = self.__getattribute__(ordered_type)
+        ordered_fs.pop(ordered_fs.index(ordered_feature_id))
 
     def is_plus_strand(self):
         if self.strand == '+':
