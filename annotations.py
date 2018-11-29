@@ -101,6 +101,7 @@ class AnnotatedGenome(GenericData):
         self.meta_info = MetaInfoAnnoGenome()
         self.gffkey = FeatureDecoder()
         self.transcript_ider = helpers.IDMaker(prefix='trx')
+        self.protein_ider = helpers.IDMaker(prefix='prt')
         self.feature_ider = helpers.IDMaker(prefix='ftr')
 
     def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
@@ -438,6 +439,8 @@ class SuperLocus(FeatureLike):
             transcript.delink_features(old_features)
             to_remove += old_features
         self.remove_features(to_remove)
+        # TODO, this needs to switch ordered_features to transcripts & proteins after cleaning! WAS HERE
+
 
     def add_features(self, features, ordered_features=None, ordered_type='ordered_features'):
         ordered_features = none_to_list(ordered_features)
@@ -1025,6 +1028,12 @@ class TranscriptInterpreter(TranscriptInterpBase):
     def __init__(self, transcript):
         super().__init__(transcript)
         self.clean_features = []  # will hold all the 'fixed' features
+        self.transcript = transcript.swap_type('transcripts')
+        self.proteins = {}
+
+    # todo, divvy features to transcript or proteins
+    # todo, get_protein_id function (protein_id, Parent of CDS, None to IDMAker)
+    # todo, make new protein when ID changes / if we've hit stop codon?
 
     @staticmethod
     def new_feature(template, **kwargs):
