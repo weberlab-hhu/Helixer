@@ -95,7 +95,8 @@ class AnnotatedGenome(GenericData):
                       ('meta_info', True, MetaInfoAnnoGenome, None),
                       ('gffkey', False, FeatureDecoder, None),
                       ('transcript_ider', False, helpers.IDMaker, None),
-                      ('feature_ider', False, helpers.IDMaker, None)]
+                      ('feature_ider', False, helpers.IDMaker, None),
+                      ('protein_ider', False, helpers.IDMaker, None)]
 
         self.super_loci_slices = []
         self.meta_info = MetaInfoAnnoGenome()
@@ -118,7 +119,6 @@ class AnnotatedGenome(GenericData):
         pass
 
     def clean_post_load(self):
-        print('cleaning anno genome')
         for sl in self.super_loci_slices:
             sl.genome = self
 
@@ -171,15 +171,16 @@ class FeatureLike(GenericData):
         self.spec += [('id', True, str, None),
                       ('type', True, str, None),
                       ('is_partial', True, bool, None),
+                      ("gff_entry", False, gffhelper.GFFObject, None),
                       #('is_reconstructed', True, bool, None),
                       #('is_type_in_question', True, bool, None)
                       ]
         self.id = ''
         self.type = ''
         self.is_partial = False
+        self.gff_entry = None
         # self.is_reconstructed = False
         # self.is_type_in_question = False
-
 
 
 class SuperLociSlice(GenericData):
@@ -306,9 +307,7 @@ class SuperLociSlice(GenericData):
         raise NotImplementedError
 
     def clean_post_load(self):
-        print('cleaning slice', self.slice_id)
         for sl in self.super_loci:
-            print('did that make a call to deepcopy?')
             sl.slice = self
 
     def __deepcopy__(self, memodict={}):
@@ -375,6 +374,7 @@ class SuperLocus(FeatureLike):
             gene_id = entry.get_ID()
             self.id = gene_id
             self.ids.append(gene_id)
+            self.gff_entry = entry
         elif entry.type in gffkey.transcribed:
             parent = self.one_parent(entry)
             assert parent == self.id, "not True :( [{} == {}]".format(parent, self.id)
@@ -430,9 +430,11 @@ class SuperLocus(FeatureLike):
         # recreate transcribed / exon as necessary
         # todo, but with reconstructed flag (also check for and mark pseudogenes)
         to_remove = []
-        for transcript in self.ordered_features.values():
+        for key in copy.deepcopy(list(self.ordered_features.keys())):
+            transcript = self.ordered_features[key]
             old_features = copy.deepcopy(transcript.features)
             t_interpreter = TranscriptInterpreter(transcript)
+            transcript = t_interpreter.transcript  # because of non-inplace shift from ofs -> transcripts, todo, fix
             t_interpreter.decode_raw_features()
             # no transcript, as they're already linked
             self.add_features(t_interpreter.clean_features, ordered_features=None)
@@ -482,7 +484,6 @@ class SuperLocus(FeatureLike):
         pass
 
     def clean_post_load(self):
-        print('cleaning sl', self.id)
         for key in self.transcripts:
             self.transcripts[key].super_locus = self
 
@@ -490,7 +491,6 @@ class SuperLocus(FeatureLike):
             self.features[key].super_locus = self
 
     def __deepcopy__(self, memodict={}):
-        print('copying sl: ', self.id)
         new = SuperLocus()
         copy_over = copy.deepcopy(list(new.__dict__.keys()))
 
@@ -540,6 +540,7 @@ class OrderedFeatures(FeatureLike):
         self.super_locus = super_locus
         self.id = gff_entry.get_ID()
         self.type = gff_entry.type
+        self.gff_entry = gff_entry
 
     def link_to_feature(self, feature_id):
         assert feature_id not in self.features, "{} already in features {} for {} {} in loci {}".format(
@@ -590,7 +591,16 @@ class OrderedFeatures(FeatureLike):
             logging.warning('switching from type {} to {} (or any other type) not fully supported'.format(
                 old_ordered_type, new_ordered_type
             ))
-        new = self.__deepcopy__()
+        # setup new type with all transferable attributes
+        to_transfer = self.__deepcopy__()  # todo, wtf? need to call new of given type and copy stuff over?
+        of_type = [x for x in [Transcribed, Translated, OrderedFeatures] if x.of_type == new_ordered_type][0]
+        new = of_type()
+        transferable = set(to_transfer.__dict__.keys())
+        transferable.remove('spec')
+        transferable = transferable.intersection(set(new.__dict__.keys()))
+        for item in transferable:
+            new.__setattr__(item, to_transfer.__getattribute__(item))
+
         add_to = self.super_locus.__getattribute__(new_ordered_type)
         remove_from = self.super_locus.__getattribute__(old_ordered_type)
 
@@ -604,6 +614,7 @@ class OrderedFeatures(FeatureLike):
         # remove old from
         remove_from.pop(self.id)
         return new
+
 
 
 class Transcribed(OrderedFeatures):
@@ -673,6 +684,7 @@ class StructuredFeature(FeatureLike):
         except TypeError:
             fid = None
             logging.debug('no ID in attr {} in {}, making new unique ID'.format(gff_entry.attribute, super_locus.id))
+        self.gff_entry = gff_entry
         self.super_locus = super_locus
         self.id = super_locus.genome.feature_ider.next_unique_id(fid)
         self.type = gff_entry.type
@@ -747,8 +759,8 @@ class StructuredFeature(FeatureLike):
         assert ordered_type in ['transcripts', 'proteins', 'ordered_features']
         sl_ordered_fs = self.super_locus.__getattribute__(ordered_type)
         ordered_f = sl_ordered_fs[ordered_feature_id]  # get transcript
-        ordered_f.remove_feature(self.id)  # drop other
 
+        ordered_f.remove_feature(self.id)  # drop other
         # and drop from local ordered feature set
         ordered_fs = self.__getattribute__(ordered_type)
         ordered_fs.pop(ordered_fs.index(ordered_feature_id))
@@ -1048,6 +1060,9 @@ class TranscriptInterpreter(TranscriptInterpBase):
             return interval_set[0]
         else:
             return [x for x in interval_set if x.data.type == target_type][0]
+
+    def get_protein_from_cds(self, cds_feature):
+        pass
 
     def is_plus_strand(self):
         features = [self.super_locus.features[f] for f in self.transcript.features]

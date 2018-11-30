@@ -60,7 +60,10 @@ class GenericData(object):
 
     def get_key_spec(self, key):
         key_spec = [s for s in self.spec if s[0] == key]
-        assert len(key_spec) == 1, "{} attribute has {} instead of 1 matches in spec".format(key, len(key_spec))
+        assert len(key_spec) == 1, "{} attribute has {} instead of 1 matches in spec of {}L {}".format(key,
+                                                                                                       len(key_spec),
+                                                                                                       type(self),
+                                                                                                       self.spec)
         return key_spec[0]
 
     @staticmethod

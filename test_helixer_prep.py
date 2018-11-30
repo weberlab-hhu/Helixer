@@ -181,15 +181,15 @@ def setup_testable_super_loci():
     transcripts = []
     features = []
     for i in range(3):
-        t = annotations.Transcribed()
+        t = annotations.OrderedFeatures()
         t.id = t_ids[i]
         t.super_locus = sl
         for j in t_features[i]:
             e = annotations.StructuredFeature()
             e.id = genome.feature_ider.next_unique_id()
-            e.transcripts = [t.id]
+            e.ordered_features = [t.id]
             c = annotations.StructuredFeature()
-            c.transcripts = [t.id]
+            c.ordered_features = [t.id]
             c.id = genome.feature_ider.next_unique_id()
             print('transcript {}: [exon: {}, cds: {}, coord: {}]'.format(t.id, e.id, c.id, f_coord[j]))
             e.super_locus = c.super_locus = sl
@@ -201,7 +201,7 @@ def setup_testable_super_loci():
             features += [e, c]
         transcripts.append(t)
     for t in transcripts:
-        sl.transcripts[t.id] = t
+        sl.ordered_features[t.id] = t
     for f in features:
         sl.features[f.id] = f
     # transcript x: [exon: ftr000000, cds: ftr000001, coord: (0, 100)]
@@ -268,7 +268,7 @@ def test_transcript_interpreter():
     # change so that there are implicit UTRs
     sl.features['ftr000005'].start = 11  # start first CDS later
     sl.features['ftr000009'].end = 330  # end first CDS sooner
-    transcript = sl.transcripts['y']
+    transcript = sl.ordered_features['y']
     t_interp = annotations.TranscriptInterpreter(transcript)
     t_interp.decode_raw_features()
     # has all standard features
@@ -285,7 +285,7 @@ def test_transcript_interpreter():
 def test_transcript_get_first():
     # plus strand
     sl = setup_loci_with_utr()
-    transcript = sl.transcripts['y']
+    transcript = sl.ordered_features['y']
     t_interp = annotations.TranscriptInterpreter(transcript)
     i0 = t_interp.intervals_5to3(plus_strand=True)[0]
     t_interp.interpret_first_pos(i0)
@@ -306,7 +306,7 @@ def test_transcript_get_first():
     for feature in sl.features.values():  # force minus strand
         feature.strand = '-'
 
-    transcript = sl.transcripts['y']
+    transcript = sl.ordered_features['y']
     t_interp = annotations.TranscriptInterpreter(transcript)
     i0 = t_interp.intervals_5to3(plus_strand=False)[0]
     t_interp.interpret_first_pos(i0, plus_strand=False)
@@ -323,7 +323,7 @@ def test_transcript_get_first():
     assert f0.strand == '-'
 
     # test without UTR (x doesn't have last exon, and therefore will end in CDS)
-    transcript = sl.transcripts['x']
+    transcript = sl.ordered_features['x']
     t_interp = annotations.TranscriptInterpreter(transcript)
     i0 = t_interp.intervals_5to3(plus_strand=False)[0]
     t_interp.interpret_first_pos(i0, plus_strand=False)
@@ -350,7 +350,7 @@ def test_transcript_get_first():
 
 def test_transcript_transition_from_5p_to_end():
     sl = setup_loci_with_utr()
-    transcript = sl.transcripts['y']
+    transcript = sl.ordered_features['y']
     t_interp = annotations.TranscriptInterpreter(transcript)
     ivals_sets = t_interp.intervals_5to3(plus_strand=True)
     t_interp.interpret_first_pos(ivals_sets[0])
@@ -386,7 +386,7 @@ def test_transcript_transition_from_5p_to_end():
 def test_non_coding_transitions():
     sl = setup_testable_super_loci()
     # get single-exon no-CDS transcript
-    transcript = sl.transcripts['z']
+    transcript = sl.ordered_features['z']
     transcript.remove_feature('ftr000011')
     print(transcript.short_str())
     t_interp = annotations.TranscriptInterpreter(transcript)
@@ -549,16 +549,16 @@ def test_gff_to_seqids():
 
 def test_swap_type():
     sl = setup_loci_with_utr()
-    transcript = sl.transcripts['x']
-    old_n_transcripts = len(sl.transcripts)
-    ori_transcript_features = copy.deepcopy(transcript.features)
-    protein = transcript.swap_type('proteins')
-    assert len(sl.transcripts) == old_n_transcripts - 1
+    ordered_feature = sl.ordered_features['x']
+    old_n_ordered_features = len(sl.ordered_features)
+    ori_ordered_feature_features = copy.deepcopy(ordered_feature.features)
+    protein = ordered_feature.swap_type('proteins')
+    assert len(sl.ordered_features) == old_n_ordered_features - 1
     assert len(sl.proteins) == 1
-    assert transcript.id not in sl.transcripts
-    assert transcript.id == protein.id
-    assert ori_transcript_features == protein.features
-    assert transcript.super_locus is protein.super_locus
+    assert ordered_feature.id not in sl.ordered_features
+    assert ordered_feature.id == protein.id
+    assert ori_ordered_feature_features == protein.features
+    assert ordered_feature.super_locus is protein.super_locus
 
 
 #### partitions
