@@ -600,7 +600,7 @@ class OrderedFeatures(FeatureLike):
         # swap feature links from old to new
         for fkey in copy.deepcopy(self.features):
             feature = self.super_locus.features[fkey]
-            feature.de_link_from_ordered_feature(self.id, old_ordered_type)
+            #feature.de_link_from_ordered_feature(self.id, old_ordered_type)
             feature.link_to_feature_holder(new.id, new_ordered_type)
         # remove old from
         print(self.id)
@@ -612,6 +612,11 @@ class OrderedFeatures(FeatureLike):
     def swap_type(self, new_ordered_type):
         new = self.clone_but_swap_type(new_ordered_type)
         old_ordered_type = type(self).of_type
+        for fkey in copy.deepcopy(self.features):
+            feature = self.super_locus.features[fkey]
+            feature.de_link_from_ordered_feature(self.id, old_ordered_type)
+            #feature.link_to_feature_holder(new.id, new_ordered_type)
+
         remove_from = self.super_locus.__getattribute__(old_ordered_type)
         remove_from.pop(self.id)
         return new
@@ -741,9 +746,12 @@ class StructuredFeature(FeatureLike):
         self.type = self.super_locus.genome.gffkey.error
 
     def link_to_ordered_and_back(self, ordered_feature_id, ordered_type='ordered_features'):
+        self_ordered_feature_holders = self.__getattribute__(ordered_type)
         assert ordered_type in ['transcripts', 'proteins', 'ordered_features']
-        assert ordered_feature_id not in self.transcripts, "{} already in transcripts {}".format(ordered_feature_id,
-                                                                                                 self.transcripts)
+        e = "{} already in {}: {}".format(
+            ordered_feature_id, ordered_type, self_ordered_feature_holders
+        )
+        assert ordered_feature_id not in self_ordered_feature_holders, e
         sl_ordered_fs = self.super_locus.__getattribute__(ordered_type)
         ordered_f = sl_ordered_fs[ordered_feature_id]  # get transcript
         ordered_f.link_to_feature(self.id)  # link to and from self
@@ -1042,9 +1050,12 @@ class TranscriptInterpreter(TranscriptInterpBase):
     def __init__(self, transcript):
         super().__init__(transcript)
         self.clean_features = []  # will hold all the 'fixed' features
+        print(transcript.features, 'were there still features')
         self.transcript = transcript.swap_type('transcripts')
+        print(self.transcript.features, 'did features survive?')
         self.protein_id_key = self._get_raw_protein_ids()
         self.proteins = self._setup_proteins()
+        print(self.transcript.features, 'did features still survive?')
 
     # todo, divvy features to transcript or proteins
     # todo, get_protein_id function (protein_id, Parent of CDS, None to IDMAker)
@@ -1397,6 +1408,10 @@ class TranscriptInterpreter(TranscriptInterpBase):
         # todo, handle non-single seqid loci
         tree = intervaltree.IntervalTree()
         features = [self.super_locus.features[f] for f in self.transcript.features]
+        print('starting features {} for org n split'.format(features))
+        print(self.transcript.features, 't features')
+        print(self.transcript.short_str(), 't short')
+        print(self.super_locus.features, 'sl features')
         for f in features:
             tree[f.py_start:f.py_end] = f
         tree.split_overlaps()
