@@ -214,14 +214,17 @@ class SuperLociSlice(GenericData):
             self._seq_info = seq_info
         return self._seq_info
 
-    def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
-        err_handle = open(err_file, 'w')
+    def _add_sequences(self, genome):
         for seq in genome.sequences:
             mi = CoordinateInfo()
             mi.seqid = seq.meta_info.seqid
             mi.start = 1
             mi.end = seq.meta_info.total_bp
             self.coordinates.append(mi)
+
+    def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
+        err_handle = open(err_file, 'w')
+        self._add_sequences(genome)
 
         gff_seq_ids = helpers.get_seqids_from_gff(gff_file)
         mapper, is_forward = helpers.two_way_key_match(self.seq_info.keys(), gff_seq_ids)
@@ -390,11 +393,11 @@ class SuperLocus(FeatureLike):
         entries = list(entries)
         for entry in entries:
             self.add_gff_entry(entry)
-        self.check_and_fix_structure(entries)
 
     def add_gff_entry_group(self, entries, ts_err_handle):
         try:
             self._add_gff_entry_group(entries)
+            self.check_and_fix_structure(entries)
         except TransSplicingError as e:
             self._mark_erroneous(entries[0])
             logging.warning('skipping but noting trans-splicing: {}'.format(str(e)))
@@ -433,6 +436,10 @@ class SuperLocus(FeatureLike):
         for key in copy.deepcopy(list(self.ordered_features.keys())):
             transcript = self.ordered_features[key]
             old_features = copy.deepcopy(transcript.features)
+            print('do we still have gff_entries??')
+            for fkey in old_features:
+                if self.features[fkey].gff_entry:
+                    print('None at {}'.format(fkey))
             t_interpreter = TranscriptInterpreter(transcript)
             transcript = t_interpreter.transcript  # because of non-inplace shift from ofs -> transcripts, todo, fix
             t_interpreter.decode_raw_features()
@@ -453,6 +460,7 @@ class SuperLocus(FeatureLike):
                 feature.link_to_ordered_feature_and_back(ordered_f.id, ordered_type)
 
     def maybe_reconstruct_exons(self):
+        # todo, deprecate
         """creates any exons necessary, so that all CDS/UTR is contained within an exon"""
         # because introns will be determined from exons, every CDS etc, has to have an exon
         new_exons = []
@@ -579,20 +587,18 @@ class OrderedFeatures(FeatureLike):
             new.__setattr__(item, copy.deepcopy(self.__getattribute__(item)))
 
         new.super_locus = self.super_locus  # fix super_locus
-
+        if new.gff_entry is None:
+            print('warning, gff_entry none at {}'.format(new.id))
         return new
 
-    def swap_type(self, new_ordered_type):
+    def clone_but_swap_type(self, new_ordered_type):
         # todo, should this actually go into some sort of generic ordered subclass?
         old_ordered_type = type(self).of_type
         assert new_ordered_type in ['ordered_features', 'transcripts', 'proteins']  # todo, stop retyping this
         assert new_ordered_type != old_ordered_type  # Shouldn't call swap_type if one has the right type already
-        if old_ordered_type != 'ordered_features':
-            logging.warning('switching from type {} to {} (or any other type) not fully supported'.format(
-                old_ordered_type, new_ordered_type
-            ))
+
         # setup new type with all transferable attributes
-        to_transfer = self.__deepcopy__()  # todo, wtf? need to call new of given type and copy stuff over?
+        to_transfer = self.__deepcopy__()  # can copy from
         of_type = [x for x in [Transcribed, Translated, OrderedFeatures] if x.of_type == new_ordered_type][0]
         new = of_type()
         transferable = set(to_transfer.__dict__.keys())
@@ -602,7 +608,7 @@ class OrderedFeatures(FeatureLike):
             new.__setattr__(item, to_transfer.__getattribute__(item))
 
         add_to = self.super_locus.__getattribute__(new_ordered_type)
-        remove_from = self.super_locus.__getattribute__(old_ordered_type)
+
 
         # put new in requested place
         add_to[new.id] = new
@@ -612,9 +618,18 @@ class OrderedFeatures(FeatureLike):
             feature.de_link_from_ordered_feature(self.id, old_ordered_type)
             feature.link_to_feature_holder(new.id, new_ordered_type)
         # remove old from
-        remove_from.pop(self.id)
+        print(self.id)
+        print(self.super_locus.ordered_features.keys(), 'of keys')
+        print(self.super_locus.transcripts.keys(), 't keys')
+        print(self.super_locus.proteins.keys(), 'p keys')
         return new
 
+    def swap_type(self, new_ordered_type):
+        new = self.clone_but_swap_type(new_ordered_type)
+        old_ordered_type = type(self).of_type
+        remove_from = self.super_locus.__getattribute__(old_ordered_type)
+        remove_from.pop(self.id)
+        return new
 
 
 class Transcribed(OrderedFeatures):
@@ -809,6 +824,8 @@ class StructuredFeature(FeatureLike):
         # copy the rest
         for item in copy_over:
             new.__setattr__(item, copy.deepcopy(self.__getattribute__(item)))
+        if new.gff_entry is None:
+            raise ValueError('want real gff entry')
         return new
 
     def __deepcopy__(self, memodict={}):
@@ -1082,7 +1099,8 @@ class TranscriptInterpreter(TranscriptInterpBase):
     def _get_raw_protein_ids(self):
         # only meant for use before feature interpretation
         protein_ids = set()
-        for feature in self.transcript.features:
+        for fkey in self.transcript.features:
+            feature = self.super_locus.features[fkey]
             if feature.type == self.gffkey.cds:
                 protein_id = self._get_protein_id_from_cds(feature)
                 protein_ids.add(protein_id)
@@ -1095,7 +1113,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
     def _setup_proteins(self):
         proteins = {}
         for key in self.protein_id_key.values():
-            protein = self.transcript.swap_type('proteins')
+            protein = self.transcript.clone_but_swap_type('proteins')
             protein.id = key
             proteins[key] = protein
         return proteins
@@ -1201,12 +1219,15 @@ class TranscriptInterpreter(TranscriptInterpBase):
         return is_gap
 
     def handle_control_codon(self, ivals_before, ivals_after, sign, is_start=True):
-        target_type = None
+        target_after_type = None
+        target_before_type = None
         if is_start:
-            target_type = self.gffkey.cds
+            target_after_type = self.gffkey.cds
+        else:
+            target_before_type = self.gffkey.cds
 
-        after0 = self.pick_one_interval(ivals_after, target_type)
-        before0 = self.pick_one_interval(ivals_before, None)
+        after0 = self.pick_one_interval(ivals_after, target_after_type)
+        before0 = self.pick_one_interval(ivals_before, target_before_type)
         # make sure there is no gap
         is_gap = self.is_gap(ivals_before, ivals_after, sign)
 
@@ -1347,7 +1368,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
     def decode_raw_features(self):
         plus_strand = self.is_plus_strand()
         interval_sets = self.intervals_5to3(plus_strand)
-
+        print(interval_sets, 'interval sets')
         self.interpret_first_pos(interval_sets[0], plus_strand)
         for i in range(len(interval_sets) - 1):
             ivals_before = interval_sets[i]

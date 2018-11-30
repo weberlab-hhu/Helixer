@@ -5,7 +5,7 @@ import helpers
 import pytest
 import partitions
 import copy
-
+from dustdas import gffhelper
 
 ### structure ###
 # testing: add_paired_dictionaries
@@ -157,6 +157,30 @@ def test_fa_matches_sequences_json():
 
 ### annotations ###
 def setup_testable_super_loci():
+    genome = annotations.AnnotatedGenome()
+    # make a dummy sequence
+    sg = sequences.StructuredGenome()
+    sg.add_fasta('testdata/dummyloci.fa')
+
+    # genome.add_gff('testdata/dummyloci.gff3', genome=sg)
+    # add slice
+    sls = annotations.SuperLociSlice()
+    sls.genome = genome
+    sls._add_sequences(sg)
+    # add super locus
+    sl = annotations.SuperLocus()
+    sl.slice = sls
+    sls.super_loci.append(sl)
+    entry_group = gffhelper.read_gff_file('testdata/dummyloci.gff3')
+    sl._add_gff_entry_group(entry_group)
+
+    for feature in sl.features.values():
+        print(feature.short_str())
+    for transcript_in in sl.ordered_features.values():
+        print(transcript_in.short_str())
+    return sl
+
+def setup_testable_super_loci_old():
     # features [--0--][1][---2---]
     f_coord = [(1, 100), (111, 120), (201, 400)]
     # transcript X: [0, 1], Y: [0, 1, 2], Z: [0]
@@ -456,11 +480,14 @@ def test_anno2json_and_back():
 
 def test_to_intervaltree():
     sl = setup_loci_with_utr()
+    print(sl.slice.seq_info, 'seq_info')
+    print(sl.slice._seq_info, '_seq_info')
+    print(sl.slice.coordinates, 'coords')
     trees = sl.slice.load_to_interval_tree()
     print(sl.slice.super_loci, 'loci')
     # get a single tree
     assert len(trees.keys()) == 1
-    tree = trees['']
+    tree = trees['1']
     for itvl in tree:
         print(itvl)
     assert len(tree) == len(sl.features)
@@ -484,7 +511,8 @@ def test_deepcopies():
             pass  # skipping as __eq__ etc not implemented
         else:
             # normal values should be identical
-            assert val == sl2.__getattribute__(key)
+            if key is not 'gff_entry':  # no equality implemented for this class
+                assert val == sl2.__getattribute__(key)
 
     # same idea for one of the sub pieces skipped above
     f = sl.features['ftr000010']
@@ -492,7 +520,8 @@ def test_deepcopies():
     for key in f.__dict__:
         val = f.__getattribute__(key)
         if not isinstance(val, structure.GenericData):
-            assert val == f2.__getattribute__(key)
+            if key is not 'gff_entry':  # no equality implemented for this class
+                assert val == f2.__getattribute__(key)
         else:
             assert val is not f2.__getattribute__(key)
 
@@ -560,6 +589,10 @@ def test_swap_type():
     assert ori_ordered_feature_features == protein.features
     assert ordered_feature.super_locus is protein.super_locus
 
+
+def test_entries_are_imported():
+    sl = setup_loci_with_utr()
+    pass # todo, finish
 
 #### partitions
 def test_stepper():
