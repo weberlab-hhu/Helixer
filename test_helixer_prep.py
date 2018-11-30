@@ -256,37 +256,6 @@ def test_feature_overlap_detection():
     assert not sl.features['ftr000000'].fully_overlaps(sl.features['ftr000002'])
 
 
-def test_add_exon():
-    sl = setup_testable_super_loci()
-
-    # add a cds that needs an exon
-    new_cds = annotations.StructuredFeature()
-    new_cds.super_locus = sl
-    new_cds.id = sl.genome.feature_ider.next_unique_id()
-    new_cds.start, new_cds.end, new_cds.type = 0, 108, sl.genome.gffkey.cds
-    sl.features[new_cds.id] = new_cds
-    old_len = len(sl.features.keys())
-    sl.maybe_reconstruct_exons()
-    assert len(sl.features.keys()) == old_len + 1
-
-    # and add contained features that have an exon
-    # cds
-    new_cds = annotations.StructuredFeature()
-    new_cds.super_locus = sl
-    new_cds.id = sl.genome.feature_ider.next_unique_id()
-    new_cds.start, new_cds.end, new_cds.type = 21, 100, sl.genome.gffkey.cds
-    sl.features[new_cds.id] = new_cds
-    # five prime utr
-    new_utr = annotations.StructuredFeature()
-    new_utr.super_locus = sl
-    new_utr.id = sl.genome.feature_ider.next_unique_id()
-    new_utr.start, new_utr.end, new_utr.type = 1, 20, sl.genome.gffkey.five_prime_UTR
-    sl.features[new_utr.id] = new_utr
-    old_len = len(sl.features.keys())
-    sl.maybe_reconstruct_exons()
-    assert len(sl.features.keys()) == old_len
-
-
 def test_transcript_interpreter():
     sl = setup_loci_with_utr()
     # change so that there are implicit UTRs

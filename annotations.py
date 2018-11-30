@@ -428,8 +428,6 @@ class SuperLocus(FeatureLike):
 
         # collapse identical final features
         #self.collapse_identical_features()  # todo, can I deprecate?
-        # check that all non-exons are in regions covered by an exon
-        #self.maybe_reconstruct_exons()  # todo, can I deprecate?
         # recreate transcribed / exon as necessary
         # todo, but with reconstructed flag (also check for and mark pseudogenes)
         to_remove = []
@@ -458,19 +456,6 @@ class SuperLocus(FeatureLike):
             self.features[feature.id] = feature
             for ordered_f in ordered_features:
                 feature.link_to_ordered_feature_and_back(ordered_f.id, ordered_type)
-
-    def maybe_reconstruct_exons(self):
-        # todo, deprecate
-        """creates any exons necessary, so that all CDS/UTR is contained within an exon"""
-        # because introns will be determined from exons, every CDS etc, has to have an exon
-        new_exons = []
-        exons = self.exons()
-        coding_info = self.coding_info_features()
-        for f in coding_info:
-            if not any([f.is_contained_in(exon) for exon in exons]):
-                new_exons.append(f.reconstruct_exon())  # todo, logging info/debug?
-        for e in new_exons:
-            self.features[e.id] = e
 
     def remove_features(self, to_remove):
         for f_key in to_remove:
