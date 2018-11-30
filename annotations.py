@@ -1041,7 +1041,8 @@ class TranscriptInterpreter(TranscriptInterpBase):
         super().__init__(transcript)
         self.clean_features = []  # will hold all the 'fixed' features
         self.transcript = transcript.swap_type('transcripts')
-        self.proteins = {}
+        self.protein_id_key = self._get_raw_protein_ids()
+        self.proteins = self._setup_proteins()
 
     # todo, divvy features to transcript or proteins
     # todo, get_protein_id function (protein_id, Parent of CDS, None to IDMAker)
@@ -1061,8 +1062,56 @@ class TranscriptInterpreter(TranscriptInterpBase):
         else:
             return [x for x in interval_set if x.data.type == target_type][0]
 
-    def get_protein_from_cds(self, cds_feature):
-        pass
+    def _get_protein_id_from_cds(self, cds_feature):
+        assert cds_feature.type == self.gffkey.cds
+        # check if anything is labeled as protein_id
+        protein_id = cds_feature.gff_entry.attrib_filter(tag='protein_id')
+        # failing that, try and get parent ID (presumably transcript, maybe gene)
+        if not protein_id:
+            protein_id = cds_feature.gff_entry.get_Parent()
+        # hopefully take single hit
+        if len(protein_id) == 1:
+            protein_id = protein_id[0]
+        # or handle other cases
+        elif len(protein_id) == 0:
+            protein_id = None
+        else:
+            raise ValueError('indeterminate single protein id {}'.format(protein_id))
+        return protein_id
+
+    def _get_raw_protein_ids(self):
+        # only meant for use before feature interpretation
+        protein_ids = set()
+        for feature in self.transcript.features:
+            if feature.type == self.gffkey.cds:
+                protein_id = self._get_protein_id_from_cds(feature)
+                protein_ids.add(protein_id)
+        # map if necessary to unique / not-None IDs
+        prot_id_key = {}
+        for pkey in protein_ids:
+            prot_id_key[pkey] = self.super_locus.genome.protein_ider.next_unique_id(pkey)
+        return prot_id_key
+
+    def _setup_proteins(self):
+        proteins = {}
+        for key in self.protein_id_key.values():
+            protein = self.transcript.swap_type('proteins')
+            protein.id = key
+            proteins[key] = protein
+        return proteins
+
+    def _mv_coding_features_to_proteins(self):
+        # only meant for use after feature interpretation
+        for feature in self.clean_features:
+            if feature.type in [self.gffkey.status_coding, self.gffkey.stop_codon, self.gffkey.start_codon]:
+                assert len(feature.transcripts) == 1
+                feature.de_link_from_ordered_feature(
+                    ordered_feature_id=feature.transcripts[0].id,
+                    ordered_type='transcripts'
+                )
+                protein_id = self.protein_id_key[self._get_protein_id_from_cds(feature)]
+                feature.link_to_feature_holder(protein_id,
+                                               'proteins')
 
     def is_plus_strand(self):
         features = [self.super_locus.features[f] for f in self.transcript.features]
@@ -1168,7 +1217,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
             template = after0.data
             # it better be std phase if it's a start codon
             at = template.upstream_from_interval(after0)
-            if template.phase == 0: # "non-0 phase @ {} in {}".format(template.id, template.super_locus.id)
+            if template.phase == 0:  # "non-0 phase @ {} in {}".format(template.id, template.super_locus.id)
                 start, end = min_max(at, at + 2 * sign)
                 start_codon = self.new_feature(template=template, start=start, end=end, type=self.gffkey.start_codon)
                 self.status.saw_start(phase=0)
@@ -1306,6 +1355,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
             self.interpret_transition(ivals_before, ivals_after, plus_strand)
 
         self.interpret_last_pos(intervals=interval_sets[-1])
+        self._mv_coding_features_to_proteins()
 
     def possible_types(self, intervals):
         # shortcuts
