@@ -439,10 +439,7 @@ class SuperLocus(FeatureLike):
         for key in copy.deepcopy(list(self.generic_holders.keys())):
             transcript = self.generic_holders[key]
             old_features = copy.deepcopy(transcript.features)
-            print('do we still have gff_entries??')
-            for fkey in old_features:
-                if self.features[fkey].gff_entry:
-                    print('None at {}'.format(fkey))
+
             t_interpreter = TranscriptInterpreter(transcript)
             transcript = t_interpreter.transcript  # because of non-inplace shift from ofs -> transcripts, todo, fix
             t_interpreter.decode_raw_features()
@@ -607,10 +604,6 @@ class FeatureHolder(FeatureLike):
             feature = self.super_locus.features[fkey]
             feature.link_to_feature_holder(new.id, new_holder_type)
         # remove old from
-        print(self.id)
-        print(self.super_locus.generic_holders.keys(), 'of keys')
-        print(self.super_locus.transcripts.keys(), 't keys')
-        print(self.super_locus.proteins.keys(), 'p keys')
         return new
 
     def swap_type(self, new_holder_type):
@@ -750,6 +743,7 @@ class StructuredFeature(FeatureLike):
         self.type = self.super_locus.genome.gffkey.error
 
     def link_to_feature_holder_and_back(self, holder_id, holder_type=None):
+        print('link_to_feature_holder_and_back ({}) {} {}'.format(self.short_str(), holder_id, holder_type))
         if holder_type is None:
             holder_type = SuperLocus.t_feature_holders
 
@@ -760,6 +754,7 @@ class StructuredFeature(FeatureLike):
         self.link_to_feature_holder(holder_id, holder_type)
 
     def link_to_feature_holder(self, holder_id, holder_type=None):
+        print('link_fo_feature_holder ({}) {} {}'.format(self.short_str(), holder_id, holder_type))
         if holder_type is None:
             holder_type = SuperLocus.t_feature_holders
         holder = self.__getattribute__(holder_type)
@@ -767,7 +762,6 @@ class StructuredFeature(FeatureLike):
         e = "{} already in {}: {}".format(
             holder_id, holder_type, holder
         )
-        print('adding {} to {} {}'.format(holder_id, holder_type, holder))
         assert holder_id not in holder, e
 
         holder.append(holder_id)
@@ -1061,12 +1055,9 @@ class TranscriptInterpreter(TranscriptInterpBase):
     def __init__(self, transcript):
         super().__init__(transcript)
         self.clean_features = []  # will hold all the 'fixed' features
-        print(transcript.features, 'were there still features')
         self.transcript = transcript.swap_type('transcripts')
-        print(self.transcript.features, 'did features survive?')
         self.protein_id_key = self._get_raw_protein_ids()
         self.proteins = self._setup_proteins()
-        print(self.transcript.features, 'did features still survive?')
 
     # todo, divvy features to transcript or proteins
     # todo, get_protein_id function (protein_id, Parent of CDS, None to IDMAker)
@@ -1087,7 +1078,8 @@ class TranscriptInterpreter(TranscriptInterpBase):
             return [x for x in interval_set if x.data.type == target_type][0]
 
     def _get_protein_id_from_cds(self, cds_feature):
-        assert cds_feature.type == self.gffkey.cds
+        assert cds_feature.gff_entry.type == self.gffkey.cds, "{} != {}".format(cds_feature.gff_entry.type,
+                                                                                self.gffkey.cds)
         # check if anything is labeled as protein_id
         protein_id = cds_feature.gff_entry.attrib_filter(tag='protein_id')
         # failing that, try and get parent ID (presumably transcript, maybe gene)
@@ -1096,11 +1088,16 @@ class TranscriptInterpreter(TranscriptInterpBase):
         # hopefully take single hit
         if len(protein_id) == 1:
             protein_id = protein_id[0]
+            if isinstance(protein_id, gffhelper.GFFAttribute):
+                protein_id = protein_id.value
+                assert len(protein_id) == 1
+                protein_id = protein_id[0]
         # or handle other cases
         elif len(protein_id) == 0:
             protein_id = None
         else:
             raise ValueError('indeterminate single protein id {}'.format(protein_id))
+        print(protein_id, type(protein_id), 'pid, type')
         return protein_id
 
     def _get_raw_protein_ids(self):
@@ -1119,10 +1116,12 @@ class TranscriptInterpreter(TranscriptInterpBase):
 
     def _setup_proteins(self):
         proteins = {}
-        for key in self.protein_id_key.values():
-            protein = self.transcript.clone_but_swap_type('proteins')
-            protein.id = key
-            proteins[key] = protein
+        for key in self.protein_id_key:
+            val = self.protein_id_key[key]
+            print('making protein {} (ori was {})'.format(val, key))
+            protein = self.transcript.clone_but_swap_type(SuperLocus.t_proteins)
+            protein.id = val
+            proteins[val] = protein
         return proteins
 
     def _mv_coding_features_to_proteins(self):
@@ -1131,12 +1130,11 @@ class TranscriptInterpreter(TranscriptInterpBase):
             if feature.type in [self.gffkey.status_coding, self.gffkey.stop_codon, self.gffkey.start_codon]:
                 assert len(feature.transcripts) == 1
                 feature.de_link_from_feature_holder(
-                    holder_id=feature.transcripts[0].id,
-                    holder_type='transcripts'
+                    holder_id=feature.transcripts[0],
+                    holder_type=SuperLocus.t_transcripts
                 )
                 protein_id = self.protein_id_key[self._get_protein_id_from_cds(feature)]
-                feature.link_to_feature_holder(protein_id,
-                                               'proteins')
+                feature.link_to_feature_holder(protein_id, SuperLocus.t_proteins)
 
     def is_plus_strand(self):
         features = [self.super_locus.features[f] for f in self.transcript.features]
@@ -1419,10 +1417,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
         # todo, handle non-single seqid loci
         tree = intervaltree.IntervalTree()
         features = [self.super_locus.features[f] for f in self.transcript.features]
-        print('starting features {} for org n split'.format(features))
-        print(self.transcript.features, 't features')
-        print(self.transcript.short_str(), 't short')
-        print(self.super_locus.features, 'sl features')
         for f in features:
             tree[f.py_start:f.py_end] = f
         tree.split_overlaps()
