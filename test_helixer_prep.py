@@ -238,7 +238,9 @@ def setup_testable_super_loci_old():
 
 
 def setup_loci_with_utr():
+    print('before superloci setup')
     sl = setup_testable_super_loci()
+    print('after superloci setup')
     for key_1stCDS in ['ftr000001', 'ftr000005', 'ftr000011']:
         sl.features[key_1stCDS].start = 11  # start first CDS later
         sl.features[key_1stCDS].phase = 0  # let's just assume the initial phase is correct
@@ -562,6 +564,23 @@ def test_swap_type():
 def test_entries_are_imported():
     sl = setup_loci_with_utr()
     pass # todo, finish
+
+
+def test_renamer():
+    staticsl = setup_loci_with_utr()
+    sl = setup_loci_with_utr()
+    y = sl.generic_holders['y']
+    newy = y.replace_id_everywhere('newy')
+    print(sl.generic_holders.keys())
+    assert 'newy' in sl.generic_holders.keys()
+    assert 'y' not in sl.generic_holders.keys()
+    for key in sl.features.keys():
+        val_old = staticsl.features[key]
+        val = sl.features[key]
+        if 'y' in val_old.generic_holders:
+            assert 'y' not in val.generic_holders
+            assert 'newy' in val.generic_holders
+
 
 #### partitions
 def test_stepper():

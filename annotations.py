@@ -538,13 +538,18 @@ class FeatureHolder(FeatureLike):
         self.type = gff_entry.type
         self.gff_entry = gff_entry
 
-    def link_to_feature(self, feature_id):
+    def link_to_feature(self, feature_id, at=None):
         assert feature_id not in self.features, "{} already in features {} for {} {} in loci {}".format(
             feature_id, self.features, self.type, self.id, self.super_locus.id)
-        self.features.append(feature_id)
+        if at is None:
+            self.features.append(feature_id)
+        else:
+            self.features.insert(at, feature_id)
 
     def remove_feature(self, feature_id):
-        self.features.pop(self.features.index(feature_id))
+        at = self.features.index(feature_id)
+        self.features.pop(at)
+        return at
 
     def short_str(self):
         return '{}. --> {}'.format(self.id, self.features)
@@ -618,6 +623,36 @@ class FeatureHolder(FeatureLike):
         remove_from.pop(self.id)
         return new
 
+    def feature_obj(self, feature_id):
+        return self.super_locus.features[feature_id]
+
+    def feature_objs(self):
+        return [self.feature_obj(x) for x in self.features]
+
+    def replace_id_everywhere(self, new_id):
+        holder_type = type(self).holder_type
+        # new object with new id
+        new = self.__deepcopy__()
+        new.id = new_id
+        # add to super_locus
+        add_to = self.super_locus.__getattribute__(holder_type)
+        add_to[new_id] = new
+
+        old_id = self.id
+        # replace all references to features
+        for fobj in self.feature_objs():
+            at = fobj.de_link_from_feature_holder(old_id, holder_type)  # todo, keep the position!
+            fobj.link_to_feature_holder(new_id, holder_type, at=at)
+        # replace any other by-id references
+        self.replace_subclass_only_ids(new_id)
+        # remove self from superlocus
+        add_to.pop(self.id)
+        # convenience
+        return new
+
+    def replace_subclass_only_ids(self, new_id):
+        pass
+
 
 class Transcribed(FeatureHolder):
     holder_type = 'transcripts'
@@ -628,6 +663,18 @@ class Transcribed(FeatureHolder):
 
         self.proteins = []  # list of protein IDs, matching subset of keys in self.super_locus.proteins
 
+    def replace_subclass_only_ids(self, new_id):
+        for prot in self.protein_objs():
+            i = prot.transcripts.index(self.id)
+            prot.transcripts.pop(i)
+            prot.transcripts.insert(i, new_id)
+
+    def protein_obj(self, prot_id):
+        return self.super_locus.proteins[prot_id]
+
+    def protein_objs(self):
+        return [self.protein_obj(x) for x in self.proteins]
+
 
 class Translated(FeatureHolder):
     holder_type = 'proteins'
@@ -637,6 +684,18 @@ class Translated(FeatureHolder):
         self.spec += [('transcripts', True, list, None)]
 
         self.transcripts = []  # list of transcript IDs, matching subset of keys in self.super_locus.transcripts
+
+    def replace_subclass_only_ids(self, new_id):
+        for transcript in self.transcript_objs():
+            i = transcript.transcripts.index(self.id)
+            transcript.transcripts.pop(i)
+            transcript.transcripts.insert(i, new_id)
+
+    def transcript_obj(self, prot_id):
+        return self.super_locus.transcripts[prot_id]
+
+    def transcript_objs(self):
+        return [self.transcript_obj(x) for x in self.transcripts]
 
 
 class StructuredFeature(FeatureLike):
@@ -742,18 +801,18 @@ class StructuredFeature(FeatureLike):
     def change_to_error(self):
         self.type = self.super_locus.genome.gffkey.error
 
-    def link_to_feature_holder_and_back(self, holder_id, holder_type=None):
+    def link_to_feature_holder_and_back(self, holder_id, holder_type=None, at=None):
         print('link_to_feature_holder_and_back ({}) {} {}'.format(self.short_str(), holder_id, holder_type))
         if holder_type is None:
             holder_type = SuperLocus.t_feature_holders
 
         sl_holders = self.super_locus.__getattribute__(holder_type)
-        holder = sl_holders[holder_id]  # get transcript
-        holder.link_to_feature(self.id)  # link to and from self
+        holder = sl_holders[holder_id]  # get feature holder
+        holder.link_to_feature(self.id, at)  # link to and from self
         # get ordered feature holder (transcripts / proteins / feature_holders)
         self.link_to_feature_holder(holder_id, holder_type)
 
-    def link_to_feature_holder(self, holder_id, holder_type=None):
+    def link_to_feature_holder(self, holder_id, holder_type=None, at=None):
         print('link_fo_feature_holder ({}) {} {}'.format(self.short_str(), holder_id, holder_type))
         if holder_type is None:
             holder_type = SuperLocus.t_feature_holders
@@ -763,8 +822,10 @@ class StructuredFeature(FeatureLike):
             holder_id, holder_type, holder
         )
         assert holder_id not in holder, e
-
-        holder.append(holder_id)
+        if at is None:
+            holder.append(holder_id)
+        else:
+            holder.insert(at, holder_id)
 
     def de_link_from_feature_holder(self, holder_id, holder_type=None):
         if holder_type is None:
@@ -773,10 +834,11 @@ class StructuredFeature(FeatureLike):
         sl_holders = self.super_locus.__getattribute__(holder_type)
         holder = sl_holders[holder_id]  # get transcript
 
-        holder.remove_feature(self.id)  # drop other
+        at = holder.remove_feature(self.id)  # drop other
         # and drop from local ordered feature holder set
         holders = self.__getattribute__(holder_type)
         holders.pop(holders.index(holder_id))
+        return at
 
     def fully_overlaps(self, other):
         should_match = ['type', 'start', 'end', 'seqid', 'strand', 'phase']
@@ -1120,11 +1182,16 @@ class TranscriptInterpreter(TranscriptInterpBase):
             val = self.protein_id_key[key]
             print('making protein {} (ori was {})'.format(val, key))
             protein = self.transcript.clone_but_swap_type(SuperLocus.t_proteins)
-            protein.id = val
+            protein = protein.replace_id_everywhere(val)
             proteins[val] = protein
         return proteins
 
     def _mv_coding_features_to_proteins(self):
+        print('proteins to move to', self.proteins)
+        print('known proteins in sl', self.super_locus.proteins.keys())
+        print('proteins in key', self.protein_id_key)
+        for protein in self.proteins:
+            print(protein, self.super_locus.proteins[protein].features, 'pid, p features')
         # only meant for use after feature interpretation
         for feature in self.clean_features:
             if feature.type in [self.gffkey.status_coding, self.gffkey.stop_codon, self.gffkey.start_codon]:
