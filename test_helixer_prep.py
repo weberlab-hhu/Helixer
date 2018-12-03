@@ -211,9 +211,9 @@ def setup_testable_super_loci_old():
         for j in t_features[i]:
             e = annotations.StructuredFeature()
             e.id = genome.feature_ider.next_unique_id()
-            e.ordered_features = [t.id]
+            e.generic_holders = [t.id]
             c = annotations.StructuredFeature()
-            c.ordered_features = [t.id]
+            c.generic_holders = [t.id]
             c.id = genome.feature_ider.next_unique_id()
             print('transcript {}: [exon: {}, cds: {}, coord: {}]'.format(t.id, e.id, c.id, f_coord[j]))
             e.super_locus = c.super_locus = sl
@@ -225,7 +225,7 @@ def setup_testable_super_loci_old():
             features += [e, c]
         transcripts.append(t)
     for t in transcripts:
-        sl.ordered_features[t.id] = t
+        sl.generic_holders[t.id] = t
     for f in features:
         sl.features[f.id] = f
     # transcript x: [exon: ftr000000, cds: ftr000001, coord: (0, 100)]
@@ -261,7 +261,7 @@ def test_transcript_interpreter():
     # change so that there are implicit UTRs
     sl.features['ftr000005'].start = 11  # start first CDS later
     sl.features['ftr000009'].end = 330  # end first CDS sooner
-    transcript = sl.ordered_features['y']
+    transcript = sl.generic_holders['y']
     t_interp = annotations.TranscriptInterpreter(transcript)
     t_interp.decode_raw_features()
     # has all standard features
@@ -278,7 +278,7 @@ def test_transcript_interpreter():
 def test_transcript_get_first():
     # plus strand
     sl = setup_loci_with_utr()
-    transcript = sl.ordered_features['y']
+    transcript = sl.generic_holders['y']
     t_interp = annotations.TranscriptInterpreter(transcript)
     i0 = t_interp.intervals_5to3(plus_strand=True)[0]
     t_interp.interpret_first_pos(i0)
@@ -299,7 +299,7 @@ def test_transcript_get_first():
     for feature in sl.features.values():  # force minus strand
         feature.strand = '-'
 
-    transcript = sl.ordered_features['y']
+    transcript = sl.generic_holders['y']
     t_interp = annotations.TranscriptInterpreter(transcript)
     i0 = t_interp.intervals_5to3(plus_strand=False)[0]
     t_interp.interpret_first_pos(i0, plus_strand=False)
@@ -316,7 +316,7 @@ def test_transcript_get_first():
     assert f0.strand == '-'
 
     # test without UTR (x doesn't have last exon, and therefore will end in CDS)
-    transcript = sl.ordered_features['x']
+    transcript = sl.generic_holders['x']
     t_interp = annotations.TranscriptInterpreter(transcript)
     i0 = t_interp.intervals_5to3(plus_strand=False)[0]
     t_interp.interpret_first_pos(i0, plus_strand=False)
@@ -343,7 +343,7 @@ def test_transcript_get_first():
 
 def test_transcript_transition_from_5p_to_end():
     sl = setup_loci_with_utr()
-    transcript = sl.ordered_features['y']
+    transcript = sl.generic_holders['y']
     t_interp = annotations.TranscriptInterpreter(transcript)
     ivals_sets = t_interp.intervals_5to3(plus_strand=True)
     t_interp.interpret_first_pos(ivals_sets[0])
@@ -547,16 +547,16 @@ def test_gff_to_seqids():
 
 def test_swap_type():
     sl = setup_loci_with_utr()
-    ordered_feature = sl.generic_holders['x']
-    old_n_ordered_features = len(sl.generic_holders)
-    ori_ordered_feature_features = copy.deepcopy(ordered_feature.features)
-    protein = ordered_feature.swap_type('proteins')
-    assert len(sl.generic_holders) == old_n_ordered_features - 1
+    holder = sl.generic_holders['x']
+    old_n_feature_holders = len(sl.generic_holders)
+    ori_fholder_features = copy.deepcopy(holder.features)
+    protein = holder.swap_type('proteins')
+    assert len(sl.generic_holders) == old_n_feature_holders - 1
     assert len(sl.proteins) == 1
-    assert ordered_feature.id not in sl.generic_holders
-    assert ordered_feature.id == protein.id
-    assert ori_ordered_feature_features == protein.features
-    assert ordered_feature.super_locus is protein.super_locus
+    assert holder.id not in sl.generic_holders
+    assert holder.id == protein.id
+    assert ori_fholder_features == protein.features
+    assert holder.super_locus is protein.super_locus
 
 
 def test_entries_are_imported():
