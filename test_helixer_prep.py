@@ -176,7 +176,7 @@ def setup_testable_super_loci():
 
     for feature in sl.features.values():
         print(feature.short_str())
-    for transcript_in in sl.ordered_features.values():
+    for transcript_in in sl.generic_holders.values():
         print(transcript_in.short_str())
     return sl
 
@@ -205,7 +205,7 @@ def setup_testable_super_loci_old():
     transcripts = []
     features = []
     for i in range(3):
-        t = annotations.OrderedFeatures()
+        t = annotations.FeatureHolder()
         t.id = t_ids[i]
         t.super_locus = sl
         for j in t_features[i]:
@@ -379,7 +379,7 @@ def test_transcript_transition_from_5p_to_end():
 def test_non_coding_transitions():
     sl = setup_testable_super_loci()
     # get single-exon no-CDS transcript
-    transcript = sl.ordered_features['z']
+    transcript = sl.generic_holders['z']
     transcript.remove_feature('ftr000011')
     print(transcript.short_str())
     t_interp = annotations.TranscriptInterpreter(transcript)
@@ -547,13 +547,13 @@ def test_gff_to_seqids():
 
 def test_swap_type():
     sl = setup_loci_with_utr()
-    ordered_feature = sl.ordered_features['x']
-    old_n_ordered_features = len(sl.ordered_features)
+    ordered_feature = sl.generic_holders['x']
+    old_n_ordered_features = len(sl.generic_holders)
     ori_ordered_feature_features = copy.deepcopy(ordered_feature.features)
     protein = ordered_feature.swap_type('proteins')
-    assert len(sl.ordered_features) == old_n_ordered_features - 1
+    assert len(sl.generic_holders) == old_n_ordered_features - 1
     assert len(sl.proteins) == 1
-    assert ordered_feature.id not in sl.ordered_features
+    assert ordered_feature.id not in sl.generic_holders
     assert ordered_feature.id == protein.id
     assert ori_ordered_feature_features == protein.features
     assert ordered_feature.super_locus is protein.super_locus

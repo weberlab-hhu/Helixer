@@ -335,7 +335,7 @@ class SuperLocus(FeatureLike):
     # a max size defined at SuperLoci
     t_transcripts = 'transcripts'
     t_proteins = 'proteins'
-    t_feature_holders = 'ordered_features'
+    t_feature_holders = 'generic_holders'
     types_feature_holders = [t_transcripts, t_proteins, t_feature_holders]
 
     def __init__(self):
@@ -343,13 +343,13 @@ class SuperLocus(FeatureLike):
         self.spec += [('transcripts', True, Transcribed, dict),
                       ('proteins', True, Translated, dict),
                       ('features', True, StructuredFeature, dict),
-                      ('ordered_features', False, OrderedFeatures, dict),
+                      ('generic_holders', False, FeatureHolder, dict),
                       ('ids', True, list, None),
                       ('slice', False, SuperLociSlice, None),
                       ('_dummy_transcript', False, Transcribed, None)]
         self.transcripts = {}
         self.proteins = {}
-        self.ordered_features = {}  # this is here for import from gff only
+        self.generic_holders = {}  # this is here for import from gff only
         self.features = {}
         self.ids = []
         self._dummy_transcript = None
@@ -364,11 +364,11 @@ class SuperLocus(FeatureLike):
             return self._dummy_transcript
         else:
             # setup new blank transcript
-            transcript = OrderedFeatures()
+            transcript = FeatureHolder()
             transcript.id = self.genome.transcript_ider.next_unique_id()  # add an id
             transcript.super_locus = self
             self._dummy_transcript = transcript  # save to be returned by next call of dummy_transcript
-            self.ordered_features[transcript.id] = transcript  # save into main dict of transcripts
+            self.generic_holders[transcript.id] = transcript  # save into main dict of transcripts
             return transcript
 
     def add_gff_entry(self, entry):
@@ -386,9 +386,9 @@ class SuperLocus(FeatureLike):
         elif entry.type in gffkey.transcribed:
             parent = self.one_parent(entry)
             assert parent == self.id, "not True :( [{} == {}]".format(parent, self.id)
-            transcript = OrderedFeatures()
+            transcript = FeatureHolder()
             transcript.add_data(self, entry)
-            self.ordered_features[transcript.id] = transcript
+            self.generic_holders[transcript.id] = transcript
         elif entry.type in gffkey.on_sequence:
             feature = StructuredFeature()
             feature.add_data(self, entry)
@@ -436,8 +436,8 @@ class SuperLocus(FeatureLike):
         # recreate transcribed / exon as necessary
         # todo, but with reconstructed flag (also check for and mark pseudogenes)
         to_remove = []
-        for key in copy.deepcopy(list(self.ordered_features.keys())):
-            transcript = self.ordered_features[key]
+        for key in copy.deepcopy(list(self.generic_holders.keys())):
+            transcript = self.generic_holders[key]
             old_features = copy.deepcopy(transcript.features)
             print('do we still have gff_entries??')
             for fkey in old_features:
@@ -451,7 +451,6 @@ class SuperLocus(FeatureLike):
             transcript.delink_features(old_features)
             to_remove += old_features
         self.remove_features(to_remove)
-        # TODO, this needs to switch ordered_features to transcripts & proteins after cleaning! WAS HERE
 
     def add_features(self, features, feature_holders=None, holder_type=None):
         if holder_type is None:
@@ -521,8 +520,8 @@ class TransSplicingError(Exception):
     pass
 
 
-class OrderedFeatures(FeatureLike):
-    of_type = SuperLocus.t_feature_holders
+class FeatureHolder(FeatureLike):
+    holder_type = SuperLocus.t_feature_holders
 
     def __init__(self):
         super().__init__()
@@ -555,13 +554,12 @@ class OrderedFeatures(FeatureLike):
 
     def delink_features(self, features):
         for feature in features:
-            of_type = type(self).of_type
+            holder_type = type(self).holder_type
             try:
-                self.super_locus.features[feature].de_link_from_feature_holder(self.id,
-                                                                               holder_type=of_type)
+                self.super_locus.features[feature].de_link_from_feature_holder(self.id, holder_type)
             except ValueError:
-                feature_fholder_list = self.super_locus.features[feature].__getattribute__(of_type)
-                raise ValueError("{} not in feature's {}: {}".format(self.id, of_type,
+                feature_fholder_list = self.super_locus.features[feature].__getattribute__(holder_type)
+                raise ValueError("{} not in feature's {}: {}".format(self.id, holder_type,
                                                                      feature_fholder_list))
 
     def reconcile_with_slice(self, seqid, start, end):
@@ -585,14 +583,14 @@ class OrderedFeatures(FeatureLike):
 
     def clone_but_swap_type(self, new_holder_type):
         # todo, should this actually go into some sort of generic ordered subclass?
-        old_holder_type = type(self).of_type
+        old_holder_type = type(self).holder_type
         assert new_holder_type in SuperLocus.types_feature_holders  # todo, stop retyping this
         assert new_holder_type != old_holder_type  # Shouldn't call swap_type if one has the right type already
 
         # setup new type with all transferable attributes
         to_transfer = self.__deepcopy__()  # can copy from
-        of_type = [x for x in [Transcribed, Translated, OrderedFeatures] if x.of_type == new_holder_type][0]
-        new = of_type()
+        holder_type = [x for x in [Transcribed, Translated, FeatureHolder] if x.holder_type == new_holder_type][0]
+        new = holder_type()
         transferable = set(to_transfer.__dict__.keys())
         transferable.remove('spec')
         transferable = transferable.intersection(set(new.__dict__.keys()))
@@ -610,14 +608,14 @@ class OrderedFeatures(FeatureLike):
             feature.link_to_feature_holder(new.id, new_holder_type)
         # remove old from
         print(self.id)
-        print(self.super_locus.ordered_features.keys(), 'of keys')
+        print(self.super_locus.generic_holders.keys(), 'of keys')
         print(self.super_locus.transcripts.keys(), 't keys')
         print(self.super_locus.proteins.keys(), 'p keys')
         return new
 
     def swap_type(self, new_holder_type):
         new = self.clone_but_swap_type(new_holder_type)
-        old_holder_type = type(self).of_type
+        old_holder_type = type(self).holder_type
         for fkey in copy.deepcopy(self.features):
             feature = self.super_locus.features[fkey]
             feature.de_link_from_feature_holder(self.id, old_holder_type)
@@ -628,8 +626,8 @@ class OrderedFeatures(FeatureLike):
         return new
 
 
-class Transcribed(OrderedFeatures):
-    of_type = 'transcripts'
+class Transcribed(FeatureHolder):
+    holder_type = 'transcripts'
 
     def __init__(self):
         super().__init__()
@@ -638,8 +636,8 @@ class Transcribed(OrderedFeatures):
         self.proteins = []  # list of protein IDs, matching subset of keys in self.super_locus.proteins
 
 
-class Translated(OrderedFeatures):
-    of_type = 'proteins'
+class Translated(FeatureHolder):
+    holder_type = 'proteins'
 
     def __init__(self):
         super().__init__()
@@ -660,7 +658,7 @@ class StructuredFeature(FeatureLike):
                       ('phase', True, int, None),
                       ('transcripts', True, list, None),
                       ('proteins', True, list, None),
-                      ('ordered_features', False, list, None),
+                      ('generic_holders', False, list, None),
                       ('super_locus', False, SuperLocus, None)]
 
         self.start = -1
@@ -672,7 +670,7 @@ class StructuredFeature(FeatureLike):
         self.source = ''
         self.transcripts = []
         self.proteins = []
-        self.ordered_features = []
+        self.generic_holders = []
         self.super_locus = None
 
     @property
@@ -686,7 +684,7 @@ class StructuredFeature(FeatureLike):
 
     def short_str(self):
         return '{} is {}: {}-{} on {}. --> {}|{}|{}'.format(self.id, self.type, self.start, self.end, self.seqid,
-                                                            self.transcripts, self.proteins, self.ordered_features)
+                                                            self.transcripts, self.proteins, self.generic_holders)
 
     def add_data(self, super_locus, gff_entry):
         gffkey = super_locus.genome.gffkey
@@ -719,7 +717,7 @@ class StructuredFeature(FeatureLike):
             ))
         for transcript_id in new_transcripts:
             new_t_id = transcript_id
-            if new_t_id not in super_locus.ordered_features:
+            if new_t_id not in super_locus.generic_holders:
                 if transcript_id == super_locus.id:
                     # if we just skipped the transcript, and linked to gene, use dummy transcript in between
                     transcript = super_locus.dummy_transcript()
@@ -772,7 +770,6 @@ class StructuredFeature(FeatureLike):
         print('adding {} to {} {}'.format(holder_id, holder_type, holder))
         assert holder_id not in holder, e
 
-        # todo, refactor "ordered_features" to use this naming ("feature holder") or sim., bc I'm already confused
         holder.append(holder_id)
 
     def de_link_from_feature_holder(self, holder_id, holder_type=None):
@@ -783,7 +780,7 @@ class StructuredFeature(FeatureLike):
         holder = sl_holders[holder_id]  # get transcript
 
         holder.remove_feature(self.id)  # drop other
-        # and drop from local ordered feature set
+        # and drop from local ordered feature holder set
         holders = self.__getattribute__(holder_type)
         holders.pop(holders.index(holder_id))
 
@@ -825,7 +822,7 @@ class StructuredFeature(FeatureLike):
                 new.link_to_feature_holder_and_back(transcript, SuperLocus.t_transcripts)
             for protein in self.proteins:
                 new.link_to_feature_holder_and_back(protein, SuperLocus.t_proteins)
-            for ordf in self.ordered_features:
+            for ordf in self.generic_holders:
                 new.link_to_feature_holder_and_back(ordf, SuperLocus.t_feature_holders)
 
         # copy the rest
