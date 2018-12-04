@@ -159,34 +159,34 @@ def test_fa_matches_sequences_json():
 
 
 ### annotations ###
-def test_annogenome2slices_relation():
+def test_annogenome2sequence_infos_relation():
     engine = create_engine('sqlite:///:memory:', echo=False)
     annotations.Base.metadata.create_all(engine)
     ag = annotations.AnnotatedGenome(species='Athaliana', version='1.2', acquired_from='Phytozome12')
-    slice = annotations.Slice(annotated_genome=ag)
-    assert ag is slice.annotated_genome
+    sequence_info = annotations.SequenceInfo(annotated_genome=ag)
+    assert ag is sequence_info.annotated_genome
     # actually put everything in db
     Session = sessionmaker(bind=engine)
     sess = Session()
-    sess.add(slice)
+    sess.add(sequence_info)
     sess.commit()
     # check primary keys were assigned
     assert ag.id == 1
-    assert slice.id == 1
-    # check we can access slice from ag
-    slice_q = ag.slices[0]
-    assert slice is slice_q
-    assert ag is slice.annotated_genome
-    assert ag.id == slice_q.annotated_genome_id
+    assert sequence_info.id == 1
+    # check we can access sequence_info from ag
+    sequence_info_q = ag.sequence_infos[0]
+    assert sequence_info is sequence_info_q
+    assert ag is sequence_info.annotated_genome
+    assert ag.id == sequence_info_q.annotated_genome_id
     # check we get logical behavior on deletion
-    sess.delete(slice)
+    sess.delete(sequence_info)
     sess.commit()
-    assert len(ag.slices) == 0
-    print(slice.annotated_genome)
+    assert len(ag.sequence_infos) == 0
+    print(sequence_info.annotated_genome)
     sess.delete(ag)
     sess.commit()
     with pytest.raises(sqlalchemy.exc.InvalidRequestError):
-        sess.add(slice)
+        sess.add(sequence_info)
 
 
 def test_processing_set_enum():
@@ -204,21 +204,21 @@ def test_processing_set_enum():
     with pytest.raises(ValueError):
         annotations.ProcessingSet(0)
     ag = annotations.AnnotatedGenome()
-    slice = annotations.Slice(processing_set=ps, annotated_genome=ag)
-    slice2 = annotations.Slice(processing_set=ps2, annotated_genome=ag)
-    assert slice.processing_set.value == 1
-    assert slice2.processing_set.value == 1
+    sequence_info = annotations.SequenceInfo(processing_set=ps, annotated_genome=ag)
+    sequence_info2 = annotations.SequenceInfo(processing_set=ps2, annotated_genome=ag)
+    assert sequence_info.processing_set.value == 1
+    assert sequence_info2.processing_set.value == 1
     Session = sessionmaker(bind=engine)
     sess = Session()
 
-    sess.add_all([slice, slice2])
+    sess.add_all([sequence_info, sequence_info2])
     sess.commit()
     # make sure we get the exact same handling when we come back out of the database
-    for s in ag.slices:
+    for s in ag.sequence_infos:
         assert s.processing_set.value == 1
     # null value works
-    slice3 = annotations.Slice(annotated_genome=ag)
-    assert slice3.processing_set is None
+    sequence_info3 = annotations.SequenceInfo(annotated_genome=ag)
+    assert sequence_info3.processing_set is None
 
 
 def test_coordinate_contraints():
@@ -250,9 +250,9 @@ def test_coordinate_contraints():
 
 def test_coordinate_seqinfo_query():
     ag = annotations.AnnotatedGenome()
-    slic = annotations.Slice(annotated_genome=ag)
-    coors = annotations.Coordinates(start=1, end=30, seqid='abc', slice=slic)
-    coors2 = annotations.Coordinates(start=11, end=330, seqid='def', slice=slic)
+    slic = annotations.SequenceInfo(annotated_genome=ag)
+    coors = annotations.Coordinates(start=1, end=30, seqid='abc', sequence_info=slic)
+    coors2 = annotations.Coordinates(start=11, end=330, seqid='def', sequence_info=slic)
     seq_info = slic.seq_info
     engine = create_engine('sqlite:///:memory:', echo=False)
     annotations.Base.metadata.create_all(engine)
@@ -263,6 +263,9 @@ def test_coordinate_seqinfo_query():
     assert slic.seq_info['abc'].start == 1
     assert slic.seq_info['def'].end == 330
     assert seq_info is slic.seq_info
+
+# todo, test querrying all around and symmetry of relationships features, transcribeds, translateds, super_loci
+# todo WEDNESDAY
 
 #def setup_testable_super_loci():
 #    genome = annotations.AnnotatedGenome()

@@ -98,6 +98,7 @@ Base = declarative_base()
 
 
 class AnnotatedGenome(Base):
+    # todo, go ahead and remove this WEDNESDAY
     __tablename__ = 'annotated_genomes'
 
     # data
@@ -106,7 +107,7 @@ class AnnotatedGenome(Base):
     accession = Column(String)
     version = Column(String)
     acquired_from = Column(String)
-    slices = relationship("Slice", back_populates="annotated_genome")
+    sequence_infos = relationship("SequenceInfo", back_populates="annotated_genome")
 
     gffkey = FeatureDecoder()
     # todo, figure out if one wants to keep the id makers like this...
@@ -172,15 +173,15 @@ class ProcessingSet(enum.Enum):
     test = 3
 
 
-class Slice(Base):
-    __tablename__ = "slices"
+class SequenceInfo(Base):
+    __tablename__ = "sequence_infos"
 
     id = Column(Integer, primary_key=True)
     annotated_genome_id = Column(Integer, ForeignKey('annotated_genomes.id'), nullable=False)
-    annotated_genome = relationship('AnnotatedGenome', back_populates="slices")
+    annotated_genome = relationship('AnnotatedGenome', back_populates="sequence_infos")
     processing_set = Column(Enum(ProcessingSet))
-    coordinates = relationship('Coordinates', back_populates="slice")
-    super_loci = relationship('SuperLocus', back_populates="slice")
+    coordinates = relationship('Coordinates', back_populates="sequence_info")
+    super_loci = relationship('SuperLocus', back_populates="sequence_info")
 #        self.mapper = helpers.Mapper()
 #
 #    @property
@@ -309,8 +310,8 @@ class Coordinates(Base):
     start = Column(Integer, nullable=False)
     end = Column(Integer, nullable=False)
     seqid = Column(Integer, nullable=False)
-    slice_id = Column(Integer, ForeignKey('slices.id'))
-    slice = relationship('Slice', back_populates='coordinates')
+    sequence_info_id = Column(Integer, ForeignKey('sequence_infos.id'))
+    sequence_info = relationship('SequenceInfo', back_populates='coordinates')
 
     __table_args__ = (
         CheckConstraint(start >= 1, name='check_start_1plus'),
@@ -344,8 +345,8 @@ class SuperLocus(Base):
 #        self.ids = []
 #        self._dummy_transcript = None
     id = Column(Integer, primary_key=True)
-    slice_id = Column(Integer, ForeignKey('slices.id'))
-    slice = relationship('Slice', back_populates='super_loci')
+    sequence_info_id = Column(Integer, ForeignKey('sequence_infos.id'))
+    sequence_info = relationship('SequenceInfo', back_populates='super_loci')
     # things SuperLocus can have a lot of
     aliases = relationship('SuperLocusAliases', back_populates='super_locus')
     features = relationship('Feature', back_populates='super_locus')
