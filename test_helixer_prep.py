@@ -6,6 +6,9 @@ import pytest
 import partitions
 import copy
 from dustdas import gffhelper
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+import sqlalchemy
 
 ### structure ###
 # testing: add_paired_dictionaries
@@ -156,6 +159,94 @@ def test_fa_matches_sequences_json():
 
 
 ### annotations ###
+def test_annogenome2slices_relation():
+    engine = create_engine('sqlite:///:memory:', echo=False)
+    annotations.Base.metadata.create_all(engine)
+    ag = annotations.AnnotatedGenome(species='Athaliana', version='1.2', acquired_from='Phytozome12')
+    slice = annotations.Slice(annotated_genome=ag)
+    assert ag is slice.annotated_genome
+    # actually put everything in db
+    Session = sessionmaker(bind=engine)
+    sess = Session()
+    sess.add(slice)
+    sess.commit()
+    # check primary keys were assigned
+    assert ag.id == 1
+    assert slice.id == 1
+    # check we can access slice from ag
+    slice_q = ag.slices[0]
+    assert slice is slice_q
+    assert ag is slice.annotated_genome
+    assert ag.id == slice_q.annotated_genome_id
+    # check we get logical behavior on deletion
+    sess.delete(slice)
+    sess.commit()
+    assert len(ag.slices) == 0
+    print(slice.annotated_genome)
+    sess.delete(ag)
+    sess.commit()
+    with pytest.raises(sqlalchemy.exc.InvalidRequestError):
+        sess.add(slice)
+
+
+def test_processing_set_enum():
+    engine = create_engine('sqlite:///:memory:', echo=False)
+    annotations.Base.metadata.create_all(engine)
+    # valid numbers can be setup
+    ps = annotations.ProcessingSet(annotations.ProcessingSet.train)
+    ps2 = annotations.ProcessingSet(1)
+    assert ps == ps2
+    # other numbers can't
+    with pytest.raises(ValueError):
+        annotations.ProcessingSet(100)
+    with pytest.raises(ValueError):
+        annotations.ProcessingSet(1.3)
+    with pytest.raises(ValueError):
+        annotations.ProcessingSet(0)
+    ag = annotations.AnnotatedGenome()
+    slice = annotations.Slice(processing_set=ps, annotated_genome=ag)
+    slice2 = annotations.Slice(processing_set=ps2, annotated_genome=ag)
+    assert slice.processing_set.value == 1
+    assert slice2.processing_set.value == 1
+    Session = sessionmaker(bind=engine)
+    sess = Session()
+
+    sess.add_all([slice, slice2])
+    sess.commit()
+    # make sure we get the exact same handling when we come back out of the database
+    for s in ag.slices:
+        assert s.processing_set.value == 1
+    # null value works
+    slice3 = annotations.Slice(annotated_genome=ag)
+    assert slice3.processing_set is None
+
+
+def test_coordinate_contraints():
+    coors = annotations.Coordinates(start=1, end=30, seqid='abc')
+    coors2 = annotations.Coordinates(start=1, end=1, seqid='abc')
+    coors_bad1 = annotations.Coordinates(start=0, end=30, seqid='abc')
+    coors_bad2 = annotations.Coordinates(start=100, end=30, seqid='abc')
+    coors_bad3 = annotations.Coordinates(start=1, end=30)
+    engine = create_engine('sqlite:///:memory:', echo=False)
+    annotations.Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    sess = Session()
+    # should be ok
+    sess.add_all([coors, coors2])
+    sess.commit()
+    # should cause trouble
+    with pytest.raises(sqlalchemy.exc.IntegrityError):
+        sess.add(coors_bad1)  # start below 1
+        sess.commit()
+    sess.rollback()
+    with pytest.raises(sqlalchemy.exc.IntegrityError):
+        sess.add(coors_bad2)  # end below start
+        sess.commit()
+    sess.rollback()
+    with pytest.raises(sqlalchemy.exc.IntegrityError):
+        sess.add(coors_bad3)
+        sess.commit()
+
 #def setup_testable_super_loci():
 #    genome = annotations.AnnotatedGenome()
 #    # make a dummy sequence

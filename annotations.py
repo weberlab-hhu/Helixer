@@ -3,11 +3,12 @@ import logging
 import copy
 import intervaltree
 import helpers
+import enum
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import Table, Column, Integer, ForeignKey
+from sqlalchemy import Table, Column, Integer, ForeignKey, String, Enum, CheckConstraint
 from sqlalchemy.orm import relationship
 
 class FeatureDecoder(object):
@@ -96,10 +97,18 @@ class FeatureDecoder(object):
 Base = declarative_base()
 
 
-#class AnnotatedGenome(Base):
-#    super_loci_slices = []
-#    meta_info = MetaInfoAnnoGenome()
-#    gffkey = FeatureDecoder()
+class AnnotatedGenome(Base):
+    __tablename__ = 'annotated_genomes'
+
+    # data
+    id = Column(Integer, primary_key=True)
+    species = Column(String)
+    accession = Column(String)
+    version = Column(String)
+    acquired_from = Column(String)
+    slices = relationship("Slice", back_populates="annotated_genome")
+
+    gffkey = FeatureDecoder()
 #    transcript_ider = helpers.IDMaker(prefix='trx')
 #    protein_ider = helpers.IDMaker(prefix='prt')
 #    feature_ider = helpers.IDMaker(prefix='ftr')
@@ -170,21 +179,22 @@ Base = declarative_base()
 #        # self.is_reconstructed = False
 #        # self.is_type_in_question = False
 
+class ProcessingSet(enum.Enum):
+    train = 1
+    dev = 2
+    test = 3
 
-#class SuperLociSlice(GenericData):
-#    def __init__(self):
-#        super().__init__()
-#        self.spec += [('processing_set', True, str, None),
-#                      ('slice_id', True, str, None),
-#                      ('super_loci', True, SuperLocus, list),
-#                      ('genome', False, AnnotatedGenome, None),
-#                      ('coordinates', True, CoordinateInfo, list),
-#                      ('_seq_info', False, dict, None),
-#                      ('mapper', False, helpers.Mapper, None)]
-#        self.processing_set = None
-#        self.slice_id = None
+
+class Slice(Base):
+    __tablename__ = "slices"
+
+    id = Column(Integer, primary_key=True)
+    annotated_genome_id = Column(Integer, ForeignKey('annotated_genomes.id'), nullable=False)
+    annotated_genome = relationship('AnnotatedGenome', back_populates="slices")
+    processing_set = Column(Enum(ProcessingSet))
+    coordinates = relationship('Coordinates', back_populates="slice")
+
 #        self.super_loci = []
-#        self.genome = None
 #        self.coordinates = []
 #        self._seq_info = {}
 #        self.mapper = helpers.Mapper()
@@ -305,15 +315,20 @@ Base = declarative_base()
 #        raise NotImplementedError  # todo
 #
 #
-#class CoordinateInfo(GenericData):
-#    def __init__(self):
-#        super().__init__()
-#        self.spec += [('seqid', True, str, None),
-#                      ('start', True, int, None),
-#                      ('end', True, int, None)]
-#        self.start = None
-#        self.end = None
-#        self.seqid = None
+class Coordinates(Base):
+    __tablename__ = 'coordinates'
+
+    id = Column(Integer, primary_key=True)
+    start = Column(Integer, nullable=False)
+    end = Column(Integer, nullable=False)
+    seqid = Column(Integer, nullable=False)
+    slice_id = Column(Integer, ForeignKey('slices.id'))
+    slice = relationship('Slice', back_populates='coordinates')
+
+    __table_args__ = (
+        CheckConstraint(start >= 1, name='check_start_1plus'),
+        CheckConstraint(end >= start, name='check_end_gr_start'),
+        {})
 #
 #
 #class SuperLocus(FeatureLike):
