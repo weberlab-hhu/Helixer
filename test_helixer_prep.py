@@ -253,14 +253,16 @@ def test_coordinate_seqinfo_query():
     slic = annotations.Slice(annotated_genome=ag)
     coors = annotations.Coordinates(start=1, end=30, seqid='abc', slice=slic)
     coors2 = annotations.Coordinates(start=11, end=330, seqid='def', slice=slic)
+    seq_info = slic.seq_info
     engine = create_engine('sqlite:///:memory:', echo=False)
     annotations.Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     sess = Session()
     # should be ok
     sess.add_all([coors, coors2])
-    print(slic.seq_info)
-    assert False
+    assert slic.seq_info['abc'].start == 1
+    assert slic.seq_info['def'].end == 330
+    assert seq_info is slic.seq_info
 
 #def setup_testable_super_loci():
 #    genome = annotations.AnnotatedGenome()

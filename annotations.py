@@ -341,7 +341,6 @@ class SuperLocus(Base):
 #        self.transcripts = {}
 #        self.proteins = {}
 #        self.generic_holders = {}  # this is here for import from gff only
-#        self.features = {}
 #        self.ids = []
 #        self._dummy_transcript = None
     id = Column(Integer, primary_key=True)
@@ -349,7 +348,10 @@ class SuperLocus(Base):
     slice = relationship('Slice', back_populates='super_loci')
     # things SuperLocus can have a lot of
     aliases = relationship('SuperLocusAliases', back_populates='super_locus')
-#
+    features = relationship('Feature', back_populates='super_locus')
+    generic_holders = relationship('GenericHolder', back_populates='super_locus')
+    transcripts = relationship('Transcript', back_populates='super_locus')
+    proteins = relationship('Protein', back_populates='super_locus')
 #    def short_str(self):
 #        string = "{}\ntranscripts: {}\nproteins: {}\ngeneric holders: {}".format(self.id, list(self.transcripts.keys()),
 #                                                                                 list(self.proteins.keys()),
@@ -507,9 +509,37 @@ class NoTranscriptError(Exception):
 
 class TransSplicingError(Exception):
     pass
-#
-#
-#class FeatureHolder(FeatureLike):
+
+
+association_generic_holder_to_features = Table('association_generic_holder_to_features', Base.metadata,
+    Column('generic_holder_id', Integer, ForeignKey('generic_holders.id')),
+    Column('feature_id', Integer, ForeignKey('features.id'))
+)
+
+association_transcripts_to_features = Table('association_transcripts_to_features', Base.metadata,
+    Column('transcript_id', Integer, ForeignKey('transcripts.id')),
+    Column('feature_id', Integer, ForeignKey('features.id'))
+)
+
+association_proteins_to_features = Table('association_proteins_to_features', Base.metadata,
+    Column('protein_id', Integer, ForeignKey('proteins.id')),
+    Column('feature_id', Integer, ForeignKey('features.id'))
+)
+
+association_proteins_to_transcripts = Table('association_proteins_to_transcripts', Base.metadata,
+    Column('protein_id', Integer, ForeignKey('proteins.id')),
+    Column('transcript_id', Integer, ForeignKey('transcripts.id'))
+)
+
+class GenericHolder(Base):
+    __tablename__ = 'generic_holders'
+
+    id = Column(Integer, primary_key=True)
+    super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
+    super_locus = relationship('SuperLocus', back_populates='generic_holders')
+
+    features = relationship('Feature', secondary=association_generic_holder_to_features,
+                            back_populates='generic_holders')
 #    holder_type = SuperLocus.t_feature_holders
 #
 #    def __init__(self):
@@ -519,7 +549,6 @@ class TransSplicingError(Exception):
 #                      ('next_feature_5p', True, str, None),
 #                      ('next_feature_3p', True, str, None)]
 #
-#        self.super_locus = None
 #        self.features = []
 #        self.next_feature_5p = None
 #        self.next_feature_3p = None
@@ -645,13 +674,19 @@ class TransSplicingError(Exception):
 #    def replace_subclass_only_ids(self, new_id):
 #        pass
 #
-#
-#class Transcribed(FeatureHolder):
+class Transcript(Base):
+    __tablename__ = 'transcripts'
+
+    id = Column(Integer, primary_key=True)
+    super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
+    super_locus = relationship('SuperLocus', back_populates='transcripts')
+
+    features = relationship('Feature', secondary=association_transcripts_to_features,
+                            back_populates='transcripts')
+
+    proteins = relationship('Protein', secondary=association_proteins_to_transcripts,
+                            back_populates='transcripts')
 #    holder_type = 'transcripts'
-#
-#    def __init__(self):
-#        super().__init__()
-#        self.spec += [('proteins', True, list, None)]
 #
 #        self.proteins = []  # list of protein IDs, matching subset of keys in self.super_locus.proteins
 #
@@ -667,13 +702,19 @@ class TransSplicingError(Exception):
 #    def protein_objs(self):
 #        return [self.protein_obj(x) for x in self.proteins]
 #
-#
-#class Translated(FeatureHolder):
+class Protein(Base):
+    __tablename__ = 'proteins'
+
+    id = Column(Integer, primary_key=True)
+    super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
+    super_locus = relationship('SuperLocus', back_populates='proteins')
+
+    features = relationship('Feature', secondary=association_proteins_to_features,
+                            back_populates='proteins')
+
+    transcripts = relationship('Transcript', secondary=association_proteins_to_transcripts,
+                               back_populates='proteins')
 #    holder_type = 'proteins'
-#
-#    def __init__(self):
-#        super().__init__()
-#        self.spec += [('transcripts', True, list, None)]
 #
 #        self.transcripts = []  # list of transcript IDs, matching subset of keys in self.super_locus.transcripts
 #
@@ -690,9 +731,26 @@ class TransSplicingError(Exception):
 #        return [self.transcript_obj(x) for x in self.transcripts]
 #
 #
-#class StructuredFeature(FeatureLike):
-#    def __init__(self):
-#        super().__init__()
+class Feature(Base):
+    __tablename__ = 'features'
+    # basic attributes
+    id = Column(Integer, primary_key=True)
+    # relations
+    # GenericHolder
+    # Protein
+    # Transcript
+    # SuperLucus
+    super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
+    super_locus = relationship('SuperLocus', back_populates='features')
+
+    generic_holders = relationship('GenericHolder', secondary=association_generic_holder_to_features,
+                                   back_populates='features')
+
+    transcripts = relationship('Transcript', secondary=association_transcripts_to_features,
+                                   back_populates='features')
+
+    proteins = relationship('Protein', secondary=association_proteins_to_features,
+                                   back_populates='features')
 #        self.spec += [('start', True, int, None),
 #                      ('end', True, int, None),
 #                      ('seqid', True, str, None),
@@ -700,10 +758,6 @@ class TransSplicingError(Exception):
 #                      ('score', True, float, None),
 #                      ('source', True, str, None),
 #                      ('phase', True, int, None),
-#                      ('transcripts', True, list, None),
-#                      ('proteins', True, list, None),
-#                      ('generic_holders', False, list, None),
-#                      ('super_locus', False, SuperLocus, None)]
 #
 #        self.start = -1
 #        self.end = -1
