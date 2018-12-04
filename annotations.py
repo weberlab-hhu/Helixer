@@ -350,8 +350,8 @@ class SuperLocus(Base):
     aliases = relationship('SuperLocusAliases', back_populates='super_locus')
     features = relationship('Feature', back_populates='super_locus')
     generic_holders = relationship('GenericHolder', back_populates='super_locus')
-    transcripts = relationship('Transcript', back_populates='super_locus')
-    proteins = relationship('Protein', back_populates='super_locus')
+    transcribeds = relationship('Transcribed', back_populates='super_locus')
+    translateds = relationship('Translated', back_populates='super_locus')
 #    def short_str(self):
 #        string = "{}\ntranscripts: {}\nproteins: {}\ngeneric holders: {}".format(self.id, list(self.transcripts.keys()),
 #                                                                                 list(self.proteins.keys()),
@@ -516,19 +516,19 @@ association_generic_holder_to_features = Table('association_generic_holder_to_fe
     Column('feature_id', Integer, ForeignKey('features.id'))
 )
 
-association_transcripts_to_features = Table('association_transcripts_to_features', Base.metadata,
-    Column('transcript_id', Integer, ForeignKey('transcripts.id')),
+association_transcribeds_to_features = Table('association_transcribeds_to_features', Base.metadata,
+    Column('transcribed_id', Integer, ForeignKey('transcribeds.id')),
     Column('feature_id', Integer, ForeignKey('features.id'))
 )
 
-association_proteins_to_features = Table('association_proteins_to_features', Base.metadata,
-    Column('protein_id', Integer, ForeignKey('proteins.id')),
+association_translateds_to_features = Table('association_translateds_to_features', Base.metadata,
+    Column('translated_id', Integer, ForeignKey('translateds.id')),
     Column('feature_id', Integer, ForeignKey('features.id'))
 )
 
-association_proteins_to_transcripts = Table('association_proteins_to_transcripts', Base.metadata,
-    Column('protein_id', Integer, ForeignKey('proteins.id')),
-    Column('transcript_id', Integer, ForeignKey('transcripts.id'))
+association_translateds_to_transcribeds = Table('association_translateds_to_transcribeds', Base.metadata,
+    Column('translated_id', Integer, ForeignKey('translateds.id')),
+    Column('transcribed_id', Integer, ForeignKey('transcribeds.id'))
 )
 
 class GenericHolder(Base):
@@ -674,18 +674,18 @@ class GenericHolder(Base):
 #    def replace_subclass_only_ids(self, new_id):
 #        pass
 #
-class Transcript(Base):
-    __tablename__ = 'transcripts'
+class Transcribed(Base):
+    __tablename__ = 'transcribeds'
 
     id = Column(Integer, primary_key=True)
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
-    super_locus = relationship('SuperLocus', back_populates='transcripts')
+    super_locus = relationship('SuperLocus', back_populates='transcribeds')
 
-    features = relationship('Feature', secondary=association_transcripts_to_features,
-                            back_populates='transcripts')
+    features = relationship('Feature', secondary=association_transcribeds_to_features,
+                            back_populates='transcribeds')
 
-    proteins = relationship('Protein', secondary=association_proteins_to_transcripts,
-                            back_populates='transcripts')
+    translateds = relationship('Translated', secondary=association_translateds_to_transcribeds,
+                            back_populates='transcribeds')
 #    holder_type = 'transcripts'
 #
 #        self.proteins = []  # list of protein IDs, matching subset of keys in self.super_locus.proteins
@@ -702,18 +702,18 @@ class Transcript(Base):
 #    def protein_objs(self):
 #        return [self.protein_obj(x) for x in self.proteins]
 #
-class Protein(Base):
-    __tablename__ = 'proteins'
+class Translated(Base):
+    __tablename__ = 'translateds'
 
     id = Column(Integer, primary_key=True)
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
-    super_locus = relationship('SuperLocus', back_populates='proteins')
+    super_locus = relationship('SuperLocus', back_populates='translateds')
 
-    features = relationship('Feature', secondary=association_proteins_to_features,
-                            back_populates='proteins')
+    features = relationship('Feature', secondary=association_translateds_to_features,
+                            back_populates='translateds')
 
-    transcripts = relationship('Transcript', secondary=association_proteins_to_transcripts,
-                               back_populates='proteins')
+    transcribeds = relationship('Transcribed', secondary=association_translateds_to_transcribeds,
+                               back_populates='translateds')
 #    holder_type = 'proteins'
 #
 #        self.transcripts = []  # list of transcript IDs, matching subset of keys in self.super_locus.transcripts
@@ -737,19 +737,19 @@ class Feature(Base):
     id = Column(Integer, primary_key=True)
     # relations
     # GenericHolder
-    # Protein
-    # Transcript
-    # SuperLucus
+    # Translated
+    # Transcribed
+    # SuperLocus
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
     super_locus = relationship('SuperLocus', back_populates='features')
 
     generic_holders = relationship('GenericHolder', secondary=association_generic_holder_to_features,
                                    back_populates='features')
 
-    transcripts = relationship('Transcript', secondary=association_transcripts_to_features,
+    transcribeds = relationship('Transcribed', secondary=association_transcribeds_to_features,
                                    back_populates='features')
 
-    proteins = relationship('Protein', secondary=association_proteins_to_features,
+    translateds = relationship('Translated', secondary=association_translateds_to_features,
                                    back_populates='features')
 #        self.spec += [('start', True, int, None),
 #                      ('end', True, int, None),
