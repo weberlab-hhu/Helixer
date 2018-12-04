@@ -156,345 +156,379 @@ def test_fa_matches_sequences_json():
 
 
 ### annotations ###
-def setup_testable_super_loci():
-    genome = annotations.AnnotatedGenome()
-    # make a dummy sequence
-    sg = sequences.StructuredGenome()
-    sg.add_fasta('testdata/dummyloci.fa')
+#def setup_testable_super_loci():
+#    genome = annotations.AnnotatedGenome()
+#    # make a dummy sequence
+#    sg = sequences.StructuredGenome()
+#    sg.add_fasta('testdata/dummyloci.fa')
+#
+#    # genome.add_gff('testdata/dummyloci.gff3', genome=sg)
+#    # add slice
+#    sls = annotations.SuperLociSlice()
+#    sls.genome = genome
+#    sls._add_sequences(sg)
+#    # add super locus
+#    sl = annotations.SuperLocus()
+#    sl.slice = sls
+#    sls.super_loci.append(sl)
+#    entry_group = gffhelper.read_gff_file('testdata/dummyloci.gff3')
+#    sl._add_gff_entry_group(entry_group)
+#
+#    for feature in sl.features.values():
+#        print(feature.short_str())
+#    for transcript_in in sl.generic_holders.values():
+#        print(transcript_in.short_str())
+#    return sl
+#
+#def setup_testable_super_loci_old():
+#    # features [--0--][1][---2---]
+#    f_coord = [(1, 100), (111, 120), (201, 400)]
+#    # transcript X: [0, 1], Y: [0, 1, 2], Z: [0]
+#    t_ids = ['x', 'y', 'z']
+#    t_features = [(0, 1), (0, 1, 2), (0, )]
+#    genome = annotations.AnnotatedGenome()
+#    # add a slice
+#    sls = annotations.SuperLociSlice()
+#    sls.genome = genome
+#    # make a dummy sequence
+#    seq_mi = annotations.CoordinateInfo()
+#    seq_mi.start = 1
+#    seq_mi.end = 450
+#    seq_mi.seqid = ''
+#    sls.coordinates.append(seq_mi)
+#
+#    sl = annotations.SuperLocus()
+#    sl.slice = sls
+#    sls.super_loci.append(sl)
+#
+#    # setup transcripts and features
+#    transcripts = []
+#    features = []
+#    for i in range(3):
+#        t = annotations.FeatureHolder()
+#        t.id = t_ids[i]
+#        t.super_locus = sl
+#        for j in t_features[i]:
+#            e = annotations.StructuredFeature()
+#            e.id = genome.feature_ider.next_unique_id()
+#            e.generic_holders = [t.id]
+#            c = annotations.StructuredFeature()
+#            c.generic_holders = [t.id]
+#            c.id = genome.feature_ider.next_unique_id()
+#            print('transcript {}: [exon: {}, cds: {}, coord: {}]'.format(t.id, e.id, c.id, f_coord[j]))
+#            e.super_locus = c.super_locus = sl
+#            e.start, e.end = c.start, c.end = f_coord[j]
+#            c.type = "CDS"
+#            e.type = "exon"
+#            e.strand = c.strand = '+'
+#            t.features += [e.id, c.id]
+#            features += [e, c]
+#        transcripts.append(t)
+#    for t in transcripts:
+#        sl.generic_holders[t.id] = t
+#    for f in features:
+#        sl.features[f.id] = f
+#    # transcript x: [exon: ftr000000, cds: ftr000001, coord: (0, 100)]
+#    # transcript x: [exon: ftr000002, cds: ftr000003, coord: (110, 120)]
+#    # transcript y: [exon: ftr000004, cds: ftr000005, coord: (0, 100)]
+#    # transcript y: [exon: ftr000006, cds: ftr000007, coord: (110, 120)]
+#    # transcript y: [exon: ftr000008, cds: ftr000009, coord: (200, 400)]
+#    # transcript z: [exon: ftr000010, cds: ftr000011, coord: (0, 100)]
+#    return sl
+#
+#
+#def setup_loci_with_utr():
+#    print('before superloci setup')
+#    sl = setup_testable_super_loci()
+#    print('after superloci setup')
+#    for key_1stCDS in ['ftr000001', 'ftr000005', 'ftr000011']:
+#        sl.features[key_1stCDS].start = 11  # start first CDS later
+#        sl.features[key_1stCDS].phase = 0  # let's just assume the initial phase is correct
+#
+#    sl.features['ftr000009'].end = 330  # end first CDS sooner
+#    return sl
+#
+#
+#def test_feature_overlap_detection():
+#    sl = setup_testable_super_loci()
+#    assert sl.features['ftr000000'].fully_overlaps(sl.features['ftr000004'])
+#    assert sl.features['ftr000005'].fully_overlaps(sl.features['ftr000001'])
+#    # a few that should not overlap
+#    assert not sl.features['ftr000000'].fully_overlaps(sl.features['ftr000001'])
+#    assert not sl.features['ftr000000'].fully_overlaps(sl.features['ftr000002'])
+#
+#
+#def test_transcript_interpreter():
+#    sl = setup_loci_with_utr()
+#    # change so that there are implicit UTRs
+#    sl.features['ftr000005'].start = 11  # start first CDS later
+#    sl.features['ftr000009'].end = 330  # end first CDS sooner
+#    transcript = sl.generic_holders['y']
+#    t_interp = annotations.TranscriptInterpreter(transcript)
+#    t_interp.decode_raw_features()
+#    # has all standard features
+#    assert set([x.type for x in t_interp.clean_features]) == {sl.genome.gffkey.start_codon,
+#                                                              sl.genome.gffkey.stop_codon,
+#                                                              sl.genome.gffkey.TTS,
+#                                                              sl.genome.gffkey.TSS,
+#                                                              sl.genome.gffkey.donor_splice_site,
+#                                                              sl.genome.gffkey.acceptor_splice_site}
+#    assert t_interp.clean_features[-1].end == 400
+#    assert t_interp.clean_features[0].start == 1
+#
+#
+#def test_transcript_get_first():
+#    # plus strand
+#    sl = setup_loci_with_utr()
+#    transcript = sl.generic_holders['y']
+#    t_interp = annotations.TranscriptInterpreter(transcript)
+#    i0 = t_interp.intervals_5to3(plus_strand=True)[0]
+#    t_interp.interpret_first_pos(i0)
+#    features = t_interp.clean_features
+#    status = t_interp.status
+#    assert len(features) == 1
+#    f0 = features[0]
+#    print(f0.short_str())
+#    print(status.__dict__)
+#    print(i0[0].data.strand)
+#    assert f0.start == 1
+#    assert status.is_5p_utr()
+#    assert f0.phase is None
+#    assert f0.strand == '+'
+#
+#    # minus strand
+#    sl = setup_loci_with_utr()
+#    for feature in sl.features.values():  # force minus strand
+#        feature.strand = '-'
+#
+#    transcript = sl.generic_holders['y']
+#    t_interp = annotations.TranscriptInterpreter(transcript)
+#    i0 = t_interp.intervals_5to3(plus_strand=False)[0]
+#    t_interp.interpret_first_pos(i0, plus_strand=False)
+#    features = t_interp.clean_features
+#    status = t_interp.status
+#    assert len(features) == 1
+#    f0 = features[0]
+#    print(f0.short_str())
+#    print(status)
+#    print(i0[0].data.strand)
+#    assert f0.start == 400
+#    assert status.is_5p_utr()
+#    assert f0.phase is None
+#    assert f0.strand == '-'
+#
+#    # test without UTR (x doesn't have last exon, and therefore will end in CDS)
+#    transcript = sl.generic_holders['x']
+#    t_interp = annotations.TranscriptInterpreter(transcript)
+#    i0 = t_interp.intervals_5to3(plus_strand=False)[0]
+#    t_interp.interpret_first_pos(i0, plus_strand=False)
+#    features = t_interp.clean_features
+#    status = t_interp.status
+#    assert len(features) == 2
+#    f_err = features[0]
+#    f_status_coding = features[1]
+#    print(f_err.short_str())
+#    print(status)
+#    print(i0)
+#    # should get status_coding instead of a start codon
+#    assert f_status_coding.start == 120
+#    assert f_status_coding.type == sl.genome.gffkey.status_coding
+#    assert f_status_coding.strand == '-'
+#    # region beyond exon should be marked erroneous
+#    assert f_err.start == 121
+#    assert f_err.end == 450
+#    assert f_err.type == sl.genome.gffkey.error
+#    assert status.is_coding()
+#    assert status.seen_start
+#    assert status.genic
+#
+#
+#def test_transcript_transition_from_5p_to_end():
+#    sl = setup_loci_with_utr()
+#    transcript = sl.generic_holders['y']
+#    t_interp = annotations.TranscriptInterpreter(transcript)
+#    ivals_sets = t_interp.intervals_5to3(plus_strand=True)
+#    t_interp.interpret_first_pos(ivals_sets[0])
+#    # hit start codon
+#    t_interp.interpret_transition(ivals_before=ivals_sets[0], ivals_after=ivals_sets[1], plus_strand=True)
+#    features = t_interp.clean_features
+#    assert features[-1].type == sl.genome.gffkey.start_codon
+#    assert features[-1].start == 11
+#    assert features[-1].end == 13
+#    # hit splice site
+#    t_interp.interpret_transition(ivals_before=ivals_sets[1], ivals_after=ivals_sets[2], plus_strand=True)
+#    assert features[-1].type == sl.genome.gffkey.acceptor_splice_site
+#    assert features[-2].type == sl.genome.gffkey.donor_splice_site
+#    assert features[-2].start == 101  # splice from
+#    assert features[-1].start == 110  # splice to
+#    assert t_interp.status.is_coding()
+#    # hit splice site
+#    t_interp.interpret_transition(ivals_before=ivals_sets[2], ivals_after=ivals_sets[3], plus_strand=True)
+#    assert features[-1].type == sl.genome.gffkey.acceptor_splice_site
+#    assert features[-2].type == sl.genome.gffkey.donor_splice_site
+#    assert features[-2].start == 121  # splice from
+#    assert features[-1].start == 200  # splice to
+#    # hit stop codon
+#    t_interp.interpret_transition(ivals_before=ivals_sets[3], ivals_after=ivals_sets[4], plus_strand=True)
+#    assert features[-1].type == sl.genome.gffkey.stop_codon
+#    assert features[-1].start == 328
+#    # hit transcription termination site
+#    t_interp.interpret_last_pos(ivals_sets[4], plus_strand=True)
+#    assert features[-1].type == sl.genome.gffkey.TTS
+#    assert features[-1].start == 400
+#
+#
+#def test_non_coding_transitions():
+#    sl = setup_testable_super_loci()
+#    # get single-exon no-CDS transcript
+#    transcript = sl.generic_holders['z']
+#    transcript.remove_feature('ftr000011')
+#    print(transcript.short_str())
+#    t_interp = annotations.TranscriptInterpreter(transcript)
+#    ivals_sets = t_interp.intervals_5to3(plus_strand=True)
+#    assert len(ivals_sets) == 1
+#    t_interp.interpret_first_pos(ivals_sets[0])
+#    features = t_interp.clean_features
+#    assert features[-1].type == sl.genome.gffkey.TSS
+#    t_interp.interpret_last_pos(ivals_sets[0], plus_strand=True)
+#    assert features[-1].type == sl.genome.gffkey.TTS
+#    assert features[-1].start == 100
+#    assert len(features) == 2
+#
+#
+#def test_errors_not_lost():
+#    sl = setup_loci_with_utr()
+#    feature_e = annotations.StructuredFeature()
+#    feature_e.id = sl.genome.feature_ider.next_unique_id()
+#    feature_e.super_locus = sl
+#    sl.features[feature_e.id] = feature_e
+#    feature_e.start, feature_e.end = 40, 80
+#    feature_e.change_to_error()
+#    print('what features did we start with::?')
+#    for feature in sl.features:
+#        print(feature)
+#        print(sl.features[feature].short_str())
+#    sl.check_and_fix_structure(entries=None)
+#    print('---and what features did we leave?---')
+#    for feature in sl.features:
+#        print(feature)
+#        print(sl.features[feature].short_str())
+#    assert feature_e in sl.features.values()
+#
+#
+#def test_anno2json_and_back():
+#    # setup the sequence file
+#    json_path = 'testdata/testerSl.sequence.json'
+#    # can uncomment the following 4 lines if one intentionally changed the format, but check
+#    # fa_path = 'testdata/testerSl.fa'
+#    # sd_fa = sequences.StructuredGenome()
+#    # sd_fa.add_fasta(fa_path)
+#    # sd_fa.to_json(json_path)
+#    sd_fa = sequences.StructuredGenome()
+#    sd_fa.from_json(json_path)
+#
+#    gfffile = 'testdata/testerSl.gff3'
+#    json_anno = 'testdata/testerSl.annotation.json'
+#    ag = annotations.AnnotatedGenome()
+#    ag.add_gff(gfffile, sd_fa, 'testdata/deletable')
+#    ag.to_json(json_anno)
+#    ag_json = annotations.AnnotatedGenome()
+#    print('i do not get it')
+#    ag_json.from_json(json_anno)
+#    print('is it the call back to jsonable')
+#    assert ag.to_jsonable() == ag_json.to_jsonable()
+#    # check recursive load has worked out
+#    print(ag_json.super_loci_slices[0].super_loci[0].slice, 'slice')
+#    assert ag_json.super_loci_slices[0].super_loci[0].slice is ag_json.super_loci_slices[0]
+#    assert ag_json.super_loci_slices[0].super_loci[0].genome is ag_json
+#    # and same for super_loci
+#    sl = ag_json.super_loci_slices[0].super_loci[0]
+#    fkey = sorted(sl.features.keys())[0]
+#    feature = sl.features[fkey]
+#    assert feature.super_locus is sl
+#    assert sl.slice.seq_info[feature.seqid].end == 16000
+#
+#
+#def test_to_intervaltree():
+#    sl = setup_loci_with_utr()
+#    print(sl.slice.seq_info, 'seq_info')
+#    print(sl.slice._seq_info, '_seq_info')
+#    print(sl.slice.coordinates, 'coords')
+#    trees = sl.slice.load_to_interval_tree()
+#    print(sl.slice.super_loci, 'loci')
+#    # get a single tree
+#    assert len(trees.keys()) == 1
+#    tree = trees['1']
+#    for itvl in tree:
+#        print(itvl)
+#    assert len(tree) == len(sl.features)
+#    minf = min([sl.features[f].py_start for f in sl.features])
+#    maxf = max([sl.features[f].py_end for f in sl.features])
+#    assert minf == min(tree).begin
+#    assert maxf == max(tree).end
+#
+#
+#def test_deepcopies():
+#    sl = setup_loci_with_utr()
+#    sl2 = copy.deepcopy(sl)
+#    assert sl is not sl2
+#    for key in sl.__dict__:
+#        val = sl.__getattribute__(key)
+#        # most GenericData pieces should be objects, AKA, not is
+#        if isinstance(val, structure.GenericData):
+#            if key is not 'slice':  # slice points up, aka, should be the same as we only copied from super locus lev.
+#                assert val is not sl2.__getattribute__(key)
+#        elif isinstance(val, dict) or isinstance(val, list):
+#            pass  # skipping as __eq__ etc not implemented
+#        else:
+#            # normal values should be identical
+#            if key is not 'gff_entry':  # no equality implemented for this class
+#                assert val == sl2.__getattribute__(key)
+#
+#    # same idea for one of the sub pieces skipped above
+#    f = sl.features['ftr000010']
+#    f2 = sl2.features['ftr000010']
+#    for key in f.__dict__:
+#        val = f.__getattribute__(key)
+#        if not isinstance(val, structure.GenericData):
+#            if key is not 'gff_entry':  # no equality implemented for this class
+#                assert val == f2.__getattribute__(key)
+#        else:
+#            assert val is not f2.__getattribute__(key)
 
-    # genome.add_gff('testdata/dummyloci.gff3', genome=sg)
-    # add slice
-    sls = annotations.SuperLociSlice()
-    sls.genome = genome
-    sls._add_sequences(sg)
-    # add super locus
-    sl = annotations.SuperLocus()
-    sl.slice = sls
-    sls.super_loci.append(sl)
-    entry_group = gffhelper.read_gff_file('testdata/dummyloci.gff3')
-    sl._add_gff_entry_group(entry_group)
-
-    for feature in sl.features.values():
-        print(feature.short_str())
-    for transcript_in in sl.generic_holders.values():
-        print(transcript_in.short_str())
-    return sl
-
-def setup_testable_super_loci_old():
-    # features [--0--][1][---2---]
-    f_coord = [(1, 100), (111, 120), (201, 400)]
-    # transcript X: [0, 1], Y: [0, 1, 2], Z: [0]
-    t_ids = ['x', 'y', 'z']
-    t_features = [(0, 1), (0, 1, 2), (0, )]
-    genome = annotations.AnnotatedGenome()
-    # add a slice
-    sls = annotations.SuperLociSlice()
-    sls.genome = genome
-    # make a dummy sequence
-    seq_mi = annotations.CoordinateInfo()
-    seq_mi.start = 1
-    seq_mi.end = 450
-    seq_mi.seqid = ''
-    sls.coordinates.append(seq_mi)
-
-    sl = annotations.SuperLocus()
-    sl.slice = sls
-    sls.super_loci.append(sl)
-
-    # setup transcripts and features
-    transcripts = []
-    features = []
-    for i in range(3):
-        t = annotations.FeatureHolder()
-        t.id = t_ids[i]
-        t.super_locus = sl
-        for j in t_features[i]:
-            e = annotations.StructuredFeature()
-            e.id = genome.feature_ider.next_unique_id()
-            e.generic_holders = [t.id]
-            c = annotations.StructuredFeature()
-            c.generic_holders = [t.id]
-            c.id = genome.feature_ider.next_unique_id()
-            print('transcript {}: [exon: {}, cds: {}, coord: {}]'.format(t.id, e.id, c.id, f_coord[j]))
-            e.super_locus = c.super_locus = sl
-            e.start, e.end = c.start, c.end = f_coord[j]
-            c.type = "CDS"
-            e.type = "exon"
-            e.strand = c.strand = '+'
-            t.features += [e.id, c.id]
-            features += [e, c]
-        transcripts.append(t)
-    for t in transcripts:
-        sl.generic_holders[t.id] = t
-    for f in features:
-        sl.features[f.id] = f
-    # transcript x: [exon: ftr000000, cds: ftr000001, coord: (0, 100)]
-    # transcript x: [exon: ftr000002, cds: ftr000003, coord: (110, 120)]
-    # transcript y: [exon: ftr000004, cds: ftr000005, coord: (0, 100)]
-    # transcript y: [exon: ftr000006, cds: ftr000007, coord: (110, 120)]
-    # transcript y: [exon: ftr000008, cds: ftr000009, coord: (200, 400)]
-    # transcript z: [exon: ftr000010, cds: ftr000011, coord: (0, 100)]
-    return sl
-
-
-def setup_loci_with_utr():
-    print('before superloci setup')
-    sl = setup_testable_super_loci()
-    print('after superloci setup')
-    for key_1stCDS in ['ftr000001', 'ftr000005', 'ftr000011']:
-        sl.features[key_1stCDS].start = 11  # start first CDS later
-        sl.features[key_1stCDS].phase = 0  # let's just assume the initial phase is correct
-
-    sl.features['ftr000009'].end = 330  # end first CDS sooner
-    return sl
-
-
-def test_feature_overlap_detection():
-    sl = setup_testable_super_loci()
-    assert sl.features['ftr000000'].fully_overlaps(sl.features['ftr000004'])
-    assert sl.features['ftr000005'].fully_overlaps(sl.features['ftr000001'])
-    # a few that should not overlap
-    assert not sl.features['ftr000000'].fully_overlaps(sl.features['ftr000001'])
-    assert not sl.features['ftr000000'].fully_overlaps(sl.features['ftr000002'])
-
-
-def test_transcript_interpreter():
-    sl = setup_loci_with_utr()
-    # change so that there are implicit UTRs
-    sl.features['ftr000005'].start = 11  # start first CDS later
-    sl.features['ftr000009'].end = 330  # end first CDS sooner
-    transcript = sl.generic_holders['y']
-    t_interp = annotations.TranscriptInterpreter(transcript)
-    t_interp.decode_raw_features()
-    # has all standard features
-    assert set([x.type for x in t_interp.clean_features]) == {sl.genome.gffkey.start_codon,
-                                                              sl.genome.gffkey.stop_codon,
-                                                              sl.genome.gffkey.TTS,
-                                                              sl.genome.gffkey.TSS,
-                                                              sl.genome.gffkey.donor_splice_site,
-                                                              sl.genome.gffkey.acceptor_splice_site}
-    assert t_interp.clean_features[-1].end == 400
-    assert t_interp.clean_features[0].start == 1
-
-
-def test_transcript_get_first():
-    # plus strand
-    sl = setup_loci_with_utr()
-    transcript = sl.generic_holders['y']
-    t_interp = annotations.TranscriptInterpreter(transcript)
-    i0 = t_interp.intervals_5to3(plus_strand=True)[0]
-    t_interp.interpret_first_pos(i0)
-    features = t_interp.clean_features
-    status = t_interp.status
-    assert len(features) == 1
-    f0 = features[0]
-    print(f0.short_str())
-    print(status.__dict__)
-    print(i0[0].data.strand)
-    assert f0.start == 1
-    assert status.is_5p_utr()
-    assert f0.phase is None
-    assert f0.strand == '+'
-
-    # minus strand
-    sl = setup_loci_with_utr()
-    for feature in sl.features.values():  # force minus strand
-        feature.strand = '-'
-
-    transcript = sl.generic_holders['y']
-    t_interp = annotations.TranscriptInterpreter(transcript)
-    i0 = t_interp.intervals_5to3(plus_strand=False)[0]
-    t_interp.interpret_first_pos(i0, plus_strand=False)
-    features = t_interp.clean_features
-    status = t_interp.status
-    assert len(features) == 1
-    f0 = features[0]
-    print(f0.short_str())
-    print(status)
-    print(i0[0].data.strand)
-    assert f0.start == 400
-    assert status.is_5p_utr()
-    assert f0.phase is None
-    assert f0.strand == '-'
-
-    # test without UTR (x doesn't have last exon, and therefore will end in CDS)
-    transcript = sl.generic_holders['x']
-    t_interp = annotations.TranscriptInterpreter(transcript)
-    i0 = t_interp.intervals_5to3(plus_strand=False)[0]
-    t_interp.interpret_first_pos(i0, plus_strand=False)
-    features = t_interp.clean_features
-    status = t_interp.status
-    assert len(features) == 2
-    f_err = features[0]
-    f_status_coding = features[1]
-    print(f_err.short_str())
-    print(status)
-    print(i0)
-    # should get status_coding instead of a start codon
-    assert f_status_coding.start == 120
-    assert f_status_coding.type == sl.genome.gffkey.status_coding
-    assert f_status_coding.strand == '-'
-    # region beyond exon should be marked erroneous
-    assert f_err.start == 121
-    assert f_err.end == 450
-    assert f_err.type == sl.genome.gffkey.error
-    assert status.is_coding()
-    assert status.seen_start
-    assert status.genic
-
-
-def test_transcript_transition_from_5p_to_end():
-    sl = setup_loci_with_utr()
-    transcript = sl.generic_holders['y']
-    t_interp = annotations.TranscriptInterpreter(transcript)
-    ivals_sets = t_interp.intervals_5to3(plus_strand=True)
-    t_interp.interpret_first_pos(ivals_sets[0])
-    # hit start codon
-    t_interp.interpret_transition(ivals_before=ivals_sets[0], ivals_after=ivals_sets[1], plus_strand=True)
-    features = t_interp.clean_features
-    assert features[-1].type == sl.genome.gffkey.start_codon
-    assert features[-1].start == 11
-    assert features[-1].end == 13
-    # hit splice site
-    t_interp.interpret_transition(ivals_before=ivals_sets[1], ivals_after=ivals_sets[2], plus_strand=True)
-    assert features[-1].type == sl.genome.gffkey.acceptor_splice_site
-    assert features[-2].type == sl.genome.gffkey.donor_splice_site
-    assert features[-2].start == 101  # splice from
-    assert features[-1].start == 110  # splice to
-    assert t_interp.status.is_coding()
-    # hit splice site
-    t_interp.interpret_transition(ivals_before=ivals_sets[2], ivals_after=ivals_sets[3], plus_strand=True)
-    assert features[-1].type == sl.genome.gffkey.acceptor_splice_site
-    assert features[-2].type == sl.genome.gffkey.donor_splice_site
-    assert features[-2].start == 121  # splice from
-    assert features[-1].start == 200  # splice to
-    # hit stop codon
-    t_interp.interpret_transition(ivals_before=ivals_sets[3], ivals_after=ivals_sets[4], plus_strand=True)
-    assert features[-1].type == sl.genome.gffkey.stop_codon
-    assert features[-1].start == 328
-    # hit transcription termination site
-    t_interp.interpret_last_pos(ivals_sets[4], plus_strand=True)
-    assert features[-1].type == sl.genome.gffkey.TTS
-    assert features[-1].start == 400
-
-
-def test_non_coding_transitions():
-    sl = setup_testable_super_loci()
-    # get single-exon no-CDS transcript
-    transcript = sl.generic_holders['z']
-    transcript.remove_feature('ftr000011')
-    print(transcript.short_str())
-    t_interp = annotations.TranscriptInterpreter(transcript)
-    ivals_sets = t_interp.intervals_5to3(plus_strand=True)
-    assert len(ivals_sets) == 1
-    t_interp.interpret_first_pos(ivals_sets[0])
-    features = t_interp.clean_features
-    assert features[-1].type == sl.genome.gffkey.TSS
-    t_interp.interpret_last_pos(ivals_sets[0], plus_strand=True)
-    assert features[-1].type == sl.genome.gffkey.TTS
-    assert features[-1].start == 100
-    assert len(features) == 2
-
-
-def test_errors_not_lost():
-    sl = setup_loci_with_utr()
-    feature_e = annotations.StructuredFeature()
-    feature_e.id = sl.genome.feature_ider.next_unique_id()
-    feature_e.super_locus = sl
-    sl.features[feature_e.id] = feature_e
-    feature_e.start, feature_e.end = 40, 80
-    feature_e.change_to_error()
-    print('what features did we start with::?')
-    for feature in sl.features:
-        print(feature)
-        print(sl.features[feature].short_str())
-    sl.check_and_fix_structure(entries=None)
-    print('---and what features did we leave?---')
-    for feature in sl.features:
-        print(feature)
-        print(sl.features[feature].short_str())
-    assert feature_e in sl.features.values()
-
-
-def test_anno2json_and_back():
-    # setup the sequence file
-    json_path = 'testdata/testerSl.sequence.json'
-    # can uncomment the following 4 lines if one intentionally changed the format, but check
-    # fa_path = 'testdata/testerSl.fa'
-    # sd_fa = sequences.StructuredGenome()
-    # sd_fa.add_fasta(fa_path)
-    # sd_fa.to_json(json_path)
-    sd_fa = sequences.StructuredGenome()
-    sd_fa.from_json(json_path)
-
-    gfffile = 'testdata/testerSl.gff3'
-    json_anno = 'testdata/testerSl.annotation.json'
-    ag = annotations.AnnotatedGenome()
-    ag.add_gff(gfffile, sd_fa, 'testdata/deletable')
-    ag.to_json(json_anno)
-    ag_json = annotations.AnnotatedGenome()
-    print('i do not get it')
-    ag_json.from_json(json_anno)
-    print('is it the call back to jsonable')
-    assert ag.to_jsonable() == ag_json.to_jsonable()
-    # check recursive load has worked out
-    print(ag_json.super_loci_slices[0].super_loci[0].slice, 'slice')
-    assert ag_json.super_loci_slices[0].super_loci[0].slice is ag_json.super_loci_slices[0]
-    assert ag_json.super_loci_slices[0].super_loci[0].genome is ag_json
-    # and same for super_loci
-    sl = ag_json.super_loci_slices[0].super_loci[0]
-    fkey = sorted(sl.features.keys())[0]
-    feature = sl.features[fkey]
-    assert feature.super_locus is sl
-    assert sl.slice.seq_info[feature.seqid].end == 16000
-
-
-def test_to_intervaltree():
-    sl = setup_loci_with_utr()
-    print(sl.slice.seq_info, 'seq_info')
-    print(sl.slice._seq_info, '_seq_info')
-    print(sl.slice.coordinates, 'coords')
-    trees = sl.slice.load_to_interval_tree()
-    print(sl.slice.super_loci, 'loci')
-    # get a single tree
-    assert len(trees.keys()) == 1
-    tree = trees['1']
-    for itvl in tree:
-        print(itvl)
-    assert len(tree) == len(sl.features)
-    minf = min([sl.features[f].py_start for f in sl.features])
-    maxf = max([sl.features[f].py_end for f in sl.features])
-    assert minf == min(tree).begin
-    assert maxf == max(tree).end
-
-
-def test_deepcopies():
-    sl = setup_loci_with_utr()
-    sl2 = copy.deepcopy(sl)
-    assert sl is not sl2
-    for key in sl.__dict__:
-        val = sl.__getattribute__(key)
-        # most GenericData pieces should be objects, AKA, not is
-        if isinstance(val, structure.GenericData):
-            if key is not 'slice':  # slice points up, aka, should be the same as we only copied from super locus lev.
-                assert val is not sl2.__getattribute__(key)
-        elif isinstance(val, dict) or isinstance(val, list):
-            pass  # skipping as __eq__ etc not implemented
-        else:
-            # normal values should be identical
-            if key is not 'gff_entry':  # no equality implemented for this class
-                assert val == sl2.__getattribute__(key)
-
-    # same idea for one of the sub pieces skipped above
-    f = sl.features['ftr000010']
-    f2 = sl2.features['ftr000010']
-    for key in f.__dict__:
-        val = f.__getattribute__(key)
-        if not isinstance(val, structure.GenericData):
-            if key is not 'gff_entry':  # no equality implemented for this class
-                assert val == f2.__getattribute__(key)
-        else:
-            assert val is not f2.__getattribute__(key)
+#def test_swap_type():
+#    sl = setup_loci_with_utr()
+#    holder = sl.generic_holders['x']
+#    old_n_feature_holders = len(sl.generic_holders)
+#    ori_fholder_features = copy.deepcopy(holder.features)
+#    protein = holder.swap_type('proteins')
+#    assert len(sl.generic_holders) == old_n_feature_holders - 1
+#    assert len(sl.proteins) == 1
+#    assert holder.id not in sl.generic_holders
+#    assert holder.id == protein.id
+#    assert ori_fholder_features == protein.features
+#    assert holder.super_locus is protein.super_locus
+#
+#
+#def test_entries_are_imported():
+#    sl = setup_loci_with_utr()
+#    pass # todo, finish
+#
+#
+#def test_renamer():
+#    staticsl = setup_loci_with_utr()
+#    sl = setup_loci_with_utr()
+#    y = sl.generic_holders['y']
+#    newy = y.replace_id_everywhere('newy')
+#    print(sl.generic_holders.keys())
+#    assert 'newy' in sl.generic_holders.keys()
+#    assert 'y' not in sl.generic_holders.keys()
+#    for key in sl.features.keys():
+#        val_old = staticsl.features[key]
+#        val = sl.features[key]
+#        if 'y' in val_old.generic_holders:
+#            assert 'y' not in val.generic_holders
+#            assert 'newy' in val.generic_holders
 
 
 #### helpers
@@ -546,40 +580,6 @@ def test_gff_to_seqids():
     x = helpers.get_seqids_from_gff('testdata/testerSl.gff3')
     assert x == {'NC_015438.2', 'NC_015439.2', 'NC_015440.2'}
 
-
-def test_swap_type():
-    sl = setup_loci_with_utr()
-    holder = sl.generic_holders['x']
-    old_n_feature_holders = len(sl.generic_holders)
-    ori_fholder_features = copy.deepcopy(holder.features)
-    protein = holder.swap_type('proteins')
-    assert len(sl.generic_holders) == old_n_feature_holders - 1
-    assert len(sl.proteins) == 1
-    assert holder.id not in sl.generic_holders
-    assert holder.id == protein.id
-    assert ori_fholder_features == protein.features
-    assert holder.super_locus is protein.super_locus
-
-
-def test_entries_are_imported():
-    sl = setup_loci_with_utr()
-    pass # todo, finish
-
-
-def test_renamer():
-    staticsl = setup_loci_with_utr()
-    sl = setup_loci_with_utr()
-    y = sl.generic_holders['y']
-    newy = y.replace_id_everywhere('newy')
-    print(sl.generic_holders.keys())
-    assert 'newy' in sl.generic_holders.keys()
-    assert 'y' not in sl.generic_holders.keys()
-    for key in sl.features.keys():
-        val_old = staticsl.features[key]
-        val = sl.features[key]
-        if 'y' in val_old.generic_holders:
-            assert 'y' not in val.generic_holders
-            assert 'newy' in val.generic_holders
 
 
 #### partitions
