@@ -247,6 +247,21 @@ def test_coordinate_contraints():
         sess.add(coors_bad3)
         sess.commit()
 
+
+def test_coordinate_seqinfo_query():
+    ag = annotations.AnnotatedGenome()
+    slic = annotations.Slice(annotated_genome=ag)
+    coors = annotations.Coordinates(start=1, end=30, seqid='abc', slice=slic)
+    coors2 = annotations.Coordinates(start=11, end=330, seqid='def', slice=slic)
+    engine = create_engine('sqlite:///:memory:', echo=False)
+    annotations.Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    sess = Session()
+    # should be ok
+    sess.add_all([coors, coors2])
+    print(slic.seq_info)
+    assert False
+
 #def setup_testable_super_loci():
 #    genome = annotations.AnnotatedGenome()
 #    # make a dummy sequence

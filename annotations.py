@@ -109,6 +109,7 @@ class AnnotatedGenome(Base):
     slices = relationship("Slice", back_populates="annotated_genome")
 
     gffkey = FeatureDecoder()
+    # todo, figure out if one wants to keep the id makers like this...
 #    transcript_ider = helpers.IDMaker(prefix='trx')
 #    protein_ider = helpers.IDMaker(prefix='prt')
 #    feature_ider = helpers.IDMaker(prefix='ftr')
@@ -150,20 +151,6 @@ class AnnotatedGenome(Base):
 #        self.bp_5pUTR = 0
 #
 #
-#class MetaInfoAnnoGenome(MetaInfoAnnotation):
-#    def __init__(self):
-#        super().__init__()
-#        self.spec += [('species', True, str, None),
-#                      ('accession', True, str, None),
-#                      ('version', True, str, None),
-#                      ('acquired_from', True, str, None)]
-#
-#        self.species = ""
-#        self.accession = ""
-#        self.version = ""
-#        self.acquired_from = ""
-#
-#
 #class FeatureLike(GenericData):
 #    def __init__(self):
 #        super().__init__()
@@ -193,24 +180,24 @@ class Slice(Base):
     annotated_genome = relationship('AnnotatedGenome', back_populates="slices")
     processing_set = Column(Enum(ProcessingSet))
     coordinates = relationship('Coordinates', back_populates="slice")
-
-#        self.super_loci = []
-#        self.coordinates = []
-#        self._seq_info = {}
+    super_loci = relationship('SuperLocus', back_populates="slice")
 #        self.mapper = helpers.Mapper()
 #
 #    @property
 #    def gffkey(self):
 #        return self.genome.gffkey
 #
-#    @property
-#    def seq_info(self):
-#        if not self._seq_info:
-#            seq_info = {}
-#            for x in self.coordinates:
-#                seq_info[x.seqid] = x
-#            self._seq_info = seq_info
-#        return self._seq_info
+
+    @property
+    def seq_info(self):
+        try:
+            _ = self._seq_info
+        except AttributeError:
+            seq_info = {}
+            for x in self.coordinates:
+                seq_info[x.seqid] = x
+            self._seq_info = seq_info  # todo, is there a sqlalchemy Base compatible way to add attr in init funciton?
+        return self._seq_info
 #
 #    def _add_sequences(self, genome):
 #        for seq in genome.sequences:
@@ -313,8 +300,8 @@ class Slice(Base):
 #
 #    def __deepcopy__(self, memodict={}):
 #        raise NotImplementedError  # todo
-#
-#
+
+
 class Coordinates(Base):
     __tablename__ = 'coordinates'
 
@@ -329,34 +316,39 @@ class Coordinates(Base):
         CheckConstraint(start >= 1, name='check_start_1plus'),
         CheckConstraint(end >= start, name='check_end_gr_start'),
         {})
-#
-#
-#class SuperLocus(FeatureLike):
-#    # normally a loci, some times a short list of loci for "trans splicing"
-#    # this will define a group of exons that can possibly be made into transcripts
-#    # AKA this if you have to go searching through a graph for parents/children, at least said graph will have
-#    # a max size defined at SuperLoci
+
+
+class SuperLocusAliases(Base):
+    __tablename__ = 'super_locus_aliases'
+
+    id = Column(Integer, primary_key=True)
+    alias = Column(String)
+    super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
+    super_locus = relationship('SuperLocus', back_populates='aliases')
+
+
+class SuperLocus(Base):
+    __tablename__ = 'super_loci'
+    # normally a loci, some times a short list of loci for "trans splicing"
+    # this will define a group of exons that can possibly be made into transcripts
+    # AKA this if you have to go searching through a graph for parents/children, at least said graph will have
+    # a max size defined at SuperLoci
 #    t_transcripts = 'transcripts'
 #    t_proteins = 'proteins'
 #    t_feature_holders = 'generic_holders'
 #    types_feature_holders = [t_transcripts, t_proteins, t_feature_holders]
 #
-#    def __init__(self):
-#        super().__init__()
-#        self.spec += [('transcripts', True, Transcribed, dict),
-#                      ('proteins', True, Translated, dict),
-#                      ('features', True, StructuredFeature, dict),
-#                      ('generic_holders', False, FeatureHolder, dict),
-#                      ('ids', True, list, None),
-#                      ('slice', False, SuperLociSlice, None),
-#                      ('_dummy_transcript', False, Transcribed, None)]
 #        self.transcripts = {}
 #        self.proteins = {}
 #        self.generic_holders = {}  # this is here for import from gff only
 #        self.features = {}
 #        self.ids = []
 #        self._dummy_transcript = None
-#        self.slice = None
+    id = Column(Integer, primary_key=True)
+    slice_id = Column(Integer, ForeignKey('slices.id'))
+    slice = relationship('Slice', back_populates='super_loci')
+    # things SuperLocus can have a lot of
+    aliases = relationship('SuperLocusAliases', back_populates='super_locus')
 #
 #    def short_str(self):
 #        string = "{}\ntranscripts: {}\nproteins: {}\ngeneric holders: {}".format(self.id, list(self.transcripts.keys()),
