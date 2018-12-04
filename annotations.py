@@ -355,6 +355,12 @@ class SuperLocus(FeatureLike):
         self._dummy_transcript = None
         self.slice = None
 
+    def short_str(self):
+        string = "{}\ntranscripts: {}\nproteins: {}\ngeneric holders: {}".format(self.id, list(self.transcripts.keys()),
+                                                                                 list(self.proteins.keys()),
+                                                                                 list(self.generic_holders.keys()))
+        return string
+
     @property
     def genome(self):
         return self.slice.genome
@@ -802,7 +808,7 @@ class StructuredFeature(FeatureLike):
         self.type = self.super_locus.genome.gffkey.error
 
     def link_to_feature_holder_and_back(self, holder_id, holder_type=None, at=None):
-        print('link_to_feature_holder_and_back ({}) {} {}'.format(self.short_str(), holder_id, holder_type))
+        #print('link_to_feature_holder_and_back ({}) {} {}'.format(self.short_str(), holder_id, holder_type))
         if holder_type is None:
             holder_type = SuperLocus.t_feature_holders
 
@@ -813,7 +819,7 @@ class StructuredFeature(FeatureLike):
         self.link_to_feature_holder(holder_id, holder_type)
 
     def link_to_feature_holder(self, holder_id, holder_type=None, at=None):
-        print('link_fo_feature_holder ({}) {} {}'.format(self.short_str(), holder_id, holder_type))
+        #print('link_fo_feature_holder ({}) {} {}'.format(self.short_str(), holder_id, holder_type))
         if holder_type is None:
             holder_type = SuperLocus.t_feature_holders
         holder = self.__getattribute__(holder_type)
@@ -1125,9 +1131,13 @@ class TranscriptInterpreter(TranscriptInterpBase):
     # todo, get_protein_id function (protein_id, Parent of CDS, None to IDMAker)
     # todo, make new protein when ID changes / if we've hit stop codon?
 
-    @staticmethod
-    def new_feature(template, **kwargs):
-        new = template.clone()
+    def new_feature(self, template, **kwargs):
+        try:
+            new = template.clone()
+        except KeyError as e:
+            print(self.transcript.super_locus.short_str())
+            print(template.short_str())
+            raise e
         for key in kwargs:
             new.__setattr__(key, kwargs[key])
         return new
@@ -1440,7 +1450,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
     def decode_raw_features(self):
         plus_strand = self.is_plus_strand()
         interval_sets = self.intervals_5to3(plus_strand)
-        print(interval_sets, 'interval sets')
         self.interpret_first_pos(interval_sets[0], plus_strand)
         for i in range(len(interval_sets) - 1):
             ivals_before = interval_sets[i]
