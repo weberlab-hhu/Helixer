@@ -1,6 +1,7 @@
 import sequences
 import structure
 import annotations
+import annotations_orm
 import helpers
 import pytest
 import partitions
@@ -158,12 +159,12 @@ def test_fa_matches_sequences_json():
     assert sd_fa.to_jsonable() == sd_json.to_jsonable()
 
 
-### annotations ###
+### annotations_orm ###
 def test_annogenome2sequence_infos_relation():
     engine = create_engine('sqlite:///:memory:', echo=False)
-    annotations.Base.metadata.create_all(engine)
-    ag = annotations.AnnotatedGenome(species='Athaliana', version='1.2', acquired_from='Phytozome12')
-    sequence_info = annotations.SequenceInfo(annotated_genome=ag)
+    annotations_orm.Base.metadata.create_all(engine)
+    ag = annotations_orm.AnnotatedGenome(species='Athaliana', version='1.2', acquired_from='Phytozome12')
+    sequence_info = annotations_orm.SequenceInfo(annotated_genome=ag)
     assert ag is sequence_info.annotated_genome
     # actually put everything in db
     Session = sessionmaker(bind=engine)
@@ -191,21 +192,21 @@ def test_annogenome2sequence_infos_relation():
 
 def test_processing_set_enum():
     engine = create_engine('sqlite:///:memory:', echo=False)
-    annotations.Base.metadata.create_all(engine)
+    annotations_orm.Base.metadata.create_all(engine)
     # valid numbers can be setup
-    ps = annotations.ProcessingSet(annotations.ProcessingSet.train)
-    ps2 = annotations.ProcessingSet(1)
+    ps = annotations_orm.ProcessingSet(annotations_orm.ProcessingSet.train)
+    ps2 = annotations_orm.ProcessingSet(1)
     assert ps == ps2
     # other numbers can't
     with pytest.raises(ValueError):
-        annotations.ProcessingSet(100)
+        annotations_orm.ProcessingSet(100)
     with pytest.raises(ValueError):
-        annotations.ProcessingSet(1.3)
+        annotations_orm.ProcessingSet(1.3)
     with pytest.raises(ValueError):
-        annotations.ProcessingSet(0)
-    ag = annotations.AnnotatedGenome()
-    sequence_info = annotations.SequenceInfo(processing_set=ps, annotated_genome=ag)
-    sequence_info2 = annotations.SequenceInfo(processing_set=ps2, annotated_genome=ag)
+        annotations_orm.ProcessingSet(0)
+    ag = annotations_orm.AnnotatedGenome()
+    sequence_info = annotations_orm.SequenceInfo(processing_set=ps, annotated_genome=ag)
+    sequence_info2 = annotations_orm.SequenceInfo(processing_set=ps2, annotated_genome=ag)
     assert sequence_info.processing_set.value == 1
     assert sequence_info2.processing_set.value == 1
     Session = sessionmaker(bind=engine)
@@ -217,18 +218,18 @@ def test_processing_set_enum():
     for s in ag.sequence_infos:
         assert s.processing_set.value == 1
     # null value works
-    sequence_info3 = annotations.SequenceInfo(annotated_genome=ag)
+    sequence_info3 = annotations_orm.SequenceInfo(annotated_genome=ag)
     assert sequence_info3.processing_set is None
 
 
 def test_coordinate_contraints():
-    coors = annotations.Coordinates(start=1, end=30, seqid='abc')
-    coors2 = annotations.Coordinates(start=1, end=1, seqid='abc')
-    coors_bad1 = annotations.Coordinates(start=0, end=30, seqid='abc')
-    coors_bad2 = annotations.Coordinates(start=100, end=30, seqid='abc')
-    coors_bad3 = annotations.Coordinates(start=1, end=30)
+    coors = annotations_orm.Coordinates(start=1, end=30, seqid='abc')
+    coors2 = annotations_orm.Coordinates(start=1, end=1, seqid='abc')
+    coors_bad1 = annotations_orm.Coordinates(start=0, end=30, seqid='abc')
+    coors_bad2 = annotations_orm.Coordinates(start=100, end=30, seqid='abc')
+    coors_bad3 = annotations_orm.Coordinates(start=1, end=30)
     engine = create_engine('sqlite:///:memory:', echo=False)
-    annotations.Base.metadata.create_all(engine)
+    annotations_orm.Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     sess = Session()
     # should be ok
@@ -249,13 +250,13 @@ def test_coordinate_contraints():
 
 
 def test_coordinate_seqinfo_query():
-    ag = annotations.AnnotatedGenome()
-    slic = annotations.SequenceInfo(annotated_genome=ag)
-    coors = annotations.Coordinates(start=1, end=30, seqid='abc', sequence_info=slic)
-    coors2 = annotations.Coordinates(start=11, end=330, seqid='def', sequence_info=slic)
+    ag = annotations_orm.AnnotatedGenome()
+    slic = annotations_orm.SequenceInfo(annotated_genome=ag)
+    coors = annotations_orm.Coordinates(start=1, end=30, seqid='abc', sequence_info=slic)
+    coors2 = annotations_orm.Coordinates(start=11, end=330, seqid='def', sequence_info=slic)
     seq_info = slic.seq_info
     engine = create_engine('sqlite:///:memory:', echo=False)
-    annotations.Base.metadata.create_all(engine)
+    annotations_orm.Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     sess = Session()
     # should be ok
@@ -267,6 +268,8 @@ def test_coordinate_seqinfo_query():
 # todo, test querrying all around and symmetry of relationships features, transcribeds, translateds, super_loci
 # todo WEDNESDAY
 
+
+### annotations ###
 #def setup_testable_super_loci():
 #    genome = annotations.AnnotatedGenome()
 #    # make a dummy sequence
