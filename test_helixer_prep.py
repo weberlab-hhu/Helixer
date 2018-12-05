@@ -317,6 +317,49 @@ def test_many2many_with_features():
             indirect_features.add(f)
     assert len(indirect_features) == 3
 
+
+def test_feature_has_its_things():
+    engine = create_engine('sqlite:///:memory:', echo=False)
+    annotations_orm.Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    sess = Session()
+    # should be ok
+
+    ag = annotations_orm.AnnotatedGenome()
+    sinfo = annotations_orm.SequenceInfo(annotated_genome=ag)
+    sl = annotations_orm.SuperLocus(sequence_info=sinfo)
+    # test feature with nothing much set
+    f = annotations_orm.Feature(super_locus=sl)
+    sess.add(f)
+    sess.commit()
+
+    assert f.is_plus_strand is None
+    assert f.source is None
+    assert f.seqid is None
+    assert f.score is None
+    # test feature with
+    f1 = annotations_orm.Feature(super_locus=sl, is_plus_strand=False, seqid='abc', start=3, end=6)
+    assert not f1.is_plus_strand
+    assert f1.seqid == 'abc'
+    assert f1.start == 3
+    assert f1.end == 6
+    # test bad input
+    with pytest.raises(KeyError):
+        f2 = annotations_orm.Feature(super_locus=f)
+
+    f2 = annotations_orm.Feature(start=3, end=1)
+    sess.add(f2)
+    with pytest.raises(sqlalchemy.exc.IntegrityError):
+        sess.commit()
+    sess.rollback()
+
+    f2 = annotations_orm.Feature(is_plus_strand=-1)  # note that 0, and 1 are accepted
+    sess.add(f2)
+    with pytest.raises(sqlalchemy.exc.StatementError):
+        sess.commit()
+    sess.rollback()
+
+
 # todo, test querrying all around and symmetry of relationships features, transcribeds, translateds, super_loci
 # todo WEDNESDAY
 

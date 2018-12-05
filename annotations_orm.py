@@ -1,9 +1,10 @@
 import enum
+import type_enums
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import Table, Column, Integer, ForeignKey, String, Enum, CheckConstraint
+from sqlalchemy import Table, Column, Integer, ForeignKey, String, Enum, CheckConstraint, Boolean, Float
 from sqlalchemy.orm import relationship
 
 # setup classes for data holding
@@ -84,11 +85,6 @@ class ProcessingSet(enum.Enum):
     train = 'train'
     dev = 'dev'
     test = 'test'
-
-
-
-
-
 
 
 class SequenceInfo(Base):
@@ -247,7 +243,6 @@ class SuperLocusAliases(Base):
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
     super_locus = relationship('SuperLocus', back_populates='aliases')
 
-    type = Column(Enum, )  # todo
 
 class SuperLocus(Base):
     __tablename__ = 'super_loci'
@@ -262,6 +257,9 @@ class SuperLocus(Base):
 #
 #        self._dummy_transcript = None
     id = Column(Integer, primary_key=True)
+    given_id = Column(String)
+    type = Column(Enum(type_enums.SuperLocus))
+    # relations
     sequence_info_id = Column(Integer, ForeignKey('sequence_infos.id'))
     sequence_info = relationship('SequenceInfo', back_populates='super_loci')
     # things SuperLocus can have a lot of
@@ -421,6 +419,8 @@ class SuperLocus(Base):
 #        return new
 #
 #
+
+
 class NoTranscriptError(Exception):
     pass
 
@@ -449,10 +449,14 @@ association_translateds_to_transcribeds = Table('association_translateds_to_tran
     Column('transcribed_id', Integer, ForeignKey('transcribeds.id'))
 )
 
+
 class GenericHolder(Base):
     __tablename__ = 'generic_holders'
 
     id = Column(Integer, primary_key=True)
+    given_id = Column(String)
+    type = Column(Enum(type_enums.TranscriptLevelAll))
+
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
     super_locus = relationship('SuperLocus', back_populates='generic_holders')
 
@@ -592,10 +596,15 @@ class GenericHolder(Base):
 #    def replace_subclass_only_ids(self, new_id):
 #        pass
 #
+
+
 class Transcribed(Base):
     __tablename__ = 'transcribeds'
 
     id = Column(Integer, primary_key=True)
+    given_id = Column(String)
+    type = Column(Enum(type_enums.TranscriptLevelNice))
+
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
     super_locus = relationship('SuperLocus', back_populates='transcribeds')
 
@@ -603,7 +612,7 @@ class Transcribed(Base):
                             back_populates='transcribeds')
 
     translateds = relationship('Translated', secondary=association_translateds_to_transcribeds,
-                            back_populates='transcribeds')
+                               back_populates='transcribeds')
 #    holder_type = 'transcripts'
 #
 #        self.proteins = []  # list of protein IDs, matching subset of keys in self.super_locus.proteins
@@ -620,10 +629,14 @@ class Transcribed(Base):
 #    def protein_objs(self):
 #        return [self.protein_obj(x) for x in self.proteins]
 #
+
+
 class Translated(Base):
     __tablename__ = 'translateds'
 
     id = Column(Integer, primary_key=True)
+    given_id = Column(String)
+    # type can only be 'protein' so far as I know..., so skipping
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
     super_locus = relationship('SuperLocus', back_populates='translateds')
 
@@ -631,7 +644,7 @@ class Translated(Base):
                             back_populates='translateds')
 
     transcribeds = relationship('Transcribed', secondary=association_translateds_to_transcribeds,
-                               back_populates='translateds')
+                                back_populates='translateds')
 #    holder_type = 'proteins'
 #
 #        self.transcripts = []  # list of transcript IDs, matching subset of keys in self.super_locus.transcripts
@@ -649,15 +662,22 @@ class Translated(Base):
 #        return [self.transcript_obj(x) for x in self.transcripts]
 #
 #
+
+
 class Feature(Base):
     __tablename__ = 'features'
     # basic attributes
     id = Column(Integer, primary_key=True)
+    given_id = Column(Enum(type_enums.TranscribedAll))
+
+    seqid = Column(String)
+    start = Column(Integer)
+    end = Column(Integer)
+    is_plus_strand = Column(Boolean)
+    score = Column(Float)
+    source = Column(String)
+
     # relations
-    # GenericHolder
-    # Translated
-    # Transcribed
-    # SuperLocus
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
     super_locus = relationship('SuperLocus', back_populates='features')
 
@@ -665,30 +685,17 @@ class Feature(Base):
                                    back_populates='features')
 
     transcribeds = relationship('Transcribed', secondary=association_transcribeds_to_features,
-                                   back_populates='features')
+                                back_populates='features')
 
     translateds = relationship('Translated', secondary=association_translateds_to_features,
-                                   back_populates='features')
-#        self.spec += [('start', True, int, None),
-#                      ('end', True, int, None),
-#                      ('seqid', True, str, None),
-#                      ('strand', True, str, None),
-#                      ('score', True, float, None),
-#                      ('source', True, str, None),
-#                      ('phase', True, int, None),
-#
-#        self.start = -1
-#        self.end = -1
-#        self.seqid = ''
-#        self.strand = '.'
+                               back_populates='features')
+
+    __table_args__ = (
+        CheckConstraint(start >= 1, name='check_start_1plus'),
+        CheckConstraint(end >= start, name='check_end_gr_start'),
+        {})
 #        self.phase = None
-#        self.score = None
-#        self.source = ''
-#        self.transcripts = []
-#        self.proteins = []
-#        self.generic_holders = []
-#        self.super_locus = None
-#
+
 #    @property
 #    def py_start(self):
 #        return self.start - 1
