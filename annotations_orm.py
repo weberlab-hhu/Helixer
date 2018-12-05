@@ -81,20 +81,27 @@ class AnnotatedGenome(Base):
 #        # self.is_type_in_question = False
 
 class ProcessingSet(enum.Enum):
-    train = 1
-    dev = 2
-    test = 3
+    train = 'train'
+    dev = 'dev'
+    test = 'test'
+
+
+
+
+
 
 
 class SequenceInfo(Base):
     __tablename__ = "sequence_infos"
 
     id = Column(Integer, primary_key=True)
+    # relations
     annotated_genome_id = Column(Integer, ForeignKey('annotated_genomes.id'), nullable=False)
     annotated_genome = relationship('AnnotatedGenome', back_populates="sequence_infos")
     processing_set = Column(Enum(ProcessingSet))
     coordinates = relationship('Coordinates', back_populates="sequence_info")
     super_loci = relationship('SuperLocus', back_populates="sequence_info")
+
 #        self.mapper = helpers.Mapper()
 #
 #    @property
@@ -240,6 +247,7 @@ class SuperLocusAliases(Base):
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
     super_locus = relationship('SuperLocus', back_populates='aliases')
 
+    type = Column(Enum, )  # todo
 
 class SuperLocus(Base):
     __tablename__ = 'super_loci'

@@ -3,6 +3,7 @@ import structure
 import annotations
 import annotations_orm
 import helpers
+import type_enums
 import pytest
 import partitions
 import copy
@@ -10,6 +11,7 @@ from dustdas import gffhelper
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import sqlalchemy
+
 
 ### structure ###
 # testing: add_paired_dictionaries
@@ -195,20 +197,20 @@ def test_processing_set_enum():
     annotations_orm.Base.metadata.create_all(engine)
     # valid numbers can be setup
     ps = annotations_orm.ProcessingSet(annotations_orm.ProcessingSet.train)
-    ps2 = annotations_orm.ProcessingSet(1)
+    ps2 = annotations_orm.ProcessingSet('train')
     assert ps == ps2
     # other numbers can't
     with pytest.raises(ValueError):
-        annotations_orm.ProcessingSet(100)
+        annotations_orm.ProcessingSet('training')
     with pytest.raises(ValueError):
         annotations_orm.ProcessingSet(1.3)
     with pytest.raises(ValueError):
-        annotations_orm.ProcessingSet(0)
+        annotations_orm.ProcessingSet('Dev')
     ag = annotations_orm.AnnotatedGenome()
     sequence_info = annotations_orm.SequenceInfo(processing_set=ps, annotated_genome=ag)
     sequence_info2 = annotations_orm.SequenceInfo(processing_set=ps2, annotated_genome=ag)
-    assert sequence_info.processing_set.value == 1
-    assert sequence_info2.processing_set.value == 1
+    assert sequence_info.processing_set.value == 'train'
+    assert sequence_info2.processing_set.value == 'train'
     Session = sessionmaker(bind=engine)
     sess = Session()
 
@@ -216,7 +218,7 @@ def test_processing_set_enum():
     sess.commit()
     # make sure we get the exact same handling when we come back out of the database
     for s in ag.sequence_infos:
-        assert s.processing_set.value == 1
+        assert s.processing_set.value == 'train'
     # null value works
     sequence_info3 = annotations_orm.SequenceInfo(annotated_genome=ag)
     assert sequence_info3.processing_set is None
@@ -695,7 +697,24 @@ def test_many2many_with_features():
 #            assert 'newy' in val.generic_holders
 
 
-#### helpers
+#### type_enumss ####
+def test_enum_non_inheritance():
+    allknown = [x.name for x in list(type_enums.AllKnown)]
+    allnice = [x.name for x in list(type_enums.AllKeepable)]
+    # check that some random bits made it in to all
+    assert 'error' in allknown
+    assert 'region' in allknown
+
+    # check that some annoying bits are not in nice set
+    for not_nice in ['transcript', 'primary_transcript', 'exon', 'five_prime_UTR', 'cds']:
+        assert not_nice not in allnice
+        assert not_nice in allknown
+
+    # check nothing is there twice
+    assert len(set(allknown)) == len(allknown)
+
+
+#### helpers ####
 def test_key_matching():
     # identical
     known = {'a', 'b', 'c'}
