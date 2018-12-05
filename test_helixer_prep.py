@@ -265,6 +265,56 @@ def test_coordinate_seqinfo_query():
     assert slic.seq_info['def'].end == 330
     assert seq_info is slic.seq_info
 
+
+def test_many2many_scribed2slated():
+    ag = annotations_orm.AnnotatedGenome()
+    sinfo = annotations_orm.SequenceInfo(annotated_genome=ag)
+    # test transcript to multi proteins
+    sl = annotations_orm.SuperLocus(sequence_info=sinfo)
+    scribed0 = annotations_orm.Transcribed(super_locus=sl)
+    slated0 = annotations_orm.Translated(super_locus=sl, transcribeds=[scribed0])
+    slated1 = annotations_orm.Translated(super_locus=sl, transcribeds=[scribed0])
+    # test protein to multi transcripts
+    assert set(scribed0.translateds) == {slated0, slated1}
+    slated2 = annotations_orm.Translated(super_locus=sl)
+    scribed1 = annotations_orm.Transcribed(super_locus=sl)
+    scribed2 = annotations_orm.Transcribed(super_locus=sl)
+    slated2.transcribeds = [scribed1, scribed2]
+    assert set(slated2.transcribeds) == {scribed1, scribed2}
+    scribed3 = annotations_orm.Transcribed(super_locus=sl)
+    slated2.transcribeds.append(scribed3)
+    assert set(slated2.transcribeds) == {scribed1, scribed2, scribed3}
+
+
+def test_many2many_with_features():
+    ag = annotations_orm.AnnotatedGenome()
+    sinfo = annotations_orm.SequenceInfo(annotated_genome=ag)
+    sl = annotations_orm.SuperLocus(sequence_info=sinfo)
+    # one transcript, multiple proteins
+    scribed0 = annotations_orm.Transcribed(super_locus=sl)
+    slated0 = annotations_orm.Translated(super_locus=sl, transcribeds=[scribed0])
+    slated1 = annotations_orm.Translated(super_locus=sl, transcribeds=[scribed0])
+    # features representing alternative start codon for proteins on one transcript
+    feat0_tss = annotations_orm.Feature(super_locus=sl, transcribeds=[scribed0])
+    feat1_tss = annotations_orm.Feature(super_locus=sl, transcribeds=[scribed0])
+    feat2_stop = annotations_orm.Feature(super_locus=sl, translateds=[slated0, slated1])
+    feat3_start = annotations_orm.Feature(super_locus=sl, translateds=[slated0])
+    feat4_start = annotations_orm.Feature(super_locus=sl, translateds=[slated1])
+    # test they all made it to super locus
+    assert len(sl.features) == 5
+    # test multi features per translated worked
+    assert len(slated0.features) == 2
+    # test mutli translated per feature worked
+    assert len(feat2_stop.translateds) == 2
+    assert len(feat3_start.translateds) == 1
+    assert len(feat0_tss.translateds) == 0
+    # test we can get to all of this from transcribed
+    indirect_features = set()
+    for slated in scribed0.translateds:
+        for f in slated.features:
+            indirect_features.add(f)
+    assert len(indirect_features) == 3
+
 # todo, test querrying all around and symmetry of relationships features, transcribeds, translateds, super_loci
 # todo WEDNESDAY
 
