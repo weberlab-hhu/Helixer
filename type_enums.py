@@ -54,6 +54,7 @@ class TranscribedInput(enum.Enum):
     five_prime_UTR = 'five_prime_UTR'
     three_prime_UTR = 'three_prime_UTR'
 
+
 class TranscribedStatus(enum.Enum):
     in_raw_transcript = 'in_raw_transcript'
     in_intron = 'in_intron'
@@ -66,7 +67,7 @@ class TranscribedTransSplice(enum.Enum):
 
 # joining transcription related
 TranscribedAll = join_to_enum('TranscribedFeature', TranscribedGeneral, TranscribedStatus, TranscribedTransSplice,
-                                  TranscribedInput)
+                              TranscribedInput)
 
 TranscribedNice = join_to_enum('TranscribedNice', TranscribedGeneral, TranscribedStatus, TranscribedTransSplice)
 
