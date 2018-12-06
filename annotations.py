@@ -25,7 +25,8 @@ class Handler(object):
             raise ValueError('other must be an instance of Handler, "{}" found'.format(type(other)))
         # everything that could be copied
         if copy_only is None:
-            to_copy = list(self.data.__dict__.keys())
+            to_copy = list(type(self.data).__dict__.keys())
+            to_copy = [x for x in to_copy if not x.startswith('_')]
             to_copy = set(copy.deepcopy(to_copy))
         else:
             copy_only = convert2list(copy_only)
@@ -36,13 +37,12 @@ class Handler(object):
             for item in do_not_copy:
                 to_copy.remove(item)
         to_copy = copy.deepcopy(to_copy)
-        for never_copy in ['id', '_sa_instance_state', 'handler']:
+        for never_copy in ['id', 'handler']:
             try:
                 to_copy.remove(never_copy)  # todo, confirm this is the primary key
             except KeyError:
                 pass
         # acctually copy
-        print(to_copy)
         for item in to_copy:
             val = self.get_data_attribute(item)
             other.set_data_attribute(item, val)
@@ -82,24 +82,25 @@ class AnnotatedGenomeHandler(Handler):
 
 
 class SequenceInfoHandler(Handler):
-    pass
-
+    def __init__(self):
+        super().__init__()
+        self._seq_info = None
 #        self.mapper = helpers.Mapper()
 #
 #    @property
 #    def gffkey(self):
 #        return self.genome.gffkey
 #
-
+    
     @property
     def seq_info(self):
-        try:
-            _ = self._seq_info
-        except AttributeError:
+        if self._seq_info is not None:
+            pass
+        else:
             seq_info = {}
-            for x in self.coordinates:
+            for x in self.data.coordinates:
                 seq_info[x.seqid] = x
-            self._seq_info = seq_info  # todo, is there a sqlalchemy Base compatible way to add attr in init funciton?
+            self._seq_info = seq_info
         return self._seq_info
 #
 #    def _add_sequences(self, genome):
