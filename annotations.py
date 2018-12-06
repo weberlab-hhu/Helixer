@@ -1,4 +1,60 @@
-class AnnotatedGenomeHandler(object):
+import copy
+from types import GeneratorType
+
+
+def convert2list(obj):
+    if isinstance(obj, list):
+        out = obj
+    elif isinstance(obj, set) or isinstance(obj, GeneratorType) or isinstance(obj, tuple):
+        out = list(obj)
+    else:
+        out = [obj]
+    return out
+
+
+class Handler(object):
+    def __init__(self):
+        self.data = None
+
+    def add_data(self, data):
+        self.data = data
+        data.handler = self  # terrible form, but I need some sort of efficient point back
+
+    def copy_data_attr_to_other(self, other, copy_only=None, do_not_copy=None):
+        if not isinstance(other, Handler):
+            raise ValueError('other must be an instance of Handler, "{}" found'.format(type(other)))
+        # everything that could be copied
+        if copy_only is None:
+            to_copy = list(self.data.__dict__.keys())
+            to_copy = set(copy.deepcopy(to_copy))
+        else:
+            copy_only = convert2list(copy_only)
+            to_copy = set(copy_only)
+
+        if do_not_copy is not None:
+            do_not_copy = convert2list(do_not_copy)
+            for item in do_not_copy:
+                to_copy.remove(item)
+        to_copy = copy.deepcopy(to_copy)
+        for never_copy in ['id', '_sa_instance_state', 'handler']:
+            try:
+                to_copy.remove(never_copy)  # todo, confirm this is the primary key
+            except KeyError:
+                pass
+        # acctually copy
+        print(to_copy)
+        for item in to_copy:
+            val = self.get_data_attribute(item)
+            other.set_data_attribute(item, val)
+
+    def set_data_attribute(self, attr, val):
+        self.data.__setattr__(attr, val)
+
+    def get_data_attribute(self, attr):
+        return self.data.__getattribute__(attr)
+
+
+class AnnotatedGenomeHandler(Handler):
     pass
 
     #gffkey = FeatureDecoder()
@@ -25,7 +81,7 @@ class AnnotatedGenomeHandler(object):
 #            sl.genome = self
 
 
-class SequenceInfoHandler(object):
+class SequenceInfoHandler(Handler):
     pass
 
 #        self.mapper = helpers.Mapper()
@@ -147,6 +203,17 @@ class SequenceInfoHandler(object):
 #
 #    def __deepcopy__(self, memodict={}):
 #        raise NotImplementedError  # todo
+
+
+class GFFDerivedHandler(Handler):
+    def add_gffentry(self, gffentry, gen_data=True):
+        self.gffentry = gffentry
+        if gen_data:
+            data = self.gen_data_from_gffentry(gffentry)
+            self.add_data(data)
+
+    def gen_data_from_gffentry(self, gffentry):
+        raise NotImplementedError
 
 
 class SuperLocusHandler(object):

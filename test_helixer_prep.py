@@ -386,11 +386,68 @@ def test_feature_streamlinks():
     print([(x.start, x.upstream) for x in downlinked])
     assert len(downstreams) == 2
     assert len(downlinked) == 1
-# todo, test querrying all around and symmetry of relationships features, transcribeds, translateds, super_loci
-# todo WEDNESDAY
 
 
 ### annotations ###
+def test_copy_over_attr():
+    engine = create_engine('sqlite:///:memory:', echo=False)
+    annotations_orm.Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    sess = Session()
+    dummy_ag = annotations.AnnotatedGenomeHandler()
+    data_ag = annotations_orm.AnnotatedGenome(species='mammoth', version='v1.0.3', acquired_from='nowhere')
+    dummy_ag.add_data(data_ag)
+    other_ag = annotations.AnnotatedGenomeHandler()
+    odata_ag = annotations_orm.AnnotatedGenome()
+    print(odata_ag.__dict__.keys(), '00')
+    other_ag.add_data(odata_ag)
+    print(odata_ag.__dict__.keys(), '00b')
+    print(other_ag.data.__dict__.keys(), '01')
+    print(odata_ag.__dict__.keys(), '01b')
+    print('id, pre commit')
+    print(data_ag.id)
+    print(other_ag.data.id)
+    sess.add_all([data_ag, other_ag.data])
+    sess.commit()
+    print('id, post commit')
+    print(data_ag.id)
+    print(other_ag.data.id)
+    print(other_ag.data.__dict__.keys(), '02')
+    # make sure copy only copies what it says and nothing else
+    dummy_ag.copy_data_attr_to_other(other_ag, copy_only='species')
+    assert other_ag.get_data_attribute('species') == 'mammoth'
+    assert other_ag.get_data_attribute('version') is None
+    sess.add_all([odata_ag, data_ag])
+    sess.commit()
+    print(other_ag.data.__dict__.keys(), '03???')
+    print('did we make it past first post change commit')
+    # make sure do_not_copy excludes what is says and copies the rest
+    dummy_ag.copy_data_attr_to_other(other_ag, do_not_copy='acquired_from')
+    print('a')
+    assert other_ag.get_data_attribute('version') == 'v1.0.3'
+    assert other_ag.get_data_attribute('acquired_from') is None
+    sess.commit()
+    # make sure everything is copied
+    dummy_ag.copy_data_attr_to_other(other_ag)
+    assert other_ag.get_data_attribute('acquired_from') == 'nowhere'
+    # make sure commit/actual entry works
+    # sess.add_all([data_ag, other_ag.data])
+    print(other_ag.data.species, 'wtf1')
+    print(other_ag.data.acquired_from)
+    print(other_ag.data.version)
+    sess.commit()
+    print(other_ag.data.species, 'wtf2')
+    print(dummy_ag.data.species)
+    print('.')
+    assert dummy_ag.get_data_attribute('species') == 'mammoth'
+    print('..')
+    assert other_ag.get_data_attribute('species') == 'mammoth'
+    print('...')
+    assert other_ag.get_data_attribute('acquired_from') == 'nowhere'
+    assert other_ag.data.id is not None
+
+
+
 #def setup_testable_super_loci():
 #    genome = annotations.AnnotatedGenome()
 #    # make a dummy sequence
