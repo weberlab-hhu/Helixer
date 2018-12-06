@@ -360,6 +360,32 @@ def test_feature_has_its_things():
     sess.rollback()
 
 
+def test_feature_streamlinks():
+    engine = create_engine('sqlite:///:memory:', echo=False)
+    annotations_orm.Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    sess = Session()
+    f = annotations_orm.Feature(start=1)
+    sfA0 = annotations_orm.UpstreamFeature(start=2)
+    sfA1 = annotations_orm.DownstreamFeature(start=3, upstream=sfA0)
+    sess.add_all([f, sfA0, sfA1])
+    sess.commit()
+    sfA0back = sess.query(annotations_orm.UpstreamFeature).first()
+    assert sfA0back is sfA0
+    sfA1back = sfA0back.downstream
+    assert sfA1 is sfA1back
+    assert sfA1.upstream is sfA0
+    sf_friendless = annotations_orm.DownstreamFeature(start=4)
+    sess.add(sf_friendless)
+    sess.commit()
+    downstreams = sess.query(annotations_orm.DownstreamFeature).all()
+    downlinked = sess.query(annotations_orm.DownstreamFeature).filter(
+        annotations_orm.DownstreamFeature.upstream != None  # todo, isn't there a 'right' way to do this?
+    ).all()
+    print([(x.start, x.upstream) for x in downstreams])
+    print([(x.start, x.upstream) for x in downlinked])
+    assert len(downstreams) == 2
+    assert len(downlinked) == 1
 # todo, test querrying all around and symmetry of relationships features, transcribeds, translateds, super_loci
 # todo WEDNESDAY
 

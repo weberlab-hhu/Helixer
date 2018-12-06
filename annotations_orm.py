@@ -677,6 +677,8 @@ class Feature(Base):
     score = Column(Float)
     source = Column(String)
 
+    # for differentiating from subclass entries
+    subtype = Column(String(20))
     # relations
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
     super_locus = relationship('SuperLocus', back_populates='features')
@@ -694,6 +696,12 @@ class Feature(Base):
         CheckConstraint(start >= 1, name='check_start_1plus'),
         CheckConstraint(end >= start, name='check_end_gr_start'),
         {})
+
+    __mapper_args__ = {
+        'polymorphic_on': subtype,
+        'polymorphic_identity': 'general'
+    }
+
 #        self.phase = None
 
 #    @property
@@ -950,3 +958,26 @@ class Feature(Base):
 #        if self.phase is not None:
 #            l_out = self.length_outside_slice(start, end)
 #            self.phase = (l_out - self.phase) % 3
+
+
+class DownstreamFeature(Feature):
+    __tablename__ = 'downstream_features'
+
+    id = Column(Integer, ForeignKey('features.id'), primary_key=True)
+    upstream_id = Column(Integer, ForeignKey('upstream_features.id'))
+    upstream = relationship('UpstreamFeature', back_populates="downstream", foreign_keys=[upstream_id])
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'downstream'
+    }
+
+
+class UpstreamFeature(Feature):
+    __tablename__ = 'upstream_features'
+
+    id = Column(Integer, ForeignKey('features.id'), primary_key=True)
+    downstream = relationship('DownstreamFeature', uselist=False, back_populates='upstream',
+                              foreign_keys=[DownstreamFeature.upstream_id])
+    __mapper_args__ = {
+        'polymorphic_identity': 'upstream'
+    }
