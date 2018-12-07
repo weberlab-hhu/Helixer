@@ -10,7 +10,6 @@ Base = declarative_base()
 
 
 class AnnotatedGenome(Base):
-    # todo, go ahead and remove this WEDNESDAY
     __tablename__ = 'annotated_genomes'
 
     # data
@@ -81,15 +80,9 @@ class SuperLocus(Base):
     # things SuperLocus can have a lot of
     aliases = relationship('SuperLocusAliases', back_populates='super_locus')
     features = relationship('Feature', back_populates='super_locus')
-    generic_holders = relationship('GenericHolder', back_populates='super_locus')
     transcribeds = relationship('Transcribed', back_populates='super_locus')
     translateds = relationship('Translated', back_populates='super_locus')
 
-
-association_generic_holder_to_features = Table('association_generic_holder_to_features', Base.metadata,
-    Column('generic_holder_id', Integer, ForeignKey('generic_holders.id')),
-    Column('feature_id', Integer, ForeignKey('features.id'))
-)
 
 association_transcribeds_to_features = Table('association_transcribeds_to_features', Base.metadata,
     Column('transcribed_id', Integer, ForeignKey('transcribeds.id')),
@@ -105,20 +98,6 @@ association_translateds_to_transcribeds = Table('association_translateds_to_tran
     Column('translated_id', Integer, ForeignKey('translateds.id')),
     Column('transcribed_id', Integer, ForeignKey('transcribeds.id'))
 )
-
-
-class GenericHolder(Base):
-    __tablename__ = 'generic_holders'
-
-    id = Column(Integer, primary_key=True)
-    given_id = Column(String)
-    type = Column(Enum(type_enums.TranscriptLevelAll))
-
-    super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
-    super_locus = relationship('SuperLocus', back_populates='generic_holders')
-
-    features = relationship('Feature', secondary=association_generic_holder_to_features,
-                            back_populates='generic_holders')
 
 
 class Transcribed(Base):
@@ -173,9 +152,6 @@ class Feature(Base):
     # relations
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
     super_locus = relationship('SuperLocus', back_populates='features')
-
-    generic_holders = relationship('GenericHolder', secondary=association_generic_holder_to_features,
-                                   back_populates='features')
 
     transcribeds = relationship('Transcribed', secondary=association_transcribeds_to_features,
                                 back_populates='features')

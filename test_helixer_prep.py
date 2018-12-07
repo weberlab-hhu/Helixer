@@ -522,7 +522,6 @@ def test_swap_links_superlocus2ttfs():
     slatedh.add_data(slated)
     featureh.add_data(feature)
 
-    # todo features
     sess.add_all([slc, slc2, scribed, slated])
     sess.commit()
     # swapping super locus

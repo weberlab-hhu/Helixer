@@ -613,10 +613,6 @@ class FeatureHolderHandler(GFFDerivedHandler):
 #
 
 
-class GenericHolderHandler(FeatureHolderHandler):
-    pass
-
-
 class TranscribedHandler(FeatureHolderHandler):
 
     @property
