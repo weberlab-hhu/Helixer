@@ -56,8 +56,26 @@ class Handler(object):
     def get_data_attribute(self, attr):
         return self.data.__getattribute__(attr)
 
-    def replace_selflinks_w_otherlinks(self, other):
-        pass  # todo
+    def replace_selflinks_w_replacementlinks(self, replacement, to_replace):
+        to_replace = copy.deepcopy(to_replace)
+        for item in ['id', 'handler']:
+            assert item not in to_replace
+        for attr in to_replace:
+            val = self.get_data_attribute(attr)
+            if isinstance(val, list):
+                for data in val:
+                    self._replace_selflink_with_replacementlink(replacement, data)
+            elif isinstance(val, annotations_orm.Base):
+                self._replace_selflink_with_replacementlink(replacement, val)
+            else:
+                raise ValueError("replace_selflinks_w_replacementlinks only implemented for {} types".format(
+                    [list, annotations_orm.Base]
+                ))
+
+    def _replace_selflink_with_replacementlink(self, replacement, data):
+        other = data.handler
+        self.de_link(other)
+        replacement.link_to(other)
 
     def link_to(self, other):
         raise NotImplementedError

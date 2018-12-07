@@ -602,6 +602,42 @@ def test_swap_links_t2t2f():
     sess.commit()
 
 
+def setup_data_handler(handler_type, data_type, **kwargs):  # todo, use everywhere it's needed!
+    data = data_type(**kwargs)
+    handler = handler_type()
+    handler.add_data(data)
+    return data, handler
+
+
+def test_replacelinks():
+    sess = mk_session()
+    slc = annotations_orm.SuperLocus()
+
+    scribed, scribedh = setup_data_handler(annotations.TranscribedHandler, annotations_orm.Transcribed, super_locus=slc)
+    assert scribed.super_locus is slc
+    slated, slatedh = setup_data_handler(annotations.TranslatedHandler, annotations_orm.Translated, super_locus=slc)
+    f0, f0h = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, super_locus=slc,
+                                 translateds=[slated])
+
+    f1, f1h = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, super_locus=slc,
+                                 translateds=[slated])
+
+    f2, f2h = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, super_locus=slc,
+                                 translateds=[slated])
+
+    sess.add_all([slc, scribed, slated, f0, f1, f2])
+    sess.commit()
+    assert len(slated.features) == 3
+    slatedh.replace_selflinks_w_replacementlinks(replacement=scribedh, to_replace=['features'])
+    print(slated.features)
+    print(scribed.features)
+    assert len(slated.features) == 0  # todo, WAS HERE!
+    assert len(scribed.features) == 3
+    #scribed = annotations_orm.Transcribed(super_locus=slc)
+    #slated = annotations_orm.Translated(super_locus=slc)
+    #feature = annotations_orm.Feature(super_locus=slc, transcribeds=[scribed])
+
+    #slated.transcribeds.append(scribed)
 
 
 
