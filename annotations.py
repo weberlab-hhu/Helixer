@@ -91,7 +91,7 @@ class SequenceInfoHandler(Handler):
 #    def gffkey(self):
 #        return self.genome.gffkey
 #
-    
+
     @property
     def seq_info(self):
         if self._seq_info is not None:

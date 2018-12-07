@@ -162,15 +162,19 @@ def test_fa_matches_sequences_json():
 
 
 ### annotations_orm ###
-def test_annogenome2sequence_infos_relation():
+def mk_session():
     engine = create_engine('sqlite:///:memory:', echo=False)
     annotations_orm.Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    return Session()
+
+
+def test_annogenome2sequence_infos_relation():
+    sess = mk_session()
     ag = annotations_orm.AnnotatedGenome(species='Athaliana', version='1.2', acquired_from='Phytozome12')
     sequence_info = annotations_orm.SequenceInfo(annotated_genome=ag)
     assert ag is sequence_info.annotated_genome
     # actually put everything in db
-    Session = sessionmaker(bind=engine)
-    sess = Session()
     sess.add(sequence_info)
     sess.commit()
     # check primary keys were assigned
@@ -193,8 +197,7 @@ def test_annogenome2sequence_infos_relation():
 
 
 def test_processing_set_enum():
-    engine = create_engine('sqlite:///:memory:', echo=False)
-    annotations_orm.Base.metadata.create_all(engine)
+    sess = mk_session()
     # valid numbers can be setup
     ps = annotations_orm.ProcessingSet(annotations_orm.ProcessingSet.train)
     ps2 = annotations_orm.ProcessingSet('train')
@@ -211,8 +214,6 @@ def test_processing_set_enum():
     sequence_info2 = annotations_orm.SequenceInfo(processing_set=ps2, annotated_genome=ag)
     assert sequence_info.processing_set.value == 'train'
     assert sequence_info2.processing_set.value == 'train'
-    Session = sessionmaker(bind=engine)
-    sess = Session()
 
     sess.add_all([sequence_info, sequence_info2])
     sess.commit()
@@ -225,15 +226,12 @@ def test_processing_set_enum():
 
 
 def test_coordinate_contraints():
+    sess = mk_session()
     coors = annotations_orm.Coordinates(start=1, end=30, seqid='abc')
     coors2 = annotations_orm.Coordinates(start=1, end=1, seqid='abc')
     coors_bad1 = annotations_orm.Coordinates(start=0, end=30, seqid='abc')
     coors_bad2 = annotations_orm.Coordinates(start=100, end=30, seqid='abc')
     coors_bad3 = annotations_orm.Coordinates(start=1, end=30)
-    engine = create_engine('sqlite:///:memory:', echo=False)
-    annotations_orm.Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    sess = Session()
     # should be ok
     sess.add_all([coors, coors2])
     sess.commit()
@@ -252,6 +250,7 @@ def test_coordinate_contraints():
 
 
 def test_coordinate_seqinfo_query():
+    sess = mk_session()
     ag = annotations_orm.AnnotatedGenome()
     si_model = annotations_orm.SequenceInfo(annotated_genome=ag)
     slic = annotations.SequenceInfoHandler()
@@ -259,10 +258,6 @@ def test_coordinate_seqinfo_query():
     coors = annotations_orm.Coordinates(start=1, end=30, seqid='abc', sequence_info=si_model)
     coors2 = annotations_orm.Coordinates(start=11, end=330, seqid='def', sequence_info=si_model)
     seq_info = slic.seq_info
-    engine = create_engine('sqlite:///:memory:', echo=False)
-    annotations_orm.Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    sess = Session()
     # should be ok
     sess.add_all([coors, coors2])
     assert slic.seq_info['abc'].start == 1
@@ -321,10 +316,7 @@ def test_many2many_with_features():
 
 
 def test_feature_has_its_things():
-    engine = create_engine('sqlite:///:memory:', echo=False)
-    annotations_orm.Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    sess = Session()
+    sess = mk_session()
     # should be ok
 
     ag = annotations_orm.AnnotatedGenome()
@@ -363,10 +355,7 @@ def test_feature_has_its_things():
 
 
 def test_feature_streamlinks():
-    engine = create_engine('sqlite:///:memory:', echo=False)
-    annotations_orm.Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    sess = Session()
+    sess = mk_session()
     f = annotations_orm.Feature(start=1)
     sfA0 = annotations_orm.UpstreamFeature(start=2)
     sfA1 = annotations_orm.DownstreamFeature(start=3, upstream=sfA0)
@@ -390,12 +379,21 @@ def test_feature_streamlinks():
     assert len(downlinked) == 1
 
 
+def test_linking_via_fkey():
+    sess = mk_session()
+    sfA0 = annotations_orm.UpstreamFeature(start=2)
+    sess.add(sfA0)
+    sess.commit()
+    sfA1 = annotations_orm.DownstreamFeature(start=3, upstream_id=sfA0.id)
+    sess.add(sfA1)
+    sess.commit()
+    assert sfA1.upstream is sfA0
+    assert sfA0.downstream is sfA1
+
+
 ### annotations ###
 def test_copy_over_attr():
-    engine = create_engine('sqlite:///:memory:', echo=False)
-    annotations_orm.Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    sess = Session()
+    sess = mk_session()
     dummy_ag = annotations.AnnotatedGenomeHandler()
     data_ag = annotations_orm.AnnotatedGenome(species='mammoth', version='v1.0.3', acquired_from='nowhere')
     dummy_ag.add_data(data_ag)
