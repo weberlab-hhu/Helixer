@@ -15,7 +15,6 @@ def convert2list(obj):
 
 class Handler(object):
 
-    link_error = "can only link from {} to {}"
 
     def __init__(self):
         self.data = None
@@ -71,11 +70,23 @@ class Handler(object):
     def data_type(self):
         raise NotImplementedError
 
+    @property
+    def _valid_links(self):
+        raise NotImplementedError
+
+    def _link_value_error(self):
+        link_error = "from {} can only link / de_link to {}".format(type(self), self._valid_links)
+        return ValueError(link_error)
+
 
 class AnnotatedGenomeHandler(Handler):
     @property
     def data_type(self):
         return annotations_orm.AnnotatedGenome
+
+    @property
+    def _valid_links(self):
+        return [SequenceInfoHandler]
 
     def link_to(self, other):
         if isinstance(other, SequenceInfoHandler):
@@ -83,12 +94,13 @@ class AnnotatedGenomeHandler(Handler):
             # switched as below maybe checks other.data integrity, and fails on NULL anno genome?
             # self.data.sequence_infos.append(other.data)
         else:
-            raise ValueError(Handler.link_error.format(type(self), SequenceInfoHandler))
+            raise self._link_value_error()
 
     def de_link(self, other):
         if isinstance(other, SequenceInfoHandler):
             self.data.sequence_infos.remove(other.data)
-
+        else:
+            raise self._link_value_error()
 
 
     #gffkey = FeatureDecoder()
@@ -125,10 +137,32 @@ class SequenceInfoHandler(Handler):
 #    def gffkey(self):
 #        return self.genome.gffkey
 #
+
     @property
     def data_type(self):
         return annotations_orm.SequenceInfo
 
+    @property
+    def _valid_links(self):
+        return [AnnotatedGenomeHandler, SuperLocusHandler]
+
+    def link_to(self, other):
+        if isinstance(other, AnnotatedGenomeHandler):
+            self.data.annotated_genome = other.data
+            # switched as below maybe checks other.data integrity, and fails on NULL anno genome?
+            # self.data.sequence_infos.append(other.data)
+        elif isinstance(other, SuperLocusHandler):
+            other.data.sequence_info = self.data
+        else:
+            raise self._link_value_error()
+
+    def de_link(self, other):
+        if isinstance(other, AnnotatedGenomeHandler):
+            other.data.sequence_infos.remove(self.data)
+        elif isinstance(other, SuperLocusHandler):
+            self.data.super_loci.remove(other.data)
+        else:
+            raise self._link_value_error()
 
     @property
     def seq_info(self):
@@ -255,8 +289,31 @@ class GFFDerivedHandler(Handler):
         raise NotImplementedError
 
 
-class SuperLocusHandler(object):
-    pass
+class SuperLocusHandler(GFFDerivedHandler):
+
+    @property
+    def data_type(self):
+        return annotations_orm.SuperLocus
+
+    @property
+    def _valid_links(self):
+        return [SequenceInfoHandler, TranscribedHandler, TranslatedHandler, FeatureHandler]
+
+    def link_to(self, other):
+        if isinstance(other, SequenceInfoHandler):
+            self.data.sequence_info = other.data
+        elif type(other) in [TranscribedHandler, TranslatedHandler, FeatureHandler]:
+            other.data.super_locus = self.data
+        else:
+            raise self._link_value_error()
+
+    def de_link(self, other):
+        if isinstance(other, SequenceInfoHandler):
+            other.data.super_loci.remove(self.data)
+        elif type(other) in [TranscribedHandler, TranslatedHandler, FeatureHandler]:
+            other.data.super_locus = None
+        else:
+            raise self._link_value_error()
 #    t_transcripts = 'transcripts'
 #    t_proteins = 'proteins'
 #    t_feature_holders = 'generic_holders'
@@ -417,7 +474,7 @@ class SuperLocusHandler(object):
 #
 
 
-class FeatureHolderHandler(object):
+class FeatureHolderHandler(GFFDerivedHandler):
     pass
 
 #    holder_type = SuperLocus.t_feature_holders
@@ -601,7 +658,7 @@ class TranslatedHandler(FeatureHolderHandler):
 #
 
 
-class FeatureHandler(object):
+class FeatureHandler(GFFDerivedHandler):
     pass
 
 #        self.phase = None

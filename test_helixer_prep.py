@@ -440,7 +440,7 @@ def test_copy_over_attr():
     assert other_ag.data.id is not None
 
 
-def test_swap_link_from_handlers():
+def test_swap_link_annogenome2seqinfo():
     sess = mk_session()
 
     ag = annotations_orm.AnnotatedGenome()
@@ -463,8 +463,40 @@ def test_swap_link_from_handlers():
     sess.commit()
     assert agh.data.sequence_infos == []
     assert ag2h.data.sequence_infos == [sih.data]
+    # swap back from sequence info interface
+    sih.de_link(ag2h)
+    sih.link_to(agh)
+    assert agh.data.sequence_infos == [sih.data]
+    assert ag2h.data.sequence_infos == []
 
 
+def test_swap_link_seqinfo2superlocus():
+    sess = mk_session()
+    ag = annotations_orm.AnnotatedGenome()
+
+    si = annotations_orm.SequenceInfo(annotated_genome=ag)
+    sih = annotations.SequenceInfoHandler()
+    sih.add_data(si)
+
+    si2 = annotations_orm.SequenceInfo(annotated_genome=ag)
+    si2h = annotations.SequenceInfoHandler()
+    si2h.add_data(si2)
+
+    slc = annotations_orm.SuperLocus(sequence_info=si)
+    slch = annotations.SuperLocusHandler()
+    slch.add_data(slc)
+    sess.add_all([si, si2, slc])
+    sess.commit()
+
+    sih.de_link(slch)
+    si2h.link_to(slch)
+    assert sih.data.super_loci == []
+    assert si2h.data.super_loci == [slch.data]
+    # and back from super locus side
+    slch.de_link(si2h)
+    slch.link_to(sih)
+    assert si2h.data.super_loci == []
+    assert sih.data.super_loci == [slch.data]
 
 #def setup_testable_super_loci():
 #    genome = annotations.AnnotatedGenome()
