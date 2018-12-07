@@ -636,9 +636,7 @@ class TranscribedHandler(FeatureHolderHandler):
             raise self._link_value_error(other)
 
     def de_link(self, other):
-        if isinstance(other, SuperLocusHandler):
-            other.data.transcribeds.remove(self.data)
-        elif type(other) in [TranslatedHandler, FeatureHandler]:
+        if type(other) in self._valid_links:
             other.data.transcribeds.remove(self.data)
         else:
             raise self._link_value_error(other)
@@ -678,9 +676,7 @@ class TranslatedHandler(FeatureHolderHandler):
             raise self._link_value_error(other)
 
     def de_link(self, other):
-        if isinstance(other, SuperLocusHandler):
-            other.data.translateds.remove(self.data)
-        elif type(other) in [TranscribedHandler, FeatureHandler]:
+        if type(other) in self._valid_links:
             other.data.translateds.remove(self.data)
         else:
             raise self._link_value_error(other)
@@ -704,7 +700,27 @@ class TranslatedHandler(FeatureHolderHandler):
 
 
 class FeatureHandler(GFFDerivedHandler):
-    pass
+    @property
+    def data_type(self):
+        return annotations_orm.Feature
+
+    @property
+    def _valid_links(self):
+        return [TranscribedHandler, SuperLocusHandler, TranslatedHandler]
+
+    def link_to(self, other):
+        if isinstance(other, SuperLocusHandler):
+            self.data.super_locus = other.data
+        elif type(other) in [TranscribedHandler, FeatureHandler]:
+            other.data.features.append(self.data)
+        else:
+            raise self._link_value_error(other)
+
+    def de_link(self, other):
+        if type(other) in self._valid_links:
+            other.data.features.remove(self.data)
+        else:
+            raise self._link_value_error(other)
 
 #        self.phase = None
 

@@ -512,12 +512,15 @@ def test_swap_links_superlocus2ttfs():
 
     scribed = annotations_orm.Transcribed(super_locus=slc)
     slated = annotations_orm.Translated(super_locus=slc)
+    feature = annotations_orm.Feature(super_locus=slc)
     slated.transcribeds.append(scribed)
 
     scribedh = annotations.TranscribedHandler()
     slatedh = annotations.TranslatedHandler()
+    featureh = annotations.FeatureHandler()
     scribedh.add_data(scribed)
     slatedh.add_data(slated)
+    featureh.add_data(feature)
 
     # todo features
     sess.add_all([slc, slc2, scribed, slated])
@@ -525,47 +528,61 @@ def test_swap_links_superlocus2ttfs():
     # swapping super locus
     slch.de_link(slatedh)
     slch.de_link(scribedh)
+    slch.de_link(featureh)
     slc2h.link_to(slatedh)
     slc2h.link_to(scribedh)
+    slc2h.link_to(featureh)
     assert scribed.super_locus is slc2
     assert slated.super_locus is slc2
+    assert feature.super_locus is slc2
     assert slc.translateds == []
     assert slc.transcribeds == []
+    assert slc.features == []
     # swapping back from transcribed, translated, feature side
     scribedh.de_link(slc2h)
     slatedh.de_link(slc2h)
+    featureh.de_link(slc2h)
     scribedh.link_to(slch)
     slatedh.link_to(slch)
+    featureh.link_to(slch)
     assert slated.super_locus is slc
     assert scribed.super_locus is slc
+    assert feature.super_locus is slc
     assert slc2.translateds == []
     assert slc2.transcribeds == []
+    assert slc2.features == []
     sess.commit()
 
 
-def test_swap_links_t2t():
+def test_swap_links_t2t2f():
     sess = mk_session()
 
     slc = annotations_orm.SuperLocus()
 
     scribed = annotations_orm.Transcribed(super_locus=slc)
     slated = annotations_orm.Translated(super_locus=slc)
+    feature = annotations_orm.Feature(super_locus=slc, transcribeds=[scribed])
     slated.transcribeds.append(scribed)
 
     scribedh = annotations.TranscribedHandler()
     slatedh = annotations.TranslatedHandler()
+    featureh = annotations.FeatureHandler()
     scribedh.add_data(scribed)
     slatedh.add_data(slated)
-    sess.add_all([slc, scribed, slated])
+    featureh.add_data(feature)
+
+    sess.add_all([slc, scribed, slated, feature])
     sess.commit()
 
     assert scribed.translateds == [slated]
     assert slated.transcribeds == [scribed]
-
+    assert feature.transcribeds == [scribed]
     # de_link / link_to from scribed side
     scribedh.de_link(slatedh)
+    scribedh.de_link(featureh)
     assert slated.transcribeds == []
     assert scribed.translateds == []
+    assert feature.transcribeds == []
     scribedh.link_to(slatedh)
     assert scribed.translateds == [slated]
     assert slated.transcribeds == [scribed]
@@ -574,9 +591,16 @@ def test_swap_links_t2t():
     assert slated.transcribeds == []
     assert scribed.translateds == []
     slatedh.link_to(scribedh)
+    slatedh.link_to(featureh)
     assert scribed.translateds == [slated]
     assert slated.transcribeds == [scribed]
-
+    assert feature.translateds == [slated]
+    # mod links from feature side
+    featureh.de_link(slatedh)
+    featureh.link_to(scribedh)
+    assert slated.features == []
+    assert scribed.features == [feature]
+    sess.commit()
 
 
 
