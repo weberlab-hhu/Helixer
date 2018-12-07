@@ -1,5 +1,6 @@
 import copy
 from types import GeneratorType
+import annotations_orm
 
 
 def convert2list(obj):
@@ -13,10 +14,14 @@ def convert2list(obj):
 
 
 class Handler(object):
+
+    link_error = "can only link from {} to {}"
+
     def __init__(self):
         self.data = None
 
     def add_data(self, data):
+        assert isinstance(data, self.data_type)
         self.data = data
         data.handler = self  # terrible form, but I need some sort of efficient point back
 
@@ -53,9 +58,38 @@ class Handler(object):
     def get_data_attribute(self, attr):
         return self.data.__getattribute__(attr)
 
+    def replace_selflinks_w_otherlinks(self, other):
+        pass  # todo
+
+    def link_to(self, other):
+        raise NotImplementedError
+
+    def de_link(self, other):
+        raise NotImplementedError
+
+    @property
+    def data_type(self):
+        raise NotImplementedError
+
 
 class AnnotatedGenomeHandler(Handler):
-    pass
+    @property
+    def data_type(self):
+        return annotations_orm.AnnotatedGenome
+
+    def link_to(self, other):
+        if isinstance(other, SequenceInfoHandler):
+            other.data.annotated_genome = self.data
+            # switched as below maybe checks other.data integrity, and fails on NULL anno genome?
+            # self.data.sequence_infos.append(other.data)
+        else:
+            raise ValueError(Handler.link_error.format(type(self), SequenceInfoHandler))
+
+    def de_link(self, other):
+        if isinstance(other, SequenceInfoHandler):
+            self.data.sequence_infos.remove(other.data)
+
+
 
     #gffkey = FeatureDecoder()
     # todo, figure out if one wants to keep the id makers like this...
@@ -91,6 +125,10 @@ class SequenceInfoHandler(Handler):
 #    def gffkey(self):
 #        return self.genome.gffkey
 #
+    @property
+    def data_type(self):
+        return annotations_orm.SequenceInfo
+
 
     @property
     def seq_info(self):

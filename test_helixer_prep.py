@@ -391,6 +391,24 @@ def test_linking_via_fkey():
     assert sfA0.downstream is sfA1
 
 
+def test_delinking_from_oneside():
+    sess = mk_session()
+    ag = annotations_orm.AnnotatedGenome()
+    place_holder = annotations_orm.AnnotatedGenome()
+    si0 = annotations_orm.SequenceInfo(annotated_genome=ag)
+    si1 = annotations_orm.SequenceInfo(annotated_genome=ag)
+    sess.add_all([ag, si0, si1])
+    sess.commit()
+    assert len(ag.sequence_infos) == 2
+    ag.sequence_infos.remove(si0)
+    si0.annotated_genome = place_holder  # else we'll fail the not NULL constraint
+    sess.commit()
+    # removed from ag
+    assert len(ag.sequence_infos) == 1
+    # but still in table
+    assert len(sess.query(annotations_orm.SequenceInfo).all()) == 2
+
+
 ### annotations ###
 def test_copy_over_attr():
     sess = mk_session()
@@ -420,6 +438,32 @@ def test_copy_over_attr():
     assert other_ag.get_data_attribute('species') == 'mammoth'
     assert other_ag.get_data_attribute('acquired_from') == 'nowhere'
     assert other_ag.data.id is not None
+
+
+def test_swap_link_from_handlers():
+    sess = mk_session()
+
+    ag = annotations_orm.AnnotatedGenome()
+    agh = annotations.AnnotatedGenomeHandler()
+    agh.add_data(ag)
+
+    ag2 = annotations_orm.AnnotatedGenome()
+    ag2h = annotations.AnnotatedGenomeHandler()
+    ag2h.add_data(ag2)
+
+    si = annotations_orm.SequenceInfo(annotated_genome=ag)
+    sih = annotations.SequenceInfoHandler()
+    sih.add_data(si)
+
+    sess.add_all([ag, ag2, si])
+    sess.commit()
+    assert agh.data.sequence_infos == [sih.data]
+    agh.de_link(sih)
+    ag2h.link_to(sih)
+    sess.commit()
+    assert agh.data.sequence_infos == []
+    assert ag2h.data.sequence_infos == [sih.data]
+
 
 
 #def setup_testable_super_loci():
