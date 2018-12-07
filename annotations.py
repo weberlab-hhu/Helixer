@@ -15,7 +15,6 @@ def convert2list(obj):
 
 class Handler(object):
 
-
     def __init__(self):
         self.data = None
 
@@ -74,8 +73,9 @@ class Handler(object):
     def _valid_links(self):
         raise NotImplementedError
 
-    def _link_value_error(self):
-        link_error = "from {} can only link / de_link to {}".format(type(self), self._valid_links)
+    def _link_value_error(self, other):
+        link_error = "from {} can only link / de_link to {}; found {}".format(type(self), self._valid_links,
+                                                                              type(other))
         return ValueError(link_error)
 
 
@@ -94,13 +94,13 @@ class AnnotatedGenomeHandler(Handler):
             # switched as below maybe checks other.data integrity, and fails on NULL anno genome?
             # self.data.sequence_infos.append(other.data)
         else:
-            raise self._link_value_error()
+            raise self._link_value_error(other)
 
     def de_link(self, other):
         if isinstance(other, SequenceInfoHandler):
             self.data.sequence_infos.remove(other.data)
         else:
-            raise self._link_value_error()
+            raise self._link_value_error(other)
 
 
     #gffkey = FeatureDecoder()
@@ -154,7 +154,7 @@ class SequenceInfoHandler(Handler):
         elif isinstance(other, SuperLocusHandler):
             other.data.sequence_info = self.data
         else:
-            raise self._link_value_error()
+            raise self._link_value_error(other)
 
     def de_link(self, other):
         if isinstance(other, AnnotatedGenomeHandler):
@@ -162,7 +162,7 @@ class SequenceInfoHandler(Handler):
         elif isinstance(other, SuperLocusHandler):
             self.data.super_loci.remove(other.data)
         else:
-            raise self._link_value_error()
+            raise self._link_value_error(other)
 
     @property
     def seq_info(self):
@@ -305,7 +305,7 @@ class SuperLocusHandler(GFFDerivedHandler):
         elif type(other) in [TranscribedHandler, TranslatedHandler, FeatureHandler]:
             other.data.super_locus = self.data
         else:
-            raise self._link_value_error()
+            raise self._link_value_error(other)
 
     def de_link(self, other):
         if isinstance(other, SequenceInfoHandler):
@@ -313,7 +313,7 @@ class SuperLocusHandler(GFFDerivedHandler):
         elif type(other) in [TranscribedHandler, TranslatedHandler, FeatureHandler]:
             other.data.super_locus = None
         else:
-            raise self._link_value_error()
+            raise self._link_value_error(other)
 #    t_transcripts = 'transcripts'
 #    t_proteins = 'proteins'
 #    t_feature_holders = 'generic_holders'
@@ -618,7 +618,30 @@ class GenericHolderHandler(FeatureHolderHandler):
 
 
 class TranscribedHandler(FeatureHolderHandler):
-    pass
+
+    @property
+    def data_type(self):
+        return annotations_orm.Transcribed
+
+    @property
+    def _valid_links(self):
+        return [TranslatedHandler, SuperLocusHandler, FeatureHandler]
+
+    def link_to(self, other):
+        if isinstance(other, SuperLocusHandler):
+            self.data.super_locus = other.data
+        elif type(other) in [TranslatedHandler, FeatureHandler]:
+            other.data.transcribeds.append(self.data)
+        else:
+            raise self._link_value_error(other)
+
+    def de_link(self, other):
+        if isinstance(other, SuperLocusHandler):
+            other.data.transcribeds.remove(self.data)
+        elif type(other) in [TranslatedHandler, FeatureHandler]:
+            other.data.transcribeds.remove(self.data)
+        else:
+            raise self._link_value_error(other)
 #    holder_type = 'transcripts'
 #
 #        self.proteins = []  # list of protein IDs, matching subset of keys in self.super_locus.proteins
@@ -638,7 +661,29 @@ class TranscribedHandler(FeatureHolderHandler):
 
 
 class TranslatedHandler(FeatureHolderHandler):
-    pass
+    @property
+    def data_type(self):
+        return annotations_orm.Translated
+
+    @property
+    def _valid_links(self):
+        return [TranscribedHandler, SuperLocusHandler, FeatureHandler]
+
+    def link_to(self, other):
+        if isinstance(other, SuperLocusHandler):
+            self.data.super_locus = other.data
+        elif type(other) in [TranscribedHandler, FeatureHandler]:
+            other.data.translateds.append(self.data)
+        else:
+            raise self._link_value_error(other)
+
+    def de_link(self, other):
+        if isinstance(other, SuperLocusHandler):
+            other.data.translateds.remove(self.data)
+        elif type(other) in [TranscribedHandler, FeatureHandler]:
+            other.data.translateds.remove(self.data)
+        else:
+            raise self._link_value_error(other)
 #    holder_type = 'proteins'
 #
 #        self.transcripts = []  # list of transcript IDs, matching subset of keys in self.super_locus.transcripts

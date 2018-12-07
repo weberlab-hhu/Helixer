@@ -498,6 +498,90 @@ def test_swap_link_seqinfo2superlocus():
     assert si2h.data.super_loci == []
     assert sih.data.super_loci == [slch.data]
 
+
+def test_swap_links_superlocus2ttfs():
+    sess = mk_session()
+
+    slc = annotations_orm.SuperLocus()
+    slch = annotations.SuperLocusHandler()
+    slch.add_data(slc)
+
+    slc2 = annotations_orm.SuperLocus()
+    slc2h = annotations.SuperLocusHandler()
+    slc2h.add_data(slc2)
+
+    scribed = annotations_orm.Transcribed(super_locus=slc)
+    slated = annotations_orm.Translated(super_locus=slc)
+    slated.transcribeds.append(scribed)
+
+    scribedh = annotations.TranscribedHandler()
+    slatedh = annotations.TranslatedHandler()
+    scribedh.add_data(scribed)
+    slatedh.add_data(slated)
+
+    # todo features
+    sess.add_all([slc, slc2, scribed, slated])
+    sess.commit()
+    # swapping super locus
+    slch.de_link(slatedh)
+    slch.de_link(scribedh)
+    slc2h.link_to(slatedh)
+    slc2h.link_to(scribedh)
+    assert scribed.super_locus is slc2
+    assert slated.super_locus is slc2
+    assert slc.translateds == []
+    assert slc.transcribeds == []
+    # swapping back from transcribed, translated, feature side
+    scribedh.de_link(slc2h)
+    slatedh.de_link(slc2h)
+    scribedh.link_to(slch)
+    slatedh.link_to(slch)
+    assert slated.super_locus is slc
+    assert scribed.super_locus is slc
+    assert slc2.translateds == []
+    assert slc2.transcribeds == []
+    sess.commit()
+
+
+def test_swap_links_t2t():
+    sess = mk_session()
+
+    slc = annotations_orm.SuperLocus()
+
+    scribed = annotations_orm.Transcribed(super_locus=slc)
+    slated = annotations_orm.Translated(super_locus=slc)
+    slated.transcribeds.append(scribed)
+
+    scribedh = annotations.TranscribedHandler()
+    slatedh = annotations.TranslatedHandler()
+    scribedh.add_data(scribed)
+    slatedh.add_data(slated)
+    sess.add_all([slc, scribed, slated])
+    sess.commit()
+
+    assert scribed.translateds == [slated]
+    assert slated.transcribeds == [scribed]
+
+    # de_link / link_to from scribed side
+    scribedh.de_link(slatedh)
+    assert slated.transcribeds == []
+    assert scribed.translateds == []
+    scribedh.link_to(slatedh)
+    assert scribed.translateds == [slated]
+    assert slated.transcribeds == [scribed]
+    # de_link / link_to from slated side
+    slatedh.de_link(scribedh)
+    assert slated.transcribeds == []
+    assert scribed.translateds == []
+    slatedh.link_to(scribedh)
+    assert scribed.translateds == [slated]
+    assert slated.transcribeds == [scribed]
+
+
+
+
+
+
 #def setup_testable_super_loci():
 #    genome = annotations.AnnotatedGenome()
 #    # make a dummy sequence
