@@ -80,6 +80,31 @@ class Handler(object):
         self.de_link(other)
         replacement.link_to(other)
 
+    def copy_selflinks_to_another(self, another, to_copy):
+        to_copy = copy.deepcopy(to_copy)
+
+        for item in ['id', 'handler']:
+            assert item not in to_copy
+
+        for attr in to_copy:
+            val = self.get_data_attribute(attr)
+            if isinstance(val, list):
+                n = len(val)
+                for i in reversed(list(range(n))):  # go through backwards to hit every item even though we're removing
+                    #for data in val:
+                    data = val[i]
+                    self._copy_selflinks_to_another(another, data)
+            elif isinstance(val, annotations_orm.Base):
+                self._copy_selflinks_to_another(another, val)
+            else:
+                raise ValueError("copy_selflinks_to_another only implemented for {} types".format(
+                    [list, annotations_orm.Base]
+                ))
+
+    def _copy_selflinks_to_another(self, another, data):
+        other = data.handler
+        another.link_to(other)
+
     def link_to(self, other):
         raise NotImplementedError
 
