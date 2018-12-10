@@ -17,6 +17,13 @@ class SuperLocus(enum.Enum):
     operon = 'operon'
 
 
+class SuperLocusHistorical(enum.Enum):
+    gene = 'gene'
+
+
+SuperLocusAll = join_to_enum('SuperLocusAll', SuperLocus, SuperLocusHistorical)
+
+
 class TranscriptLevelNice(enum.Enum):
     mRNA = 'mRNA'
     tRNA = 'tRNA'
@@ -106,8 +113,8 @@ class IgnorableFeatures(enum.Enum):
 
 
 # All known features (else error on import)
-AllKnown = join_to_enum('AllKnown', SuperLocus, TranscriptLevelAll, TranslatedAll, TranscribedAll, ErrorFeature,
+AllKnown = join_to_enum('AllKnown', SuperLocusAll, TranscriptLevelAll, TranslatedAll, TranscribedAll, ErrorFeature,
                         IgnorableFeatures)
 
-AllKeepable = join_to_enum('AllKeepable', SuperLocus, TranscriptLevelNice, TranslatedNice, TranscribedNice,
+AllKeepable = join_to_enum('AllKeepable', SuperLocusAll, TranscriptLevelNice, TranslatedNice, TranscribedNice,
                            ErrorFeature)

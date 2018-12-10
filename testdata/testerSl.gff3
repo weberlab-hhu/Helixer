@@ -7,6 +7,7 @@
 #!annotation-source NCBI Solanum lycopersicum Annotation Release 102
 ##sequence-region NC_015438.2 1 98543444
 ##species https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=4081
+NC_015438.2	manual	region	1	16000	.	.	.	ID=NC_015438.2
 NC_015438.2	Gnomon	gene	4343	5685	.	+	.	ID=gene0;Dbxref=GeneID:104645797;Name=LOC104645797;gbkey=Gene;gene=LOC104645797;gene_biotype=lncRNA
 NC_015438.2	Gnomon	lnc_RNA	4343	5685	.	+	.	ID=rna0;Parent=gene0;Dbxref=GeneID:104645797,Genbank:XR_740013.2;Name=XR_740013.2;gbkey=ncRNA;gene=LOC104645797;model_evidence=Supporting evidence includes similarity to: 100%25 coverage of the annotated genomic feature by RNAseq alignments%2C including 33 samples with support for all annotated introns;product=uncharacterized LOC104645797;transcript_id=XR_740013.2
 NC_015438.2	Gnomon	exon	4343	4809	.	+	.	ID=id1;Parent=rna0;Dbxref=GeneID:104645797,Genbank:XR_740013.2;gbkey=ncRNA;gene=LOC104645797;product=uncharacterized LOC104645797;transcript_id=XR_740013.2
@@ -29,6 +30,7 @@ NC_015438.2	BestRefSeq	CDS	14372	14424	.	+	2	ID=cds0;Parent=rna1;Dbxref=GeneID:1
 NC_015438.2	BestRefSeq	CDS	14502	14948	.	+	0	ID=cds0;Parent=rna1;Dbxref=GeneID:100147723,Genbank:NP_001233827.1;Name=NP_001233827.1;gbkey=CDS;gene=GAD3;product=glutamate decarboxylase isoform3;protein_id=NP_001233827.1
 ##sequence-region NC_015439.2 1 55340444
 ##species https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=4081
+NC_015439.2	manual	region	1	160000	.	.	.	ID=NC_015439.2
 NC_015439.2	Gnomon	gene	147085	149270	.	+	.	ID=gene3754;Dbxref=GeneID:104644327;Name=LOC104644327;gbkey=Gene;gene=LOC104644327;gene_biotype=pseudogene;pseudo=true
 NC_015439.2	Gnomon	exon	147085	147318	.	+	.	ID=id38090;Parent=gene3754;Dbxref=GeneID:104644327;gbkey=exon;gene=LOC104644327;model_evidence=Supporting evidence includes similarity to: 2 Proteins%2C and 73%25 coverage of the annotated genomic feature by RNAseq alignments
 NC_015439.2	Gnomon	exon	147455	147494	.	+	.	ID=id38091;Parent=gene3754;Dbxref=GeneID:104644327;gbkey=exon;gene=LOC104644327;model_evidence=Supporting evidence includes similarity to: 2 Proteins%2C and 73%25 coverage of the annotated genomic feature by RNAseq alignments
@@ -42,6 +44,7 @@ NC_015439.2	Gnomon	exon	153381	154133	.	+	.	ID=id38096;Parent=rna5424;Dbxref=Gen
 NC_015439.2	Gnomon	CDS	153381	154133	.	+	0	ID=cds4538;Parent=rna5424;Dbxref=GeneID:109119440,Genbank:XP_019067527.1;Name=XP_019067527.1;gbkey=CDS;gene=LOC109119440;product=FT-interacting protein 1-like;protein_id=XP_019067527.1
 ##sequence-region NC_015440.2 1 70787664
 ##species https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=4081
+NC_015440.2	manual	region	1	22000	.	.	.	ID=NC_015440.2
 NC_015440.2	Gnomon	gene	16685	21538	.	+	.	ID=gene6694;Dbxref=GeneID:101249793;Name=LOC101249793;gbkey=Gene;gene=LOC101249793;gene_biotype=protein_coding
 NC_015440.2	Gnomon	mRNA	16685	19953	.	+	.	ID=rna10167;Parent=gene6694;Dbxref=GeneID:101249793,Genbank:XM_010319085.2;Name=XM_010319085.2;gbkey=mRNA;gene=LOC101249793;model_evidence=Supporting evidence includes similarity to: 1 mRNA%2C 8 ESTs%2C and 100%25 coverage of the annotated genomic feature by RNAseq alignments%2C including 142 samples with support for all annotated introns;product=protease HtpX homolog%2C transcript variant X4;transcript_id=XM_010319085.2
 NC_015440.2	Gnomon	exon	16685	16978	.	+	.	ID=id71892;Parent=rna10167;Dbxref=GeneID:101249793,Genbank:XM_010319085.2;gbkey=mRNA;gene=LOC101249793;product=protease HtpX homolog%2C transcript variant X4;transcript_id=XM_010319085.2

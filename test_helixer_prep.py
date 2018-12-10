@@ -11,6 +11,7 @@ from dustdas import gffhelper
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import sqlalchemy
+import gff_2_annotations
 
 
 ### structure ###
@@ -604,6 +605,41 @@ def test_replacelinks():
     assert len(scribed.features) == 3
 
 
+def test_data_frm_gffentry():
+    sess = mk_session()
+    controller = gff_2_annotations.ImportControl()
+    gene_string = 'NC_015438.2\tGnomon\tgene\t4343\t5685\t.\t+\t.\tID=gene0;Dbxref=GeneID:104645797;Name=LOC10'
+    mrna_string = 'NC_015438.2\tBestRefSeq\tmRNA\t13024\t15024\t.\t+\t.\tID=rna0;Parent=gene0;Dbxref=GeneID:'
+    exon_string = 'NC_015438.2\tGnomon\texon\t4343\t4809\t.\t+\t.\tID=id1;Parent=rna0;Dbxref=GeneID:104645797'
+    gene_entry = gffhelper.GFFObject(gene_string)
+    handler = annotations.SuperLocusHandler()
+    handler.gen_data_from_gffentry(gene_entry)
+    sess.add(handler.data)
+    sess.commit()
+    assert handler.data.given_id == 'gene0'
+    assert handler.data.type.value == 'gene'
+
+    mrna_entry = gffhelper.GFFObject(mrna_string)
+    mandler = annotations.TranscribedHandler()
+    mandler.gen_data_from_gffentry(mrna_entry, super_locus=handler.data)
+    sess.commit()
+    assert mandler.data.given_id == 'rna0'
+    assert mandler.data.type.value == 'mRNA'
+    assert mandler.data.super_locus is handler.data
+
+    exon_entry = gffhelper.GFFObject(exon_string)
+    controller.clean_entry(exon_entry)
+    hendler = annotations.FeatureHandler()
+    hendler.gen_data_from_gffentry(exon_entry, super_locus=handler.data, transcribeds=[mandler.data])
+    # todo, review hendler to see why it's failing a databse constraint and won't commit WAS HERE
+
+    sess.commit()
+
+    assert hendler.data.start == 4343
+    assert hendler.data.is_plus_strand
+    assert hendler.data.score is None
+    assert hendler.data.seqid == 'NC_015438.2'
+
 #def setup_testable_super_loci():
 #    genome = annotations.AnnotatedGenome()
 #    # make a dummy sequence
@@ -977,6 +1013,30 @@ def test_replacelinks():
 #        if 'y' in val_old.generic_holders:
 #            assert 'y' not in val.generic_holders
 #            assert 'newy' in val.generic_holders
+
+#### gff_2_annotations ####
+def test_gff_gen():
+    controller = gff_2_annotations.ImportControl()
+    x = list(controller.gff_gen('testdata/testerSl.gff3'))
+    assert len(x) == 103
+    assert x[0].type == 'region'
+    assert x[-1].type == 'CDS'
+
+
+def test_gff_useful_gen():
+    controller = gff_2_annotations.ImportControl()
+    x = list(controller.useful_gff_entries('testdata/testerSl.gff3'))
+    assert len(x) == 100  # should drop the region entry
+    assert x[0].type == 'gene'
+    assert x[-1].type == 'CDS'
+
+
+def test_gff_grouper():
+    controller = gff_2_annotations.ImportControl()
+    x = list(controller.group_gff_by_gene('testdata/testerSl.gff3'))
+    assert len(x) == 5
+    for group in x:
+        assert group[0].type == 'gene'
 
 
 #### type_enumss ####

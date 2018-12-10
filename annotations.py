@@ -253,26 +253,9 @@ class SequenceInfoHandler(Handler):
 #                                                                              len(new_sl.features)))
 #        err_handle.close()
 #
-#    def useful_gff_entries(self, gff_file):
-#        skipable = self.gffkey.regions + self.gffkey.ignorable
-#        reader = gffhelper.read_gff_file(gff_file)
-#        for entry in reader:
-#            if entry.type not in self.gffkey.known:
-#                raise ValueError("unrecognized feature type fr:qom gff: {}".format(entry.type))
-#            if entry.type not in skipable:
-#                yield entry
-#
-#    def group_gff_by_gene(self, gff_file):
-#        reader = self.useful_gff_entries(gff_file)
-#        gene_group = [next(reader)]
-#        for entry in reader:
-#            if entry.type in self.gffkey.gene_level:
-#                yield gene_group
-#                gene_group = [entry]
-#            else:
-#                gene_group.append(entry)
-#        yield gene_group
-#
+#    def useful_gff_entries(self, gff_file): >> gff_2_annotations
+#    def group_gff_by_gene(self, gff_file): >> gff_2_annotations
+
 #    def load_to_interval_tree(self):
 #        trees = {}
 #        for seqid in self.seq_info:
@@ -325,13 +308,17 @@ class SequenceInfoHandler(Handler):
 
 
 class GFFDerivedHandler(Handler):
+    def __init__(self):
+        super().__init__()
+        self.gffentry = None
+
     def add_gffentry(self, gffentry, gen_data=True):
         self.gffentry = gffentry
         if gen_data:
             data = self.gen_data_from_gffentry(gffentry)
             self.add_data(data)
 
-    def gen_data_from_gffentry(self, gffentry):
+    def gen_data_from_gffentry(self, gffentry, **kwargs):
         raise NotImplementedError
 
 
@@ -360,6 +347,14 @@ class SuperLocusHandler(GFFDerivedHandler):
             other.data.super_locus = None
         else:
             raise self._link_value_error(other)
+
+    def gen_data_from_gffentry(self, gffentry, sequence_info=None, **kwargs):
+        data = self.data_type(type=gffentry.type,
+                              given_id=gffentry.get_ID(),
+                              sequence_info=sequence_info)
+        self.add_data(data)
+        # todo, grab more aliases from gff attribute
+
 #    t_transcripts = 'transcripts'
 #    t_proteins = 'proteins'
 #    t_feature_holders = 'generic_holders'
@@ -521,8 +516,18 @@ class SuperLocusHandler(GFFDerivedHandler):
 
 
 class FeatureHolderHandler(GFFDerivedHandler):
-    pass
 
+    def gen_data_from_gffentry(self, gffentry, super_locus=None, **kwargs):
+        parents = gffentry.get_Parent()
+        # the simple case
+        if len(parents) == 1:
+            assert super_locus.given_id == parents[0]
+            data = self.data_type(type=gffentry.type,
+                                  given_id=gffentry.get_ID(),
+                                  super_locus=super_locus)
+            self.add_data(data)
+        else:
+            raise NotImplementedError  # todo handle multi inheritance, etc...
 #    holder_type = SuperLocus.t_feature_holders
 #
 #    def __init__(self):
@@ -763,6 +768,29 @@ class FeatureHandler(GFFDerivedHandler):
             other.data.features.remove(self.data)
         else:
             raise self._link_value_error(other)
+
+    def gen_data_from_gffentry(self, gffentry, super_locus=None, transcribeds=None, translateds=None, **kwargs):
+        if transcribeds is None:
+            transcribeds = []
+        if translateds is None:
+            translateds = []
+        given_id = gffentry.get_ID()  # todo, None on missing
+        is_plus_strand = gffentry.strand == '+'
+
+        data = self.data_type(
+            given_id=given_id,
+            seqid=gffentry.seqid,
+            start=gffentry.start,
+            end=gffentry.end,
+            is_plus_strand=is_plus_strand,
+            score=gffentry.score,
+            source=gffentry.source,
+            phase=gffentry.phase,
+            super_locus=super_locus,
+            transcribeds=transcribeds,
+            translateds=translateds
+        )
+        self.add_data(data)
 
 #        self.phase = None
 

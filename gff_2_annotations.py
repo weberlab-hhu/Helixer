@@ -1,5 +1,92 @@
 from dustdas import gffhelper
 import intervaltree
+import annotations
+import annotations_orm
+import type_enums
+
+
+class ImportControl(object):
+
+    def gff_gen(self, gff_file):
+        known = [x.value for x in type_enums.AllKnown]
+        reader = gffhelper.read_gff_file(gff_file)
+        for entry in reader:
+            if entry.type not in known:
+                raise ValueError("unrecognized feature type from gff: {}".format(entry.type))
+            else:
+                self.clean_entry(entry)
+                yield entry
+
+    @staticmethod
+    def clean_entry(entry):
+        # always present and integers
+        entry.start = int(entry.start)
+        entry.end = int(entry.end)
+        # clean up score
+        if entry.score == '.':
+            entry.score = None
+        else:
+            entry.score = float(entry.score)
+
+        # clean up phase
+        if entry.phase == '.':
+            entry.phase = None
+        else:
+            entry.phase = int(entry.phase)
+        assert entry.phase in [None, 0, 1, 2]
+
+        # clean up strand
+        if entry.strand == '.':
+            entry.strand = None
+        else:
+            assert entry.strand in ['+', '-']
+
+    def useful_gff_entries(self, gff_file):
+        skipable = [x.value for x in type_enums.IgnorableFeatures]
+        reader = self.gff_gen(gff_file)
+        for entry in reader:
+            if entry.type not in skipable:
+                yield entry
+
+    def group_gff_by_gene(self, gff_file):
+        gene_level = [x.value for x in type_enums.SuperLocusAll]
+        reader = self.useful_gff_entries(gff_file)
+        gene_group = [next(reader)]
+        for entry in reader:
+            if entry.type in gene_level:
+                yield gene_group
+                gene_group = [entry]
+            else:
+                gene_group.append(entry)
+        yield gene_group
+
+    def add_gff(self, gff_file):
+        for entry in self.useful_gff_entries(gff_file):
+            print(entry)
+
+#    def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
+#        err_handle = open(err_file, 'w')
+#        self._add_sequences(genome)
+#
+#        gff_seq_ids = helpers.get_seqids_from_gff(gff_file)
+#        mapper, is_forward = helpers.two_way_key_match(self.seq_info.keys(), gff_seq_ids)
+#        self.mapper = mapper
+#
+#        if not is_forward:
+#            raise NotImplementedError("Still need to implement backward match if fasta IDs are subset of gff IDs")
+#
+#        for entry_group in self.group_gff_by_gene(gff_file):
+#            new_sl = SuperLocus()
+#            new_sl.slice = self
+#            new_sl.add_gff_entry_group(entry_group, err_handle)
+#
+#            self.super_loci.append(new_sl)
+#            if not new_sl.transcripts and not new_sl.features:
+#                print('{} from {} with {} transcripts and {} features'.format(new_sl.id,
+#                                                                              entry_group[0].source,
+#                                                                              len(new_sl.transcripts),
+#                                                                              len(new_sl.features)))
+#        err_handle.close()
 
 
 class NoTranscriptError(Exception):

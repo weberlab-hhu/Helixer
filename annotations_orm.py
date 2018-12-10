@@ -105,7 +105,7 @@ class Transcribed(Base):
 
     id = Column(Integer, primary_key=True)
     given_id = Column(String)
-    type = Column(Enum(type_enums.TranscriptLevelNice))
+    type = Column(Enum(type_enums.TranscriptLevelAll))
 
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
     super_locus = relationship('SuperLocus', back_populates='transcribeds')
