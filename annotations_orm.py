@@ -73,7 +73,7 @@ class SuperLocus(Base):
 
     id = Column(Integer, primary_key=True)
     given_id = Column(String)
-    type = Column(Enum(type_enums.SuperLocus))
+    type = Column(Enum(type_enums.SuperLocusAll))
     # relations
     sequence_info_id = Column(Integer, ForeignKey('sequence_infos.id'))
     sequence_info = relationship('SequenceInfo', back_populates='super_loci')
@@ -146,6 +146,7 @@ class Feature(Base):
     is_plus_strand = Column(Boolean)
     score = Column(Float)
     source = Column(String)
+    phase = Column(Integer)
 
     # for differentiating from subclass entries
     subtype = Column(String(20))
@@ -162,6 +163,8 @@ class Feature(Base):
     __table_args__ = (
         CheckConstraint(start >= 1, name='check_start_1plus'),
         CheckConstraint(end >= start, name='check_end_gr_start'),
+        CheckConstraint(phase >= 0, name='check_phase_not_negative'),
+        CheckConstraint(phase < 3, name='check_phase_less_three'),
         {})
 
     __mapper_args__ = {
