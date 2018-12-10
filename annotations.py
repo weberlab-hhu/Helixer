@@ -63,7 +63,10 @@ class Handler(object):
         for attr in to_replace:
             val = self.get_data_attribute(attr)
             if isinstance(val, list):
-                for data in val:
+                n = len(val)
+                for i in reversed(list(range(n))):  # go through backwards to hit every item even though we're removing
+                    #for data in val:
+                    data = val[i]
                     self._replace_selflink_with_replacementlink(replacement, data)
             elif isinstance(val, annotations_orm.Base):
                 self._replace_selflink_with_replacementlink(replacement, val)

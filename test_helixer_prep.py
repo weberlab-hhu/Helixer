@@ -629,16 +629,9 @@ def test_replacelinks():
     sess.commit()
     assert len(slated.features) == 3
     slatedh.replace_selflinks_w_replacementlinks(replacement=scribedh, to_replace=['features'])
-    print(slated.features)
-    print(scribed.features)
+
     assert len(slated.features) == 0  # todo, WAS HERE!
     assert len(scribed.features) == 3
-    #scribed = annotations_orm.Transcribed(super_locus=slc)
-    #slated = annotations_orm.Translated(super_locus=slc)
-    #feature = annotations_orm.Feature(super_locus=slc, transcribeds=[scribed])
-
-    #slated.transcribeds.append(scribed)
-
 
 
 #def setup_testable_super_loci():
