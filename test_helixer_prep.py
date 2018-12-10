@@ -412,12 +412,10 @@ def test_delinking_from_oneside():
 ### annotations ###
 def test_copy_over_attr():
     sess = mk_session()
-    dummy_ag = annotations.AnnotatedGenomeHandler()
-    data_ag = annotations_orm.AnnotatedGenome(species='mammoth', version='v1.0.3', acquired_from='nowhere')
-    dummy_ag.add_data(data_ag)
-    other_ag = annotations.AnnotatedGenomeHandler()
-    odata_ag = annotations_orm.AnnotatedGenome()
-    other_ag.add_data(odata_ag)
+    data_ag, dummy_ag = setup_data_handler(annotations.AnnotatedGenomeHandler, annotations_orm.AnnotatedGenome,
+                                           species='mammoth', version='v1.0.3', acquired_from='nowhere')
+    odata_ag, other_ag = setup_data_handler(annotations.AnnotatedGenomeHandler, annotations_orm.AnnotatedGenome)
+
     sess.add_all([data_ag, other_ag.data])
     # make sure copy only copies what it says and nothing else
     dummy_ag.copy_data_attr_to_other(other_ag, copy_only='species')
@@ -443,17 +441,10 @@ def test_copy_over_attr():
 def test_swap_link_annogenome2seqinfo():
     sess = mk_session()
 
-    ag = annotations_orm.AnnotatedGenome()
-    agh = annotations.AnnotatedGenomeHandler()
-    agh.add_data(ag)
+    ag, agh = setup_data_handler(annotations.AnnotatedGenomeHandler, annotations_orm.AnnotatedGenome)
+    ag2, ag2h = setup_data_handler(annotations.AnnotatedGenomeHandler, annotations_orm.AnnotatedGenome)
 
-    ag2 = annotations_orm.AnnotatedGenome()
-    ag2h = annotations.AnnotatedGenomeHandler()
-    ag2h.add_data(ag2)
-
-    si = annotations_orm.SequenceInfo(annotated_genome=ag)
-    sih = annotations.SequenceInfoHandler()
-    sih.add_data(si)
+    si, sih = setup_data_handler(annotations.SequenceInfoHandler, annotations_orm.SequenceInfo, annotated_genome=ag)
 
     sess.add_all([ag, ag2, si])
     sess.commit()
@@ -474,17 +465,11 @@ def test_swap_link_seqinfo2superlocus():
     sess = mk_session()
     ag = annotations_orm.AnnotatedGenome()
 
-    si = annotations_orm.SequenceInfo(annotated_genome=ag)
-    sih = annotations.SequenceInfoHandler()
-    sih.add_data(si)
+    si, sih = setup_data_handler(annotations.SequenceInfoHandler, annotations_orm.SequenceInfo, annotated_genome=ag)
 
-    si2 = annotations_orm.SequenceInfo(annotated_genome=ag)
-    si2h = annotations.SequenceInfoHandler()
-    si2h.add_data(si2)
+    si2, si2h = setup_data_handler(annotations.SequenceInfoHandler, annotations_orm.SequenceInfo, annotated_genome=ag)
 
-    slc = annotations_orm.SuperLocus(sequence_info=si)
-    slch = annotations.SuperLocusHandler()
-    slch.add_data(slc)
+    slc, slch = setup_data_handler(annotations.SuperLocusHandler, annotations_orm.SuperLocus, sequence_info=si)
     sess.add_all([si, si2, slc])
     sess.commit()
 
@@ -502,25 +487,16 @@ def test_swap_link_seqinfo2superlocus():
 def test_swap_links_superlocus2ttfs():
     sess = mk_session()
 
-    slc = annotations_orm.SuperLocus()
-    slch = annotations.SuperLocusHandler()
-    slch.add_data(slc)
+    slc, slch = setup_data_handler(annotations.SuperLocusHandler, annotations_orm.SuperLocus)
 
-    slc2 = annotations_orm.SuperLocus()
-    slc2h = annotations.SuperLocusHandler()
-    slc2h.add_data(slc2)
+    slc2, slc2h = setup_data_handler(annotations.SuperLocusHandler, annotations_orm.SuperLocus)
 
-    scribed = annotations_orm.Transcribed(super_locus=slc)
-    slated = annotations_orm.Translated(super_locus=slc)
-    feature = annotations_orm.Feature(super_locus=slc)
-    slated.transcribeds.append(scribed)
-
-    scribedh = annotations.TranscribedHandler()
-    slatedh = annotations.TranslatedHandler()
-    featureh = annotations.FeatureHandler()
-    scribedh.add_data(scribed)
-    slatedh.add_data(slated)
-    featureh.add_data(feature)
+    scribed, scribedh = setup_data_handler(annotations.TranscribedHandler, annotations_orm.Transcribed,
+                                           super_locus=slc)
+    slated, slatedh = setup_data_handler(annotations.TranslatedHandler, annotations_orm.Translated,
+                                         super_locus=slc, transcribeds=[scribed])
+    feature, featureh = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature,
+                                           super_locus=slc)
 
     sess.add_all([slc, slc2, scribed, slated])
     sess.commit()
@@ -558,17 +534,11 @@ def test_swap_links_t2t2f():
 
     slc = annotations_orm.SuperLocus()
 
-    scribed = annotations_orm.Transcribed(super_locus=slc)
-    slated = annotations_orm.Translated(super_locus=slc)
-    feature = annotations_orm.Feature(super_locus=slc, transcribeds=[scribed])
-    slated.transcribeds.append(scribed)
-
-    scribedh = annotations.TranscribedHandler()
-    slatedh = annotations.TranslatedHandler()
-    featureh = annotations.FeatureHandler()
-    scribedh.add_data(scribed)
-    slatedh.add_data(slated)
-    featureh.add_data(feature)
+    scribed, scribedh = setup_data_handler(annotations.TranscribedHandler, annotations_orm.Transcribed, super_locus=slc)
+    slated, slatedh = setup_data_handler(annotations.TranslatedHandler, annotations_orm.Translated, super_locus=slc,
+                                         transcribeds=[scribed])
+    feature, featureh = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, super_locus=slc,
+                                           transcribeds=[scribed])
 
     sess.add_all([slc, scribed, slated, feature])
     sess.commit()
@@ -602,7 +572,7 @@ def test_swap_links_t2t2f():
     sess.commit()
 
 
-def setup_data_handler(handler_type, data_type, **kwargs):  # todo, use everywhere it's needed!
+def setup_data_handler(handler_type, data_type, **kwargs):
     data = data_type(**kwargs)
     handler = handler_type()
     handler.add_data(data)
@@ -630,7 +600,7 @@ def test_replacelinks():
     assert len(slated.features) == 3
     slatedh.replace_selflinks_w_replacementlinks(replacement=scribedh, to_replace=['features'])
 
-    assert len(slated.features) == 0  # todo, WAS HERE!
+    assert len(slated.features) == 0
     assert len(scribed.features) == 3
 
 
