@@ -606,8 +606,9 @@ def test_replacelinks():
 
 
 def test_data_frm_gffentry():
-    sess = mk_session()
-    controller = gff_2_annotations.ImportControl()
+    #sess = mk_session()
+    controller = gff_2_annotations.ImportControl(database_path=None, err_path=None)
+    sess = controller.session
     gene_string = 'NC_015438.2\tGnomon\tgene\t4343\t5685\t.\t+\t.\tID=gene0;Dbxref=GeneID:104645797;Name=LOC10'
     mrna_string = 'NC_015438.2\tBestRefSeq\tmRNA\t13024\t15024\t.\t+\t.\tID=rna0;Parent=gene0;Dbxref=GeneID:'
     exon_string = 'NC_015438.2\tGnomon\texon\t4343\t4809\t.\t+\t.\tID=id1;Parent=rna0;Dbxref=GeneID:104645797'
@@ -663,6 +664,23 @@ def test_data_frm_gffentry():
     assert mandler.data in hendler.data.transcribeds
     assert hendler.data.translateds == []
 
+
+def test_data_from_cds_gffentry():
+    s = "NC_015447.2\tGnomon\tCDS\t5748\t5840\t.\t-\t0\tID=cds28210;Parent=rna33721;Dbxref=GeneID:101263940,Genbank:" \
+        "XP_004248424.1;Name=XP_004248424.1;gbkey=CDS;gene=LOC101263940;product=protein IQ-DOMAIN 14-like;" \
+        "protein_id=XP_004248424.1"
+    cds_entry = gffhelper.GFFObject(s)
+    controller = gff_2_annotations.ImportControl(database_path=None, err_path=None)
+    controller.clean_entry(cds_entry)
+    handler = gff_2_annotations.FeatureHandler()
+    handler.gen_data_from_gffentry(cds_entry)
+    print([x.value for x in type_enums.OnSequence])
+    controller.session.add(handler.data)
+    controller.session.commit()
+    assert not handler.data.is_plus_strand
+    assert handler.data.type.value == 'CDS'
+    assert handler.data.phase == 0
+    assert handler.data.score is None
 #def setup_testable_super_loci():
 #    genome = annotations.AnnotatedGenome()
 #    # make a dummy sequence
@@ -1071,12 +1089,17 @@ def test_enum_non_inheritance():
     assert 'region' in allknown
 
     # check that some annoying bits are not in nice set
-    for not_nice in ['transcript', 'primary_transcript', 'exon', 'five_prime_UTR', 'cds']:
+    for not_nice in ['transcript', 'primary_transcript', 'exon', 'five_prime_UTR', 'CDS']:
         assert not_nice not in allnice
         assert not_nice in allknown
 
     # check nothing is there twice
     assert len(set(allknown)) == len(allknown)
+
+
+def test_enums_name_val_match():
+    for x in type_enums.AllKnown:
+        assert x.name == x.value
 
 
 #### helpers ####

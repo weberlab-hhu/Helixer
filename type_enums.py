@@ -49,10 +49,10 @@ TranscriptLevelAll = join_to_enum('TranscriptLevel', TranscriptLevelNice, Transc
 # FEATURES
 # transcription related features
 class TranscribedGeneral(enum.Enum):
-    transcription_start_site = 'TSS'
-    transcription_termination_site = 'TTS'
-    donor_splice_site = 'DSS'
-    acceptor_splice_site = 'ASS'
+    TSS = 'TSS'  # transcription_start_site
+    TTS = 'TTS'  # transcription_termination_site
+    DSS = 'DSS'  # donor_splice_site
+    ASS = 'ASS'  # acceptor_splice_site
 
 
 class TranscribedInput(enum.Enum):
@@ -81,7 +81,7 @@ TranscribedNice = join_to_enum('TranscribedNice', TranscribedGeneral, Transcribe
 
 # translation related features
 class TranslatedInput(enum.Enum):
-    cds = 'CDS'
+    CDS = 'CDS'
 
 
 class TranslatedGeneral(enum.Enum):
@@ -97,6 +97,7 @@ TranslatedAll = join_to_enum('TranslatedFeatureType', TranslatedInput, Translate
 
 TranslatedNice = join_to_enum('TranslatedNice', TranslatedStatus, TranslatedGeneral)
 
+OnSequence = join_to_enum('OnSequence', TranscribedAll, TranslatedAll)
 
 # errror features
 class ErrorFeature(enum.Enum):
