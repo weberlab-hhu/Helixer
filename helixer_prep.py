@@ -4,12 +4,12 @@ import os
 
 import sequences
 import annotations
+import gff_2_annotations
 
 
 def gff3_to_json(gff3, json, sequence, prob_path):
-    ag = annotations.AnnotatedGenome()
-    ag.add_gff(gff3, sequence, prob_path)
-    ag.to_json(json)
+    controller = gff_2_annotations.ImportControl(database_path=None, err_path=prob_path)
+    controller.add_gff(gff3)
 
 
 # todo, maybe this should be a method on the StructuredGenome...? or just in main

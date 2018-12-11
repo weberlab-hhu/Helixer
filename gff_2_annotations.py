@@ -4,8 +4,30 @@ import annotations
 import annotations_orm
 import type_enums
 
+import logging
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+
 ##### main flow control #####
 class ImportControl(object):
+
+    def __init__(self, database_path=None, err_path=None):
+        self.database_path = database_path
+        self.session = None
+        self.err_path = err_path
+        self.engine = None
+        self.annotated_genome = None
+        self.sequence_infos = []
+        self.super_loci = []
+        self.mk_session()
+
+    def mk_session(self):
+        self.engine = create_engine('sqlite:///:memory:', echo=False)  # todo, dynamic / real path
+        annotations_orm.Base.metadata.create_all(self.engine)
+        Session = sessionmaker(bind=self.engine)
+        self.session = Session()
 
     def gff_gen(self, gff_file):
         known = [x.value for x in type_enums.AllKnown]
@@ -61,9 +83,22 @@ class ImportControl(object):
         yield gene_group
 
     def add_gff(self, gff_file):
-        for entry in self.useful_gff_entries(gff_file):
-            print(entry)
-
+        super_loci = []
+        err_handle = open(self.err_path, 'w')
+        for entry_group in self.group_gff_by_gene(gff_file):
+            super_locus = SuperLocusHandler()
+            super_locus.add_gff_entry_group(entry_group, err_handle)
+            print(type(super_locus.data))
+            print('{{[[[[[[[[}}}}}}}}}}}]}}')
+            print(entry_group[0])
+            print(super_locus.data.given_id)
+            print(super_locus.transcribed_handlers[-1].data.given_id)
+            print('-------------')
+            self.session.add(super_locus.data)
+            self.session.commit()
+            super_loci.append(super_locus)  # just to keep some direct python link to this
+        self.super_loci = super_loci
+        err_handle.close()
 #    def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
 #        err_handle = open(err_file, 'w')
 #        self._add_sequences(genome)
@@ -89,6 +124,9 @@ class ImportControl(object):
 #        err_handle.close()
 
 
+def in_values(x, enum):
+    return x in [item.value for item in enum]
+
 ##### gff parsing subclasses #####
 
 class GFFDerived(object):
@@ -113,6 +151,9 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
     def __init__(self):
         annotations.SuperLocusHandler.__init__(self)
         GFFDerived.__init__(self)
+        self.transcribed_handlers = []
+        self.translated_handlers = []
+        self.feature_handlers = []
 
     def gen_data_from_gffentry(self, gffentry, sequence_info=None, **kwargs):
         data = self.data_type(type=gffentry.type,
@@ -149,61 +190,61 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
 #            self.generic_holders[transcript.id] = transcript  # save into main dict of transcripts
 #            return transcript
 #
-#    def add_gff_entry(self, entry):
-#        exceptions = entry.attrib_filter(tag="exception")
-#        for exception in [x.value for x in exceptions]:
-#            if 'trans-splicing' in exception:
-#                raise TransSplicingError('trans-splice in attribute {} {}'.format(entry.get_ID(), entry.attribute))
-#        gffkey = self.genome.gffkey
-#        if entry.type in gffkey.gene_level:
-#            self.type = entry.type
-#            gene_id = entry.get_ID()
-#            self.id = gene_id
-#            self.ids.append(gene_id)
-#            self.gff_entry = entry
-#        elif entry.type in gffkey.transcribed:
-#            parent = self.one_parent(entry)
-#            assert parent == self.id, "not True :( [{} == {}]".format(parent, self.id)
-#            transcript = FeatureHolder()
-#            transcript.add_data(self, entry)
-#            self.generic_holders[transcript.id] = transcript
-#        elif entry.type in gffkey.on_sequence:
-#            feature = StructuredFeature()
-#            feature.add_data(self, entry)
-#            self.features[feature.id] = feature
-#
-#    def _add_gff_entry_group(self, entries):
-#        entries = list(entries)
-#        for entry in entries:
-#            self.add_gff_entry(entry)
-#
-#    def add_gff_entry_group(self, entries, ts_err_handle):
-#        try:
-#            self._add_gff_entry_group(entries)
-#            self.check_and_fix_structure(entries)
-#        except TransSplicingError as e:
-#            self._mark_erroneous(entries[0])
-#            logging.warning('skipping but noting trans-splicing: {}'.format(str(e)))
-#            ts_err_handle.writelines([x.to_json() for x in entries])
-#            # todo, log to file
-#
+
+    def add_gff_entry(self, entry):
+        exceptions = entry.attrib_filter(tag="exception")
+        for exception in [x.value for x in exceptions]:
+            if 'trans-splicing' in exception:
+                raise TransSplicingError('trans-splice in attribute {} {}'.format(entry.get_ID(), entry.attribute))
+        if in_values(entry.type, type_enums.SuperLocusAll):
+            self.gen_data_from_gffentry(gffentry=entry)
+
+        elif in_values(entry.type, type_enums.TranscriptLevelAll):
+            transcribed = TranscribedHandler()
+            transcribed.gen_data_from_gffentry(entry, super_locus=self.data)
+            self.transcribed_handlers.append(transcribed)
+
+        elif in_values(entry.type, type_enums.OnSequence):  # todo, I don't have a feature-level/on sequence type??
+            feature = FeatureHandler()
+            feature.gen_data_from_gffentry(entry, super_locus=self.data,
+                                           transcribeds=[self.transcribed_handlers[-1].data])
+        else:
+            raise ValueError("problem handling entry of type {}".format(entry.type))
+
+    def _add_gff_entry_group(self, entries):
+        entries = list(entries)
+        for entry in entries:
+            self.add_gff_entry(entry)
+
+    def add_gff_entry_group(self, entries, ts_err_handle):
+        try:
+            self._add_gff_entry_group(entries)
+            #self.check_and_fix_structure(entries)
+        except TransSplicingError as e:
+            self._mark_erroneous(entries[0])
+            logging.warning('skipping but noting trans-splicing: {}'.format(str(e)))
+            ts_err_handle.writelines([x.to_json() for x in entries])
+        except AssertionError as e:
+            self._mark_erroneous(entries[0])
+            # todo, log to file
+
 #    @staticmethod
 #    def one_parent(entry):
 #        parents = entry.get_Parent()
 #        assert len(parents) == 1
 #        return parents[0]
 #
-#    def _mark_erroneous(self, entry):
-#        assert entry.type in self.genome.gffkey.gene_level
-#        logging.warning(
-#            '{species}:{seqid}, {start}-{end}:{gene_id} by {src}, No valid features found - marking erroneous'.format(
-#                src=entry.source, species=self.genome.meta_info.species, seqid=entry.seqid, start=entry.start,
-#                end=entry.end, gene_id=self.id
-#            ))
-#        sf = StructuredFeature()
-#        feature = sf.add_erroneous_data(self, entry)
-#        self.features[feature.id] = feature
-#
+    def _mark_erroneous(self, entry, msg=''):
+        assert entry.type in [x.value for x in type_enums.SuperLocusAll]
+        logging.warning(
+            '{species}:{seqid}, {start}-{end}:{gene_id} by {src}, {msg} - marking erroneous'.format(
+                src=entry.source, species="todo", seqid=entry.seqid, start=entry.start,
+                end=entry.end, gene_id=self.data.given_id, msg=msg
+            ))
+        sf = FeatureHandler()
+        sf.gen_data_from_gffentry(entry, super_locus=self.data)
+        sf.set_data_attribute('type', type_enums.ErrorFeature)
+
 #    def check_and_fix_structure(self, entries):
 #        # if it's empty (no bottom level features at all) mark as erroneous
 #        if not self.features:
@@ -291,6 +332,11 @@ class FeatureHandler(annotations.FeatureHandler, GFFDerived):
             transcribeds = []
         if translateds is None:
             translateds = []
+
+        parents = gffentry.get_Parent()
+        for transcribed in transcribeds:
+            assert transcribed.given_id in parents
+
         given_id = gffentry.get_ID()  # todo, None on missing
         is_plus_strand = gffentry.strand == '+'
 

@@ -140,7 +140,7 @@ class Feature(Base):
     id = Column(Integer, primary_key=True)
     given_id = Column(String)
 
-    type = Column(Enum(type_enums.TranscribedAll))
+    type = Column(Enum(type_enums.OnSequence))
     seqid = Column(String)
     start = Column(Integer)
     end = Column(Integer)
