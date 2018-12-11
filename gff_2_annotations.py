@@ -122,10 +122,9 @@ class ImportControl(object):
 def in_values(x, enum):
     return x in [item.value for item in enum]
 
-##### gff parsing subclasses #####
 
+##### gff parsing subclasses #####
 class GFFDerived(object):
-    # todo, move this & all gen_data_from_gffentry to gff_2_annotations (multi inheritance?)
     def __init__(self):
         self.gffentry = None
 
@@ -536,12 +535,12 @@ class TranscriptInterpreter(TranscriptInterpBase):
     #        new.__setattr__(key, kwargs[key])
     #    return new
 
-    #@staticmethod
-    #def pick_one_interval(interval_set, target_type=None):
-    #    if target_type is None:
-    #        return interval_set[0]
-    #    else:
-    #        return [x for x in interval_set if x.data.type == target_type][0]
+    @staticmethod
+    def pick_one_interval(interval_set, target_type=None):
+        if target_type is None:
+            return interval_set[0]
+        else:
+            return [x for x in interval_set if x.data.type == target_type][0]
 
     #def _get_protein_id_from_cds(self, cds_feature):
     #    assert cds_feature.gff_entry.type == self.gffkey.cds, "{} != {}".format(cds_feature.gff_entry.type,
@@ -771,41 +770,50 @@ class TranscriptInterpreter(TranscriptInterpBase):
     #        feature_e.type = self.gffkey.error
     #        self.clean_features.append(feature_e)
 
-    #def interpret_first_pos(self, intervals, plus_strand=True):
-    #    i0 = self.pick_one_interval(intervals)
-    #    at = i0.data.upstream_from_interval(i0)
-    #    possible_types = self.possible_types(intervals)
-    #    if self.gffkey.five_prime_UTR in possible_types:
-    #        # this should indicate we're good to go and have a transcription start site
-    #        tss = self.new_feature(template=i0.data, type=self.gffkey.TSS, start=at, end=at, phase=None)
-    #        self.clean_features.append(tss)
-    #        self.status.saw_tss()
-    #    elif self.gffkey.cds in possible_types:
-    #        # this could be first exon detected or start codon, ultimately, indeterminate
-    #        cds_feature = self.pick_one_interval(intervals, target_type=self.gffkey.cds).data
-    #        coding = self.new_feature(template=cds_feature, type=self.gffkey.status_coding, start=at, end=at)
-    #        self.clean_features.append(coding)
-    #        self.status.saw_start(phase=coding.phase)
-    #        # mask a dummy region up-stream as it's very unclear whether it should be intergenic/intronic/utr
-    #        if plus_strand:
-    #            # unless we're at the start of the sequence
-    #            start_of_sequence = self.get_seq_start(cds_feature.seqid)
-    #            if at != start_of_sequence:
-    #                feature_e = self.new_feature(template=cds_feature, type=self.gffkey.error,
-    #                                             start=max(start_of_sequence, at - self.gffkey.error_buffer - 1),
-    #                                             end=at - 1, phase=None)
-    #                self.clean_features.insert(0, feature_e)
-    #        else:
-    #            end_of_sequence = self.get_seq_end(cds_feature.seqid)
-    #            if at != end_of_sequence:
-    #                feature_e = self.new_feature(template=cds_feature, type=self.gffkey.error, start=at + 1,
-    #                                             end=min(end_of_sequence, at + self.gffkey.error_buffer + 1),
-    #                                             phase=None)
-    #                feature_e.type = self.gffkey.error
-    #                self.clean_features.insert(0, feature_e)
-    #    else:
-    #        raise ValueError("why's this gene not start with 5' utr nor cds? types: {}, interpretations: {}".format(
-    #            [x.data.type for x in intervals], possible_types))
+    def interpret_first_pos(self, intervals, plus_strand=True, error_buffer=2000):
+        # shortcuts
+        cds = type_enums.OnSequence.CDS.name
+        five_prime = type_enums.OnSequence.five_prime_UTR.name
+        exon = type_enums.OnSequence.exon.name
+        three_prime = type_enums.OnSequence.three_prime_UTR.name
+        error = type_enums.OnSequence.error.name
+        tss = type_enums.OnSequence.TSS.name
+        in_translated_region = type_enums.OnSequence.in_translated_region.name
+
+        i0 = self.pick_one_interval(intervals)
+        at = i0.data.upstream_from_interval(i0)
+        possible_types = self.possible_types(intervals)
+        if five_prime in possible_types:
+            # this should indicate we're good to go and have a transcription start site
+            tss = self.new_feature(template=i0.data, type=tss, start=at, end=at, phase=None)
+            self.clean_features.append(tss)
+            self.status.saw_tss()
+        elif cds in possible_types:
+            # this could be first exon detected or start codon, ultimately, indeterminate
+            cds_feature = self.pick_one_interval(intervals, target_type=cds).data
+            coding = self.new_feature(template=cds_feature, type=in_translated_region, start=at, end=at)
+            self.clean_features.append(coding)
+            self.status.saw_start(phase=coding.phase)
+            # mask a dummy region up-stream as it's very unclear whether it should be intergenic/intronic/utr
+            if plus_strand:
+                # unless we're at the start of the sequence
+                start_of_sequence = self.get_seq_start(cds_feature.seqid)
+                if at != start_of_sequence:
+                    feature_e = self.new_feature(template=cds_feature, type=error,
+                                                 start=max(start_of_sequence, at - error_buffer - 1),
+                                                 end=at - 1, phase=None)
+                    self.clean_features.insert(0, feature_e)
+            else:
+                end_of_sequence = self.get_seq_end(cds_feature.seqid)
+                if at != end_of_sequence:
+                    feature_e = self.new_feature(template=cds_feature, type=error, start=at + 1,
+                                                 end=min(end_of_sequence, at + error_buffer + 1),
+                                                 phase=None)
+                    feature_e.type = error
+                    self.clean_features.insert(0, feature_e)
+        else:
+            raise ValueError("why's this gene not start with 5' utr nor cds? types: {}, interpretations: {}".format(
+                [x.data.type for x in intervals], possible_types))
 
     #def interpret_last_pos(self, intervals, plus_strand=True):
     #    i0 = self.pick_one_interval(intervals)
@@ -853,35 +861,35 @@ class TranscriptInterpreter(TranscriptInterpBase):
     #    self.interpret_last_pos(intervals=interval_sets[-1])
     #    self._mv_coding_features_to_proteins()
 
-    #def possible_types(self, intervals):
-    #    # shortcuts
-    #    cds = self.gffkey.cds
-    #    five_prime = self.gffkey.five_prime_UTR
-    #    exon = self.gffkey.exon
-    #    three_prime = self.gffkey.three_prime_UTR
+    def possible_types(self, intervals):
+        # shortcuts
+        cds = type_enums.OnSequence.CDS.name
+        five_prime = type_enums.OnSequence.five_prime_UTR.name
+        exon = type_enums.OnSequence.exon.name
+        three_prime = type_enums.OnSequence.three_prime_UTR.name
 
-    #    # what we see
-    #    observed_types = [x.data.type for x in intervals]
-    #    set_o_types = set(observed_types)
-    #    # check length
-    #    if len(intervals) not in [1, 2]:
-    #        raise ValueError('check interpretation by hand for transcript start with {}, {}'.format(
-    #            '\n'.join([ival.data.short_str() for ival in intervals]), observed_types
-    #        ))
-    #    # interpret type combination
-    #    if set_o_types == {exon, five_prime} or set_o_types == {five_prime}:
-    #        out = [five_prime]
-    #    elif set_o_types == {exon, three_prime} or set_o_types == {three_prime}:
-    #        out = [three_prime]
-    #    elif set_o_types == {exon}:
-    #        out = [five_prime, three_prime]
-    #    elif set_o_types == {cds, exon} or set_o_types == {cds}:
-    #        out = [cds]
-    #    else:
-    #        raise ValueError('check interpretation of combination for transcript start with {}, {}'.format(
-    #            intervals, observed_types
-    #        ))
-    #    return out
+        # what we see
+        observed_types = [x.data.data.type.name for x in intervals]
+        set_o_types = set(observed_types)
+        # check length
+        if len(intervals) not in [1, 2]:
+            raise ValueError('check interpretation by hand for transcript start with {}, {}'.format(
+                '\n'.join([ival.data.short_str() for ival in intervals]), observed_types
+            ))
+        # interpret type combination
+        if set_o_types == {exon, five_prime} or set_o_types == {five_prime}:
+            out = [five_prime]
+        elif set_o_types == {exon, three_prime} or set_o_types == {three_prime}:
+            out = [three_prime]
+        elif set_o_types == {exon}:
+            out = [five_prime, three_prime]
+        elif set_o_types == {cds, exon} or set_o_types == {cds}:
+            out = [cds]
+        else:
+            raise ValueError('check interpretation of combination for transcript start with {}, {}'.format(
+                intervals, observed_types
+            ))
+        return out
 
     def organize_and_split_features(self):
         # todo, handle non-single seqid loci

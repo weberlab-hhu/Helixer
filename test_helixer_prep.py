@@ -684,46 +684,53 @@ def test_data_from_cds_gffentry():
 
 
 def setup_testable_super_loci():
-#    genome = annotations.AnnotatedGenome()
-#    # make a dummy sequence
-#    sg = sequences.StructuredGenome()
-#    sg.add_fasta('testdata/dummyloci.fa')
-#
-#    # genome.add_gff('testdata/dummyloci.gff3', genome=sg)
-#    # add slice
-#    sls = annotations.SuperLociSlice()
-#    sls.genome = genome
-#    sls._add_sequences(sg)
-#    # add super locus
-    controller = gff_2_annotations.ImportControl()
+    # todo setup genome/sequence_infos?
+    controller = gff_2_annotations.ImportControl(err_path='/dev/null')
     controller.add_gff('testdata/dummyloci.gff3')
-    sl = controller.super_loci[0]
-    print(sl)
-    assert False
-#    sl.slice = sls
-#    sls.super_loci.append(sl)
-#    entry_group = gffhelper.read_gff_file('testdata/dummyloci.gff3')
-#    sl._add_gff_entry_group(entry_group)
-#
-#    for feature in sl.features.values():
-#        print(feature.short_str())
-#    for transcript_in in sl.generic_holders.values():
-#        print(transcript_in.short_str())
-#    return sl
-#
-#
-#def setup_loci_with_utr():
-#    print('before superloci setup')
-#    sl = setup_testable_super_loci()
-#    print('after superloci setup')
-#    for key_1stCDS in ['ftr000001', 'ftr000005', 'ftr000011']:
-#        sl.features[key_1stCDS].start = 11  # start first CDS later
-#        sl.features[key_1stCDS].phase = 0  # let's just assume the initial phase is correct
-#
-#    sl.features['ftr000009'].end = 330  # end first CDS sooner
-#    return sl
-#
-#
+    return controller.super_loci[0]
+
+
+def test_organize_and_split_features():
+    sl = setup_testable_super_loci()
+    transcript_full = [x for x in sl.transcribed_handlers if x.data.given_id == 'y']
+    assert len(transcript_full) == 1
+    transcript_full = transcript_full[0]
+    transcript_interpreter = gff_2_annotations.TranscriptInterpreter(transcript_full)
+    ordered_features = transcript_interpreter.organize_and_split_features()
+    ordered_features = list(ordered_features)
+    for i in [0, 4]:
+        assert len(ordered_features[i]) == 1
+        assert 'CDS' not in [x.data.data.type.value for x in ordered_features[i]]
+    for i in [1, 2, 3]:
+        assert len(ordered_features[i]) == 2
+        assert 'CDS' in [x.data.data.type.value for x in ordered_features[i]]
+
+    transcript_short = [x for x in sl.transcribed_handlers if x.data.given_id == 'z'][0]
+    transcript_interpreter = gff_2_annotations.TranscriptInterpreter(transcript_short)
+    ordered_features = transcript_interpreter.organize_and_split_features()
+    ordered_features = list(ordered_features)
+    assert len(ordered_features) == 1
+    assert len(ordered_features[0]) == 2
+
+
+def test_possible_types():
+    cds = type_enums.OnSequence.CDS.name
+    five_prime = type_enums.OnSequence.five_prime_UTR.name
+    three_prime = type_enums.OnSequence.three_prime_UTR.name
+
+    sl = setup_testable_super_loci()
+    transcript_full = [x for x in sl.transcribed_handlers if x.data.given_id == 'y']
+    transcript_full = transcript_full[0]
+    transcript_interpreter = gff_2_annotations.TranscriptInterpreter(transcript_full)
+    ordered_features = transcript_interpreter.intervals_5to3(plus_strand=True)
+    ordered_features = list(ordered_features)
+    pt = transcript_interpreter.possible_types(ordered_features[0])
+    assert set(pt) == {five_prime, three_prime}
+    pt = transcript_interpreter.possible_types(ordered_features[1])
+    assert set(pt) == {cds}
+    pt = transcript_interpreter.possible_types(ordered_features[-1])
+    assert set(pt) == {five_prime, three_prime}
+
 #def test_feature_overlap_detection():
 #    sl = setup_testable_super_loci()
 #    assert sl.features['ftr000000'].fully_overlaps(sl.features['ftr000004'])

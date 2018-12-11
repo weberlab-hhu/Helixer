@@ -17,6 +17,7 @@ class Handler(object):
 
     def __init__(self):
         self.data = None
+        self.delete_me = False
 
     def add_data(self, data):
         assert isinstance(data, self.data_type)
@@ -123,6 +124,9 @@ class Handler(object):
         link_error = "from {} can only link / de_link to {}; found {}".format(type(self), self._valid_links,
                                                                               type(other))
         return ValueError(link_error)
+
+    def mark_for_deletion(self):
+        self.delete_me = True
 
 
 class AnnotatedGenomeHandler(Handler):
