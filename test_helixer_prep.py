@@ -612,7 +612,7 @@ def test_data_frm_gffentry():
     mrna_string = 'NC_015438.2\tBestRefSeq\tmRNA\t13024\t15024\t.\t+\t.\tID=rna0;Parent=gene0;Dbxref=GeneID:'
     exon_string = 'NC_015438.2\tGnomon\texon\t4343\t4809\t.\t+\t.\tID=id1;Parent=rna0;Dbxref=GeneID:104645797'
     gene_entry = gffhelper.GFFObject(gene_string)
-    handler = annotations.SuperLocusHandler()
+    handler = gff_2_annotations.SuperLocusHandler()
     handler.gen_data_from_gffentry(gene_entry)
     sess.add(handler.data)
     sess.commit()
@@ -620,7 +620,7 @@ def test_data_frm_gffentry():
     assert handler.data.type.value == 'gene'
 
     mrna_entry = gffhelper.GFFObject(mrna_string)
-    mandler = annotations.TranscribedHandler()
+    mandler = gff_2_annotations.TranscribedHandler()
     mandler.gen_data_from_gffentry(mrna_entry, super_locus=handler.data)
     sess.add(mandler.data)
     sess.commit()
@@ -630,7 +630,7 @@ def test_data_frm_gffentry():
 
     exon_entry = gffhelper.GFFObject(exon_string)
     controller.clean_entry(exon_entry)
-    hendler = annotations.FeatureHandler()
+    hendler = gff_2_annotations.FeatureHandler()
     hendler.gen_data_from_gffentry(exon_entry, super_locus=handler.data, transcribeds=[mandler.data])
 
     d = hendler.data

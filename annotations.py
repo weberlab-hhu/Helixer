@@ -307,23 +307,7 @@ class SequenceInfoHandler(Handler):
 #        raise NotImplementedError  # todo
 
 
-class GFFDerivedHandler(Handler):
-    # todo, move this & all gen_data_from_gffentry to gff_2_annotations (multi inheritance?)
-    def __init__(self):
-        super().__init__()
-        self.gffentry = None
-
-    def add_gffentry(self, gffentry, gen_data=True):
-        self.gffentry = gffentry
-        if gen_data:
-            data = self.gen_data_from_gffentry(gffentry)
-            self.add_data(data)
-
-    def gen_data_from_gffentry(self, gffentry, **kwargs):
-        raise NotImplementedError
-
-
-class SuperLocusHandler(GFFDerivedHandler):
+class SuperLocusHandler(Handler):
 
     @property
     def data_type(self):
@@ -349,16 +333,9 @@ class SuperLocusHandler(GFFDerivedHandler):
         else:
             raise self._link_value_error(other)
 
-    def gen_data_from_gffentry(self, gffentry, sequence_info=None, **kwargs):
-        data = self.data_type(type=gffentry.type,
-                              given_id=gffentry.get_ID(),
-                              sequence_info=sequence_info)
-        self.add_data(data)
-        # todo, grab more aliases from gff attribute
 
-
-class FeatureHolderHandler(GFFDerivedHandler):
-
+class FeatureHolderHandler(Handler):
+    # todo, deprecate & remove
     def gen_data_from_gffentry(self, gffentry, super_locus=None, **kwargs):
         parents = gffentry.get_Parent()
         # the simple case
@@ -506,7 +483,7 @@ class FeatureHolderHandler(GFFDerivedHandler):
 #
 
 
-class TranscribedHandler(FeatureHolderHandler):
+class TranscribedHandler(Handler):
 
     @property
     def data_type(self):
@@ -547,7 +524,7 @@ class TranscribedHandler(FeatureHolderHandler):
 #
 
 
-class TranslatedHandler(FeatureHolderHandler):
+class TranslatedHandler(Handler):
     @property
     def data_type(self):
         return annotations_orm.Translated
@@ -588,7 +565,7 @@ class TranslatedHandler(FeatureHolderHandler):
 #
 
 
-class FeatureHandler(GFFDerivedHandler):
+class FeatureHandler(Handler):
     @property
     def data_type(self):
         return annotations_orm.Feature
@@ -611,29 +588,7 @@ class FeatureHandler(GFFDerivedHandler):
         else:
             raise self._link_value_error(other)
 
-    def gen_data_from_gffentry(self, gffentry, super_locus=None, transcribeds=None, translateds=None, **kwargs):
-        if transcribeds is None:
-            transcribeds = []
-        if translateds is None:
-            translateds = []
-        given_id = gffentry.get_ID()  # todo, None on missing
-        is_plus_strand = gffentry.strand == '+'
 
-        data = self.data_type(
-            given_id=given_id,
-            type=gffentry.type,
-            seqid=gffentry.seqid,
-            start=gffentry.start,
-            end=gffentry.end,
-            is_plus_strand=is_plus_strand,
-            score=gffentry.score,
-            source=gffentry.source,
-            phase=gffentry.phase,
-            super_locus=super_locus,
-            transcribeds=transcribeds,
-            translateds=translateds
-        )
-        self.add_data(data)
 
     @property
     def py_start(self):
