@@ -347,140 +347,6 @@ class FeatureHolderHandler(Handler):
             self.add_data(data)
         else:
             raise NotImplementedError  # todo handle multi inheritance, etc...
-#    holder_type = SuperLocus.t_feature_holders
-#
-#    def __init__(self):
-#        super().__init__()
-#        self.spec += [('super_locus', False, SuperLocus, None),
-#                      ('features', True, list, None),
-#                      ('next_feature_5p', True, str, None),
-#                      ('next_feature_3p', True, str, None)]
-#
-#        self.features = []
-#        self.next_feature_5p = None
-#        self.next_feature_3p = None
-#
-#    def add_data(self, super_locus, gff_entry):
-#        self.super_locus = super_locus
-#        self.id = gff_entry.get_ID()
-#        self.type = gff_entry.type
-#        self.gff_entry = gff_entry
-#
-#    def link_to_feature(self, feature_id, at=None):
-#        assert feature_id not in self.features, "{} already in features {} for {} {} in loci {}".format(
-#            feature_id, self.features, self.type, self.id, self.super_locus.id)
-#        if at is None:
-#            self.features.append(feature_id)
-#        else:
-#            self.features.insert(at, feature_id)
-#
-#    def remove_feature(self, feature_id):
-#        at = self.features.index(feature_id)
-#        self.features.pop(at)
-#        return at
-#
-#    def short_str(self):
-#        return '{}. --> {}'.format(self.id, self.features)
-#
-#    def delink_features(self, features):
-#        for feature in features:
-#            holder_type = type(self).holder_type
-#            try:
-#                self.super_locus.features[feature].de_link_from_feature_holder(self.id, holder_type)
-#            except ValueError:
-#                feature_fholder_list = self.super_locus.features[feature].__getattribute__(holder_type)
-#                raise ValueError("{} not in feature's {}: {}".format(self.id, holder_type,
-#                                                                     feature_fholder_list))
-#
-#    def reconcile_with_slice(self, seqid, start, end):
-#        pass  #todo, WAS HERE, make valid (partial) transcript within slice
-#
-#    def __deepcopy__(self, memodict={}):
-#        new = type(self)()
-#        copy_over = copy.deepcopy(list(new.__dict__.keys()))
-#
-#        for to_skip in ['super_locus']:
-#            copy_over.pop(copy_over.index(to_skip))
-#
-#        # copy everything
-#        for item in copy_over:
-#            new.__setattr__(item, copy.deepcopy(self.__getattribute__(item)))
-#
-#        new.super_locus = self.super_locus  # fix super_locus
-#        if new.gff_entry is None:
-#            print('warning, gff_entry none at {}'.format(new.id))
-#        return new
-#
-#    def clone_but_swap_type(self, new_holder_type):
-#        # todo, should this actually go into some sort of generic ordered subclass?
-#        old_holder_type = type(self).holder_type
-#        assert new_holder_type in SuperLocus.types_feature_holders  # todo, stop retyping this
-#        assert new_holder_type != old_holder_type  # Shouldn't call swap_type if one has the right type already
-#
-#        # setup new type with all transferable attributes
-#        to_transfer = self.__deepcopy__()  # can copy from
-#        holder_type = [x for x in [Transcribed, Translated, FeatureHolder] if x.holder_type == new_holder_type][0]
-#        new = holder_type()
-#        transferable = set(to_transfer.__dict__.keys())
-#        transferable.remove('spec')
-#        transferable = transferable.intersection(set(new.__dict__.keys()))
-#        for item in transferable:
-#            new.__setattr__(item, to_transfer.__getattribute__(item))
-#
-#        add_to = self.super_locus.__getattribute__(new_holder_type)
-#
-#
-#        # put new in requested place
-#        add_to[new.id] = new
-#        # swap feature links from old to new
-#        for fkey in copy.deepcopy(self.features):
-#            feature = self.super_locus.features[fkey]
-#            feature.link_to_feature_holder(new.id, new_holder_type)
-#        # remove old from
-#        return new
-#
-#    def swap_type(self, new_holder_type):
-#        new = self.clone_but_swap_type(new_holder_type)
-#        old_holder_type = type(self).holder_type
-#        for fkey in copy.deepcopy(self.features):
-#            feature = self.super_locus.features[fkey]
-#            feature.de_link_from_feature_holder(self.id, old_holder_type)
-#            #feature.link_to_feature_holder(new.id, new_holder_type)
-#
-#        remove_from = self.super_locus.__getattribute__(old_holder_type)
-#        remove_from.pop(self.id)
-#        return new
-#
-#    def feature_obj(self, feature_id):
-#        return self.super_locus.features[feature_id]
-#
-#    def feature_objs(self):
-#        return [self.feature_obj(x) for x in self.features]
-#
-#    def replace_id_everywhere(self, new_id):
-#        holder_type = type(self).holder_type
-#        # new object with new id
-#        new = self.__deepcopy__()
-#        new.id = new_id
-#        # add to super_locus
-#        add_to = self.super_locus.__getattribute__(holder_type)
-#        add_to[new_id] = new
-#
-#        old_id = self.id
-#        # replace all references to features
-#        for fobj in self.feature_objs():
-#            at = fobj.de_link_from_feature_holder(old_id, holder_type)  # todo, keep the position!
-#            fobj.link_to_feature_holder(new_id, holder_type, at=at)
-#        # replace any other by-id references
-#        self.replace_subclass_only_ids(new_id)
-#        # remove self from superlocus
-#        add_to.pop(self.id)
-#        # convenience
-#        return new
-#
-#    def replace_subclass_only_ids(self, new_id):
-#        pass
-#
 
 
 class TranscribedHandler(Handler):
@@ -506,22 +372,6 @@ class TranscribedHandler(Handler):
             other.data.transcribeds.remove(self.data)
         else:
             raise self._link_value_error(other)
-#    holder_type = 'transcripts'
-#
-#        self.proteins = []  # list of protein IDs, matching subset of keys in self.super_locus.proteins
-#
-#    def replace_subclass_only_ids(self, new_id):
-#        for prot in self.protein_objs():
-#            i = prot.transcripts.index(self.id)
-#            prot.transcripts.pop(i)
-#            prot.transcripts.insert(i, new_id)
-#
-#    def protein_obj(self, prot_id):
-#        return self.super_locus.proteins[prot_id]
-#
-#    def protein_objs(self):
-#        return [self.protein_obj(x) for x in self.proteins]
-#
 
 
 class TranslatedHandler(Handler):
@@ -546,23 +396,6 @@ class TranslatedHandler(Handler):
             other.data.translateds.remove(self.data)
         else:
             raise self._link_value_error(other)
-#    holder_type = 'proteins'
-#
-#        self.transcripts = []  # list of transcript IDs, matching subset of keys in self.super_locus.transcripts
-#
-#    def replace_subclass_only_ids(self, new_id):
-#        for transcript in self.transcript_objs():
-#            i = transcript.transcripts.index(self.id)
-#            transcript.transcripts.pop(i)
-#            transcript.transcripts.insert(i, new_id)
-#
-#    def transcript_obj(self, prot_id):
-#        return self.super_locus.transcripts[prot_id]
-#
-#    def transcript_objs(self):
-#        return [self.transcript_obj(x) for x in self.transcripts]
-#
-#
 
 
 class FeatureHandler(Handler):

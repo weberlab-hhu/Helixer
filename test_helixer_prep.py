@@ -681,7 +681,9 @@ def test_data_from_cds_gffentry():
     assert handler.data.type.value == 'CDS'
     assert handler.data.phase == 0
     assert handler.data.score is None
-#def setup_testable_super_loci():
+
+
+def setup_testable_super_loci():
 #    genome = annotations.AnnotatedGenome()
 #    # make a dummy sequence
 #    sg = sequences.StructuredGenome()
@@ -693,7 +695,11 @@ def test_data_from_cds_gffentry():
 #    sls.genome = genome
 #    sls._add_sequences(sg)
 #    # add super locus
-#    sl = annotations.SuperLocus()
+    controller = gff_2_annotations.ImportControl()
+    controller.add_gff('testdata/dummyloci.gff3')
+    sl = controller.super_loci[0]
+    print(sl)
+    assert False
 #    sl.slice = sls
 #    sls.super_loci.append(sl)
 #    entry_group = gffhelper.read_gff_file('testdata/dummyloci.gff3')
@@ -703,62 +709,6 @@ def test_data_from_cds_gffentry():
 #        print(feature.short_str())
 #    for transcript_in in sl.generic_holders.values():
 #        print(transcript_in.short_str())
-#    return sl
-#
-#def setup_testable_super_loci_old():
-#    # features [--0--][1][---2---]
-#    f_coord = [(1, 100), (111, 120), (201, 400)]
-#    # transcript X: [0, 1], Y: [0, 1, 2], Z: [0]
-#    t_ids = ['x', 'y', 'z']
-#    t_features = [(0, 1), (0, 1, 2), (0, )]
-#    genome = annotations.AnnotatedGenome()
-#    # add a slice
-#    sls = annotations.SuperLociSlice()
-#    sls.genome = genome
-#    # make a dummy sequence
-#    seq_mi = annotations.CoordinateInfo()
-#    seq_mi.start = 1
-#    seq_mi.end = 450
-#    seq_mi.seqid = ''
-#    sls.coordinates.append(seq_mi)
-#
-#    sl = annotations.SuperLocus()
-#    sl.slice = sls
-#    sls.super_loci.append(sl)
-#
-#    # setup transcripts and features
-#    transcripts = []
-#    features = []
-#    for i in range(3):
-#        t = annotations.FeatureHolder()
-#        t.id = t_ids[i]
-#        t.super_locus = sl
-#        for j in t_features[i]:
-#            e = annotations.StructuredFeature()
-#            e.id = genome.feature_ider.next_unique_id()
-#            e.generic_holders = [t.id]
-#            c = annotations.StructuredFeature()
-#            c.generic_holders = [t.id]
-#            c.id = genome.feature_ider.next_unique_id()
-#            print('transcript {}: [exon: {}, cds: {}, coord: {}]'.format(t.id, e.id, c.id, f_coord[j]))
-#            e.super_locus = c.super_locus = sl
-#            e.start, e.end = c.start, c.end = f_coord[j]
-#            c.type = "CDS"
-#            e.type = "exon"
-#            e.strand = c.strand = '+'
-#            t.features += [e.id, c.id]
-#            features += [e, c]
-#        transcripts.append(t)
-#    for t in transcripts:
-#        sl.generic_holders[t.id] = t
-#    for f in features:
-#        sl.features[f.id] = f
-#    # transcript x: [exon: ftr000000, cds: ftr000001, coord: (0, 100)]
-#    # transcript x: [exon: ftr000002, cds: ftr000003, coord: (110, 120)]
-#    # transcript y: [exon: ftr000004, cds: ftr000005, coord: (0, 100)]
-#    # transcript y: [exon: ftr000006, cds: ftr000007, coord: (110, 120)]
-#    # transcript y: [exon: ftr000008, cds: ftr000009, coord: (200, 400)]
-#    # transcript z: [exon: ftr000010, cds: ftr000011, coord: (0, 100)]
 #    return sl
 #
 #

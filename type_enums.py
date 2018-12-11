@@ -97,7 +97,6 @@ TranslatedAll = join_to_enum('TranslatedFeatureType', TranslatedInput, Translate
 
 TranslatedNice = join_to_enum('TranslatedNice', TranslatedStatus, TranslatedGeneral)
 
-OnSequence = join_to_enum('OnSequence', TranscribedAll, TranslatedAll)
 
 # errror features
 class ErrorFeature(enum.Enum):
@@ -114,6 +113,8 @@ class IgnorableFeatures(enum.Enum):
 
 
 # All known features (else error on import)
+OnSequence = join_to_enum('OnSequence', TranscribedAll, TranslatedAll, ErrorFeature)
+
 AllKnown = join_to_enum('AllKnown', SuperLocusAll, TranscriptLevelAll, TranslatedAll, TranscribedAll, ErrorFeature,
                         IgnorableFeatures)
 
