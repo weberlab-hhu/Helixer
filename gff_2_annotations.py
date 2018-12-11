@@ -772,13 +772,13 @@ class TranscriptInterpreter(TranscriptInterpBase):
 
     def interpret_first_pos(self, intervals, plus_strand=True, error_buffer=2000):
         # shortcuts
-        cds = type_enums.OnSequence.CDS.name
-        five_prime = type_enums.OnSequence.five_prime_UTR.name
-        exon = type_enums.OnSequence.exon.name
-        three_prime = type_enums.OnSequence.three_prime_UTR.name
-        error = type_enums.OnSequence.error.name
-        tss = type_enums.OnSequence.TSS.name
-        in_translated_region = type_enums.OnSequence.in_translated_region.name
+        cds = type_enums.CDS
+        five_prime = type_enums.FIVE_PRIME_UTR
+        exon = type_enums.EXON
+        three_prime = type_enums.THREE_PRIME_UTR
+        error = type_enums.ERROR
+        tss = type_enums.TRANSCRIPTION_START_SITE
+        in_translated_region = type_enums.IN_TRANSLATED_REGION
 
         i0 = self.pick_one_interval(intervals)
         at = i0.data.upstream_from_interval(i0)
@@ -863,10 +863,10 @@ class TranscriptInterpreter(TranscriptInterpBase):
 
     def possible_types(self, intervals):
         # shortcuts
-        cds = type_enums.OnSequence.CDS.name
-        five_prime = type_enums.OnSequence.five_prime_UTR.name
-        exon = type_enums.OnSequence.exon.name
-        three_prime = type_enums.OnSequence.three_prime_UTR.name
+        cds = type_enums.CDS
+        five_prime = type_enums.FIVE_PRIME_UTR
+        exon = type_enums.EXON
+        three_prime = type_enums.THREE_PRIME_UTR
 
         # what we see
         observed_types = [x.data.data.type.name for x in intervals]
