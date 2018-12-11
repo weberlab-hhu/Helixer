@@ -10,11 +10,17 @@ def join_to_enum(name, *args):
     return out
 
 
-class SuperLocus(enum.Enum):
-    coding_gene = 'coding_gene'
-    non_coding_gene = 'non_coding_gene'
-    pseudogene = 'pseudogene'
-    operon = 'operon'
+def make_enum(name, *args):
+    """makes enum from list of strings"""
+    return enum.Enum(name, [(x, x) for x in args])
+
+
+coding_gene = 'coding_gene'
+non_coding_gene = 'non_coding_gene'
+pseudogene = 'pseudogene'
+operon = 'operon'
+
+SuperLocus = make_enum('SuperLocus', coding_gene, non_coding_gene, pseudogene, operon)
 
 
 class SuperLocusHistorical(enum.Enum):
