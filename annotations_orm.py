@@ -138,8 +138,9 @@ class Feature(Base):
     __tablename__ = 'features'
     # basic attributes
     id = Column(Integer, primary_key=True)
-    given_id = Column(Enum(type_enums.TranscribedAll))
+    given_id = Column(String)
 
+    type = Column(Enum(type_enums.TranscribedAll))
     seqid = Column(String)
     start = Column(Integer)
     end = Column(Integer)

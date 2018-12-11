@@ -758,7 +758,7 @@ class FeatureHandler(GFFDerivedHandler):
     def link_to(self, other):
         if isinstance(other, SuperLocusHandler):
             self.data.super_locus = other.data
-        elif type(other) in [TranscribedHandler, FeatureHandler]:
+        elif type(other) in [TranscribedHandler, TranslatedHandler]:
             other.data.features.append(self.data)
         else:
             raise self._link_value_error(other)
@@ -779,6 +779,7 @@ class FeatureHandler(GFFDerivedHandler):
 
         data = self.data_type(
             given_id=given_id,
+            type=gffentry.type,
             seqid=gffentry.seqid,
             start=gffentry.start,
             end=gffentry.end,

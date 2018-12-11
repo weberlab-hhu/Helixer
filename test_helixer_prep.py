@@ -622,6 +622,7 @@ def test_data_frm_gffentry():
     mrna_entry = gffhelper.GFFObject(mrna_string)
     mandler = annotations.TranscribedHandler()
     mandler.gen_data_from_gffentry(mrna_entry, super_locus=handler.data)
+    sess.add(mandler.data)
     sess.commit()
     assert mandler.data.given_id == 'rna0'
     assert mandler.data.type.value == 'mRNA'
@@ -631,14 +632,36 @@ def test_data_frm_gffentry():
     controller.clean_entry(exon_entry)
     hendler = annotations.FeatureHandler()
     hendler.gen_data_from_gffentry(exon_entry, super_locus=handler.data, transcribeds=[mandler.data])
-    # todo, review hendler to see why it's failing a databse constraint and won't commit WAS HERE
 
+    d = hendler.data
+    s = """
+    seqid {} {}
+    start {} {}
+    end {} {}
+    is_plus_strand {} {}
+    score {} {}
+    source {} {}
+    phase {} {}
+    given_id {} {}""".format(d.seqid, type(d.seqid),
+                          d.start, type(d.start),
+                          d.end, type(d.end),
+                          d.is_plus_strand, type(d.is_plus_strand),
+                          d.score, type(d.score),
+                          d.source, type(d.source),
+                          d.phase, type(d.phase),
+                          d.given_id, type(d.given_id))
+    print(s)
+    sess.add(hendler.data)
     sess.commit()
 
     assert hendler.data.start == 4343
     assert hendler.data.is_plus_strand
     assert hendler.data.score is None
     assert hendler.data.seqid == 'NC_015438.2'
+    assert hendler.data.type.value == 'exon'
+    assert hendler.data.super_locus is handler.data
+    assert mandler.data in hendler.data.transcribeds
+    assert hendler.data.translateds == []
 
 #def setup_testable_super_loci():
 #    genome = annotations.AnnotatedGenome()
