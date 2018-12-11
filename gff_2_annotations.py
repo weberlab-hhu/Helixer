@@ -909,11 +909,12 @@ class TranscriptInterpreter(TranscriptInterpBase):
                 out = [interval]
         yield out
 
-    #def get_seq_end(self, seqid):
-    #    return self.super_locus.slice.seq_info[seqid].end
+    def get_seq_end(self, seqid):
+        print(self.transcript.data.super_locus.sequence_info.handler.seq_info)
+        return self.transcript.data.super_locus.sequence_info.handler.seq_info[seqid].end
 
-    #def get_seq_start(self, seqid):
-    #    return self.super_locus.slice.seq_info[seqid].start
+    def get_seq_start(self, seqid):
+        return self.transcript.data.super_locus.sequence_info.handler.seq_info[seqid].start
 
 
 def min_max(x, y):

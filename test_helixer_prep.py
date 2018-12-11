@@ -731,6 +731,24 @@ def test_possible_types():
     pt = transcript_interpreter.possible_types(ordered_features[-1])
     assert set(pt) == {five_prime, three_prime}
 
+def test_seqinfo_from_transcript_interpreter():
+    sess = mk_session()
+    ag = annotations_orm.AnnotatedGenome()
+    si, sih = setup_data_handler(annotations.SequenceInfoHandler, annotations_orm.SequenceInfo,
+                                 annotated_genome=ag)
+    annotations_orm.Coordinates(sequence_info=si, seqid='chr1', start=1, end=100)
+    annotations_orm.Coordinates(sequence_info=si, seqid='chr2', start=900, end=1222)
+
+    sl = annotations_orm.SuperLocus(sequence_info=si)
+    transcript, transcripth = setup_data_handler(gff_2_annotations.TranscribedHandler,
+                                                 annotations_orm.Transcribed,
+                                                 super_locus=sl)
+    sess.add(sl)
+    sess.commit()
+    assert ag.id is not None
+    transcript_interp = gff_2_annotations.TranscriptInterpreter(transcripth)
+    assert transcript_interp.get_seq_end('chr2') == 1222
+    assert transcript_interp.get_seq_start('chr1') == 1
 #def test_feature_overlap_detection():
 #    sl = setup_testable_super_loci()
 #    assert sl.features['ftr000000'].fully_overlaps(sl.features['ftr000004'])
