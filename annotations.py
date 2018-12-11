@@ -308,6 +308,7 @@ class SequenceInfoHandler(Handler):
 
 
 class GFFDerivedHandler(Handler):
+    # todo, move this & all gen_data_from_gffentry to gff_2_annotations (multi inheritance?)
     def __init__(self):
         super().__init__()
         self.gffentry = None
@@ -354,165 +355,6 @@ class SuperLocusHandler(GFFDerivedHandler):
                               sequence_info=sequence_info)
         self.add_data(data)
         # todo, grab more aliases from gff attribute
-
-#    t_transcripts = 'transcripts'
-#    t_proteins = 'proteins'
-#    t_feature_holders = 'generic_holders'
-#    types_feature_holders = [t_transcripts, t_proteins, t_feature_holders]
-#
-#        self._dummy_transcript = None
-#
-#    def short_str(self):
-#        string = "{}\ntranscripts: {}\nproteins: {}\ngeneric holders: {}".format(self.id, list(self.transcripts.keys()),
-#                                                                                 list(self.proteins.keys()),
-#                                                                                 list(self.generic_holders.keys()))
-#        return string
-#
-#    @property
-#    def genome(self):
-#        return self.slice.genome
-#
-#    def dummy_transcript(self):
-#        if self._dummy_transcript is not None:
-#            return self._dummy_transcript
-#        else:
-#            # setup new blank transcript
-#            transcript = FeatureHolder()
-#            transcript.id = self.genome.transcript_ider.next_unique_id()  # add an id
-#            transcript.super_locus = self
-#            self._dummy_transcript = transcript  # save to be returned by next call of dummy_transcript
-#            self.generic_holders[transcript.id] = transcript  # save into main dict of transcripts
-#            return transcript
-#
-#    def add_gff_entry(self, entry):
-#        exceptions = entry.attrib_filter(tag="exception")
-#        for exception in [x.value for x in exceptions]:
-#            if 'trans-splicing' in exception:
-#                raise TransSplicingError('trans-splice in attribute {} {}'.format(entry.get_ID(), entry.attribute))
-#        gffkey = self.genome.gffkey
-#        if entry.type in gffkey.gene_level:
-#            self.type = entry.type
-#            gene_id = entry.get_ID()
-#            self.id = gene_id
-#            self.ids.append(gene_id)
-#            self.gff_entry = entry
-#        elif entry.type in gffkey.transcribed:
-#            parent = self.one_parent(entry)
-#            assert parent == self.id, "not True :( [{} == {}]".format(parent, self.id)
-#            transcript = FeatureHolder()
-#            transcript.add_data(self, entry)
-#            self.generic_holders[transcript.id] = transcript
-#        elif entry.type in gffkey.on_sequence:
-#            feature = StructuredFeature()
-#            feature.add_data(self, entry)
-#            self.features[feature.id] = feature
-#
-#    def _add_gff_entry_group(self, entries):
-#        entries = list(entries)
-#        for entry in entries:
-#            self.add_gff_entry(entry)
-#
-#    def add_gff_entry_group(self, entries, ts_err_handle):
-#        try:
-#            self._add_gff_entry_group(entries)
-#            self.check_and_fix_structure(entries)
-#        except TransSplicingError as e:
-#            self._mark_erroneous(entries[0])
-#            logging.warning('skipping but noting trans-splicing: {}'.format(str(e)))
-#            ts_err_handle.writelines([x.to_json() for x in entries])
-#            # todo, log to file
-#
-#    @staticmethod
-#    def one_parent(entry):
-#        parents = entry.get_Parent()
-#        assert len(parents) == 1
-#        return parents[0]
-#
-#    def _mark_erroneous(self, entry):
-#        assert entry.type in self.genome.gffkey.gene_level
-#        logging.warning(
-#            '{species}:{seqid}, {start}-{end}:{gene_id} by {src}, No valid features found - marking erroneous'.format(
-#                src=entry.source, species=self.genome.meta_info.species, seqid=entry.seqid, start=entry.start,
-#                end=entry.end, gene_id=self.id
-#            ))
-#        sf = StructuredFeature()
-#        feature = sf.add_erroneous_data(self, entry)
-#        self.features[feature.id] = feature
-#
-#    def check_and_fix_structure(self, entries):
-#        # if it's empty (no bottom level features at all) mark as erroneous
-#        if not self.features:
-#            self._mark_erroneous(entries[0])
-#
-#        # todo, but with reconstructed flag (also check for and mark pseudogenes)
-#        to_remove = []
-#        for key in copy.deepcopy(list(self.generic_holders.keys())):
-#            transcript = self.generic_holders[key]
-#            old_features = copy.deepcopy(transcript.features)
-#
-#            t_interpreter = TranscriptInterpreter(transcript)
-#            transcript = t_interpreter.transcript  # because of non-inplace shift from ofs -> transcripts, todo, fix
-#            t_interpreter.decode_raw_features()
-#            # no transcript, as they're already linked
-#            self.add_features(t_interpreter.clean_features, feature_holders=None)
-#            transcript.delink_features(old_features)
-#            to_remove += old_features
-#        self.remove_features(to_remove)
-#
-#    def add_features(self, features, feature_holders=None, holder_type=None):
-#        if holder_type is None:
-#            holder_type = SuperLocus.t_feature_holders
-#
-#        feature_holders = none_to_list(feature_holders)
-#
-#        for feature in features:
-#            self.features[feature.id] = feature
-#            for holder in feature_holders:
-#                feature.link_to_feature_holder_and_back(holder.id, holder_type)
-#
-#    def remove_features(self, to_remove):
-#        for f_key in to_remove:
-#            self.features.pop(f_key)
-#
-#    def exons(self):
-#        return [self.features[x] for x in self.features if self.features[x].type == self.genome.gffkey.exon]
-#
-#    def coding_info_features(self):
-#        return [self.features[x] for x in self.features if self.features[x].type in self.genome.gffkey.coding_info]
-#
-#    def check_sequence_assumptions(self):
-#        pass
-#
-#    def clean_post_load(self):
-#        for key in self.transcripts:
-#            self.transcripts[key].super_locus = self
-#
-#        for key in self.features:
-#            self.features[key].super_locus = self
-
-#    def __deepcopy__(self, memodict={}):
-#        new = SuperLocus()
-#        copy_over = copy.deepcopy(list(new.__dict__.keys()))
-#
-#        for to_skip in ['slice']:
-#            copy_over.pop(copy_over.index(to_skip))
-#
-#        # copy everything
-#        for item in copy_over:
-#            new.__setattr__(item, copy.deepcopy(self.__getattribute__(item)))
-#
-#        new.slice = self.slice
-#
-#        # fix point back references to point to new
-#        for val in new.transcripts.values():
-#            val.super_locus = new
-#
-#        for val in new.features.values():
-#            val.super_locus = new
-#
-#        return new
-#
-#
 
 
 class FeatureHolderHandler(GFFDerivedHandler):
@@ -793,15 +635,13 @@ class FeatureHandler(GFFDerivedHandler):
         )
         self.add_data(data)
 
-#        self.phase = None
+    @property
+    def py_start(self):
+        return self.data.start - 1
 
-#    @property
-#    def py_start(self):
-#        return self.start - 1
-#
-#    @property
-#    def py_end(self):
-#        return self.end
+    @property
+    def py_end(self):
+        return self.data.end
 #
 #    def short_str(self):
 #        return '{} is {}: {}-{} on {}. --> {}|{}|{}'.format(self.id, self.type, self.start, self.end, self.seqid,
