@@ -538,7 +538,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
     """takes raw/from-gff transcript, and makes totally explicit"""
     def __init__(self, transcript):
         super().__init__(transcript)
-        #self.clean_features = []  # will hold all the 'fixed' features
+        self.clean_features = []  # will hold all the 'fixed' feature handlers (convenience? or can remove?)
         self.transcript = transcript
         #self.protein_id_key = self._get_raw_protein_ids()
         #self.proteins = self._setup_proteins()
@@ -547,16 +547,20 @@ class TranscriptInterpreter(TranscriptInterpBase):
     # todo, get_protein_id function (protein_id, Parent of CDS, None to IDMAker)
     # todo, make new protein when ID changes / if we've hit stop codon?
 
-    #def new_feature(self, template, **kwargs):
-    #    try:
-    #        new = template.clone()
-    #    except KeyError as e:
-    #        print(self.transcript.super_locus.short_str())
-    #        print(template.short_str())
-    #        raise e
-    #    for key in kwargs:
-    #        new.__setattr__(key, kwargs[key])
-    #    return new
+    def new_feature(self, template, **kwargs):
+        handler = FeatureHandler()
+        data = annotations_orm.Feature()
+        handler.add_data(data)
+        template.fax_all_attrs_to_another(another=handler)
+        #try:
+        #    new = template.clone()
+        #except KeyError as e:
+        #    print(self.transcript.super_locus.short_str())
+        #    print(template.short_str())
+        #    raise e
+        for key in kwargs:
+            handler.set_data_attribute(key, kwargs[key])
+        return handler
 
     @staticmethod
     def pick_one_interval(interval_set, target_type=None):
@@ -797,8 +801,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
         # shortcuts
         cds = type_enums.CDS
         five_prime = type_enums.FIVE_PRIME_UTR
-        exon = type_enums.EXON
-        three_prime = type_enums.THREE_PRIME_UTR
         error = type_enums.ERROR
         tss = type_enums.TRANSCRIPTION_START_SITE
         in_translated_region = type_enums.IN_TRANSLATED_REGION
@@ -816,7 +818,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
             cds_feature = self.pick_one_interval(intervals, target_type=cds).data
             coding = self.new_feature(template=cds_feature, type=in_translated_region, start=at, end=at)
             self.clean_features.append(coding)
-            self.status.saw_start(phase=coding.phase)
+            self.status.saw_start(phase=coding.data.phase)
             # mask a dummy region up-stream as it's very unclear whether it should be intergenic/intronic/utr
             if plus_strand:
                 # unless we're at the start of the sequence
