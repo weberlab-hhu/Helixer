@@ -18,6 +18,8 @@ class Handler(object):
     def __init__(self):
         self.data = None
         self.delete_me = False
+        self.copyable = []
+        self.linkable = []
 
     def add_data(self, data):
         assert isinstance(data, self.data_type)
@@ -50,6 +52,20 @@ class Handler(object):
         for item in to_copy:
             val = self.get_data_attribute(item)
             other.set_data_attribute(item, val)
+
+    def fax_all_attrs_to_another(self, another, skip_copying=None, skip_linking=None):
+        linkable = copy.deepcopy(self.linkable)
+        if skip_linking is not None:
+            skip_linking = convert2list(skip_linking)
+            for item in skip_linking:
+                linkable.pop(linkable.index(item))
+        copyable = copy.deepcopy(self.copyable)
+        if skip_copying is not None:
+            skip_copying = convert2list(skip_copying)
+            for item in skip_copying:
+                copyable.pop(copyable.index(item))
+        self.copy_data_attr_to_other(another, copy_only=copyable)
+        self.copy_selflinks_to_another(another, to_copy=linkable)
 
     def set_data_attribute(self, attr, val):
         self.data.__setattr__(attr, val)
@@ -230,10 +246,7 @@ class SequenceInfoHandler(Handler):
             # todo, parallelize sequence & annotation format, then import directly from sequence_info (~Slice)
             annotations_orm.Coordinates(seqid=seq.meta_info.seqid, start=1,
                                         end=seq.meta_info.total_bp, sequence_info=self.data)
-            #mi.seqid = seq.meta_info.seqid
-            #mi.start = 1
-            #mi.end = seq.meta_info.total_bp
-            #self.coordinates.append(mi)
+
 
 #    def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
 #        err_handle = open(err_file, 'w')
@@ -340,22 +353,16 @@ class SuperLocusHandler(Handler):
             raise self._link_value_error(other)
 
 
-class FeatureHolderHandler(Handler):
-    # todo, deprecate & remove
-    def gen_data_from_gffentry(self, gffentry, super_locus=None, **kwargs):
-        parents = gffentry.get_Parent()
-        # the simple case
-        if len(parents) == 1:
-            assert super_locus.given_id == parents[0]
-            data = self.data_type(type=gffentry.type,
-                                  given_id=gffentry.get_ID(),
-                                  super_locus=super_locus)
-            self.add_data(data)
-        else:
-            raise NotImplementedError  # todo handle multi inheritance, etc...
+class MultiSideOnlyHandler(Handler):
+    def copy_all_attr_to_another(self, another):
+        pass ## todo, maybe just delete again?
 
 
 class TranscribedHandler(Handler):
+    def __init__(self):
+        super().__init__()
+        self.copyable += ['given_id', 'type']
+        self.linkable += ['super_locus', 'features', 'translateds']
 
     @property
     def data_type(self):
@@ -381,6 +388,11 @@ class TranscribedHandler(Handler):
 
 
 class TranslatedHandler(Handler):
+    def __init__(self):
+        super().__init__()
+        self.copyable += ['given_id']
+        self.linkable += ['super_locus', 'features', 'transcribeds']
+
     @property
     def data_type(self):
         return annotations_orm.Translated
@@ -405,6 +417,11 @@ class TranslatedHandler(Handler):
 
 
 class FeatureHandler(Handler):
+    def __init__(self):
+        super().__init__()
+        self.copyable += ['given_id', 'type', 'start', 'end', 'seqid', 'is_plus_strand', 'score', 'source', 'phase']
+        self.linkable += ['super_locus', 'transcribeds', 'translateds']
+
     @property
     def data_type(self):
         return annotations_orm.Feature
@@ -426,8 +443,6 @@ class FeatureHandler(Handler):
             other.data.features.remove(self.data)
         else:
             raise self._link_value_error(other)
-
-
 
     @property
     def py_start(self):

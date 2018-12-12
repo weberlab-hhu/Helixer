@@ -688,11 +688,11 @@ def setup_testable_super_loci():
     controller.mk_session()
     controller.add_gff('testdata/dummyloci.gff3')
     controller.add_sequences('testdata/dummyloci.sequence.json')
-    return controller.super_loci[0]
+    return controller.super_loci[0], controller
 
 
 def test_organize_and_split_features():
-    sl = setup_testable_super_loci()
+    sl, _ = setup_testable_super_loci()
     transcript_full = [x for x in sl.transcribed_handlers if x.data.given_id == 'y']
     assert len(transcript_full) == 1
     transcript_full = transcript_full[0]
@@ -719,7 +719,7 @@ def test_possible_types():
     five_prime = type_enums.OnSequence.five_prime_UTR.name
     three_prime = type_enums.OnSequence.three_prime_UTR.name
 
-    sl = setup_testable_super_loci()
+    sl, _ = setup_testable_super_loci()
     transcript_full = [x for x in sl.transcribed_handlers if x.data.given_id == 'y']
     transcript_full = transcript_full[0]
     transcript_interpreter = gff_2_annotations.TranscriptInterpreter(transcript_full)
@@ -766,6 +766,42 @@ def test_import_seqinfo():
     assert coors[0].seqid == '1'
     assert coors[0].start == 1
     assert coors[0].end == 405
+
+
+def test_fullcopy():
+    sess = mk_session()
+    sl, slh = setup_data_handler(annotations.SuperLocusHandler, annotations_orm.SuperLocus)
+    scribed, scribedh = setup_data_handler(annotations.TranscribedHandler, annotations_orm.Transcribed,
+                                           super_locus=sl, given_id='soup')
+    f, fh = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, super_locus=sl,
+                               transcribeds=[scribed], seqid='1', start=13, end=33)
+    sess.add_all([scribed, f])
+    sess.commit()
+    tdict = annotations_orm.Transcribed.__dict__
+    print(tdict.keys())
+    for key in tdict.keys():
+        print('{} {}'.format(key, type(tdict[key])))
+
+    # try copying feature
+    new, newh = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature)
+    fh.fax_all_attrs_to_another(newh)
+    sess.commit()
+    assert new.start == 13
+    assert set(scribed.features) == {f, new}
+    assert new.seqid == '1'
+    assert new.super_locus == sl
+    assert new is not f
+    assert new.id != f.id
+
+    # try copying most of transcribed things to translated
+    slated, slatedh = setup_data_handler(annotations.TranslatedHandler, annotations_orm.Translated)
+    scribedh.fax_all_attrs_to_another(slatedh, skip_copying='type', skip_linking='translateds')
+    sess.commit()
+    assert slated.given_id == 'soup'
+    assert set(slated.features) == {f, new}
+    assert f.translateds == [slated]
+    assert new.transcribeds == [scribed]
+
 
 
 #def test_feature_overlap_detection():
