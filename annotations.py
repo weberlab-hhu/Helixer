@@ -224,15 +224,17 @@ class SequenceInfoHandler(Handler):
                 seq_info[x.seqid] = x
             self._seq_info = seq_info
         return self._seq_info
-#
-#    def _add_sequences(self, genome):
-#        for seq in genome.sequences:
-#            mi = CoordinateInfo()
-#            mi.seqid = seq.meta_info.seqid
-#            mi.start = 1
-#            mi.end = seq.meta_info.total_bp
-#            self.coordinates.append(mi)
-#
+
+    def add_sequences(self, genome):
+        for seq in genome.sequences:
+            # todo, parallelize sequence & annotation format, then import directly from sequence_info (~Slice)
+            annotations_orm.Coordinates(seqid=seq.meta_info.seqid, start=1,
+                                        end=seq.meta_info.total_bp, sequence_info=self.data)
+            #mi.seqid = seq.meta_info.seqid
+            #mi.start = 1
+            #mi.end = seq.meta_info.total_bp
+            #self.coordinates.append(mi)
+
 #    def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
 #        err_handle = open(err_file, 'w')
 #        self._add_sequences(genome)

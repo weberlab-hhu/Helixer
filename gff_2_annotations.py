@@ -3,6 +3,7 @@ import intervaltree
 import annotations
 import annotations_orm
 import type_enums
+import sequences
 
 import logging
 
@@ -19,7 +20,7 @@ class ImportControl(object):
         self.err_path = err_path
         self.engine = None
         self.annotated_genome = None
-        self.sequence_infos = []
+        self.sequence_info = None
         self.super_loci = []
         self.mk_session()
 
@@ -82,6 +83,24 @@ class ImportControl(object):
                 gene_group.append(entry)
         yield gene_group
 
+    def make_anno_genome(self, **kwargs):
+        # todo, parse in meta data from kwargs?
+        self.annotated_genome = annotations.AnnotatedGenomeHandler()
+        ag = annotations_orm.AnnotatedGenome()
+        self.annotated_genome.add_data(ag)
+        self.session.add(ag)
+        self.session.commit()
+
+    def add_sequences(self, json_path):
+        if self.annotated_genome is None:
+            self.make_anno_genome()
+        sg = sequences.StructuredGenome()
+        sg.from_json(json_path)
+        seq_info = annotations_orm.SequenceInfo(annotated_genome=self.annotated_genome.data)
+        self.sequence_info = annotations.SequenceInfoHandler()
+        self.sequence_info.add_data(seq_info)
+        self.sequence_info.add_sequences(sg)
+
     def add_gff(self, gff_file):
         super_loci = []
         err_handle = open(self.err_path, 'w')
@@ -122,6 +141,10 @@ class ImportControl(object):
 def in_values(x, enum):
     return x in [item.value for item in enum]
 
+class SequenceInfoHandler(annotations.SequenceInfoHandler):
+
+    def add_sequences_as_coordinates(self):
+        pass
 
 ##### gff parsing subclasses #####
 class GFFDerived(object):

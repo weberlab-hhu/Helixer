@@ -684,9 +684,12 @@ def test_data_from_cds_gffentry():
 
 
 def setup_testable_super_loci():
+    sg = sequences.StructuredGenome()
+    sg.from_json('testdata/dummyloci.sequence.json')
     # todo setup genome/sequence_infos?
     controller = gff_2_annotations.ImportControl(err_path='/dev/null')
     controller.add_gff('testdata/dummyloci.gff3')
+    #seq_info =
     return controller.super_loci[0]
 
 
@@ -731,6 +734,7 @@ def test_possible_types():
     pt = transcript_interpreter.possible_types(ordered_features[-1])
     assert set(pt) == {five_prime, three_prime}
 
+
 def test_seqinfo_from_transcript_interpreter():
     sess = mk_session()
     ag = annotations_orm.AnnotatedGenome()
@@ -749,6 +753,23 @@ def test_seqinfo_from_transcript_interpreter():
     transcript_interp = gff_2_annotations.TranscriptInterpreter(transcripth)
     assert transcript_interp.get_seq_end('chr2') == 1222
     assert transcript_interp.get_seq_start('chr1') == 1
+
+
+def test_import_seqinfo():
+    controller = gff_2_annotations.ImportControl()
+    controller.mk_session()
+    #genome = sequences.StructuredGenome()
+    #genome.add_fasta('testdata/dummyloci.fa')
+    json_path = 'testdata/dummyloci.sequence.json'
+    #genome.to_json(json_path)
+    controller.add_sequences(json_path)
+    coors = controller.sequence_info.data.coordinates
+    assert len(coors) == 1
+    assert coors[0].seqid == '1'
+    assert coors[0].start == 1
+    coors[0].end == 405
+
+
 #def test_feature_overlap_detection():
 #    sl = setup_testable_super_loci()
 #    assert sl.features['ftr000000'].fully_overlaps(sl.features['ftr000004'])
