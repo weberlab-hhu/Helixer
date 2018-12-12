@@ -684,12 +684,10 @@ def test_data_from_cds_gffentry():
 
 
 def setup_testable_super_loci():
-    sg = sequences.StructuredGenome()
-    sg.from_json('testdata/dummyloci.sequence.json')
-    # todo setup genome/sequence_infos?
     controller = gff_2_annotations.ImportControl(err_path='/dev/null')
+    controller.mk_session()
     controller.add_gff('testdata/dummyloci.gff3')
-    #seq_info =
+    controller.add_sequences('testdata/dummyloci.sequence.json')
     return controller.super_loci[0]
 
 
@@ -767,7 +765,7 @@ def test_import_seqinfo():
     assert len(coors) == 1
     assert coors[0].seqid == '1'
     assert coors[0].start == 1
-    coors[0].end == 405
+    assert coors[0].end == 405
 
 
 #def test_feature_overlap_detection():
