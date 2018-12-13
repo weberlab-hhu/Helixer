@@ -772,8 +772,10 @@ class TranscriptInterpreter(TranscriptInterpBase):
                 # todo, do I need to set IN_TRANSCRIBED_REGION as well?
                 coding_status = self.new_feature(template=template, type=type_enums.IN_TRANSLATED_REGION, start=at,
                                                  end=at)
+                transcribed_status = self.new_feature(template=template, type=type_enums.IN_RAW_TRANSCRIPT, start=at,
+                                                      end=at, phase=None)
                 self.status.saw_start(template.phase)
-                self.clean_features += [feature_e, coding_status]
+                self.clean_features += [feature_e, coding_status, transcribed_status]
         else:
             # todo, confirm phase for stop codon
             template = before0.data
@@ -821,24 +823,23 @@ class TranscriptInterpreter(TranscriptInterpBase):
     def interpret_first_pos(self, intervals, plus_strand=True, error_buffer=2000):
         # shortcuts
         cds = type_enums.CDS
-        five_prime = type_enums.FIVE_PRIME_UTR
         error = type_enums.ERROR
-        tss = type_enums.TRANSCRIPTION_START_SITE
-        in_translated_region = type_enums.IN_TRANSLATED_REGION
 
         i0 = self.pick_one_interval(intervals)
         at = i0.data.upstream_from_interval(i0)
         possible_types = self.possible_types(intervals)
-        if five_prime in possible_types:
+        if type_enums.FIVE_PRIME_UTR in possible_types:
             # this should indicate we're good to go and have a transcription start site
-            tss = self.new_feature(template=i0.data, type=tss, start=at, end=at, phase=None)
+            tss = self.new_feature(template=i0.data, type=type_enums.TRANSCRIPTION_START_SITE, start=at, end=at,
+                                   phase=None)
             self.clean_features.append(tss)
             self.status.saw_tss()
         elif cds in possible_types:
             # this could be first exon detected or start codon, ultimately, indeterminate
             cds_feature = self.pick_one_interval(intervals, target_type=cds).data
-            coding = self.new_feature(template=cds_feature, type=in_translated_region, start=at, end=at)
-            self.clean_features.append(coding)
+            coding = self.new_feature(template=cds_feature, type=type_enums.IN_TRANSLATED_REGION, start=at, end=at)
+            transcribed = self.new_feature(template=cds_feature, type=type_enums.IN_RAW_TRANSCRIPT, start=at, end=at)
+            self.clean_features += [coding, transcribed]
             self.status.saw_start(phase=coding.data.phase)
             # mask a dummy region up-stream as it's very unclear whether it should be intergenic/intronic/utr
             if plus_strand:
@@ -855,7 +856,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
                     feature_e = self.new_feature(template=cds_feature, type=error, start=at + 1,
                                                  end=min(end_of_sequence, at + error_buffer + 1),
                                                  phase=None)
-                    feature_e.type = error
                     self.clean_features.insert(0, feature_e)
         else:
             raise ValueError("why's this gene not start with 5' utr nor cds? types: {}, interpretations: {}".format(

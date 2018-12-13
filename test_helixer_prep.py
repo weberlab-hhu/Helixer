@@ -880,16 +880,19 @@ def test_transcript_get_first():
     t_interp.interpret_first_pos(i0, plus_strand=False)
     features = t_interp.clean_features
     status = t_interp.status
-    assert len(features) == 2
+    assert len(features) == 3
     f_err = features[0]
     f_status_coding = features[1]
+    f_status_transcribed = features[2]
     print(f_err)
     print(status)
     print(i0)
-    # should get status_coding instead of a start codon
+    # should get in_translated_region instead of a start codon
     assert f_status_coding.data.start == 120
     assert f_status_coding.data.type == type_enums.IN_TRANSLATED_REGION
     assert not f_status_coding.data.is_plus_strand
+    # and should get accompanying in raw transcript
+    assert f_status_transcribed.data.type == type_enums.IN_RAW_TRANSCRIPT
     # region beyond exon should be marked erroneous
     assert f_err.data.start == 121
     assert f_err.data.end == 405
