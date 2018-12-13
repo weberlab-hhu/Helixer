@@ -934,24 +934,26 @@ def test_transcript_transition_from_5p_to_end():
     assert features[-1].data.start == 400
 
 
-#def test_non_coding_transitions():
-#    sl = setup_testable_super_loci()
-#    # get single-exon no-CDS transcript
-#    transcript = sl.generic_holders['z']
-#    transcript.remove_feature('ftr000011')
-#    print(transcript.short_str())
-#    t_interp = annotations.TranscriptInterpreter(transcript)
-#    ivals_sets = t_interp.intervals_5to3(plus_strand=True)
-#    assert len(ivals_sets) == 1
-#    t_interp.interpret_first_pos(ivals_sets[0])
-#    features = t_interp.clean_features
-#    assert features[-1].type == sl.genome.gffkey.TSS
-#    t_interp.interpret_last_pos(ivals_sets[0], plus_strand=True)
-#    assert features[-1].type == sl.genome.gffkey.TTS
-#    assert features[-1].start == 100
-#    assert len(features) == 2
-#
-#
+def test_non_coding_transitions():
+    sl, controller = setup_testable_super_loci()
+    transcript = [x for x in sl.data.transcribeds if x.given_id == 'z'][0]
+    t_interp = gff_2_annotations.TranscriptInterpreter(transcript.handler)
+    # get single-exon no-CDS transcript
+    cds = [x for x in transcript.features if x.type.value == type_enums.CDS][0]
+    transcript.handler.de_link(cds.handler)
+    print(transcript)
+    ivals_sets = t_interp.intervals_5to3(plus_strand=True)
+    assert len(ivals_sets) == 1
+    t_interp.interpret_first_pos(ivals_sets[0])
+    features = t_interp.clean_features
+    assert features[-1].data.type == type_enums.TRANSCRIPTION_START_SITE
+    assert features[-1].data.start == 111
+    t_interp.interpret_last_pos(ivals_sets[0], plus_strand=True)
+    assert features[-1].data.type == type_enums.TRANSCRIPTION_TERMINATION_SITE
+    assert features[-1].data.start == 120
+    assert len(features) == 2
+
+
 #def test_errors_not_lost():
 #    sl = setup_loci_with_utr()
 #    feature_e = annotations.StructuredFeature()
