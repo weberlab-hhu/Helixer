@@ -374,6 +374,19 @@ class FeatureHandler(annotations.FeatureHandler, GFFDerived):
         )
         self.add_data(data)
 
+    # inclusive and from 1 coordinates
+    def upstream_from_interval(self, interval):
+        if self.data.is_plus_strand:
+            return interval.begin + 1
+        else:
+            return interval.end
+
+    def downstream_from_interval(self, interval):
+        if self.data.is_plus_strand:
+            return interval.end
+        else:
+            return interval.begin + 1
+
 
 class TranscribedHandler(annotations.TranscribedHandler, GFFDerived):
     def __init__(self):

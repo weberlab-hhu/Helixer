@@ -433,7 +433,8 @@ class FeatureHandler(Handler):
     def link_to(self, other):
         if isinstance(other, SuperLocusHandler):
             self.data.super_locus = other.data
-        elif type(other) in [TranscribedHandler, TranslatedHandler]:
+        elif any([isinstance(other, x) for x in [TranslatedHandler, TranscribedHandler]]):
+        #elif type(other) in [TranscribedHandler, TranslatedHandler]:
             other.data.features.append(self.data)
         else:
             raise self._link_value_error(other)
@@ -649,18 +650,7 @@ class FeatureHandler(Handler):
 #        else:
 #            return self.start
 #
-#    # inclusive and from 1 coordinates
-#    def upstream_from_interval(self, interval):
-#        if self.is_plus_strand():
-#            return interval.begin + 1
-#        else:
-#            return interval.end
-#
-#    def downstream_from_interval(self, interval):
-#        if self.is_plus_strand():
-#            return interval.end
-#        else:
-#            return interval.begin + 1
+
 #
 #    def reconcile_with_slice(self, seqid, start, end, status, last_before_slice):
 #        #overlap_status = OverlapStatus()
