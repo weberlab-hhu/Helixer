@@ -107,6 +107,7 @@ class ImportControl(object):
         for entry_group in self.group_gff_by_gene(gff_file):
             super_locus = SuperLocusHandler()
             super_locus.add_gff_entry_group(entry_group, err_handle)
+            super_locus.data.sequence_info = self.sequence_info.data
             print(super_locus.data.given_id)
             self.session.add(super_locus.data)
             self.session.commit()
@@ -580,7 +581,8 @@ class TranscriptInterpreter(TranscriptInterpBase):
         if target_type is None:
             return interval_set[0]
         else:
-            return [x for x in interval_set if x.data.type == target_type][0]
+            print([x.data.data.type for x in interval_set])
+            return [x for x in interval_set if x.data.data.type.value == target_type][0]
 
     #def _get_protein_id_from_cds(self, cds_feature):
     #    assert cds_feature.gff_entry.type == self.gffkey.cds, "{} != {}".format(cds_feature.gff_entry.type,
@@ -835,14 +837,14 @@ class TranscriptInterpreter(TranscriptInterpBase):
             # mask a dummy region up-stream as it's very unclear whether it should be intergenic/intronic/utr
             if plus_strand:
                 # unless we're at the start of the sequence
-                start_of_sequence = self.get_seq_start(cds_feature.seqid)
+                start_of_sequence = self.get_seq_start(cds_feature.data.seqid)
                 if at != start_of_sequence:
                     feature_e = self.new_feature(template=cds_feature, type=error,
                                                  start=max(start_of_sequence, at - error_buffer - 1),
                                                  end=at - 1, phase=None)
                     self.clean_features.insert(0, feature_e)
             else:
-                end_of_sequence = self.get_seq_end(cds_feature.seqid)
+                end_of_sequence = self.get_seq_end(cds_feature.data.seqid)
                 if at != end_of_sequence:
                     feature_e = self.new_feature(template=cds_feature, type=error, start=at + 1,
                                                  end=min(end_of_sequence, at + error_buffer + 1),
@@ -948,7 +950,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
         yield out
 
     def get_seq_end(self, seqid):
-        print(self.transcript.data.super_locus.sequence_info.handler.seq_info)
         return self.transcript.data.super_locus.sequence_info.handler.seq_info[seqid].end
 
     def get_seq_start(self, seqid):

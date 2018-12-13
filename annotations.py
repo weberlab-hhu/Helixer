@@ -238,6 +238,7 @@ class SequenceInfoHandler(Handler):
             seq_info = {}
             for x in self.data.coordinates:
                 seq_info[x.seqid] = x
+                print(x.seqid, type(x.seqid), 'seqid at import')
             self._seq_info = seq_info
         return self._seq_info
 
