@@ -520,45 +520,6 @@ class FeatureHandler(Handler):
 #    def change_to_error(self):
 #        self.type = self.super_locus.genome.gffkey.error
 #
-#    def link_to_feature_holder_and_back(self, holder_id, holder_type=None, at=None):
-#        #print('link_to_feature_holder_and_back ({}) {} {}'.format(self.short_str(), holder_id, holder_type))
-#        if holder_type is None:
-#            holder_type = SuperLocus.t_feature_holders
-#
-#        sl_holders = self.super_locus.__getattribute__(holder_type)
-#        holder = sl_holders[holder_id]  # get feature holder
-#        holder.link_to_feature(self.id, at)  # link to and from self
-#        # get ordered feature holder (transcripts / proteins / feature_holders)
-#        self.link_to_feature_holder(holder_id, holder_type)
-#
-#    def link_to_feature_holder(self, holder_id, holder_type=None, at=None):
-#        #print('link_fo_feature_holder ({}) {} {}'.format(self.short_str(), holder_id, holder_type))
-#        if holder_type is None:
-#            holder_type = SuperLocus.t_feature_holders
-#        holder = self.__getattribute__(holder_type)
-#        assert holder_type in SuperLocus.types_feature_holders
-#        e = "{} already in {}: {}".format(
-#            holder_id, holder_type, holder
-#        )
-#        assert holder_id not in holder, e
-#        if at is None:
-#            holder.append(holder_id)
-#        else:
-#            holder.insert(at, holder_id)
-#
-#    def de_link_from_feature_holder(self, holder_id, holder_type=None):
-#        if holder_type is None:
-#            holder_type = SuperLocus.t_feature_holders
-#        assert holder_type in SuperLocus.types_feature_holders
-#        sl_holders = self.super_locus.__getattribute__(holder_type)
-#        holder = sl_holders[holder_id]  # get transcript
-#
-#        at = holder.remove_feature(self.id)  # drop other
-#        # and drop from local ordered feature holder set
-#        holders = self.__getattribute__(holder_type)
-#        holders.pop(holders.index(holder_id))
-#        return at
-#
 #    def fully_overlaps(self, other):
 #        should_match = ['type', 'start', 'end', 'seqid', 'strand', 'phase']
 #        does_it_match = [self.__getattribute__(x) == other.__getattribute__(x) for x in should_match]
@@ -582,45 +543,8 @@ class FeatureHandler(Handler):
 #        return exon
 #
 #    def clone(self, copy_feature_holders=True):
-#        """makes valid, independent clone/copy of this feature"""
-#        new = StructuredFeature()
-#        copy_over = copy.deepcopy(list(new.__dict__.keys()))
-#
-#        for to_skip in ['super_locus', 'id', 'transcripts']:
-#            copy_over.pop(copy_over.index(to_skip))
-#
-#        # handle can't just be copied things
-#        new.super_locus = self.super_locus
-#        new.id = self.super_locus.genome.feature_ider.next_unique_id()
-#        if copy_feature_holders:
-#            for transcript in self.transcripts:
-#                new.link_to_feature_holder_and_back(transcript, SuperLocus.t_transcripts)
-#            for protein in self.proteins:
-#                new.link_to_feature_holder_and_back(protein, SuperLocus.t_proteins)
-#            for ordf in self.generic_holders:
-#                new.link_to_feature_holder_and_back(ordf, SuperLocus.t_feature_holders)
-#
-#        # copy the rest
-#        for item in copy_over:
-#            new.__setattr__(item, copy.deepcopy(self.__getattribute__(item)))
-#        if new.gff_entry is None:
-#            raise ValueError('want real gff entry')
-#        return new
-#
 #    def __deepcopy__(self, memodict={}):
-#        new = StructuredFeature()
-#        copy_over = copy.deepcopy(list(new.__dict__.keys()))
-#
-#        for to_skip in ['super_locus']:
-#            copy_over.pop(copy_over.index(to_skip))
-#
-#        # copy everything
-#        for item in copy_over:
-#            new.__setattr__(item, copy.deepcopy(self.__getattribute__(item)))
-#
-#        new.super_locus = self.super_locus  # fix super_locus
-#
-#        return new
+
 #
 #    def merge(self, other):
 #        assert self is not other
@@ -629,14 +553,6 @@ class FeatureHandler(Handler):
 #            for ordf in copy.deepcopy(other.__getattribute__(fset)):
 #                self.link_to_feature_holder_and_back(ordf, fset)
 #                other.de_link_from_transcript(ordf)
-#
-#    def is_plus_strand(self):
-#        if self.strand == '+':
-#            return True
-#        elif self.strand == '-':
-#            return False
-#        else:
-#            raise ValueError('strand should be +- {}'.format(self.strand))
 #
 #    def upstream(self):
 #        if self.is_plus_strand():

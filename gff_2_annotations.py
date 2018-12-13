@@ -144,21 +144,23 @@ class ImportControl(object):
 def in_values(x, enum):
     return x in [item.value for item in enum]
 
-class SequenceInfoHandler(annotations.SequenceInfoHandler):
 
-    def add_sequences_as_coordinates(self):
-        pass
+#class SequenceInfoHandler(annotations.SequenceInfoHandler):
+#
+#    def add_sequences_as_coordinates(self):
+#        pass
+
 
 ##### gff parsing subclasses #####
 class GFFDerived(object):
     def __init__(self):
         self.gffentry = None
 
-    def add_gffentry(self, gffentry, gen_data=True):
+    def process_gffentry(self, gffentry, gen_data=True, **kwargs):
         self.gffentry = gffentry
         data = None
         if gen_data:
-            data = self.gen_data_from_gffentry(gffentry)
+            data = self.gen_data_from_gffentry(gffentry, **kwargs)
             #self.add_data(data)
         return data
 
@@ -217,18 +219,18 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
             if 'trans-splicing' in exception:
                 raise TransSplicingError('trans-splice in attribute {} {}'.format(entry.get_ID(), entry.attribute))
         if in_values(entry.type, type_enums.SuperLocusAll):
-            self.gen_data_from_gffentry(gffentry=entry)
+            self.process_gffentry(gffentry=entry)
 
         elif in_values(entry.type, type_enums.TranscriptLevelAll):
             transcribed = TranscribedHandler()
-            transcribed.gen_data_from_gffentry(entry, super_locus=self.data)
+            transcribed.process_gffentry(entry, super_locus=self.data)
             self.transcribed_handlers.append(transcribed)
 
         elif in_values(entry.type, type_enums.OnSequence):  # todo, I don't have a feature-level/on sequence type??
             feature = FeatureHandler()
             assert len(self.transcribed_handlers) > 0, "no transcribeds found before feature"
-            feature.gen_data_from_gffentry(entry, super_locus=self.data,
-                                           transcribeds=[self.transcribed_handlers[-1].data])
+            feature.process_gffentry(entry, super_locus=self.data,
+                                     transcribeds=[self.transcribed_handlers[-1].data])
         else:
             raise ValueError("problem handling entry of type {}".format(entry.type))
 
@@ -266,25 +268,24 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
         sf.gen_data_from_gffentry(entry, super_locus=self.data)
         sf.set_data_attribute('type', type_enums.ErrorFeature.error.name)
 
-#    def check_and_fix_structure(self, entries):
-#        # if it's empty (no bottom level features at all) mark as erroneous
-#        if not self.features:
-#            self._mark_erroneous(entries[0])
-#
-#        # todo, but with reconstructed flag (also check for and mark pseudogenes)
-#        to_remove = []
-#        for key in copy.deepcopy(list(self.generic_holders.keys())):
-#            transcript = self.generic_holders[key]
-#            old_features = copy.deepcopy(transcript.features)
-#
-#            t_interpreter = TranscriptInterpreter(transcript)
-#            transcript = t_interpreter.transcript  # because of non-inplace shift from ofs -> transcripts, todo, fix
-#            t_interpreter.decode_raw_features()
-#            # no transcript, as they're already linked
-#            self.add_features(t_interpreter.clean_features, feature_holders=None)
-#            transcript.delink_features(old_features)
-#            to_remove += old_features
-#        self.remove_features(to_remove)
+    def check_and_fix_structure(self, entries):
+        # if it's empty (no bottom level features at all) mark as erroneous
+        if not self.data.features:
+            self._mark_erroneous(entries[0])
+
+        # todo, but with reconstructed flag (also check for and mark pseudogenes)
+        to_remove = []
+        #for key in copy.deepcopy(list(self.generic_holders.keys())):
+        for transcript in self.data.transcribeds:
+            # mark old features
+            for feature in transcript.features:
+                feature.handler.mark_for_deletion()
+            # make new features
+            t_interpreter = TranscriptInterpreter(transcript.handler)
+            t_interpreter.decode_raw_features()
+            # make sure the new features link to protein if appropriate
+        # remove old features
+        self.remove_features(to_remove)
 #
 #    def add_features(self, features, feature_holders=None, holder_type=None):
 #        if holder_type is None:
@@ -418,6 +419,10 @@ class NoTranscriptError(Exception):
 
 
 class TransSplicingError(Exception):
+    pass
+
+
+class NoGFFEntryError(Exception):
     pass
 
 
@@ -557,7 +562,10 @@ class TranscriptInterpreter(TranscriptInterpBase):
         self.clean_features = []  # will hold all the 'fixed' feature handlers (convenience? or can remove?)
         self.transcript = transcript
         #self.protein_id_key = self._get_raw_protein_ids()
-        #self.proteins = self._setup_proteins()
+        try:
+            self.proteins = self._setup_proteins()
+        except NoGFFEntryError:
+            self.proteins = None  # this way we only run into an error if we actually wanted to use proteins
 
     # todo, divvy features to transcript or proteins
     # todo, get_protein_id function (protein_id, Parent of CDS, None to IDMAker)
@@ -586,52 +594,66 @@ class TranscriptInterpreter(TranscriptInterpBase):
             print([x.data.data.type for x in interval_set])
             return [x for x in interval_set if x.data.data.type.value == target_type][0]
 
-    #def _get_protein_id_from_cds(self, cds_feature):
-    #    assert cds_feature.gff_entry.type == self.gffkey.cds, "{} != {}".format(cds_feature.gff_entry.type,
-    #                                                                            self.gffkey.cds)
-    #    # check if anything is labeled as protein_id
-    #    protein_id = cds_feature.gff_entry.attrib_filter(tag='protein_id')
-    #    # failing that, try and get parent ID (presumably transcript, maybe gene)
-    #    if not protein_id:
-    #        protein_id = cds_feature.gff_entry.get_Parent()
-    #    # hopefully take single hit
-    #    if len(protein_id) == 1:
-    #        protein_id = protein_id[0]
-    #        if isinstance(protein_id, gffhelper.GFFAttribute):
-    #            protein_id = protein_id.value
-    #            assert len(protein_id) == 1
-    #            protein_id = protein_id[0]
-    #    # or handle other cases
-    #    elif len(protein_id) == 0:
-    #        protein_id = None
-    #    else:
-    #        raise ValueError('indeterminate single protein id {}'.format(protein_id))
-    #    print(protein_id, type(protein_id), 'pid, type')
-    #    return protein_id
+    @staticmethod
+    def _get_protein_id_from_cds(cds_feature):
+        try:
+            assert cds_feature.gffentry.type == type_enums.CDS, "{} != {}".format(cds_feature.gff_entry.type,
+                                                                                  type_enums.CDS)
+        except AttributeError:
+            raise NoGFFEntryError('No gffentry for {}'.format(cds_feature.data.given_id))
+        # check if anything is labeled as protein_id
+        protein_id = cds_feature.gffentry.attrib_filter(tag='protein_id')
+        # failing that, try and get parent ID (presumably transcript, maybe gene)
+        if not protein_id:
+            protein_id = cds_feature.gffentry.get_Parent()
+        # hopefully take single hit
+        if len(protein_id) == 1:
+            protein_id = protein_id[0]
+            if isinstance(protein_id, gffhelper.GFFAttribute):
+                protein_id = protein_id.value
+                assert len(protein_id) == 1
+                protein_id = protein_id[0]
+        # or handle other cases
+        elif len(protein_id) == 0:
+            protein_id = None
+        else:
+            raise ValueError('indeterminate single protein id {}'.format(protein_id))
+        print(protein_id, type(protein_id), 'pid, type')
+        return protein_id
 
-    #def _get_raw_protein_ids(self):
-    #    # only meant for use before feature interpretation
-    #    protein_ids = set()
-    #    for fkey in self.transcript.features:
-    #        feature = self.super_locus.features[fkey]
-    #        if feature.type == self.gffkey.cds:
-    #            protein_id = self._get_protein_id_from_cds(feature)
-    #            protein_ids.add(protein_id)
-    #    # map if necessary to unique / not-None IDs
-    #    prot_id_key = {}
-    #    for pkey in protein_ids:
-    #        prot_id_key[pkey] = self.super_locus.genome.protein_ider.next_unique_id(pkey)
-    #    return prot_id_key
+    def _get_raw_protein_ids(self):
+        # only meant for use before feature interpretation
+        protein_ids = set()
+        for feature in self.transcript.data.features:
+            if feature.type.value == type_enums.CDS:
+                protein_id = self._get_protein_id_from_cds(feature.handler)
+                protein_ids.add(protein_id)
+        return protein_ids
+        ## map if necessary to unique / not-None IDs
+        #prot_id_key = {}
+        #for pkey in protein_ids:
+        #    prot_id_key[pkey] = self.super_locus.genome.protein_ider.next_unique_id(pkey)
+        #return prot_id_key
 
-    #def _setup_proteins(self):
-    #    proteins = {}
-    #    for key in self.protein_id_key:
-    #        val = self.protein_id_key[key]
-    #        print('making protein {} (ori was {})'.format(val, key))
-    #        protein = self.transcript.clone_but_swap_type(SuperLocus.t_proteins)
-    #        protein = protein.replace_id_everywhere(val)
-    #        proteins[val] = protein
-    #    return proteins
+    def _setup_proteins(self):
+        # only meant for use before feature interpretation
+        pids = self._get_raw_protein_ids()
+        proteins = {}
+        for key in pids:
+            print('making protein {}'.format(key))
+            # setup blank protein
+            protein = TranslatedHandler()
+            pdata = annotations_orm.Translated()
+            protein.add_data(pdata)
+            # copy most all attributes from self to protein (except:
+            # translateds bc invalid, and
+            # features bc at this point they are all input features that'll be removed anyways
+            self.transcript.fax_all_attrs_to_another(another=protein, skip_linking=['translateds', 'features'])
+            pdata.transcribeds = [self.transcript.data]  # link back to transcript
+            pdata.given_id = key  # set given_id to what was found
+            proteins[key] = protein
+
+        return proteins
 
     #def _mv_coding_features_to_proteins(self):
     #    print('proteins to move to', self.proteins)
@@ -650,18 +672,18 @@ class TranscriptInterpreter(TranscriptInterpBase):
     #            protein_id = self.protein_id_key[self._get_protein_id_from_cds(feature)]
     #            feature.link_to_feature_holder(protein_id, SuperLocus.t_proteins)
 
-    #def is_plus_strand(self):
-    #    features = [self.super_locus.features[f] for f in self.transcript.features]
-    #    seqids = [x.seqid for x in features]
-    #    if not all([x == seqids[0] for x in seqids]):
-    #        raise TransSplicingError("non matching seqids {}, for {}".format(seqids, self.super_locus.id))
-    #    if all([x.strand == '+' for x in features]):
-    #        return True
-    #    elif all([x.strand == '-' for x in features]):
-    #        return False
-    #    else:
-    #        raise TransSplicingError("Mixed strands at {} with {}".format(self.super_locus.id,
-    #                                                                      [(x.seqid, x.strand) for x in features]))
+    def is_plus_strand(self):
+        features = self.transcript.data.features
+        seqids = [x.seqid for x in features]
+        if not all([x == seqids[0] for x in seqids]):
+            raise TransSplicingError("non matching seqids {}, for {}".format(seqids, self.super_locus.id))
+        if all([x.is_plus_strand for x in features]):
+            return True
+        elif all([not x.is_plus_strand for x in features]):
+            return False
+        else:
+            raise TransSplicingError("Mixed strands at {} with {}".format(self.super_locus.id,
+                                                                          [(x.seqid, x.strand) for x in features]))
 
     def interpret_transition(self, ivals_before, ivals_after, plus_strand=True):
         sign = 1
@@ -695,8 +717,8 @@ class TranscriptInterpreter(TranscriptInterpBase):
         else:
             raise ValueError("don't know how to transition from coding to {}".format(after_types))
 
-    #def handle_from_intron(self):
-    #    raise NotImplementedError  # todo later
+    def handle_from_intron(self):
+        raise NotImplementedError  # todo later
 
     def handle_from_3p_utr(self, ivals_before, ivals_after, before_types, after_types, sign):
         assert type_enums.THREE_PRIME_UTR in before_types
@@ -719,8 +741,8 @@ class TranscriptInterpreter(TranscriptInterpBase):
             raise ValueError('wrong feature types after five prime: b: {}, a: {}'.format(
                 [x.data.type for x in ivals_before], [x.data.type for x in ivals_after]))
 
-    #def handle_from_intergenic(self):
-    #    raise NotImplementedError  # todo later
+    def handle_from_intergenic(self):
+        raise NotImplementedError  # todo later
 
     def is_gap(self, ivals_before, ivals_after, sign):
         """checks for a gap between intervals, and validates it's a positive one on strand of interest"""
@@ -872,8 +894,8 @@ class TranscriptInterpreter(TranscriptInterpBase):
             self.status.saw_tts()
         elif type_enums.CDS in possible_types:
             # may or may not be stop codon, but will just mark as error (unless at edge of sequence)
-            start_of_sequence = self.get_seq_start(i0.data.seqid)
-            end_of_sequence = self.get_seq_end(i0.data.seqid)
+            start_of_sequence = self.get_seq_start(i0.data.data.seqid)
+            end_of_sequence = self.get_seq_end(i0.data.data.seqid)
             if plus_strand:
                 if at != end_of_sequence:
                     feature_e = self.new_feature(template=i0.data, type=type_enums.ERROR, start=at + 1, phase=None,
@@ -895,17 +917,17 @@ class TranscriptInterpreter(TranscriptInterpBase):
             interval_sets.reverse()
         return interval_sets
 
-    #def decode_raw_features(self):
-    #    plus_strand = self.is_plus_strand()
-    #    interval_sets = self.intervals_5to3(plus_strand)
-    #    self.interpret_first_pos(interval_sets[0], plus_strand)
-    #    for i in range(len(interval_sets) - 1):
-    #        ivals_before = interval_sets[i]
-    #        ivals_after = interval_sets[i + 1]
-    #        self.interpret_transition(ivals_before, ivals_after, plus_strand)
+    def decode_raw_features(self):
+        plus_strand = self.is_plus_strand()
+        interval_sets = self.intervals_5to3(plus_strand)
+        self.interpret_first_pos(interval_sets[0], plus_strand)
+        for i in range(len(interval_sets) - 1):
+            ivals_before = interval_sets[i]
+            ivals_after = interval_sets[i + 1]
+            self.interpret_transition(ivals_before, ivals_after, plus_strand)
 
-    #    self.interpret_last_pos(intervals=interval_sets[-1])
-    #    self._mv_coding_features_to_proteins()
+        self.interpret_last_pos(intervals=interval_sets[-1])
+        # self._mv_coding_features_to_proteins()  # todo, bring this back (maybe/maybe not here?)
 
     def possible_types(self, intervals):
         # shortcuts

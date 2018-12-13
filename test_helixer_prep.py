@@ -812,23 +812,25 @@ def test_fullcopy():
 #    assert not sl.features['ftr000000'].fully_overlaps(sl.features['ftr000002'])
 #
 #
-#def test_transcript_interpreter():
-#    sl = setup_loci_with_utr()
-#    # change so that there are implicit UTRs
-#    sl.features['ftr000005'].start = 11  # start first CDS later
-#    sl.features['ftr000009'].end = 330  # end first CDS sooner
-#    transcript = sl.generic_holders['y']
-#    t_interp = annotations.TranscriptInterpreter(transcript)
-#    t_interp.decode_raw_features()
-#    # has all standard features
-#    assert set([x.type for x in t_interp.clean_features]) == {sl.genome.gffkey.start_codon,
-#                                                              sl.genome.gffkey.stop_codon,
-#                                                              sl.genome.gffkey.TTS,
-#                                                              sl.genome.gffkey.TSS,
-#                                                              sl.genome.gffkey.donor_splice_site,
-#                                                              sl.genome.gffkey.acceptor_splice_site}
-#    assert t_interp.clean_features[-1].end == 400
-#    assert t_interp.clean_features[0].start == 1
+def test_transcript_interpreter():
+    sl, controller = setup_testable_super_loci()
+    transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
+    # change so that there are implicit UTRs
+    t_interp = gff_2_annotations.TranscriptInterpreter(transcript.handler)
+    t_interp.decode_raw_features()
+    controller.session.commit()
+    # has all standard features
+    types_out = set([x.data.type.value for x in t_interp.clean_features])
+    assert types_out == {type_enums.START_CODON,
+                         type_enums.STOP_CODON,
+                         type_enums.TRANSCRIPTION_START_SITE,
+                         type_enums.TRANSCRIPTION_TERMINATION_SITE,
+                         type_enums.DONOR_SPLICE_SITE,
+                         type_enums.ACCEPTOR_SPLICE_SITE}
+
+    assert t_interp.clean_features[-1].data.end == 400
+    assert t_interp.clean_features[0].data.start == 1
+
 
 def test_transcript_get_first():
     # plus strand
@@ -957,25 +959,38 @@ def test_non_coding_transitions():
     assert len(features) == 2
 
 
-#def test_errors_not_lost():
-#    sl = setup_loci_with_utr()
-#    feature_e = annotations.StructuredFeature()
-#    feature_e.id = sl.genome.feature_ider.next_unique_id()
-#    feature_e.super_locus = sl
-#    sl.features[feature_e.id] = feature_e
-#    feature_e.start, feature_e.end = 40, 80
-#    feature_e.change_to_error()
-#    print('what features did we start with::?')
-#    for feature in sl.features:
-#        print(feature)
-#        print(sl.features[feature].short_str())
-#    sl.check_and_fix_structure(entries=None)
-#    print('---and what features did we leave?---')
-#    for feature in sl.features:
-#        print(feature)
-#        print(sl.features[feature].short_str())
-#    assert feature_e in sl.features.values()
-#
+def test_errors_not_lost():
+    sl, controller = setup_testable_super_loci()
+    feature_e, feature_eh = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, start=40, end=80,
+                                               super_locus=sl.data, type=type_enums.ERROR)
+    #feature_e.id = sl.genome.feature_ider.next_unique_id()
+    #feature_e.super_locus = sl.data
+    #sl.features[feature_e.id] = feature_e
+    #feature_e.start, feature_e.end = 40, 80
+    #feature_e.change_to_error()
+    print('what features did we start with::?')
+    for feature in sl.data.features:
+        print(feature)
+    sl.check_and_fix_structure(entries=None)
+    print('---and what features did we leave?---')
+    for feature in sl.data.features:
+        print(feature)
+    assert feature_e in sl.features.values()
+
+
+def test_setup_proteins():
+    sl, controller = setup_testable_super_loci()
+    transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
+    t_interp = gff_2_annotations.TranscriptInterpreter(transcript.handler)
+    print(t_interp.proteins)
+    assert len(t_interp.proteins.keys()) == 1
+    protein = t_interp.proteins['y.p'].data
+    assert transcript in protein.transcribeds
+    assert protein in transcript.translateds
+    assert protein.given_id == 'y.p'
+    controller.session.commit()
+
+
 #
 #def test_anno2json_and_back():
 #    # setup the sequence file
