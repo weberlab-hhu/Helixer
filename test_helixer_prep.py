@@ -803,7 +803,6 @@ def test_fullcopy():
     assert new.transcribeds == [scribed]
 
 
-
 #def test_feature_overlap_detection():
 #    sl = setup_testable_super_loci()
 #    assert sl.features['ftr000000'].fully_overlaps(sl.features['ftr000004'])
@@ -898,43 +897,43 @@ def test_transcript_get_first():
     assert status.is_coding()
     assert status.seen_start
     assert status.genic
-#
-#
-#def test_transcript_transition_from_5p_to_end():
-#    sl = setup_loci_with_utr()
-#    transcript = sl.generic_holders['y']
-#    t_interp = annotations.TranscriptInterpreter(transcript)
-#    ivals_sets = t_interp.intervals_5to3(plus_strand=True)
-#    t_interp.interpret_first_pos(ivals_sets[0])
-#    # hit start codon
-#    t_interp.interpret_transition(ivals_before=ivals_sets[0], ivals_after=ivals_sets[1], plus_strand=True)
-#    features = t_interp.clean_features
-#    assert features[-1].type == sl.genome.gffkey.start_codon
-#    assert features[-1].start == 11
-#    assert features[-1].end == 13
-#    # hit splice site
-#    t_interp.interpret_transition(ivals_before=ivals_sets[1], ivals_after=ivals_sets[2], plus_strand=True)
-#    assert features[-1].type == sl.genome.gffkey.acceptor_splice_site
-#    assert features[-2].type == sl.genome.gffkey.donor_splice_site
-#    assert features[-2].start == 101  # splice from
-#    assert features[-1].start == 110  # splice to
-#    assert t_interp.status.is_coding()
-#    # hit splice site
-#    t_interp.interpret_transition(ivals_before=ivals_sets[2], ivals_after=ivals_sets[3], plus_strand=True)
-#    assert features[-1].type == sl.genome.gffkey.acceptor_splice_site
-#    assert features[-2].type == sl.genome.gffkey.donor_splice_site
-#    assert features[-2].start == 121  # splice from
-#    assert features[-1].start == 200  # splice to
-#    # hit stop codon
-#    t_interp.interpret_transition(ivals_before=ivals_sets[3], ivals_after=ivals_sets[4], plus_strand=True)
-#    assert features[-1].type == sl.genome.gffkey.stop_codon
-#    assert features[-1].start == 328
-#    # hit transcription termination site
-#    t_interp.interpret_last_pos(ivals_sets[4], plus_strand=True)
-#    assert features[-1].type == sl.genome.gffkey.TTS
-#    assert features[-1].start == 400
-#
-#
+
+
+def test_transcript_transition_from_5p_to_end():
+    sl, controller = setup_testable_super_loci()
+    transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
+    t_interp = gff_2_annotations.TranscriptInterpreter(transcript.handler)
+    ivals_sets = t_interp.intervals_5to3(plus_strand=True)
+    t_interp.interpret_first_pos(ivals_sets[0])
+    # hit start codon
+    t_interp.interpret_transition(ivals_before=ivals_sets[0], ivals_after=ivals_sets[1], plus_strand=True)
+    features = t_interp.clean_features
+    assert features[-1].data.type == type_enums.START_CODON
+    assert features[-1].data.start == 11
+    assert features[-1].data.end == 13
+    # hit splice site
+    t_interp.interpret_transition(ivals_before=ivals_sets[1], ivals_after=ivals_sets[2], plus_strand=True)
+    assert features[-1].data.type == type_enums.ACCEPTOR_SPLICE_SITE
+    assert features[-2].data.type == type_enums.DONOR_SPLICE_SITE
+    assert features[-2].data.start == 101  # splice from
+    assert features[-1].data.start == 110  # splice to
+    assert t_interp.status.is_coding()
+    # hit splice site
+    t_interp.interpret_transition(ivals_before=ivals_sets[2], ivals_after=ivals_sets[3], plus_strand=True)
+    assert features[-1].data.type == type_enums.ACCEPTOR_SPLICE_SITE
+    assert features[-2].data.type == type_enums.DONOR_SPLICE_SITE
+    assert features[-2].data.start == 121  # splice from
+    assert features[-1].data.start == 200  # splice to
+    # hit stop codon
+    t_interp.interpret_transition(ivals_before=ivals_sets[3], ivals_after=ivals_sets[4], plus_strand=True)
+    assert features[-1].data.type == type_enums.STOP_CODON
+    assert features[-1].data.start == 298
+    # hit transcription termination site
+    t_interp.interpret_last_pos(ivals_sets[4], plus_strand=True)
+    assert features[-1].data.type == type_enums.TRANSCRIPTION_TERMINATION_SITE
+    assert features[-1].data.start == 400
+
+
 #def test_non_coding_transitions():
 #    sl = setup_testable_super_loci()
 #    # get single-exon no-CDS transcript

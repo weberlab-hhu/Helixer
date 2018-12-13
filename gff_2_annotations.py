@@ -107,8 +107,10 @@ class ImportControl(object):
         for entry_group in self.group_gff_by_gene(gff_file):
             super_locus = SuperLocusHandler()
             super_locus.add_gff_entry_group(entry_group, err_handle)
-            super_locus.data.sequence_info = self.sequence_info.data
-            print(super_locus.data.given_id)
+            try:
+                super_locus.data.sequence_info = self.sequence_info.data
+            except AttributeError as e:
+                raise AttributeError(str(e) + ' You need to import sequence data (self.add_sequences(...)')
             self.session.add(super_locus.data)
             self.session.commit()
             super_loci.append(super_locus)  # just to keep some direct python link to this
@@ -661,156 +663,160 @@ class TranscriptInterpreter(TranscriptInterpBase):
     #        raise TransSplicingError("Mixed strands at {} with {}".format(self.super_locus.id,
     #                                                                      [(x.seqid, x.strand) for x in features]))
 
-    #def interpret_transition(self, ivals_before, ivals_after, plus_strand=True):
-    #    sign = 1
-    #    if not plus_strand:
-    #        sign = -1
-    #    before_types = self.possible_types(ivals_before)
-    #    after_types = self.possible_types(ivals_after)
-    #    # 5' UTR can hit either start codon or splice site
-    #    if self.status.is_5p_utr():
-    #        # start codon
-    #        self.handle_from_5p_utr(ivals_before, ivals_after, before_types, after_types, sign)
-    #    elif self.status.is_coding():
-    #        self.handle_from_coding(ivals_before, ivals_after, before_types, after_types, sign)
-    #    elif self.status.is_3p_utr():
-    #        self.handle_from_3p_utr(ivals_before, ivals_after, before_types, after_types, sign)
-    #    elif self.status.is_intronic():
-    #        self.handle_from_intron()
-    #    elif self.status.is_intergenic():
-    #        self.handle_from_intergenic()
-    #    else:
-    #        raise ValueError('unknown status {}'.format(self.status.__dict__))
+    def interpret_transition(self, ivals_before, ivals_after, plus_strand=True):
+        sign = 1
+        if not plus_strand:
+            sign = -1
+        before_types = self.possible_types(ivals_before)
+        after_types = self.possible_types(ivals_after)
+        # 5' UTR can hit either start codon or splice site
+        if self.status.is_5p_utr():
+            # start codon
+            self.handle_from_5p_utr(ivals_before, ivals_after, before_types, after_types, sign)
+        elif self.status.is_coding():
+            self.handle_from_coding(ivals_before, ivals_after, before_types, after_types, sign)
+        elif self.status.is_3p_utr():
+            self.handle_from_3p_utr(ivals_before, ivals_after, before_types, after_types, sign)
+        elif self.status.is_intronic():
+            self.handle_from_intron()
+        elif self.status.is_intergenic():
+            self.handle_from_intergenic()
+        else:
+            raise ValueError('unknown status {}'.format(self.status.__dict__))
 
-    #def handle_from_coding(self, ivals_before, ivals_after, before_types, after_types, sign):
-    #    assert self.gffkey.cds in before_types
-    #    # stop codon
-    #    if self.gffkey.three_prime_UTR in after_types:
-    #        self.handle_control_codon(ivals_before, ivals_after, sign, is_start=False)
-    #    # splice site
-    #    elif self.gffkey.cds in after_types:
-    #        self.handle_splice(ivals_before, ivals_after, sign)
+    def handle_from_coding(self, ivals_before, ivals_after, before_types, after_types, sign):
+        assert type_enums.CDS in before_types
+        # stop codon
+        if type_enums.THREE_PRIME_UTR in after_types:
+            self.handle_control_codon(ivals_before, ivals_after, sign, is_start=False)
+        # splice site
+        elif type_enums.CDS in after_types:
+            self.handle_splice(ivals_before, ivals_after, sign)
+        else:
+            raise ValueError("don't know how to transition from coding to {}".format(after_types))
 
     #def handle_from_intron(self):
     #    raise NotImplementedError  # todo later
 
-    #def handle_from_3p_utr(self, ivals_before, ivals_after, before_types, after_types, sign):
-    #    assert self.gffkey.three_prime_UTR in before_types
-    #    # the only thing we should encounter is a splice site
-    #    if self.gffkey.three_prime_UTR in after_types:
-    #        self.handle_splice(ivals_before, ivals_after, sign)
-    #    else:
-    #        raise ValueError('wrong feature types after three prime: b: {}, a: {}'.format(
-    #            [x.data.type for x in ivals_before], [x.data.type for x in ivals_after]))
+    def handle_from_3p_utr(self, ivals_before, ivals_after, before_types, after_types, sign):
+        assert type_enums.THREE_PRIME_UTR in before_types
+        # the only thing we should encounter is a splice site
+        if type_enums.THREE_PRIME_UTR in after_types:
+            self.handle_splice(ivals_before, ivals_after, sign)
+        else:
+            raise ValueError('wrong feature types after three prime: b: {}, a: {}'.format(
+                [x.data.type for x in ivals_before], [x.data.type for x in ivals_after]))
 
-    #def handle_from_5p_utr(self, ivals_before, ivals_after, before_types, after_types, sign):
-    #    assert self.gffkey.five_prime_UTR in before_types
-    #    # start codon
-    #    if self.gffkey.cds in after_types:
-    #        self.handle_control_codon(ivals_before, ivals_after, sign, is_start=True)
-    #    # intron
-    #    elif self.gffkey.five_prime_UTR in after_types:
-    #        self.handle_splice(ivals_before, ivals_after, sign)
-    #    else:
-    #        raise ValueError('wrong feature types after five prime: b: {}, a: {}'.format(
-    #            [x.data.type for x in ivals_before], [x.data.type for x in ivals_after]))
+    def handle_from_5p_utr(self, ivals_before, ivals_after, before_types, after_types, sign):
+        assert type_enums.FIVE_PRIME_UTR in before_types
+        # start codon
+        if type_enums.CDS in after_types:
+            self.handle_control_codon(ivals_before, ivals_after, sign, is_start=True)
+        # intron
+        elif type_enums.FIVE_PRIME_UTR in after_types:
+            self.handle_splice(ivals_before, ivals_after, sign)
+        else:
+            raise ValueError('wrong feature types after five prime: b: {}, a: {}'.format(
+                [x.data.type for x in ivals_before], [x.data.type for x in ivals_after]))
 
     #def handle_from_intergenic(self):
     #    raise NotImplementedError  # todo later
 
-    #def is_gap(self, ivals_before, ivals_after, sign):
-    #    """checks for a gap between intervals, and validates it's a positive one on strand of interest"""
-    #    after0 = self.pick_one_interval(ivals_after)
-    #    before0 = self.pick_one_interval(ivals_before)
-    #    before_downstream = before0.data.downstream_from_interval(before0)
-    #    after_upstream = after0.data.upstream_from_interval(after0)
-    #    is_gap = before_downstream + 1 * sign != after_upstream
-    #    if is_gap:
-    #        # if there's a gap, confirm it's in the right direction
-    #        gap_len = (after_upstream - (before_downstream + 1 * sign)) * sign
-    #        assert gap_len > 0, "inverse gap between {} and {} at putative control codon seq {}, gene {}, " \
-    #                            "features {} {}".format(
-    #            before_downstream, after_upstream, after0.data.seqid, self.super_locus.id, before0.data.id,
-    #            after0.data.id
-    #        )
-    #    return is_gap
+    def is_gap(self, ivals_before, ivals_after, sign):
+        """checks for a gap between intervals, and validates it's a positive one on strand of interest"""
+        after0 = self.pick_one_interval(ivals_after)
+        before0 = self.pick_one_interval(ivals_before)
+        before_downstream = before0.data.downstream_from_interval(before0)
+        after_upstream = after0.data.upstream_from_interval(after0)
+        is_gap = before_downstream + 1 * sign != after_upstream
+        if is_gap:
+            # if there's a gap, confirm it's in the right direction
+            gap_len = (after_upstream - (before_downstream + 1 * sign)) * sign
+            assert gap_len > 0, "inverse gap between {} and {} at putative control codon seq {}, gene {}, " \
+                                "features {} {}".format(
+                before_downstream, after_upstream, after0.data.seqid, self.super_locus.id, before0.data.id,
+                after0.data.id
+            )
+        return is_gap
 
-    #def handle_control_codon(self, ivals_before, ivals_after, sign, is_start=True):
-    #    target_after_type = None
-    #    target_before_type = None
-    #    if is_start:
-    #        target_after_type = self.gffkey.cds
-    #    else:
-    #        target_before_type = self.gffkey.cds
+    def handle_control_codon(self, ivals_before, ivals_after, sign, is_start=True, error_buffer=2000):
+        target_after_type = None
+        target_before_type = None
+        if is_start:
+            target_after_type = type_enums.CDS
+        else:
+            target_before_type = type_enums.CDS
 
-    #    after0 = self.pick_one_interval(ivals_after, target_after_type)
-    #    before0 = self.pick_one_interval(ivals_before, target_before_type)
-    #    # make sure there is no gap
-    #    is_gap = self.is_gap(ivals_before, ivals_after, sign)
+        after0 = self.pick_one_interval(ivals_after, target_after_type)
+        before0 = self.pick_one_interval(ivals_before, target_before_type)
+        # make sure there is no gap
+        is_gap = self.is_gap(ivals_before, ivals_after, sign)
 
-    #    if is_start:
-    #        if is_gap:
-    #            self.handle_splice(ivals_before, ivals_after, sign)
+        if is_start:
+            if is_gap:
+                self.handle_splice(ivals_before, ivals_after, sign)
 
-    #        template = after0.data
-    #        # it better be std phase if it's a start codon
-    #        at = template.upstream_from_interval(after0)
-    #        if template.phase == 0:  # "non-0 phase @ {} in {}".format(template.id, template.super_locus.id)
-    #            start, end = min_max(at, at + 2 * sign)
-    #            start_codon = self.new_feature(template=template, start=start, end=end, type=self.gffkey.start_codon)
-    #            self.status.saw_start(phase=0)
-    #            self.clean_features.append(start_codon)
-    #        else:
-    #            upstream_buffered = before0.data.upstream_from_interval(before0) - sign * self.gffkey.error_buffer
-    #            err_start, err_end = min_max(at - 1 * sign, upstream_buffered)
-    #            feature_e = self.new_feature(template=template, type=self.gffkey.error,
-    #                                         start=err_start, end=err_end, phase=None)
-    #            coding_status = self.new_feature(template=template, type=self.gffkey.status_coding, start=at, end=at)
-    #            self.status.saw_start(template.phase)
-    #            self.clean_features += [feature_e, coding_status]
-    #    else:
-    #        # todo, confirm phase for stop codon
-    #        template = before0.data
-    #        at = template.downstream_from_interval(before0)
-    #        start, end = min_max(at, at - 2 * sign)
-    #        stop_codon = self.new_feature(template=template, start=start, end=end, type=self.gffkey.stop_codon)
-    #        self.status.saw_stop()
-    #        self.clean_features.append(stop_codon)
-    #        if is_gap:
-    #            self.handle_splice(ivals_before, ivals_after, sign)
+            template = after0.data
+            # it better be std phase if it's a start codon
+            at = template.upstream_from_interval(after0)
+            if template.data.phase == 0:  # "non-0 phase @ {} in {}".format(template.id, template.super_locus.id)
+                start, end = min_max(at, at + 2 * sign)
+                start_codon = self.new_feature(template=template, start=start, end=end, type=type_enums.START_CODON)
+                self.status.saw_start(phase=0)
+                self.clean_features.append(start_codon)
+            else:
+                upstream_buffered = before0.data.upstream_from_interval(before0) - sign * error_buffer
+                err_start, err_end = min_max(at - 1 * sign, upstream_buffered)
+                feature_e = self.new_feature(template=template, type=type_enums.ERROR,
+                                             start=err_start, end=err_end, phase=None)
+                # todo, do I need to set IN_TRANSCRIBED_REGION as well?
+                coding_status = self.new_feature(template=template, type=type_enums.IN_TRANSLATED_REGION, start=at,
+                                                 end=at)
+                self.status.saw_start(template.phase)
+                self.clean_features += [feature_e, coding_status]
+        else:
+            # todo, confirm phase for stop codon
+            template = before0.data
+            at = template.downstream_from_interval(before0)
+            start, end = min_max(at, at - 2 * sign)
+            stop_codon = self.new_feature(template=template, start=start, end=end, type=type_enums.STOP_CODON)
+            self.status.saw_stop()
+            self.clean_features.append(stop_codon)
+            if is_gap:
+                self.handle_splice(ivals_before, ivals_after, sign)
 
-    #def handle_splice(self, ivals_before, ivals_after, sign):
-    #    target_type = None
-    #    if self.status.is_coding():
-    #        target_type = self.gffkey.cds
+    def handle_splice(self, ivals_before, ivals_after, sign):
+        target_type = None
+        if self.status.is_coding():
+            target_type = type_enums.CDS
 
-    #    before0 = self.pick_one_interval(ivals_before, target_type)
-    #    after0 = self.pick_one_interval(ivals_after, target_type)
-    #    donor_tmplt = before0.data
-    #    acceptor_tmplt = after0.data
-    #    donor_at = donor_tmplt.downstream_from_interval(before0) + (1 * sign)
-    #    acceptor_at = acceptor_tmplt.upstream_from_interval(after0) - (1 * sign)
-    #    # add splice sites if there's a gap
-    #    between_splice_sites = (acceptor_at - donor_at) * sign
-    #    min_intron_len = 3  # todo, maybe get something small but not entirely impossible?
-    #    if between_splice_sites > min_intron_len - 1:  # -1 because the splice sites are _within_ the intron
-    #        donor = self.new_feature(template=donor_tmplt, start=donor_at, end=donor_at, phase=None,
-    #                                 type=self.gffkey.donor_splice_site)
-    #        # todo, check position of DSS/ASS to be consistent with Augustus, hopefully
-    #        acceptor = self.new_feature(template=acceptor_tmplt, start=acceptor_at, end=acceptor_at,
-    #                                    type=self.gffkey.acceptor_splice_site)
-    #        self.clean_features += [donor, acceptor]
-    #    # do nothing if there is just no gap between exons for a techinical / reporting error
-    #    elif between_splice_sites == -1:
-    #        pass
-    #    # everything else is invalid
-    #    else:
-    #        feature_e = before0.data.clone()
-    #        all_coords = [before0.data.start, before0.data.end, after0.data.start, after0.data.end]
-    #        feature_e.start = sorted(all_coords)[0]
-    #        feature_e.end = sorted(all_coords)[-1]
-    #        feature_e.type = self.gffkey.error
-    #        self.clean_features.append(feature_e)
+        before0 = self.pick_one_interval(ivals_before, target_type)
+        after0 = self.pick_one_interval(ivals_after, target_type)
+        donor_tmplt = before0.data
+        acceptor_tmplt = after0.data
+        donor_at = donor_tmplt.downstream_from_interval(before0) + (1 * sign)
+        acceptor_at = acceptor_tmplt.upstream_from_interval(after0) - (1 * sign)
+        # add splice sites if there's a gap
+        between_splice_sites = (acceptor_at - donor_at) * sign
+        min_intron_len = 3  # todo, maybe get something small but not entirely impossible?
+        if between_splice_sites > min_intron_len - 1:  # -1 because the splice sites are _within_ the intron
+            donor = self.new_feature(template=donor_tmplt, start=donor_at, end=donor_at, phase=None,
+                                     type=type_enums.DONOR_SPLICE_SITE)
+            # todo, check position of DSS/ASS to be consistent with Augustus, hopefully
+            acceptor = self.new_feature(template=acceptor_tmplt, start=acceptor_at, end=acceptor_at,
+                                        type=type_enums.ACCEPTOR_SPLICE_SITE)
+            self.clean_features += [donor, acceptor]
+        # do nothing if there is just no gap between exons for a techinical / reporting error
+        elif between_splice_sites == -1:
+            pass
+        # everything else is invalid
+        else:
+            feature_e = before0.data.clone()
+            all_coords = [before0.data.start, before0.data.end, after0.data.start, after0.data.end]
+            feature_e.start = sorted(all_coords)[0]
+            feature_e.end = sorted(all_coords)[-1]
+            feature_e.type = type_enums.ERROR
+            self.clean_features.append(feature_e)
 
     def interpret_first_pos(self, intervals, plus_strand=True, error_buffer=2000):
         # shortcuts
@@ -855,33 +861,33 @@ class TranscriptInterpreter(TranscriptInterpBase):
             raise ValueError("why's this gene not start with 5' utr nor cds? types: {}, interpretations: {}".format(
                 [x.data.type for x in intervals], possible_types))
 
-    #def interpret_last_pos(self, intervals, plus_strand=True):
-    #    i0 = self.pick_one_interval(intervals)
-    #    at = i0.data.downstream_from_interval(i0)
-    #    possible_types = self.possible_types(intervals)
-    #    if self.gffkey.three_prime_UTR in possible_types:
-    #        # this should be transcription termination site
-    #        tts = self.new_feature(template=i0.data, type=self.gffkey.TTS, start=at, end=at, phase=None)
-    #        self.clean_features.append(tts)
-    #        self.status.saw_tts()
-    #    elif self.gffkey.cds in possible_types:
-    #        # may or may not be stop codon, but will just mark as error (unless at edge of sequence)
-    #        start_of_sequence = self.get_seq_start(i0.data.seqid)
-    #        end_of_sequence = self.get_seq_end(i0.data.seqid)
-    #        if plus_strand:
-    #            if at != end_of_sequence:
-    #                feature_e = self.new_feature(template=i0.data, type=self.gffkey.error, start=at + 1, phase=None,
-    #                                             end=min(at + 1 + self.gffkey.error_buffer, end_of_sequence))
-    #                self.clean_features.append(feature_e)
-    #        else:
-    #            if at != start_of_sequence:
-    #                feature_e = self.new_feature(template=i0.data, type=self.gffkey.error, end=at - 1, phase=None,
-    #                                             start=max(start_of_sequence, at - self.gffkey.error_buffer - 1))
-    #                self.clean_features.append(feature_e)
-    #    else:
-    #        raise ValueError("why's this gene not end with 3' utr/exon nor cds? types: {}, interpretations: {}".format(
-    #            [x.data.type for x in intervals], possible_types)
-    #        )
+    def interpret_last_pos(self, intervals, plus_strand=True, error_buffer=2000):
+        i0 = self.pick_one_interval(intervals)
+        at = i0.data.downstream_from_interval(i0)
+        possible_types = self.possible_types(intervals)
+        if type_enums.THREE_PRIME_UTR in possible_types:
+            # this should be transcription termination site
+            tts = self.new_feature(template=i0.data, type=type_enums.TRANSCRIPTION_TERMINATION_SITE, start=at, end=at, phase=None)
+            self.clean_features.append(tts)
+            self.status.saw_tts()
+        elif type_enums.CDS in possible_types:
+            # may or may not be stop codon, but will just mark as error (unless at edge of sequence)
+            start_of_sequence = self.get_seq_start(i0.data.seqid)
+            end_of_sequence = self.get_seq_end(i0.data.seqid)
+            if plus_strand:
+                if at != end_of_sequence:
+                    feature_e = self.new_feature(template=i0.data, type=type_enums.ERROR, start=at + 1, phase=None,
+                                                 end=min(at + 1 + error_buffer, end_of_sequence))
+                    self.clean_features.append(feature_e)
+            else:
+                if at != start_of_sequence:
+                    feature_e = self.new_feature(template=i0.data, type=type_enums.ERROR, end=at - 1, phase=None,
+                                                 start=max(start_of_sequence, at - error_buffer - 1))
+                    self.clean_features.append(feature_e)
+        else:
+            raise ValueError("why's this gene not end with 3' utr/exon nor cds? types: {}, interpretations: {}".format(
+                [x.data.type for x in intervals], possible_types)
+            )
 
     def intervals_5to3(self, plus_strand=False):
         interval_sets = list(self.organize_and_split_features())

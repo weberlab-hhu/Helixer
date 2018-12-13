@@ -7,8 +7,9 @@ import annotations
 import gff_2_annotations
 
 
-def gff3_to_json(gff3, json, sequence, prob_path):
+def gff3_to_json(gff3, json, sequence_path, prob_path):
     controller = gff_2_annotations.ImportControl(database_path=None, err_path=prob_path)
+    controller.add_sequences(sequence_path)
     controller.add_gff(gff3)
 
 
@@ -76,8 +77,8 @@ def main(gff3, fasta, basedir, smallest_mer=2, largest_mer=2, slice=True, seed='
         sequences = fasta_to_json(paths.fasta_in, paths.sequence_out, smallest_mer=smallest_mer,
                                   largest_mer=largest_mer)
     else:
-        sequences = load_sequence_json(paths.sequence_out)
-    gff3_to_json(paths.gff_in, paths.annotations_out, sequences, paths.problems_out)
+        sequences = load_sequence_json(paths.sequence_out)  # todo, choose one spot to import this & clean up
+    gff3_to_json(paths.gff_in, paths.annotations_out, paths.sequence_out, paths.problems_out)
     if slice:
         sequences.divvy_each_sequence(seed)
         sequences.to_json(paths.sliced_sequence_out)
