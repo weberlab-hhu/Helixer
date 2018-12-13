@@ -991,6 +991,8 @@ def test_setup_proteins():
     controller.session.commit()
 
 
+def test_mv_features_to_prot():
+    pass  # todo!!
 #
 #def test_anno2json_and_back():
 #    # setup the sequence file

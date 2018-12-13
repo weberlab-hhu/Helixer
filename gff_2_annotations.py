@@ -4,7 +4,7 @@ import annotations
 import annotations_orm
 import type_enums
 import sequences
-
+import copy
 import logging
 
 from sqlalchemy import create_engine
@@ -284,6 +284,7 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
             t_interpreter = TranscriptInterpreter(transcript.handler)
             t_interpreter.decode_raw_features()
             # make sure the new features link to protein if appropriate
+            t_interpreter.mv_coding_features_to_proteins()
         # remove old features
         self.remove_features(to_remove)
 #
@@ -576,6 +577,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
         data = annotations_orm.Feature()
         handler.add_data(data)
         template.fax_all_attrs_to_another(another=handler)
+        handler.gffentry = copy.deepcopy(template.gffentry)
         #try:
         #    new = template.clone()
         #except KeyError as e:
@@ -655,22 +657,21 @@ class TranscriptInterpreter(TranscriptInterpBase):
 
         return proteins
 
-    #def _mv_coding_features_to_proteins(self):
-    #    print('proteins to move to', self.proteins)
-    #    print('known proteins in sl', self.super_locus.proteins.keys())
-    #    print('proteins in key', self.protein_id_key)
-    #    for protein in self.proteins:
-    #        print(protein, self.super_locus.proteins[protein].features, 'pid, p features')
-    #    # only meant for use after feature interpretation
-    #    for feature in self.clean_features:
-    #        if feature.type in [self.gffkey.status_coding, self.gffkey.stop_codon, self.gffkey.start_codon]:
-    #            assert len(feature.transcripts) == 1
-    #            feature.de_link_from_feature_holder(
-    #                holder_id=feature.transcripts[0],
-    #                holder_type=SuperLocus.t_transcripts
-    #            )
-    #            protein_id = self.protein_id_key[self._get_protein_id_from_cds(feature)]
-    #            feature.link_to_feature_holder(protein_id, SuperLocus.t_proteins)
+    def mv_coding_features_to_proteins(self):
+        print('proteins to move to', self.proteins)
+        # only meant for use after feature interpretation
+        for feature in self.clean_features:
+            if feature.data.type in [x.value for x in type_enums.TranslatedAll]:  # todo, fix brittle to pre/post commit
+                pid = self._get_protein_id_from_cds(feature)
+                self.transcript.replace_selflinks_w_replacementlinks(replacement=self.proteins[pid],
+                                                                     to_replace=['features'])
+                #assert len(feature.transcripts) == 1
+                #feature.de_link_from_feature_holder(
+                #    holder_id=feature.transcripts[0],
+                #    holder_type=SuperLocus.t_transcripts
+                #)
+                #protein_id = self.protein_id_key[self._get_protein_id_from_cds(feature)]
+                #feature.link_to_feature_holder(protein_id, SuperLocus.t_proteins)
 
     def is_plus_strand(self):
         features = self.transcript.data.features
