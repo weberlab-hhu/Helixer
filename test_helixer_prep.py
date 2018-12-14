@@ -992,7 +992,15 @@ def test_setup_proteins():
 
 
 def test_mv_features_to_prot():
-    pass  # todo!!
+    sl, controller = setup_testable_super_loci()
+    transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
+    t_interp = gff_2_annotations.TranscriptInterpreter(transcript.handler)
+    protein = t_interp.proteins['y.p'].data
+    t_interp.decode_raw_features()
+    t_interp.mv_coding_features_to_proteins()
+    controller.session.commit()
+    assert len(protein.features) == 2  # start and stop codon
+    assert set([x.type.value for x in protein.features]) == {type_enums.START_CODON, type_enums.STOP_CODON}
 #
 #def test_anno2json_and_back():
 #    # setup the sequence file

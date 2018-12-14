@@ -84,15 +84,15 @@ class Handler(object):
                 for i in reversed(list(range(n))):  # go through backwards to hit every item even though we're removing
                     #for data in val:
                     data = val[i]
-                    self._replace_selflink_with_replacementlink(replacement, data)
+                    self.replace_selflink_with_replacementlink(replacement, data)
             elif isinstance(val, annotations_orm.Base):
-                self._replace_selflink_with_replacementlink(replacement, val)
+                self.replace_selflink_with_replacementlink(replacement, val)
             else:
                 raise ValueError("replace_selflinks_w_replacementlinks only implemented for {} types".format(
                     [list, annotations_orm.Base]
                 ))
 
-    def _replace_selflink_with_replacementlink(self, replacement, data):
+    def replace_selflink_with_replacementlink(self, replacement, data):
         other = data.handler
         self.de_link(other)
         replacement.link_to(other)

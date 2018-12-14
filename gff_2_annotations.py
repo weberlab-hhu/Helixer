@@ -660,11 +660,13 @@ class TranscriptInterpreter(TranscriptInterpBase):
     def mv_coding_features_to_proteins(self):
         print('proteins to move to', self.proteins)
         # only meant for use after feature interpretation
+        print('clean features {}'.format([x.data.type for x in self.clean_features]))
         for feature in self.clean_features:
             if feature.data.type in [x.value for x in type_enums.TranslatedAll]:  # todo, fix brittle to pre/post commit
+                print('swapping {} {}'.format(feature, feature.data.type))
                 pid = self._get_protein_id_from_cds(feature)
-                self.transcript.replace_selflinks_w_replacementlinks(replacement=self.proteins[pid],
-                                                                     to_replace=['features'])
+                self.transcript.replace_selflink_with_replacementlink(replacement=self.proteins[pid],
+                                                                      data=feature.data)
                 #assert len(feature.transcripts) == 1
                 #feature.de_link_from_feature_holder(
                 #    holder_id=feature.transcripts[0],
@@ -672,6 +674,8 @@ class TranscriptInterpreter(TranscriptInterpBase):
                 #)
                 #protein_id = self.protein_id_key[self._get_protein_id_from_cds(feature)]
                 #feature.link_to_feature_holder(protein_id, SuperLocus.t_proteins)
+            else:
+                print('not swapping {} {}'.format(feature, feature.data.type))
 
     def is_plus_strand(self):
         features = self.transcript.data.features
