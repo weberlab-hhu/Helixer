@@ -15,6 +15,8 @@ from sqlalchemy.orm import sessionmaker
 class ImportControl(object):
 
     def __init__(self, database_path, err_path=None):
+        if not database_path.startswith('sqlite:///'):
+            database_path = 'sqlite:///{}'.format(database_path)
         self.database_path = database_path
         self.session = None
         self.err_path = err_path

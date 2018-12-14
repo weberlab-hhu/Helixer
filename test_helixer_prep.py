@@ -1117,7 +1117,7 @@ def test_copy_n_import():
 
     controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
     controller.mk_session()
-    controller.load_sliced_seqs()
+    controller.load_annotations()
     assert len(controller.super_loci) == 1
     sl = controller.super_loci[0].data
     assert len(sl.transcribeds) == 3

@@ -7,16 +7,18 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import os
+import sequences
 
 from gff_2_annotations import TranscriptStatus  # todo, move to helpers?
 
 
 class SliceController(object):
 
-    def __init__(self, db_path_in=None, db_path_sliced=None, sequences_sliced=None):
+    def __init__(self, db_path_in=None, db_path_sliced=None, sequences_path=None):
         self.db_path_in = db_path_in
         self.db_path_sliced = db_path_sliced
-        self.sequences_sliced = sequences_sliced
+        self.sequences_path = sequences_path
+        self.structured_genome = None
         self.engine = None
         self.session = None
         self.super_loci = []
@@ -35,15 +37,26 @@ class SliceController(object):
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
 
-    def load_sliced_seqs(self):
+    def load_annotations(self):
         sl_data = self.session.query(annotations_orm.SuperLocus).all()
         for sl in sl_data:
             super_locus = SuperLocusHandler()
             super_locus.add_data(sl)
             self.super_loci.append(super_locus)
 
+    def load_sliced_seqs(self):
+        sg = sequences.StructuredGenome()
+        sg.from_json(self.sequences_path)
+        self.structured_genome = sg
+
     def slice_annotations(self):
-        pass
+        for seq in self.structured_genome.sequences:
+            print(seq.meta_info.seqid)
+            for slice in seq.slices:
+                print('start: {}, end: {}, slice id: {}'.format(slice.start, slice.end, slice.slice_id))
+            # todo, setup slice as sequence_info in database
+            # todo, get features & there by superloci in slice
+            # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
 
 
 class SuperLocusHandler(annotations.SuperLocusHandler):

@@ -4,14 +4,25 @@ import os
 
 import sequences
 import gff_2_annotations
+import slicer
 
 
-def gff3_to_json(gff3, db_path, sequence_path, prob_path):
+def gff3_to_sqlite(gff3, db_path, sequence_path, prob_path):
     #db_path = 'sqlite:///dummy.db'
     controller = gff_2_annotations.ImportControl(database_path=db_path, err_path=prob_path)
     controller.add_sequences(sequence_path)
     controller.add_gff(gff3)
 
+
+def slice_sqlite(db_path, db_sliced_path, sliced_seq_path):
+    controller = slicer.SliceController(db_path_in=db_path, db_path_sliced=db_sliced_path,
+                                        sequences_path=sliced_seq_path)
+    controller.mk_session()
+    controller.load_annotations()
+    print('loaded annos')
+    controller.load_sliced_seqs()
+    print('loaded slices')
+    controller.slice_annotations()
 
 # todo, maybe this should be a method on the StructuredGenome...? or just in main
 def fasta_to_json(fasta, json, smallest_mer=2, largest_mer=2):
@@ -41,11 +52,11 @@ class PathFinder(object):
         # files
         self.fasta_in = self._get_fa(fasta)
         self.gff_in = self._get_gff(gff)
-        self.annotations_out = 'sqlite:///{}annotation.sqlitedb'.format(self.output)
+        self.annotations_out = '{}annotation.sqlitedb'.format(self.output)
         self.sequence_out = '{}sequence.json'.format(self.output)
         self.problems_out = '{}problems.txt'.format(self.output)
         self.sliced_sequence_out = '{}sliced_sequence.json'.format(self.output)
-        self.sliced_annotations_out = 'sqlite:///{}sliced_annotation.sqlitedb'.format(self.output)
+        self.sliced_annotations_out = '{}sliced_annotation.sqlitedb'.format(self.output)  # todo, add sqlite elsewhere
 
     def _get_fa(self, provided):
         if provided is not None:
@@ -78,10 +89,12 @@ def main(gff3, fasta, basedir, smallest_mer=2, largest_mer=2, slice=True, seed='
                                   largest_mer=largest_mer)
     else:
         sequences = load_sequence_json(paths.sequence_out)  # todo, choose one spot to import this & clean up
-    gff3_to_json(paths.gff_in, paths.annotations_out, paths.sequence_out, paths.problems_out)
+    if not os.path.exists(paths.annotations_out):
+        gff3_to_sqlite(paths.gff_in, paths.annotations_out, paths.sequence_out, paths.problems_out)
     if slice:
         sequences.divvy_each_sequence(seed)
         sequences.to_json(paths.sliced_sequence_out)
+        slice_sqlite(paths.annotations_out, paths.sliced_annotations_out, paths.sliced_sequence_out)
 
 
 if __name__ == '__main__':
