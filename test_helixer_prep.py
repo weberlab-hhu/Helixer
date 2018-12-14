@@ -966,7 +966,7 @@ def test_errors_not_lost():
     print('what features did we start with::?')
     for feature in sl.data.features:
         print(feature)
-    sl.check_and_fix_structure(entries=None, sess=controller.session)
+    sl.check_and_fix_structure(sess=controller.session)
     print('---and what features did we leave?---')
     for feature in sl.data.features:
         print(feature)
@@ -996,6 +996,36 @@ def test_mv_features_to_prot():
     controller.session.commit()
     assert len(protein.features) == 2  # start and stop codon
     assert set([x.type.value for x in protein.features]) == {type_enums.START_CODON, type_enums.STOP_CODON}
+
+
+def test_check_and_fix_structure():
+    sl, controller = setup_testable_super_loci()
+    sl.check_and_fix_structure(controller.session)
+    # check handling of nice transcript
+    transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
+    protein = [x for x in sl.data.translateds if x.given_id == 'y.p'][0]
+    # check we get a protein with start and stop codon for the nice transcript
+    assert len(protein.features) == 2  # start and stop codon
+    assert set([x.type.value for x in protein.features]) == {type_enums.START_CODON, type_enums.STOP_CODON}
+    # check we get a transcript with tss, 2x(dss, ass), and tts
+    assert len(transcript.features) == 6
+    assert set([x.type.value for x in transcript.features]) == {type_enums.TRANSCRIPTION_START_SITE,
+                                                                type_enums.TRANSCRIPTION_TERMINATION_SITE,
+                                                                type_enums.ACCEPTOR_SPLICE_SITE,
+                                                                type_enums.DONOR_SPLICE_SITE}
+    # check handling of truncated transcript
+    transcript = [x for x in sl.data.transcribeds if x.given_id == 'x'][0]
+    protein = [x for x in sl.data.translateds if x.given_id == 'x.p'][0]
+    assert len(protein.features) == 1
+    assert set([x.type.value for x in protein.features]) == {type_enums.START_CODON}
+
+    assert len(transcript.features) == 4
+    assert set([x.type.value for x in transcript.features]) == {type_enums.TRANSCRIPTION_START_SITE,
+                                                                type_enums.ACCEPTOR_SPLICE_SITE,
+                                                                type_enums.DONOR_SPLICE_SITE,
+                                                                type_enums.ERROR}
+
+
 #
 #def test_anno2json_and_back():
 #    # setup the sequence file

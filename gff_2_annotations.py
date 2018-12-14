@@ -116,6 +116,10 @@ class ImportControl(object):
             super_loci.append(super_locus)  # just to keep some direct python link to this
         self.super_loci = super_loci
         err_handle.close()
+
+    def clean_super_loci(self):
+        for sl in self.super_loci:
+            sl.check_and_fix_structure()
 #    def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
 #        err_handle = open(err_file, 'w')
 #        self._add_sequences(genome)
@@ -268,10 +272,10 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
         sf.gen_data_from_gffentry(entry, super_locus=self.data)
         sf.set_data_attribute('type', type_enums.ErrorFeature.error.name)
 
-    def check_and_fix_structure(self, entries, sess):
+    def check_and_fix_structure(self, sess):
         # if it's empty (no bottom level features at all) mark as erroneous
         if not self.data.features:
-            self._mark_erroneous(entries[0])
+            self._mark_erroneous(self.gffentry)
 
         for transcript in self.data.transcribeds:
             # mark old features
