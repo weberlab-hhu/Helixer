@@ -352,59 +352,6 @@ class NoGFFEntryError(Exception):
     pass
 
 
-class OverlapStatus(object):
-    contained = 'contained'
-    contains = 'contains'
-    no_overlap = 'no_overlap'
-    overlaps_upstream = 'overlaps_upstream'
-    overlaps_downstream = 'overlaps_downstream'
-    accepted_stati = (contained, no_overlap, overlaps_upstream, overlaps_downstream)
-
-    def __init__(self):
-        self._status = None
-
-    @property
-    def status(self):
-        return self._status
-
-    @status.setter
-    def status(self, status):
-        assert status in OverlapStatus.accepted_stati
-        self._status = status
-
-    def set_status(self, feature, seqid, start, end):
-        err_str = 'Non handled overlap feature({}, {}, {}) vs slice({}, {}, {})'.format(
-                feature.seqid, feature.start, feature.end,
-                seqid, start, end
-            )
-        overlaps_at_start = False
-        overlaps_at_end = False
-        if feature.seqid != seqid:
-            out = OverlapStatus.no_overlap
-        elif feature.start >= start and feature.end <= end:
-            out = OverlapStatus.contained
-        elif feature.start < start and feature.end > end:
-            out = OverlapStatus.contains
-        elif feature.end < start or feature.start > end:
-            out = OverlapStatus.no_overlap
-        elif feature.start < start and feature.end >= start:
-            overlaps_at_start = True
-        elif feature.end > end and feature.start <= end:
-            overlaps_at_end = True
-        else:
-            raise ValueError(err_str)
-
-        plus_strand = feature.is_plus_strand()
-        if overlaps_at_start and overlaps_at_end:
-            raise ValueError(err_str + ' Overlaps both ends???')  # todo, test this properly and remove run time check
-
-        if (overlaps_at_start and plus_strand) or (overlaps_at_end and not plus_strand):
-            out = OverlapStatus.overlaps_upstream
-        if (overlaps_at_end and plus_strand) or (overlaps_at_start and not plus_strand):
-            out = OverlapStatus.overlaps_downstream
-        self.status = out
-
-
 #### section TranscriptInterpreter, might end up in a separate file later
 class TranscriptStatus(object):
     """can hold and manipulate all the info on current status of a transcript"""
