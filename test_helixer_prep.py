@@ -963,19 +963,14 @@ def test_errors_not_lost():
     sl, controller = setup_testable_super_loci()
     feature_e, feature_eh = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, start=40, end=80,
                                                super_locus=sl.data, type=type_enums.ERROR)
-    #feature_e.id = sl.genome.feature_ider.next_unique_id()
-    #feature_e.super_locus = sl.data
-    #sl.features[feature_e.id] = feature_e
-    #feature_e.start, feature_e.end = 40, 80
-    #feature_e.change_to_error()
     print('what features did we start with::?')
     for feature in sl.data.features:
         print(feature)
-    sl.check_and_fix_structure(entries=None)
+    sl.check_and_fix_structure(entries=None, sess=controller.session)
     print('---and what features did we leave?---')
     for feature in sl.data.features:
         print(feature)
-    assert feature_e in sl.features.values()
+    assert feature_e in sl.data.features
 
 
 def test_setup_proteins():

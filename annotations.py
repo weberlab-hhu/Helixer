@@ -353,6 +353,12 @@ class SuperLocusHandler(Handler):
         else:
             raise self._link_value_error(other)
 
+    def delete_marked_underlings(self, sess):
+        for data in self.data.features + self.data.transcribeds + self.data.translateds:
+            if data.handler.delete_me:
+                sess.delete(data)
+        sess.commit()
+
 
 class MultiSideOnlyHandler(Handler):
     def copy_all_attr_to_another(self, another):

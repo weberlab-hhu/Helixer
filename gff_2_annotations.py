@@ -268,14 +268,11 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
         sf.gen_data_from_gffentry(entry, super_locus=self.data)
         sf.set_data_attribute('type', type_enums.ErrorFeature.error.name)
 
-    def check_and_fix_structure(self, entries):
+    def check_and_fix_structure(self, entries, sess):
         # if it's empty (no bottom level features at all) mark as erroneous
         if not self.data.features:
             self._mark_erroneous(entries[0])
 
-        # todo, but with reconstructed flag (also check for and mark pseudogenes)
-        to_remove = []
-        #for key in copy.deepcopy(list(self.generic_holders.keys())):
         for transcript in self.data.transcribeds:
             # mark old features
             for feature in transcript.features:
@@ -286,7 +283,7 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
             # make sure the new features link to protein if appropriate
             t_interpreter.mv_coding_features_to_proteins()
         # remove old features
-        self.remove_features(to_remove)
+        self.delete_marked_underlings(sess)
 #
 #    def add_features(self, features, feature_holders=None, holder_type=None):
 #        if holder_type is None:
@@ -667,13 +664,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
                 pid = self._get_protein_id_from_cds(feature)
                 self.transcript.replace_selflink_with_replacementlink(replacement=self.proteins[pid],
                                                                       data=feature.data)
-                #assert len(feature.transcripts) == 1
-                #feature.de_link_from_feature_holder(
-                #    holder_id=feature.transcripts[0],
-                #    holder_type=SuperLocus.t_transcripts
-                #)
-                #protein_id = self.protein_id_key[self._get_protein_id_from_cds(feature)]
-                #feature.link_to_feature_holder(protein_id, SuperLocus.t_proteins)
             else:
                 print('not swapping {} {}'.format(feature, feature.data.type))
 
