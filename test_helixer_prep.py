@@ -6,12 +6,13 @@ import helpers
 import type_enums
 import pytest
 import partitions
-import copy
+import os
 from dustdas import gffhelper
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import sqlalchemy
 import gff_2_annotations
+import slicer
 
 
 ### structure ###
@@ -605,6 +606,7 @@ def test_replacelinks():
     assert len(scribed.features) == 3
 
 
+### gff_2_annotations ###
 def test_data_frm_gffentry():
     #sess = mk_session()
     controller = gff_2_annotations.ImportControl(database_path='sqlite:///:memory:', err_path=None)
@@ -683,8 +685,8 @@ def test_data_from_cds_gffentry():
     assert handler.data.score is None
 
 
-def setup_testable_super_loci():
-    controller = gff_2_annotations.ImportControl(err_path='/dev/null', database_path='sqlite:///:memory:')
+def setup_testable_super_loci(db_path='sqlite:///:memory:'):
+    controller = gff_2_annotations.ImportControl(err_path='/dev/null', database_path=db_path)
     controller.mk_session()
     controller.add_sequences('testdata/dummyloci.sequence.json')
     controller.add_gff('testdata/dummyloci.gff3')
@@ -996,7 +998,12 @@ def test_mv_features_to_prot():
 
 
 def test_check_and_fix_structure():
-    sl, controller = setup_testable_super_loci()
+    rel_path = 'testdata/dummyloci_annotations.sqlitedb'  # so we save a copy of the cleaned up loci once
+    if os.path.exists(rel_path):
+        db_path = 'sqlite:///:memory:'
+    else:
+        db_path = 'sqlite:///{}'.format(rel_path)
+    sl, controller = setup_testable_super_loci(db_path)
     sl.check_and_fix_structure(controller.session)
     # check handling of nice transcript
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
@@ -1076,7 +1083,6 @@ def test_check_and_fix_structure():
 #    assert maxf == max(tree).end
 #
 
-#### gff_2_annotations ####
 def test_gff_gen():
     controller = gff_2_annotations.ImportControl(database_path='sqlite:///:memory:')
     x = list(controller.gff_gen('testdata/testerSl.gff3'))
@@ -1099,6 +1105,28 @@ def test_gff_grouper():
     assert len(x) == 5
     for group in x:
         assert group[0].type == 'gene'
+
+
+#### slicer ####
+def test_copy_n_import():
+    # bc we don't want to change original db at any point
+    destination = 'testdata/tmp.db'
+    if os.path.exists(destination):
+        os.remove(destination)
+    source = 'testdata/dummyloci_annotations.sqlitedb'
+
+    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
+    controller.mk_session()
+    controller.load_sliced_seqs()
+    assert len(controller.super_loci) == 1
+    sl = controller.super_loci[0].data
+    assert len(sl.transcribeds) == 3
+    assert len(sl.translateds) == 3
+    for transcribed in sl.transcribeds:
+        print('{}: {}'.format(transcribed.given_id, [x.type.value for x in transcribed.features]))
+    for translated in sl.translateds:
+        print('{}: {}'.format(translated.given_id, [x.type.value for x in translated.features]))
+    assert len(sl.features) == 17  # if I ever get to collapsing redundant features this will change
 
 
 #### type_enumss ####

@@ -1,23 +1,46 @@
 """reopen and slice the new annotation.sqlitedb and divvy superloci to train/dev/test processing sets"""
+from shutil import copyfile
+
 import annotations
 import annotations_orm
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+import os
 
 from gff_2_annotations import TranscriptStatus  # todo, move to helpers?
 
 
 class SliceController(object):
 
-    def __init__(self, db_path_in, db_path_sliced, sequences_sliced):
-        pass
+    def __init__(self, db_path_in=None, db_path_sliced=None, sequences_sliced=None):
+        self.db_path_in = db_path_in
+        self.db_path_sliced = db_path_sliced
+        self.sequences_sliced = sequences_sliced
+        self.engine = None
+        self.session = None
+        self.super_loci = []
 
     def copy_db(self):
-        pass
+        copyfile(self.db_path_in, self.db_path_sliced)
+
+    def full_db_path(self):
+        return 'sqlite:///{}'.format(self.db_path_sliced)
 
     def mk_session(self):
-        pass
+        if not os.path.exists(self.db_path_sliced):
+            self.copy_db()
+        self.engine = create_engine(self.full_db_path(), echo=False)  # todo, dynamic / real path
+        annotations_orm.Base.metadata.create_all(self.engine)
+        Session = sessionmaker(bind=self.engine)
+        self.session = Session()
 
     def load_sliced_seqs(self):
-        pass
+        sl_data = self.session.query(annotations_orm.SuperLocus).all()
+        for sl in sl_data:
+            super_locus = SuperLocusHandler()
+            super_locus.add_data(sl)
+            self.super_loci.append(super_locus)
 
     def slice_annotations(self):
         pass
