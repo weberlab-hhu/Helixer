@@ -169,40 +169,18 @@ class AnnotatedGenomeHandler(Handler):
             raise self._link_value_error(other)
 
 
-    #gffkey = FeatureDecoder()
-    # todo, figure out if one wants to keep the id makers like this...
-#    transcript_ider = helpers.IDMaker(prefix='trx')
-#    protein_ider = helpers.IDMaker(prefix='prt')
-#    feature_ider = helpers.IDMaker(prefix='ftr')
-#
-#    def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
-#        sls = SuperLociSlice()
-#        sls.genome = self
-#        sls.add_gff(gff_file, genome, err_file=err_file)
-#        self.super_loci_slices.append(sls)
-#
 #    def divvy_up_super_loci(self, divvied_sequences):
 #        # todo: load to interval tree
 #        # todo: represent partial super_loci
 #        # todo: code split super_loci
 #        # todo: put it together
 #        pass
-#
-#    def clean_post_load(self):
-#        for sl in self.super_loci_slices:
-#            sl.genome = self
 
 
 class SequenceInfoHandler(Handler):
     def __init__(self):
         super().__init__()
         self._seq_info = None
-#        self.mapper = helpers.Mapper()
-#
-#    @property
-#    def gffkey(self):
-#        return self.genome.gffkey
-#
 
     @property
     def data_type(self):
@@ -312,19 +290,6 @@ class SequenceInfoHandler(Handler):
 #                trimmed_transcript = transcript.reconcile_with_slice(seqid, start, end)  # todo
 #                # todo, add transcript & features to new slice
 #            # todo add sl
-#
-#    def add_slice(self, seqid, slice_id, start, end, processing_set):
-#        pass #todo
-#
-#    def to_example(self):
-#        raise NotImplementedError
-#
-#    def clean_post_load(self):
-#        for sl in self.super_loci:
-#            sl.slice = self
-#
-#    def __deepcopy__(self, memodict={}):
-#        raise NotImplementedError  # todo
 
 
 class SuperLocusHandler(Handler):
@@ -358,11 +323,6 @@ class SuperLocusHandler(Handler):
             if data.handler.delete_me:
                 sess.delete(data)
         sess.commit()
-
-
-class MultiSideOnlyHandler(Handler):
-    def copy_all_attr_to_another(self, another):
-        pass ## todo, maybe just delete again?
 
 
 class TranscribedHandler(Handler):
@@ -458,11 +418,7 @@ class FeatureHandler(Handler):
     @property
     def py_end(self):
         return self.data.end
-#
-#    def short_str(self):
-#        return '{} is {}: {}-{} on {}. --> {}|{}|{}'.format(self.id, self.type, self.start, self.end, self.seqid,
-#                                                            self.transcripts, self.proteins, self.generic_holders)
-#
+
 #    def add_data(self, super_locus, gff_entry):
 #        gffkey = super_locus.genome.gffkey
 #        try:
@@ -512,20 +468,7 @@ class FeatureHandler(Handler):
 #                            parent=transcript_id
 #                        ))
 #            self.link_to_feature_holder_and_back(new_t_id, SuperLocus.t_feature_holders)
-#
-#    def add_erroneous_data(self, super_locus, gff_entry):
-#        self.super_locus = super_locus
-#        feature_e = self.clone()
-#        feature_e.start = int(gff_entry.start)
-#        feature_e.end = int(gff_entry.end)
-#        feature_e.strand = gff_entry.strand
-#        feature_e.seqid = gff_entry.seqid
-#        feature_e.change_to_error()
-#        return feature_e
-#
-#    def change_to_error(self):
-#        self.type = self.super_locus.genome.gffkey.error
-#
+
 #    def fully_overlaps(self, other):
 #        should_match = ['type', 'start', 'end', 'seqid', 'strand', 'phase']
 #        does_it_match = [self.__getattribute__(x) == other.__getattribute__(x) for x in should_match]
@@ -541,25 +484,8 @@ class FeatureHandler(Handler):
 #        same_gene = self.super_locus is other.super_locus
 #        coordinates_within = self.start >= other.start and self.end <= other.end
 #        return all(does_it_match + [coordinates_within, same_gene])
-#
-#    def reconstruct_exon(self):
-#        """creates an exon exactly containing this feature"""
-#        exon = self.clone()
-#        exon.type = self.super_locus.genome.gffkey.exon
-#        return exon
-#
-#    def clone(self, copy_feature_holders=True):
-#    def __deepcopy__(self, memodict={}):
 
-#
-#    def merge(self, other):
-#        assert self is not other
-#        # move transcript reference from other to self
-#        for fset in SuperLocus.types_feature_holders:
-#            for ordf in copy.deepcopy(other.__getattribute__(fset)):
-#                self.link_to_feature_holder_and_back(ordf, fset)
-#                other.de_link_from_transcript(ordf)
-#
+
 #    def upstream(self):
 #        if self.is_plus_strand():
 #            return self.start

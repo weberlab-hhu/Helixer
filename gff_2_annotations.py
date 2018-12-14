@@ -187,23 +187,7 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
                               sequence_info=sequence_info)
         self.add_data(data)
         # todo, grab more aliases from gff attribute
-#    t_transcripts = 'transcripts'
-#    t_proteins = 'proteins'
-#    t_feature_holders = 'generic_holders'
-#    types_feature_holders = [t_transcripts, t_proteins, t_feature_holders]
-#
-#        self._dummy_transcript = None
-#
-#    def short_str(self):
-#        string = "{}\ntranscripts: {}\nproteins: {}\ngeneric holders: {}".format(self.id, list(self.transcripts.keys()),
-#                                                                                 list(self.proteins.keys()),
-#                                                                                 list(self.generic_holders.keys()))
-#        return string
-#
-#    @property
-#    def genome(self):
-#        return self.slice.genome
-#
+
 #    def dummy_transcript(self):
 #        if self._dummy_transcript is not None:
 #            return self._dummy_transcript
@@ -288,61 +272,6 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
             t_interpreter.mv_coding_features_to_proteins()
         # remove old features
         self.delete_marked_underlings(sess)
-#
-#    def add_features(self, features, feature_holders=None, holder_type=None):
-#        if holder_type is None:
-#            holder_type = SuperLocus.t_feature_holders
-#
-#        feature_holders = none_to_list(feature_holders)
-#
-#        for feature in features:
-#            self.features[feature.id] = feature
-#            for holder in feature_holders:
-#                feature.link_to_feature_holder_and_back(holder.id, holder_type)
-#
-#    def remove_features(self, to_remove):
-#        for f_key in to_remove:
-#            self.features.pop(f_key)
-#
-#    def exons(self):
-#        return [self.features[x] for x in self.features if self.features[x].type == self.genome.gffkey.exon]
-#
-#    def coding_info_features(self):
-#        return [self.features[x] for x in self.features if self.features[x].type in self.genome.gffkey.coding_info]
-#
-#    def check_sequence_assumptions(self):
-#        pass
-#
-#    def clean_post_load(self):
-#        for key in self.transcripts:
-#            self.transcripts[key].super_locus = self
-#
-#        for key in self.features:
-#            self.features[key].super_locus = self
-
-#    def __deepcopy__(self, memodict={}):
-#        new = SuperLocus()
-#        copy_over = copy.deepcopy(list(new.__dict__.keys()))
-#
-#        for to_skip in ['slice']:
-#            copy_over.pop(copy_over.index(to_skip))
-#
-#        # copy everything
-#        for item in copy_over:
-#            new.__setattr__(item, copy.deepcopy(self.__getattribute__(item)))
-#
-#        new.slice = self.slice
-#
-#        # fix point back references to point to new
-#        for val in new.transcripts.values():
-#            val.super_locus = new
-#
-#        for val in new.features.values():
-#            val.super_locus = new
-#
-#        return new
-#
-#
 
 
 class FeatureHandler(annotations.FeatureHandler, GFFDerived):
@@ -539,10 +468,6 @@ class TranscriptInterpBase(object):
     def super_locus(self):
         return self.transcript.data.super_locus.handler
 
-    #@property
-    #def gffkey(self):
-    #    return self.transcript.super_locus.genome.gffkey
-
 
 class TranscriptTrimmer(TranscriptInterpBase):
     """takes pre-cleaned/explicit transcripts and crops to what fits in a slice"""
@@ -579,12 +504,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
         handler.add_data(data)
         template.fax_all_attrs_to_another(another=handler)
         handler.gffentry = copy.deepcopy(template.gffentry)
-        #try:
-        #    new = template.clone()
-        #except KeyError as e:
-        #    print(self.transcript.super_locus.short_str())
-        #    print(template.short_str())
-        #    raise e
+
         for key in kwargs:
             handler.set_data_attribute(key, kwargs[key])
         return handler
@@ -632,11 +552,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
                 protein_id = self._get_protein_id_from_cds(feature.handler)
                 protein_ids.add(protein_id)
         return protein_ids
-        ## map if necessary to unique / not-None IDs
-        #prot_id_key = {}
-        #for pkey in protein_ids:
-        #    prot_id_key[pkey] = self.super_locus.genome.protein_ider.next_unique_id(pkey)
-        #return prot_id_key
 
     def _setup_proteins(self):
         # only meant for use before feature interpretation
