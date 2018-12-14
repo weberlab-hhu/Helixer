@@ -149,11 +149,6 @@ def in_values(x, enum):
     return x in [item.value for item in enum]
 
 
-#class SequenceInfoHandler(annotations.SequenceInfoHandler):
-#
-#    def add_sequences_as_coordinates(self):
-#        pass
-
 
 ##### gff parsing subclasses #####
 class GFFDerived(object):
@@ -214,7 +209,7 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
             transcribed.process_gffentry(entry, super_locus=self.data)
             self.transcribed_handlers.append(transcribed)
 
-        elif in_values(entry.type, type_enums.OnSequence):  # todo, I don't have a feature-level/on sequence type??
+        elif in_values(entry.type, type_enums.OnSequence):
             feature = FeatureHandler()
             assert len(self.transcribed_handlers) > 0, "no transcribeds found before feature"
             feature.process_gffentry(entry, super_locus=self.data,
@@ -488,15 +483,10 @@ class TranscriptInterpreter(TranscriptInterpBase):
         super().__init__(transcript)
         self.clean_features = []  # will hold all the 'fixed' feature handlers (convenience? or can remove?)
         self.transcript = transcript
-        #self.protein_id_key = self._get_raw_protein_ids()
         try:
             self.proteins = self._setup_proteins()
         except NoGFFEntryError:
             self.proteins = None  # this way we only run into an error if we actually wanted to use proteins
-
-    # todo, divvy features to transcript or proteins
-    # todo, get_protein_id function (protein_id, Parent of CDS, None to IDMAker)
-    # todo, make new protein when ID changes / if we've hit stop codon?
 
     def new_feature(self, template, **kwargs):
         handler = FeatureHandler()
@@ -705,7 +695,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
                 err_start, err_end = min_max(at - 1 * sign, upstream_buffered)
                 feature_e = self.new_feature(template=template, type=type_enums.ERROR,
                                              start=err_start, end=err_end, phase=None)
-                # todo, do I need to set IN_TRANSCRIBED_REGION as well?
                 coding_status = self.new_feature(template=template, type=type_enums.IN_TRANSLATED_REGION, start=at,
                                                  end=at)
                 transcribed_status = self.new_feature(template=template, type=type_enums.IN_RAW_TRANSCRIPT, start=at,
@@ -841,7 +830,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
             self.interpret_transition(ivals_before, ivals_after, plus_strand)
 
         self.interpret_last_pos(intervals=interval_sets[-1])
-        # self._mv_coding_features_to_proteins()  # todo, bring this back (maybe/maybe not here?)
 
     def possible_types(self, intervals):
         # shortcuts
