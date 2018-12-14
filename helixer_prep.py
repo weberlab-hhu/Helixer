@@ -3,12 +3,12 @@ import argparse
 import os
 
 import sequences
-import annotations
 import gff_2_annotations
 
 
-def gff3_to_json(gff3, json, sequence_path, prob_path):
-    controller = gff_2_annotations.ImportControl(database_path=None, err_path=prob_path)
+def gff3_to_json(gff3, db_path, sequence_path, prob_path):
+    #db_path = 'sqlite:///dummy.db'
+    controller = gff_2_annotations.ImportControl(database_path=db_path, err_path=prob_path)
     controller.add_sequences(sequence_path)
     controller.add_gff(gff3)
 
@@ -41,11 +41,11 @@ class PathFinder(object):
         # files
         self.fasta_in = self._get_fa(fasta)
         self.gff_in = self._get_gff(gff)
-        self.annotations_out = '{}annotation.json'.format(self.output)
+        self.annotations_out = 'sqlite:///{}annotation.sqlitedb'.format(self.output)
         self.sequence_out = '{}sequence.json'.format(self.output)
         self.problems_out = '{}problems.txt'.format(self.output)
         self.sliced_sequence_out = '{}sliced_sequence.json'.format(self.output)
-        self.sliced_annotations_out = '{}sliced_annotation.json'.format(self.output)
+        self.sliced_annotations_out = 'sqlite:///{}sliced_annotation.sqlitedb'.format(self.output)
 
     def _get_fa(self, provided):
         if provided is not None:
