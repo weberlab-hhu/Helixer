@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 ##### main flow control #####
 class ImportControl(object):
 
-    def __init__(self, database_path=None, err_path=None):
+    def __init__(self, database_path, err_path=None):
         self.database_path = database_path
         self.session = None
         self.err_path = err_path
@@ -25,7 +25,7 @@ class ImportControl(object):
         self.mk_session()
 
     def mk_session(self):
-        self.engine = create_engine('sqlite:///:memory:', echo=False)  # todo, dynamic / real path
+        self.engine = create_engine(self.database_path, echo=False)  # todo, dynamic / real path
         annotations_orm.Base.metadata.create_all(self.engine)
         Session = sessionmaker(bind=self.engine)
         self.session = Session()

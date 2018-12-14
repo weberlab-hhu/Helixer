@@ -607,7 +607,7 @@ def test_replacelinks():
 
 def test_data_frm_gffentry():
     #sess = mk_session()
-    controller = gff_2_annotations.ImportControl(database_path=None, err_path=None)
+    controller = gff_2_annotations.ImportControl(database_path='sqlite:///:memory:', err_path=None)
     sess = controller.session
     gene_string = 'NC_015438.2\tGnomon\tgene\t4343\t5685\t.\t+\t.\tID=gene0;Dbxref=GeneID:104645797;Name=LOC10'
     mrna_string = 'NC_015438.2\tBestRefSeq\tmRNA\t13024\t15024\t.\t+\t.\tID=rna0;Parent=gene0;Dbxref=GeneID:'
@@ -670,7 +670,7 @@ def test_data_from_cds_gffentry():
         "XP_004248424.1;Name=XP_004248424.1;gbkey=CDS;gene=LOC101263940;product=protein IQ-DOMAIN 14-like;" \
         "protein_id=XP_004248424.1"
     cds_entry = gffhelper.GFFObject(s)
-    controller = gff_2_annotations.ImportControl(database_path=None, err_path=None)
+    controller = gff_2_annotations.ImportControl(database_path='sqlite:///:memory:', err_path=None)
     controller.clean_entry(cds_entry)
     handler = gff_2_annotations.FeatureHandler()
     handler.gen_data_from_gffentry(cds_entry)
@@ -684,7 +684,7 @@ def test_data_from_cds_gffentry():
 
 
 def setup_testable_super_loci():
-    controller = gff_2_annotations.ImportControl(err_path='/dev/null')
+    controller = gff_2_annotations.ImportControl(err_path='/dev/null', database_path='sqlite:///:memory:')
     controller.mk_session()
     controller.add_sequences('testdata/dummyloci.sequence.json')
     controller.add_gff('testdata/dummyloci.gff3')
@@ -754,12 +754,9 @@ def test_seqinfo_from_transcript_interpreter():
 
 
 def test_import_seqinfo():
-    controller = gff_2_annotations.ImportControl()
+    controller = gff_2_annotations.ImportControl(database_path='sqlite:///:memory:')
     controller.mk_session()
-    #genome = sequences.StructuredGenome()
-    #genome.add_fasta('testdata/dummyloci.fa')
     json_path = 'testdata/dummyloci.sequence.json'
-    #genome.to_json(json_path)
     controller.add_sequences(json_path)
     coors = controller.sequence_info.data.coordinates
     assert len(coors) == 1
@@ -1078,72 +1075,10 @@ def test_check_and_fix_structure():
 #    assert minf == min(tree).begin
 #    assert maxf == max(tree).end
 #
-#
-#def test_deepcopies():
-#    sl = setup_loci_with_utr()
-#    sl2 = copy.deepcopy(sl)
-#    assert sl is not sl2
-#    for key in sl.__dict__:
-#        val = sl.__getattribute__(key)
-#        # most GenericData pieces should be objects, AKA, not is
-#        if isinstance(val, structure.GenericData):
-#            if key is not 'slice':  # slice points up, aka, should be the same as we only copied from super locus lev.
-#                assert val is not sl2.__getattribute__(key)
-#        elif isinstance(val, dict) or isinstance(val, list):
-#            pass  # skipping as __eq__ etc not implemented
-#        else:
-#            # normal values should be identical
-#            if key is not 'gff_entry':  # no equality implemented for this class
-#                assert val == sl2.__getattribute__(key)
-#
-#    # same idea for one of the sub pieces skipped above
-#    f = sl.features['ftr000010']
-#    f2 = sl2.features['ftr000010']
-#    for key in f.__dict__:
-#        val = f.__getattribute__(key)
-#        if not isinstance(val, structure.GenericData):
-#            if key is not 'gff_entry':  # no equality implemented for this class
-#                assert val == f2.__getattribute__(key)
-#        else:
-#            assert val is not f2.__getattribute__(key)
-
-#def test_swap_type():
-#    sl = setup_loci_with_utr()
-#    holder = sl.generic_holders['x']
-#    old_n_feature_holders = len(sl.generic_holders)
-#    ori_fholder_features = copy.deepcopy(holder.features)
-#    protein = holder.swap_type('proteins')
-#    assert len(sl.generic_holders) == old_n_feature_holders - 1
-#    assert len(sl.proteins) == 1
-#    assert holder.id not in sl.generic_holders
-#    assert holder.id == protein.id
-#    assert ori_fholder_features == protein.features
-#    assert holder.super_locus is protein.super_locus
-#
-#
-#def test_entries_are_imported():
-#    sl = setup_loci_with_utr()
-#    pass # todo, finish
-#
-#
-#def test_renamer():
-#    staticsl = setup_loci_with_utr()
-#    sl = setup_loci_with_utr()
-#    y = sl.generic_holders['y']
-#    newy = y.replace_id_everywhere('newy')
-#    print(sl.generic_holders.keys())
-#    assert 'newy' in sl.generic_holders.keys()
-#    assert 'y' not in sl.generic_holders.keys()
-#    for key in sl.features.keys():
-#        val_old = staticsl.features[key]
-#        val = sl.features[key]
-#        if 'y' in val_old.generic_holders:
-#            assert 'y' not in val.generic_holders
-#            assert 'newy' in val.generic_holders
 
 #### gff_2_annotations ####
 def test_gff_gen():
-    controller = gff_2_annotations.ImportControl()
+    controller = gff_2_annotations.ImportControl(database_path='sqlite:///:memory:')
     x = list(controller.gff_gen('testdata/testerSl.gff3'))
     assert len(x) == 103
     assert x[0].type == 'region'
@@ -1151,7 +1086,7 @@ def test_gff_gen():
 
 
 def test_gff_useful_gen():
-    controller = gff_2_annotations.ImportControl()
+    controller = gff_2_annotations.ImportControl(database_path='sqlite:///:memory:')
     x = list(controller.useful_gff_entries('testdata/testerSl.gff3'))
     assert len(x) == 100  # should drop the region entry
     assert x[0].type == 'gene'
@@ -1159,7 +1094,7 @@ def test_gff_useful_gen():
 
 
 def test_gff_grouper():
-    controller = gff_2_annotations.ImportControl()
+    controller = gff_2_annotations.ImportControl(database_path='sqlite:///:memory:')
     x = list(controller.group_gff_by_gene('testdata/testerSl.gff3'))
     assert len(x) == 5
     for group in x:
