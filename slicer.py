@@ -54,10 +54,13 @@ class SliceController(object):
             print(seq.meta_info.seqid)
             for slice in seq.slices:
                 print('start: {}, end: {}, slice id: {}'.format(slice.start, slice.end, slice.slice_id))
+                yield seq.meta_info.seqid, slice.start, slice.end, slice.slice_id
             # todo, setup slice as sequence_info in database
             # todo, get features & there by superloci in slice
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
 
+    def get_super_loci_frm_slice(seqid, start, end):
+        pass
 
 class SuperLocusHandler(annotations.SuperLocusHandler):
     pass
