@@ -121,7 +121,7 @@ class ImportControl(object):
 
     def clean_super_loci(self):
         for sl in self.super_loci:
-            sl.check_and_fix_structure()
+            sl.check_and_fix_structure(self.session)
 #    def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
 #        err_handle = open(err_file, 'w')
 #        self._add_sequences(genome)
@@ -216,6 +216,7 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
             assert len(self.transcribed_handlers) > 0, "no transcribeds found before feature"
             feature.process_gffentry(entry, super_locus=self.data,
                                      transcribeds=[self.transcribed_handlers[-1].data])
+            self.feature_handlers.append(feature)
         else:
             raise ValueError("problem handling entry of type {}".format(entry.type))
 

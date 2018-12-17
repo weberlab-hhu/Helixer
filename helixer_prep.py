@@ -12,6 +12,8 @@ def gff3_to_sqlite(gff3, db_path, sequence_path, prob_path):
     controller = gff_2_annotations.ImportControl(database_path=db_path, err_path=prob_path)
     controller.add_sequences(sequence_path)
     controller.add_gff(gff3)
+    controller.clean_super_loci()
+    controller.session.commit()
 
 
 def slice_sqlite(db_path, db_sliced_path, sliced_seq_path):
