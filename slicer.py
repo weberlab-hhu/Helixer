@@ -59,12 +59,22 @@ class SliceController(object):
             # todo, get features & there by superloci in slice
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
 
-    def get_super_loci_frm_slice(seqid, start, end):
+    def get_super_loci_frm_slice(self, seqid, start, end):
         pass
 
-class SuperLocusHandler(annotations.SuperLocusHandler):
-    pass
+    def get_features_from_slice(self, seqid, start, end):
+        pass
 
+    def get_super_loci_frm_features(self, seqid, start, end):
+        pass
+
+    def clean_slice(self):
+        pass
+
+
+class SuperLocusHandler(annotations.SuperLocusHandler):
+    def reconcile_with_slice(self, seqid, start, end):
+        pass
 #
 #    def reconcile_with_slice(self, seqid, start, end, status, last_before_slice):
 #        #overlap_status = OverlapStatus()
@@ -102,6 +112,16 @@ class SuperLocusHandler(annotations.SuperLocusHandler):
 #        if self.phase is not None:
 #            l_out = self.length_outside_slice(start, end)
 #            self.phase = (l_out - self.phase) % 3
+
+
+class TranscribedHandler(annotations.TranscribedHandler):
+    def reconcile_with_slice(self, seqid, start, end):
+        pass
+
+
+class TranslatedHandler(annotations.TranslatedHandler):
+    def reconcile_translated_with_slice(self, seqid, start, end):
+        pass
 
 
 class OverlapStatus(object):
