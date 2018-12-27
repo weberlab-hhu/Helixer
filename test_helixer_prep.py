@@ -1129,6 +1129,35 @@ def test_copy_n_import():
     assert len(sl.features) == 17  # if I ever get to collapsing redundant features this will change
 
 
+def test_intervaltree():
+    destination = 'testdata/tmp.db'
+    if os.path.exists(destination):
+        os.remove(destination)
+    source = 'testdata/dummyloci_annotations.sqlitedb'
+
+    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
+    controller.mk_session()
+    controller.load_annotations()
+    controller.fill_intervaltrees()
+    print(controller.interval_trees)
+    # check that one known point has two errors, and one transcription termination site as expected
+    intervals = controller.interval_trees['1'][400]
+    errors = [x for x in intervals if x.data.data.type.value == type_enums.ERROR]
+    assert len(errors) == 2
+    tts = [x for x in intervals if x.data.data.type.value == type_enums.TRANSCRIPTION_TERMINATION_SITE]
+    assert len(tts) == 0
+    # check that the major filter functions work
+    sls = controller.get_super_loci_frm_slice(seqid='1', start=305, end=405)
+    assert len(sls) == 1
+    assert isinstance(list(sls)[0], slicer.SuperLocusHandler)
+
+    features = controller.get_features_from_slice(seqid='1', start=1, end=1)
+    assert len(features) == 3
+    starts = [x for x in features if x.data.type.value == type_enums.TRANSCRIPTION_START_SITE]
+    assert len(starts) == 2
+    errors = [x for x in features if x.data.type.value == type_enums.ERROR]
+    assert len(errors) == 1
+
 #### type_enumss ####
 def test_enum_non_inheritance():
     allknown = [x.name for x in list(type_enums.AllKnown)]

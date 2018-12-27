@@ -1,6 +1,7 @@
 import copy
 from types import GeneratorType
 import annotations_orm
+from helpers import as_py_end, as_py_start
 
 
 def convert2list(obj):
@@ -413,11 +414,11 @@ class FeatureHandler(Handler):
 
     @property
     def py_start(self):
-        return self.data.start - 1
+        return as_py_start(self.data.start)
 
     @property
     def py_end(self):
-        return self.data.end
+        return as_py_end(self.data.end)
 
 #    def add_data(self, super_locus, gff_entry):
 #        gffkey = super_locus.genome.gffkey

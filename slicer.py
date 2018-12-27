@@ -1,5 +1,6 @@
 """reopen and slice the new annotation.sqlitedb and divvy superloci to train/dev/test processing sets"""
 from shutil import copyfile
+import intervaltree
 
 import annotations
 import annotations_orm
@@ -8,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 import os
 import sequences
-
+from helpers import as_py_start, as_py_end
 from gff_2_annotations import TranscriptStatus  # todo, move to helpers?
 
 
@@ -22,6 +23,7 @@ class SliceController(object):
         self.engine = None
         self.session = None
         self.super_loci = []
+        self.interval_trees = {}
 
     def copy_db(self):
         copyfile(self.db_path_in, self.db_path_sliced)
@@ -49,6 +51,10 @@ class SliceController(object):
         sg.from_json(self.sequences_path)
         self.structured_genome = sg
 
+    def fill_intervaltrees(self):
+        for sl in self.super_loci:
+            sl.load_to_intervaltree(self.interval_trees)
+
     def slice_annotations(self):
         for seq in self.structured_genome.sequences:
             print(seq.meta_info.seqid)
@@ -60,19 +66,35 @@ class SliceController(object):
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
 
     def get_super_loci_frm_slice(self, seqid, start, end):
-        pass
+        features = self.get_features_from_slice(seqid, start, end)
+        super_loci = self.get_super_loci_frm_features(features)
+        return super_loci
 
     def get_features_from_slice(self, seqid, start, end):
-        pass
+        tree = self.interval_trees[seqid]
+        intervals = tree[as_py_start(start):as_py_end(end)]
+        features = [x.data for x in intervals]
+        return features
 
-    def get_super_loci_frm_features(self, seqid, start, end):
-        pass
+    def get_super_loci_frm_features(self, features):
+        super_loci = set()
+        for feature in features:
+            super_loci.add(feature.data.super_locus.handler)
+        return super_loci
 
     def clean_slice(self):
         pass
 
 
 class SuperLocusHandler(annotations.SuperLocusHandler):
+
+    def load_to_intervaltree(self, trees):
+        features = self.data.features
+        for f in features:
+            feature = FeatureHandler()  # recreate feature handler post load (todo, mv elsewhere so it's always done?)
+            feature.add_data(f)
+            feature.load_to_intervaltree(trees)
+
     def reconcile_with_slice(self, seqid, start, end):
         pass
 #
@@ -122,6 +144,14 @@ class TranscribedHandler(annotations.TranscribedHandler):
 class TranslatedHandler(annotations.TranslatedHandler):
     def reconcile_translated_with_slice(self, seqid, start, end):
         pass
+
+
+class FeatureHandler(annotations.FeatureHandler):
+    def load_to_intervaltree(self, trees):
+        if self.data.seqid not in trees:
+            trees[self.data.seqid] = intervaltree.IntervalTree()
+        tree = trees[self.data.seqid]
+        tree[self.py_start:self.py_end] = self
 
 
 class OverlapStatus(object):

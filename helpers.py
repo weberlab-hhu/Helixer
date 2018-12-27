@@ -118,3 +118,19 @@ class IDMaker(object):
     def _fmt_id(self):
         to_format = '{}{:0' + str(self._width) + '}'
         return to_format.format(self.prefix, self._counter)
+
+
+def as_py_start(start):
+    return start - 1
+
+
+def as_py_end(end):
+    return end
+
+
+def as_bio_start(py_start):
+    return py_start + 1
+
+
+def as_bio_end(py_end):
+    return py_end
