@@ -141,6 +141,9 @@ class TranscribedHandler(annotations.TranscribedHandler):
         pass
 
 
+
+
+
 class TranslatedHandler(annotations.TranslatedHandler):
     def reconcile_translated_with_slice(self, seqid, start, end):
         pass
@@ -205,3 +208,49 @@ class OverlapStatus(object):
         if (overlaps_at_end and plus_strand) or (overlaps_at_start and not plus_strand):
             out = OverlapStatus.overlaps_downstream
         self.status = out
+
+
+class FeatureOrderer(object):
+    def __init__(self, features):
+        self.features = features
+        self.chunks = None
+
+    def sort_features(self):
+        self.features = sorted(self.features, key=self.orderable_feature)
+
+    def order_features(self):
+        self.sort_features()
+        self.chunks = self.chunk_sorted()
+
+    @staticmethod
+    def orderable_feature(feature):
+        return feature.seqid, feature.start, feature.end
+
+    def chunk_sorted(self):
+        chunk = [self.features[0]]
+        for i in range(1, len(self.features), 1):
+            pass  # todo, rewrite or remove after raw_transcripts are implemented
+
+    def to_split_between(self, f0, f1):
+        out = False
+        if f0.seqid != f1.seqid:
+            out = True
+        elif self.to_split_before(f1):
+            out = True
+        elif self.to_split_after(f0):
+            out = True
+        return out
+
+    def to_split_before(self, feature):
+        out = False
+        if feature.is_plus_strand:
+            if isinstance(feature, annotations_orm.DownstreamFeature):
+                out = True
+        else:
+            if isinstance(feature, annotations_orm.UpstreamFeature):
+                out = True
+        return out
+
+    def to_split_after(self, feature):
+        pass
+
