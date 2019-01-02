@@ -636,7 +636,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
             # it better be std phase if it's a start codon
             at = template.upstream_from_interval(after0)
             if template.data.phase == 0:  # "non-0 phase @ {} in {}".format(template.id, template.super_locus.id)
-                start, end = min_max(at, at + 2 * sign)
+                start = end = at
                 start_codon = self.new_feature(template=template, start=start, end=end, type=type_enums.START_CODON)
                 self.status.saw_start(phase=0)
                 self.clean_features.append(start_codon)
@@ -655,7 +655,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
             # todo, confirm phase for stop codon
             template = before0.data
             at = template.downstream_from_interval(before0)
-            start, end = min_max(at, at - 2 * sign)
+            start = end = at
             stop_codon = self.new_feature(template=template, start=start, end=end, type=type_enums.STOP_CODON)
             self.status.saw_stop()
             self.clean_features.append(stop_codon)

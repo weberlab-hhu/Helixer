@@ -914,7 +914,7 @@ def test_transcript_transition_from_5p_to_end():
     features = t_interp.clean_features
     assert features[-1].data.type == type_enums.START_CODON
     assert features[-1].data.start == 11
-    assert features[-1].data.end == 13
+    assert features[-1].data.end == 11
     # hit splice site
     t_interp.interpret_transition(ivals_before=ivals_sets[1], ivals_after=ivals_sets[2], plus_strand=True)
     assert features[-1].data.type == type_enums.ACCEPTOR_SPLICE_SITE
@@ -931,7 +931,7 @@ def test_transcript_transition_from_5p_to_end():
     # hit stop codon
     t_interp.interpret_transition(ivals_before=ivals_sets[3], ivals_after=ivals_sets[4], plus_strand=True)
     assert features[-1].data.type == type_enums.STOP_CODON
-    assert features[-1].data.start == 298
+    assert features[-1].data.start == 300
     # hit transcription termination site
     t_interp.interpret_last_pos(ivals_sets[4], plus_strand=True)
     assert features[-1].data.type == type_enums.TRANSCRIPTION_TERMINATION_SITE
