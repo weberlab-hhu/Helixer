@@ -84,8 +84,8 @@ class SuperLocus(Base):
     translateds = relationship('Translated', back_populates='super_locus')
 
 
-association_transcribeds_to_features = Table('association_transcribeds_to_features', Base.metadata,
-    Column('transcribed_id', Integer, ForeignKey('transcribeds.id')),
+association_transcribeds_to_features = Table('association_transcribeds_to_features', Base.metadata,  # todo, rename
+    Column('transcribed_piece_id', Integer, ForeignKey('transcribed_pieces.id')),
     Column('feature_id', Integer, ForeignKey('features.id'))
 )
 
@@ -99,23 +99,41 @@ association_translateds_to_transcribeds = Table('association_translateds_to_tran
     Column('transcribed_id', Integer, ForeignKey('transcribeds.id'))
 )
 
+# todo, association table Transcribed <-> TranscribedPiece
+
+# todo, association table DownstreamFeature <-> UpstreamFeature + fk -> Transcribed
+
 
 class Transcribed(Base):
     __tablename__ = 'transcribeds'
 
     id = Column(Integer, primary_key=True)
     given_id = Column(String)
+
     type = Column(Enum(type_enums.TranscriptLevelAll))
 
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
     super_locus = relationship('SuperLocus', back_populates='transcribeds')
 
-    features = relationship('Feature', secondary=association_transcribeds_to_features,
-                            back_populates='transcribeds')
-
     translateds = relationship('Translated', secondary=association_translateds_to_transcribeds,
                                back_populates='transcribeds')
 
+    transcribed_pieces = relationship('TranscribedPiece', back_populates='transcribeds')
+    # todo
+    # join_pairs = relationship(...)
+
+
+class TranscribedPiece(Base):
+    __tablename__ = 'transcribed_pieces'
+
+    id = Column(Integer, primary_key=True)
+    given_id = Column(String)
+
+    transcribed_id = Column(Integer, ForeignKey('transcribeds.id'))  # todo, association table, secondary...
+    transcribeds = relationship('Transcribed', back_populates='transcribed_pieces')
+
+    features = relationship('Feature', secondary=association_transcribeds_to_features,
+                            back_populates='transcribed_pieces')
 
 
 class Translated(Base):
@@ -155,8 +173,8 @@ class Feature(Base):
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
     super_locus = relationship('SuperLocus', back_populates='features')
 
-    transcribeds = relationship('Transcribed', secondary=association_transcribeds_to_features,
-                                back_populates='features')
+    transcribed_pieces = relationship('TranscribedPiece', secondary=association_transcribeds_to_features,
+                                      back_populates='features')
 
     translateds = relationship('Translated', secondary=association_translateds_to_features,
                                back_populates='features')
