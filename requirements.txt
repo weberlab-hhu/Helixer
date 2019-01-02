@@ -1,1 +1,4 @@
+intervaltree
+sqlalchemy
+pytest
 dustdas
