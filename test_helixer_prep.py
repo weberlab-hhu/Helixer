@@ -337,12 +337,11 @@ def test_feature_has_its_things():
 
     assert f.is_plus_strand is None
     assert f.source is None
-    assert f.seqid is None
+    assert f.coordinates is None
     assert f.score is None
     # test feature with
-    f1 = annotations_orm.Feature(super_locus=sl, is_plus_strand=False, seqid='abc', start=3, end=6)
+    f1 = annotations_orm.Feature(super_locus=sl, is_plus_strand=False, start=3, end=6)
     assert not f1.is_plus_strand
-    assert f1.seqid == 'abc'
     assert f1.start == 3
     assert f1.end == 6
     # test bad input
@@ -622,13 +621,24 @@ def test_replacelinks():
 def test_data_frm_gffentry():
     #sess = mk_session()
     controller = gff_2_annotations.ImportControl(database_path='sqlite:///:memory:', err_path=None)
+
     sess = controller.session
+    ag = annotations_orm.AnnotatedGenome()
+    slice, sliceh = setup_data_handler(gff_2_annotations.SequenceInfoHandler, annotations_orm.SequenceInfo,
+                                       annotated_genome=ag)
+    coors = annotations_orm.Coordinates(seqid='NC_015438.2', start=1, end=100000)
+    sess.add_all([ag, slice, coors])
+    sess.commit()
+    sliceh.mk_mapper()  # todo, why doesn't this work WAS HERE
     gene_string = 'NC_015438.2\tGnomon\tgene\t4343\t5685\t.\t+\t.\tID=gene0;Dbxref=GeneID:104645797;Name=LOC10'
     mrna_string = 'NC_015438.2\tBestRefSeq\tmRNA\t13024\t15024\t.\t+\t.\tID=rna0;Parent=gene0;Dbxref=GeneID:'
     exon_string = 'NC_015438.2\tGnomon\texon\t4343\t4809\t.\t+\t.\tID=id1;Parent=rna0;Dbxref=GeneID:104645797'
     gene_entry = gffhelper.GFFObject(gene_string)
     handler = gff_2_annotations.SuperLocusHandler()
     handler.gen_data_from_gffentry(gene_entry)
+    handler.data.sequence_info = slice
+    print(sliceh.gffid_to_coords.keys())
+    print(sliceh._gff_seq_ids)
     sess.add(handler.data)
     sess.commit()
     assert handler.data.given_id == 'gene0'

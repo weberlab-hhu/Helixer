@@ -164,9 +164,13 @@ class SequenceInfoHandler(annotations.SequenceInfoHandler):
         self._gffid_to_coords = None
         self._gff_seq_ids = None
 
-    def mk_mapper(self, gff_file):
-        self._gff_seq_ids = helpers.get_seqids_from_gff(gff_file)
+    def mk_mapper(self, gff_file=None):
         fa_ids = [x.seqid for x in self.data.coordinates]
+        print('fa ids {}'.format(fa_ids))
+        if gff_file is not None:  # allow setup without ado when we know IDs match exactly
+            self._gff_seq_ids = helpers.get_seqids_from_gff(gff_file)
+        else:
+            self._gff_seq_ids = fa_ids
         mapper, is_forward = helpers.two_way_key_match(fa_ids, self._gff_seq_ids)
         self.mapper = mapper
 
@@ -347,7 +351,7 @@ class FeatureHandler(annotations.FeatureHandler, GFFDerived):
         data = self.data_type(
             given_id=given_id,
             type=gffentry.type,
-            coordinates=super_locus.sequence_info.handler.gffid_to_coordinates[gffentry.seqid],
+            coordinates=super_locus.sequence_info.handler.gffid_to_coords[gffentry.seqid],
             #seqid=gffentry.seqid,
             start=gffentry.start,
             end=gffentry.end,
