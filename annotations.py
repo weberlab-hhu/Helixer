@@ -179,9 +179,6 @@ class AnnotatedGenomeHandler(Handler):
 
 
 class SequenceInfoHandler(Handler):
-    def __init__(self):
-        super().__init__()
-        self._seq_info = None
 
     @property
     def data_type(self):
@@ -208,18 +205,6 @@ class SequenceInfoHandler(Handler):
             self.data.super_loci.remove(other.data)
         else:
             raise self._link_value_error(other)
-
-    @property
-    def seq_info(self):
-        if self._seq_info is not None:
-            pass
-        else:
-            seq_info = {}
-            for x in self.data.coordinates:
-                seq_info[x.seqid] = x
-                print(x.seqid, type(x.seqid), 'seqid at import')
-            self._seq_info = seq_info
-        return self._seq_info
 
     def add_sequences(self, genome):
         for seq in genome.sequences:

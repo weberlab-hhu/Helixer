@@ -4,6 +4,8 @@ import annotations
 import annotations_orm
 import type_enums
 import sequences
+import helpers
+
 import copy
 import logging
 
@@ -99,11 +101,14 @@ class ImportControl(object):
         sg = sequences.StructuredGenome()
         sg.from_json(json_path)
         seq_info = annotations_orm.SequenceInfo(annotated_genome=self.annotated_genome.data)
-        self.sequence_info = annotations.SequenceInfoHandler()
+        self.sequence_info = SequenceInfoHandler()
         self.sequence_info.add_data(seq_info)
         self.sequence_info.add_sequences(sg)
 
     def add_gff(self, gff_file):
+        # final prepping of seqid match up
+        self.sequence_info.mk_mapper(gff_file)
+
         super_loci = []
         err_handle = open(self.err_path, 'w')
         for entry_group in self.group_gff_by_gene(gff_file):
@@ -150,6 +155,48 @@ class ImportControl(object):
 def in_values(x, enum):
     return x in [item.value for item in enum]
 
+
+class SequenceInfoHandler(annotations.SequenceInfoHandler):
+    def __init__(self):
+        super().__init__()
+        self.mapper = None
+        self._seq_info = None
+        self._gffid_to_coords = None
+        self._gff_seq_ids = None
+
+    def mk_mapper(self, gff_file):
+        self._gff_seq_ids = helpers.get_seqids_from_gff(gff_file)
+        fa_ids = [x.seqid for x in self.data.coordinates]
+        mapper, is_forward = helpers.two_way_key_match(fa_ids, self._gff_seq_ids)
+        self.mapper = mapper
+
+        if not is_forward:
+            raise NotImplementedError("Still need to implement backward match if fasta IDs are subset of gff IDs")
+
+    @property
+    def gffid_to_coords(self):
+        if self._gffid_to_coords is not None:
+            pass
+        else:
+            gffid2coords = {}
+            for gffid in self._gff_seq_ids:
+                fa_id = self.mapper(gffid)
+                x = self.seq_info[fa_id]
+                gffid2coords[gffid] = x
+            self._gffid_to_coords = gffid2coords
+        return self._gffid_to_coords
+
+    @property
+    def seq_info(self):
+        if self._seq_info is not None:
+            pass
+        else:
+            seq_info = {}
+            for x in self.data.coordinates:
+                seq_info[x.seqid] = x
+                print(x.seqid, type(x.seqid), 'seqid at import')
+            self._seq_info = seq_info
+        return self._seq_info
 
 
 ##### gff parsing subclasses #####
@@ -300,7 +347,8 @@ class FeatureHandler(annotations.FeatureHandler, GFFDerived):
         data = self.data_type(
             given_id=given_id,
             type=gffentry.type,
-            seqid=gffentry.seqid,
+            coordinates=super_locus.sequence_info.handler.gffid_to_coordinates[gffentry.seqid],
+            #seqid=gffentry.seqid,
             start=gffentry.start,
             end=gffentry.end,
             is_plus_strand=is_plus_strand,

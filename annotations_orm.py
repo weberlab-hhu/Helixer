@@ -49,6 +49,8 @@ class Coordinates(Base):
     sequence_info_id = Column(Integer, ForeignKey('sequence_infos.id'))
     sequence_info = relationship('SequenceInfo', back_populates='coordinates')
 
+    features = relationship('Feature', back_populates='coordinates')
+
     __table_args__ = (
         CheckConstraint(start >= 1, name='check_start_1plus'),
         CheckConstraint(end >= start, name='check_end_gr_start'),
@@ -169,7 +171,9 @@ class Feature(Base):
     given_id = Column(String)
 
     type = Column(Enum(type_enums.OnSequence))
-    seqid = Column(String)
+    #seqid = Column(String)
+    coordinate_id = Column(Integer, ForeignKey('coordinates.id'))  # any piece of coordinates always has just one seqid
+    coordinates = relationship('Coordinates', back_populates='features')
     start = Column(Integer)
     end = Column(Integer)
     is_plus_strand = Column(Boolean)

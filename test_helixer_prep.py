@@ -227,7 +227,7 @@ def test_processing_set_enum():
     assert sequence_info3.processing_set is None
 
 
-def test_coordinate_contraints():
+def test_coordinate_constraints():
     sess = mk_session()
     coors = annotations_orm.Coordinates(start=1, end=30, seqid='abc')
     coors2 = annotations_orm.Coordinates(start=1, end=1, seqid='abc')
@@ -259,12 +259,14 @@ def test_coordinate_seqinfo_query():
     slic.add_data(si_model)
     coors = annotations_orm.Coordinates(start=1, end=30, seqid='abc', sequence_info=si_model)
     coors2 = annotations_orm.Coordinates(start=11, end=330, seqid='def', sequence_info=si_model)
-    seq_info = slic.seq_info
+    sl = annotations_orm.SuperLocus(sequence_info=slic.data)
+    f0 = annotations_orm.Feature(super_locus=sl, coordinates=coors)
+    f1 = annotations_orm.Feature(super_locus=sl, coordinates=coors2)
     # should be ok
-    sess.add_all([coors, coors2])
-    assert slic.seq_info['abc'].start == 1
-    assert slic.seq_info['def'].end == 330
-    assert seq_info is slic.seq_info
+    sess.add_all([coors, coors2, sl, f0, f1])
+    assert f0.coordinates.start == 1
+    assert f1.coordinates.end == 330
+    #assert seq_info is slic.seq_info
 
 
 def test_many2many_scribed2slated():
