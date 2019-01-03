@@ -635,7 +635,10 @@ def test_data_frm_gffentry():
     mrna_entry = gffhelper.GFFObject(mrna_string)
     mrna_handler = gff_2_annotations.TranscribedHandler()
     mrna_handler.gen_data_from_gffentry(mrna_entry, super_locus=handler.data)
-    sess.add(mrna_handler.data)
+    piece_handler = gff_2_annotations.TranscribedPieceHandler()
+    piece_handler.gen_data_from_gffentry(mrna_entry, super_locus=handler.data, transcribeds=[mrna_handler.data])
+
+    sess.add_all([mrna_handler.data, piece_handler.data])
     sess.commit()
     assert mrna_handler.data.given_id == 'rna0'
     assert mrna_handler.data.type.value == 'mRNA'
@@ -644,7 +647,7 @@ def test_data_frm_gffentry():
     exon_entry = gffhelper.GFFObject(exon_string)
     controller.clean_entry(exon_entry)
     exon_handler = gff_2_annotations.FeatureHandler()
-    exon_handler.gen_data_from_gffentry(exon_entry, super_locus=handler.data, transcribeds=[mrna_handler.data])
+    exon_handler.gen_data_from_gffentry(exon_entry, super_locus=handler.data, transcribed_pieces=[piece_handler.data])
 
     d = exon_handler.data
     s = """
@@ -656,13 +659,13 @@ def test_data_frm_gffentry():
     source {} {}
     phase {} {}
     given_id {} {}""".format(d.seqid, type(d.seqid),
-                          d.start, type(d.start),
-                          d.end, type(d.end),
-                          d.is_plus_strand, type(d.is_plus_strand),
-                          d.score, type(d.score),
-                          d.source, type(d.source),
-                          d.phase, type(d.phase),
-                          d.given_id, type(d.given_id))
+                             d.start, type(d.start),
+                             d.end, type(d.end),
+                             d.is_plus_strand, type(d.is_plus_strand),
+                             d.score, type(d.score),
+                             d.source, type(d.source),
+                             d.phase, type(d.phase),
+                             d.given_id, type(d.given_id))
     print(s)
     sess.add(exon_handler.data)
     sess.commit()
@@ -673,7 +676,7 @@ def test_data_frm_gffentry():
     assert exon_handler.data.seqid == 'NC_015438.2'
     assert exon_handler.data.type.value == 'exon'
     assert exon_handler.data.super_locus is handler.data
-    assert mrna_handler.data in exon_handler.data.transcribeds
+    assert piece_handler.data in exon_handler.data.transcribed_pieces
     assert exon_handler.data.translateds == []
 
 

@@ -176,6 +176,7 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
         GFFDerived.__init__(self)
         self.transcribed_handlers = []
         self.translated_handlers = []
+        self.transcribed_piece_handlers = []
         self.feature_handlers = []
 
     def gen_data_from_gffentry(self, gffentry, sequence_info=None, **kwargs):
@@ -211,11 +212,15 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
             transcribed.process_gffentry(entry, super_locus=self.data)
             self.transcribed_handlers.append(transcribed)
 
+            piece = TranscribedPieceHandler()
+            piece.process_gffentry(entry, super_locus=self.data, transcribeds=[transcribed.data])
+            self.transcribed_piece_handlers.append(piece)
+
         elif in_values(entry.type, type_enums.OnSequence):
             feature = FeatureHandler()
             assert len(self.transcribed_handlers) > 0, "no transcribeds found before feature"
             feature.process_gffentry(entry, super_locus=self.data,
-                                     transcribeds=[self.transcribed_handlers[-1].data])
+                                     transcribed_pieces=[self.transcribed_handlers[-1].one_piece().data])
             self.feature_handlers.append(feature)
         else:
             raise ValueError("problem handling entry of type {}".format(entry.type))
@@ -278,15 +283,15 @@ class FeatureHandler(annotations.FeatureHandler, GFFDerived):
         annotations.FeatureHandler.__init__(self)
         GFFDerived.__init__(self)
 
-    def gen_data_from_gffentry(self, gffentry, super_locus=None, transcribeds=None, translateds=None, **kwargs):
-        if transcribeds is None:
-            transcribeds = []
+    def gen_data_from_gffentry(self, gffentry, super_locus=None, transcribed_pieces=None, translateds=None, **kwargs):
+        if transcribed_pieces is None:
+            transcribed_pieces = []
         if translateds is None:
             translateds = []
 
         parents = gffentry.get_Parent()
-        for transcribed in transcribeds:
-            assert transcribed.given_id in parents
+        for piece in transcribed_pieces:
+            assert piece.given_id in parents
 
         given_id = gffentry.get_ID()  # todo, None on missing
         is_plus_strand = gffentry.strand == '+'
@@ -302,7 +307,7 @@ class FeatureHandler(annotations.FeatureHandler, GFFDerived):
             source=gffentry.source,
             phase=gffentry.phase,
             super_locus=super_locus,
-            transcribeds=transcribeds,
+            transcribed_pieces=transcribed_pieces,
             translateds=translateds
         )
         self.add_data(data)
@@ -338,6 +343,30 @@ class TranscribedHandler(annotations.TranscribedHandler, GFFDerived):
         else:
             raise NotImplementedError  # todo handle multi inheritance, etc...
 
+    def one_piece(self):
+        pieces = self.data.transcribed_pieces
+        assert len(pieces) == 1
+        return pieces[0].handler
+
+
+class TranscribedPieceHandler(annotations.TranscribedPieceHandler, GFFDerived):
+    def __init__(self):
+        annotations.TranscribedPieceHandler.__init__(self)
+        GFFDerived.__init__(self)
+
+    def gen_data_from_gffentry(self, gffentry, super_locus=None, transcribeds=None, **kwargs):
+        if transcribeds is None:
+            transcribeds = []
+        parents = gffentry.get_Parent()
+        # the simple case
+        if len(parents) == 1:
+            assert super_locus.given_id == parents[0]
+            data = self.data_type(given_id=gffentry.get_ID(),
+                                  super_locus=super_locus,
+                                  transcribeds=transcribeds)
+            self.add_data(data)
+        else:
+            raise NotImplementedError  # todo handle multi inheritance, etc...
 
 class TranslatedHandler(annotations.TranslatedHandler):
     pass
@@ -487,10 +516,11 @@ class TranscriptInterpreter(TranscriptInterpBase):
     def _get_raw_protein_ids(self):
         # only meant for use before feature interpretation
         protein_ids = set()
-        for feature in self.transcript.data.features:
-            if feature.type.value == type_enums.CDS:
-                protein_id = self._get_protein_id_from_cds(feature.handler)
-                protein_ids.add(protein_id)
+        for piece in self.transcript.data.transcribed_pieces:
+            for feature in piece.features:
+                if feature.type.value == type_enums.CDS:
+                    protein_id = self._get_protein_id_from_cds(feature.handler)
+                    protein_ids.add(protein_id)
         return protein_ids
 
     def _setup_proteins(self):
@@ -506,7 +536,8 @@ class TranscriptInterpreter(TranscriptInterpBase):
             # copy most all attributes from self to protein (except:
             # translateds bc invalid, and
             # features bc at this point they are all input features that'll be removed anyways
-            self.transcript.fax_all_attrs_to_another(another=protein, skip_linking=['translateds', 'features'])
+            self.transcript.fax_all_attrs_to_another(another=protein,
+                                                     skip_linking=['translateds', 'transcribed_pieces'])
             pdata.transcribeds = [self.transcript.data]  # link back to transcript
             pdata.given_id = key  # set given_id to what was found
             proteins[key] = protein
@@ -814,7 +845,11 @@ class TranscriptInterpreter(TranscriptInterpBase):
     def organize_and_split_features(self):
         # todo, handle non-single seqid loci
         tree = intervaltree.IntervalTree()
-        features = [f.handler for f in self.transcript.data.features]
+        features = set()
+        for piece in self.transcript.data.transcribed_pieces:
+            for feature in piece.features:
+                features.add(feature)
+        features = [f.handler for f in features]
         for f in features:
             tree[f.py_start:f.py_end] = f
         tree.split_overlaps()
