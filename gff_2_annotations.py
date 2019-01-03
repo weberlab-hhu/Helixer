@@ -546,18 +546,13 @@ class TranscriptInterpreter(TranscriptInterpBase):
         return proteins
 
     def mv_coding_features_to_proteins(self):
-        print('proteins to move to', self.proteins)
         # only meant for use after feature interpretation
-        print('clean features {}'.format([x.data.type for x in self.clean_features]))
         for feature in self.clean_features:
             if feature.data.type in [x.value for x in type_enums.TranslatedAll]:  # todo, fix brittle to pre/post commit
-                print('swapping {} {}'.format(feature, feature.data.type))
                 pid = self._get_protein_id_from_cds(feature)
                 piece = self.transcript.one_piece()
                 piece.replace_selflink_with_replacementlink(replacement=self.proteins[pid],
                                                             data=feature.data)
-            else:
-                print('not swapping {} {}'.format(feature, feature.data.type))
 
     def is_plus_strand(self):
         features = set()
@@ -874,6 +869,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
         return self.transcript.data.super_locus.sequence_info.handler.seq_info[seqid].end
 
     def get_seq_start(self, seqid):
+        print('getting start')
         return self.transcript.data.super_locus.sequence_info.handler.seq_info[seqid].start
 
 
