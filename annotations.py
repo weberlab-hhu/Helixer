@@ -417,7 +417,7 @@ class FeatureHandler(Handler):
     def __init__(self):
         super().__init__()
         self.copyable += ['given_id', 'type', 'start', 'end', 'seqid', 'is_plus_strand', 'score', 'source', 'phase']
-        self.linkable += ['super_locus', 'transcribeds', 'translateds']
+        self.linkable += ['super_locus', 'transcribed_pieces', 'translateds']
 
     @property
     def data_type(self):

@@ -265,8 +265,9 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
             self._mark_erroneous(self.gffentry)
 
         for transcript in self.data.transcribeds:
+            piece = transcript.handler.one_piece().data
             # mark old features
-            for feature in transcript.features:
+            for feature in piece.features:
                 feature.handler.mark_for_deletion()
             # make new features
             t_interpreter = TranscriptInterpreter(transcript.handler)
@@ -552,13 +553,18 @@ class TranscriptInterpreter(TranscriptInterpBase):
             if feature.data.type in [x.value for x in type_enums.TranslatedAll]:  # todo, fix brittle to pre/post commit
                 print('swapping {} {}'.format(feature, feature.data.type))
                 pid = self._get_protein_id_from_cds(feature)
-                self.transcript.replace_selflink_with_replacementlink(replacement=self.proteins[pid],
-                                                                      data=feature.data)
+                piece = self.transcript.one_piece()
+                piece.replace_selflink_with_replacementlink(replacement=self.proteins[pid],
+                                                            data=feature.data)
             else:
                 print('not swapping {} {}'.format(feature, feature.data.type))
 
     def is_plus_strand(self):
-        features = self.transcript.data.features
+        features = set()
+        for piece in self.transcript.data.transcribed_pieces:
+            for feature in piece.features:
+                features.add(feature)
+        features = list(features)
         seqids = [x.seqid for x in features]
         if not all([x == seqids[0] for x in seqids]):
             raise TransSplicingError("non matching seqids {}, for {}".format(seqids, self.super_locus.id))

@@ -783,11 +783,12 @@ def test_import_seqinfo():
 def test_fullcopy():
     sess = mk_session()
     sl, slh = setup_data_handler(annotations.SuperLocusHandler, annotations_orm.SuperLocus)
-    scribed, scribedh = setup_data_handler(annotations.TranscribedHandler, annotations_orm.Transcribed,
-                                           super_locus=sl, given_id='soup')
+    scribedpiece, scribedpieceh = setup_data_handler(annotations.TranscribedPieceHandler,
+                                                     annotations_orm.TranscribedPiece,
+                                                     super_locus=sl, given_id='soup')
     f, fh = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, super_locus=sl,
-                               transcribeds=[scribed], seqid='1', start=13, end=33)
-    sess.add_all([scribed, f])
+                               transcribed_pieces=[scribedpiece], seqid='1', start=13, end=33)
+    sess.add_all([scribedpiece, f])
     sess.commit()
     tdict = annotations_orm.Transcribed.__dict__
     print(tdict.keys())
@@ -799,7 +800,7 @@ def test_fullcopy():
     fh.fax_all_attrs_to_another(newh)
     sess.commit()
     assert new.start == 13
-    assert set(scribed.features) == {f, new}
+    assert set(scribedpiece.features) == {f, new}
     assert new.seqid == '1'
     assert new.super_locus == sl
     assert new is not f
@@ -807,12 +808,12 @@ def test_fullcopy():
 
     # try copying most of transcribed things to translated
     slated, slatedh = setup_data_handler(annotations.TranslatedHandler, annotations_orm.Translated)
-    scribedh.fax_all_attrs_to_another(slatedh, skip_copying='type', skip_linking='translateds')
+    scribedpieceh.fax_all_attrs_to_another(slatedh, skip_copying=None, skip_linking=None)
     sess.commit()
     assert slated.given_id == 'soup'
     assert set(slated.features) == {f, new}
     assert f.translateds == [slated]
-    assert new.transcribeds == [scribed]
+    assert new.transcribed_pieces == [scribedpiece]
 
 
 #def test_feature_overlap_detection():
@@ -954,10 +955,11 @@ def test_transcript_transition_from_5p_to_end():
 def test_non_coding_transitions():
     sl, controller = setup_testable_super_loci()
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'z'][0]
+    piece = transcript.transcribed_pieces[0]
     t_interp = gff_2_annotations.TranscriptInterpreter(transcript.handler)
     # get single-exon no-CDS transcript
-    cds = [x for x in transcript.features if x.type.value == type_enums.CDS][0]
-    transcript.handler.de_link(cds.handler)
+    cds = [x for x in transcript.transcribed_pieces[0].features if x.type.value == type_enums.CDS][0]
+    piece.handler.de_link(cds.handler)
     print(transcript)
     ivals_sets = t_interp.intervals_5to3(plus_strand=True)
     assert len(ivals_sets) == 1
@@ -1025,22 +1027,24 @@ def test_check_and_fix_structure():
     assert len(protein.features) == 2  # start and stop codon
     assert set([x.type.value for x in protein.features]) == {type_enums.START_CODON, type_enums.STOP_CODON}
     # check we get a transcript with tss, 2x(dss, ass), and tts
-    assert len(transcript.features) == 6
-    assert set([x.type.value for x in transcript.features]) == {type_enums.TRANSCRIPTION_START_SITE,
-                                                                type_enums.TRANSCRIPTION_TERMINATION_SITE,
-                                                                type_enums.ACCEPTOR_SPLICE_SITE,
-                                                                type_enums.DONOR_SPLICE_SITE}
+    piece = transcript.handler.one_piece().data
+    assert len(piece.features) == 6
+    assert set([x.type.value for x in piece.features]) == {type_enums.TRANSCRIPTION_START_SITE,
+                                                           type_enums.TRANSCRIPTION_TERMINATION_SITE,
+                                                           type_enums.ACCEPTOR_SPLICE_SITE,
+                                                           type_enums.DONOR_SPLICE_SITE}
     # check handling of truncated transcript
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'x'][0]
+    piece = transcript.handler.one_piece().data
     protein = [x for x in sl.data.translateds if x.given_id == 'x.p'][0]
     assert len(protein.features) == 1
     assert set([x.type.value for x in protein.features]) == {type_enums.START_CODON}
 
-    assert len(transcript.features) == 4
-    assert set([x.type.value for x in transcript.features]) == {type_enums.TRANSCRIPTION_START_SITE,
-                                                                type_enums.ACCEPTOR_SPLICE_SITE,
-                                                                type_enums.DONOR_SPLICE_SITE,
-                                                                type_enums.ERROR}
+    assert len(piece.features) == 4
+    assert set([x.type.value for x in piece.features]) == {type_enums.TRANSCRIPTION_START_SITE,
+                                                           type_enums.ACCEPTOR_SPLICE_SITE,
+                                                           type_enums.DONOR_SPLICE_SITE,
+                                                           type_enums.ERROR}
 
 
 #
@@ -1136,7 +1140,9 @@ def test_copy_n_import():
     assert len(sl.transcribeds) == 3
     assert len(sl.translateds) == 3
     for transcribed in sl.transcribeds:
-        print('{}: {}'.format(transcribed.given_id, [x.type.value for x in transcribed.features]))
+        assert len(transcribed.transcribed_pieces) == 1
+        piece = transcribed.transcribed_pieces[0]
+        print('{}: {}'.format(transcribed.given_id, [x.type.value for x in piece.features]))
     for translated in sl.translateds:
         print('{}: {}'.format(translated.given_id, [x.type.value for x in translated.features]))
     assert len(sl.features) == 17  # if I ever get to collapsing redundant features this will change
