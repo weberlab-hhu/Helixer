@@ -81,6 +81,7 @@ class SuperLocus(Base):
     aliases = relationship('SuperLocusAliases', back_populates='super_locus')
     features = relationship('Feature', back_populates='super_locus')
     transcribeds = relationship('Transcribed', back_populates='super_locus')
+    transcribed_pieces = relationship('TranscribedPiece', back_populates='super_locus')
     translateds = relationship('Translated', back_populates='super_locus')
 
 
@@ -100,7 +101,11 @@ association_translateds_to_transcribeds = Table('association_translateds_to_tran
 )
 
 # todo, association table Transcribed <-> TranscribedPiece
-
+association_transcribeds_to_transcribed_pieces = Table('association_transcribeds_to_transcribed_pieces',
+    Base.metadata,
+    Column('transcribed_id', Integer, ForeignKey('transcribeds.id')),
+    Column('transcribed_piece_id', Integer, ForeignKey('transcribed_pieces.id'))
+)
 # todo, association table DownstreamFeature <-> UpstreamFeature + fk -> Transcribed
 
 
@@ -118,7 +123,8 @@ class Transcribed(Base):
     translateds = relationship('Translated', secondary=association_translateds_to_transcribeds,
                                back_populates='transcribeds')
 
-    transcribed_pieces = relationship('TranscribedPiece', back_populates='transcribeds')
+    transcribed_pieces = relationship('TranscribedPiece', secondary=association_transcribeds_to_transcribed_pieces,
+                                      back_populates='transcribeds')
     # todo
     # join_pairs = relationship(...)
 
@@ -129,8 +135,12 @@ class TranscribedPiece(Base):
     id = Column(Integer, primary_key=True)
     given_id = Column(String)
 
-    transcribed_id = Column(Integer, ForeignKey('transcribeds.id'))  # todo, association table, secondary...
-    transcribeds = relationship('Transcribed', back_populates='transcribed_pieces')
+    super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
+    super_locus = relationship('SuperLocus', back_populates='transcribed_pieces')
+
+    #transcribed_id = Column(Integer, ForeignKey('transcribeds.id'))  # todo, association table, secondary...
+    transcribeds = relationship('Transcribed', secondary=association_transcribeds_to_transcribed_pieces,
+                                back_populates='transcribed_pieces')
 
     features = relationship('Feature', secondary=association_transcribeds_to_features,
                             back_populates='transcribed_pieces')

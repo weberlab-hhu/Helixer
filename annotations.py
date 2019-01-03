@@ -330,7 +330,7 @@ class TranscribedHandler(Handler):
     def __init__(self):
         super().__init__()
         self.copyable += ['given_id', 'type']
-        self.linkable += ['super_locus', 'features', 'translateds']
+        self.linkable += ['super_locus', 'transcribed_pieces', 'translateds']
 
     @property
     def data_type(self):
@@ -338,12 +338,12 @@ class TranscribedHandler(Handler):
 
     @property
     def _valid_links(self):
-        return [TranslatedHandler, SuperLocusHandler, FeatureHandler]
+        return [TranslatedHandler, SuperLocusHandler, TranscribedPieceHandler]
 
     def link_to(self, other):
         if isinstance(other, SuperLocusHandler):
             self.data.super_locus = other.data
-        elif any([isinstance(other, x) for x in [TranslatedHandler, FeatureHandler]]):
+        elif any([isinstance(other, x) for x in [TranslatedHandler, TranscribedPieceHandler]]):
             other.data.transcribeds.append(self.data)
         else:
             raise self._link_value_error(other)
@@ -351,6 +351,35 @@ class TranscribedHandler(Handler):
     def de_link(self, other):
         if any([isinstance(other, x) for x in self._valid_links]):
             other.data.transcribeds.remove(self.data)
+        else:
+            raise self._link_value_error(other)
+
+
+class TranscribedPieceHandler(Handler):
+    def __init__(self):
+        super().__init__()
+        self.copyable += ['given_id']
+        self.linkable += ['super_locus', 'features', 'transcribeds']
+
+    @property
+    def data_type(self):
+        return annotations_orm.TranscribedPiece
+
+    @property
+    def _valid_links(self):
+        return [TranscribedHandler, SuperLocusHandler, FeatureHandler]
+
+    def link_to(self, other):
+        if isinstance(other, SuperLocusHandler):
+            self.data.super_locus = other.data
+        elif any([isinstance(other, x) for x in [TranscribedHandler, FeatureHandler]]):
+            other.data.transcribed_pieces.append(self.data)
+        else:
+            raise self._link_value_error(other)
+
+    def de_link(self, other):
+        if any([isinstance(other, x) for x in self._valid_links]):
+            other.data.transcribed_pieces.remove(self.data)
         else:
             raise self._link_value_error(other)
 
@@ -396,12 +425,12 @@ class FeatureHandler(Handler):
 
     @property
     def _valid_links(self):
-        return [TranscribedHandler, SuperLocusHandler, TranslatedHandler]
+        return [TranscribedPieceHandler, SuperLocusHandler, TranslatedHandler]
 
     def link_to(self, other):
         if isinstance(other, SuperLocusHandler):
             self.data.super_locus = other.data
-        elif any([isinstance(other, x) for x in [TranslatedHandler, TranscribedHandler]]):
+        elif any([isinstance(other, x) for x in [TranslatedHandler, TranscribedPieceHandler]]):
             other.data.features.append(self.data)
         else:
             raise self._link_value_error(other)

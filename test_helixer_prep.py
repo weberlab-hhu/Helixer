@@ -275,6 +275,9 @@ def test_many2many_scribed2slated():
     scribed0 = annotations_orm.Transcribed(super_locus=sl)
     slated0 = annotations_orm.Translated(super_locus=sl, transcribeds=[scribed0])
     slated1 = annotations_orm.Translated(super_locus=sl, transcribeds=[scribed0])
+    # test scribed 2 scribed_piece works
+    piece0 = annotations_orm.TranscribedPiece(transcribeds=[scribed0])
+    assert piece0 == slated0.transcribeds[0].transcribed_pieces[0]
     # test protein to multi transcripts
     assert set(scribed0.translateds) == {slated0, slated1}
     slated2 = annotations_orm.Translated(super_locus=sl)
@@ -292,12 +295,13 @@ def test_many2many_with_features():
     sinfo = annotations_orm.SequenceInfo(annotated_genome=ag)
     sl = annotations_orm.SuperLocus(sequence_info=sinfo)
     # one transcript, multiple proteins
-    scribed0 = annotations_orm.Transcribed(super_locus=sl)
+    piece0 = annotations_orm.TranscribedPiece(super_locus=sl)
+    scribed0 = annotations_orm.Transcribed(super_locus=sl, transcribed_pieces=[piece0])
     slated0 = annotations_orm.Translated(super_locus=sl, transcribeds=[scribed0])
     slated1 = annotations_orm.Translated(super_locus=sl, transcribeds=[scribed0])
     # features representing alternative start codon for proteins on one transcript
-    feat0_tss = annotations_orm.Feature(super_locus=sl, transcribeds=[scribed0])
-    feat1_tss = annotations_orm.Feature(super_locus=sl, transcribeds=[scribed0])
+    feat0_tss = annotations_orm.Feature(super_locus=sl, transcribed_pieces=[piece0])
+    feat1_tss = annotations_orm.Feature(super_locus=sl, transcribed_pieces=[piece0])
     feat2_stop = annotations_orm.Feature(super_locus=sl, translateds=[slated0, slated1])
     feat3_start = annotations_orm.Feature(super_locus=sl, translateds=[slated0])
     feat4_start = annotations_orm.Feature(super_locus=sl, translateds=[slated1])
@@ -536,24 +540,29 @@ def test_swap_links_t2t2f():
 
     slc = annotations_orm.SuperLocus()
 
-    scribed, scribedh = setup_data_handler(annotations.TranscribedHandler, annotations_orm.Transcribed, super_locus=slc)
+    scribedpiece, scribedpieceh = setup_data_handler(annotations.TranscribedPieceHandler,
+                                                     annotations_orm.TranscribedPiece, super_locus=slc)
+    scribed, scribedh = setup_data_handler(annotations.TranscribedHandler, annotations_orm.Transcribed,
+                                           super_locus=slc, transcribed_pieces=[scribedpiece])
     slated, slatedh = setup_data_handler(annotations.TranslatedHandler, annotations_orm.Translated, super_locus=slc,
                                          transcribeds=[scribed])
     feature, featureh = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, super_locus=slc,
-                                           transcribeds=[scribed])
+                                           transcribed_pieces=[scribedpiece])
 
-    sess.add_all([slc, scribed, slated, feature])
+    sess.add_all([slc, scribed, scribedpiece, slated, feature])
     sess.commit()
 
     assert scribed.translateds == [slated]
     assert slated.transcribeds == [scribed]
-    assert feature.transcribeds == [scribed]
+    assert scribedpiece.transcribeds == [scribed]
+    assert feature.transcribed_pieces == [scribedpiece]
     # de_link / link_to from scribed side
     scribedh.de_link(slatedh)
-    scribedh.de_link(featureh)
+    scribedpieceh.de_link(featureh)
     assert slated.transcribeds == []
     assert scribed.translateds == []
-    assert feature.transcribeds == []
+    assert feature.transcribed_pieces == []
+
     scribedh.link_to(slatedh)
     assert scribed.translateds == [slated]
     assert slated.transcribeds == [scribed]
@@ -568,9 +577,9 @@ def test_swap_links_t2t2f():
     assert feature.translateds == [slated]
     # mod links from feature side
     featureh.de_link(slatedh)
-    featureh.link_to(scribedh)
+    featureh.link_to(scribedpieceh)
     assert slated.features == []
-    assert scribed.features == [feature]
+    assert scribed.transcribed_pieces[0].features == [feature]
     sess.commit()
 
 
@@ -585,8 +594,9 @@ def test_replacelinks():
     sess = mk_session()
     slc = annotations_orm.SuperLocus()
 
-    scribed, scribedh = setup_data_handler(annotations.TranscribedHandler, annotations_orm.Transcribed, super_locus=slc)
-    assert scribed.super_locus is slc
+    scribedpiece, scribedpieceh = setup_data_handler(annotations.TranscribedPieceHandler,
+                                                     annotations_orm.TranscribedPiece, super_locus=slc)
+    assert scribedpiece.super_locus is slc
     slated, slatedh = setup_data_handler(annotations.TranslatedHandler, annotations_orm.Translated, super_locus=slc)
     f0, f0h = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, super_locus=slc,
                                  translateds=[slated])
@@ -597,13 +607,13 @@ def test_replacelinks():
     f2, f2h = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, super_locus=slc,
                                  translateds=[slated])
 
-    sess.add_all([slc, scribed, slated, f0, f1, f2])
+    sess.add_all([slc, scribedpiece, slated, f0, f1, f2])
     sess.commit()
     assert len(slated.features) == 3
-    slatedh.replace_selflinks_w_replacementlinks(replacement=scribedh, to_replace=['features'])
+    slatedh.replace_selflinks_w_replacementlinks(replacement=scribedpieceh, to_replace=['features'])
 
     assert len(slated.features) == 0
-    assert len(scribed.features) == 3
+    assert len(scribedpiece.features) == 3
 
 
 ### gff_2_annotations ###
@@ -623,20 +633,20 @@ def test_data_frm_gffentry():
     assert handler.data.type.value == 'gene'
 
     mrna_entry = gffhelper.GFFObject(mrna_string)
-    mandler = gff_2_annotations.TranscribedHandler()
-    mandler.gen_data_from_gffentry(mrna_entry, super_locus=handler.data)
-    sess.add(mandler.data)
+    mrna_handler = gff_2_annotations.TranscribedHandler()
+    mrna_handler.gen_data_from_gffentry(mrna_entry, super_locus=handler.data)
+    sess.add(mrna_handler.data)
     sess.commit()
-    assert mandler.data.given_id == 'rna0'
-    assert mandler.data.type.value == 'mRNA'
-    assert mandler.data.super_locus is handler.data
+    assert mrna_handler.data.given_id == 'rna0'
+    assert mrna_handler.data.type.value == 'mRNA'
+    assert mrna_handler.data.super_locus is handler.data
 
     exon_entry = gffhelper.GFFObject(exon_string)
     controller.clean_entry(exon_entry)
-    hendler = gff_2_annotations.FeatureHandler()
-    hendler.gen_data_from_gffentry(exon_entry, super_locus=handler.data, transcribeds=[mandler.data])
+    exon_handler = gff_2_annotations.FeatureHandler()
+    exon_handler.gen_data_from_gffentry(exon_entry, super_locus=handler.data, transcribeds=[mrna_handler.data])
 
-    d = hendler.data
+    d = exon_handler.data
     s = """
     seqid {} {}
     start {} {}
@@ -654,17 +664,17 @@ def test_data_frm_gffentry():
                           d.phase, type(d.phase),
                           d.given_id, type(d.given_id))
     print(s)
-    sess.add(hendler.data)
+    sess.add(exon_handler.data)
     sess.commit()
 
-    assert hendler.data.start == 4343
-    assert hendler.data.is_plus_strand
-    assert hendler.data.score is None
-    assert hendler.data.seqid == 'NC_015438.2'
-    assert hendler.data.type.value == 'exon'
-    assert hendler.data.super_locus is handler.data
-    assert mandler.data in hendler.data.transcribeds
-    assert hendler.data.translateds == []
+    assert exon_handler.data.start == 4343
+    assert exon_handler.data.is_plus_strand
+    assert exon_handler.data.score is None
+    assert exon_handler.data.seqid == 'NC_015438.2'
+    assert exon_handler.data.type.value == 'exon'
+    assert exon_handler.data.super_locus is handler.data
+    assert mrna_handler.data in exon_handler.data.transcribeds
+    assert exon_handler.data.translateds == []
 
 
 def test_data_from_cds_gffentry():
