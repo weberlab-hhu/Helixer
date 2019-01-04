@@ -306,6 +306,10 @@ class SuperLocusHandler(Handler):
 
     def delete_marked_underlings(self, sess):
         for data in self.data.features + self.data.transcribeds + self.data.translateds:
+            try:
+                data.handler
+            except AttributeError as e:
+                raise AttributeError('{}\ndata: {}'.format(e, str(data)))
             if data.handler.delete_me:
                 sess.delete(data)
         sess.commit()

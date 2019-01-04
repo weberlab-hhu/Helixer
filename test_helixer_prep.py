@@ -763,26 +763,6 @@ def test_possible_types():
     assert set(pt) == {five_prime, three_prime}
 
 
-#def test_seqinfo_from_transcript_interpreter():
-#    sess = mk_session()
-#    ag = annotations_orm.AnnotatedGenome()
-#    si, sih = setup_data_handler(annotations.SequenceInfoHandler, annotations_orm.SequenceInfo,
-#                                 annotated_genome=ag)
-#    annotations_orm.Coordinates(sequence_info=si, seqid='chr1', start=1, end=100)
-#    annotations_orm.Coordinates(sequence_info=si, seqid='chr2', start=900, end=1222)
-#
-#    sl = annotations_orm.SuperLocus(sequence_info=si)
-#    transcript, transcripth = setup_data_handler(gff_2_annotations.TranscribedHandler,
-#                                                 annotations_orm.Transcribed,
-#                                                 super_locus=sl)
-#    sess.add(sl)
-#    sess.commit()
-#    assert ag.id is not None
-#    transcript_interp = gff_2_annotations.TranscriptInterpreter(transcripth)
-#    assert transcript_interp.get_seq_end('chr2') == 1222
-#    assert transcript_interp.get_seq_start('chr1') == 1
-
-
 def test_import_seqinfo():
     controller = gff_2_annotations.ImportControl(database_path='sqlite:///:memory:')
     controller.mk_session()
@@ -1062,6 +1042,25 @@ def test_check_and_fix_structure():
                                                            type_enums.ERROR}
 
 
+def test_erroneous_splice():
+    rel_path = 'testdata/dummyloci_annotations.sqlitedb'  # so we save a copy of the cleaned up loci once
+    if os.path.exists(rel_path):
+        #os.remove(rel_path)
+        db_path = 'sqlite:///:memory:'
+    else:
+        db_path = 'sqlite:///{}'.format(rel_path)
+    sl, controller = setup_testable_super_loci(db_path)
+    sess = controller.session
+    transcript = [x for x in sl.data.transcribeds if x.given_id == 'x'][0]
+    # fish out "first exon" features and extend so intron is of -length
+    f0 = sess.query(annotations_orm.Feature).filter(annotations_orm.Feature.given_id == 'ftr000000').first()
+    f1 = sess.query(annotations_orm.Feature).filter(annotations_orm.Feature.given_id == 'ftr000001').first()
+    f0.end = f1.end = 120
+
+    sl.check_and_fix_structure(controller.session)
+    print(sess.query(annotations_orm.Feature).all())
+    assert False
+
 #
 #def test_anno2json_and_back():
 #    # setup the sequence file
@@ -1176,7 +1175,7 @@ def test_intervaltree():
     print(controller.interval_trees.keys())
     print(controller.interval_trees['1'])
     # check that one known point has two errors, and one transcription termination site as expected
-    intervals = controller.interval_trees['1'].items()# controller.interval_trees['1'][399]#[400]
+    intervals = controller.interval_trees['1'][400]
     print(intervals)
     print([x.data.data.type.value for x in intervals])
     errors = [x for x in intervals if x.data.data.type.value == type_enums.ERROR]
@@ -1194,6 +1193,7 @@ def test_intervaltree():
     assert len(starts) == 2
     errors = [x for x in features if x.data.type.value == type_enums.ERROR]
     assert len(errors) == 1
+
 
 #### type_enumss ####
 def test_enum_non_inheritance():

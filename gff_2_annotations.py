@@ -165,7 +165,6 @@ class SequenceInfoHandler(annotations.SequenceInfoHandler):
 
     def mk_mapper(self, gff_file=None):
         fa_ids = [x.seqid for x in self.data.coordinates]
-        print('fa ids {}'.format(fa_ids))
         if gff_file is not None:  # allow setup without ado when we know IDs match exactly
             self._gff_seq_ids = helpers.get_seqids_from_gff(gff_file)
         else:
@@ -197,7 +196,6 @@ class SequenceInfoHandler(annotations.SequenceInfoHandler):
             seq_info = {}
             for x in self.data.coordinates:
                 seq_info[x.seqid] = x
-                print(x.seqid, type(x.seqid), 'seqid at import')
             self._seq_info = seq_info
         return self._seq_info
 
@@ -308,8 +306,10 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
                 end=entry.end, gene_id=self.data.given_id, msg=msg
             ))
         sf = FeatureHandler()
-        sf.gen_data_from_gffentry(entry, super_locus=self.data)
+        sf.process_gffentry(entry, super_locus=self.data)
+        # sf.gen_data_from_gffentry(entry, super_locus=self.data)
         sf.set_data_attribute('type', type_enums.ErrorFeature.error.name)
+        self.feature_handlers.append(sf)
 
     def check_and_fix_structure(self, sess):
         # if it's empty (no bottom level features at all) mark as erroneous
@@ -538,7 +538,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
         if target_type is None:
             return interval_set[0]
         else:
-            print([x.data.data.type for x in interval_set])
             return [x for x in interval_set if x.data.data.type.value == target_type][0]
 
     @staticmethod
@@ -565,7 +564,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
             protein_id = None
         else:
             raise ValueError('indeterminate single protein id {}'.format(protein_id))
-        print(protein_id, type(protein_id), 'pid, type')
         return protein_id
 
     def _get_raw_protein_ids(self):
@@ -583,7 +581,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
         pids = self._get_raw_protein_ids()
         proteins = {}
         for key in pids:
-            print('making protein {}'.format(key))
             # setup blank protein
             protein = TranslatedHandler()
             pdata = annotations_orm.Translated()
@@ -775,11 +772,14 @@ class TranscriptInterpreter(TranscriptInterpBase):
             pass
         # everything else is invalid
         else:
-            feature_e = before0.data.clone()
-            all_coords = [before0.data.start, before0.data.end, after0.data.start, after0.data.end]
-            feature_e.start = sorted(all_coords)[0]
-            feature_e.end = sorted(all_coords)[-1]
-            feature_e.type = type_enums.ERROR
+            #feature_e = before0.data.clone()
+            all_coords = sorted([before0.data.data.start, before0.data.data.end, after0.data.data.start,
+                                 after0.data.data.end])
+            feature_e = self.new_feature(template=before0.data, start=all_coords[0], end=all_coords[-1],
+                                         type=type_enums.ERROR)
+            #feature_e.start = sorted(all_coords)[0]
+            #feature_e.end = sorted(all_coords)[-1]
+            #feature_e.type = type_enums.ERROR
             self.clean_features.append(feature_e)
 
     def interpret_first_pos(self, intervals, plus_strand=True, error_buffer=2000):
@@ -881,7 +881,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
         # check length
         if len(intervals) not in [1, 2]:
             raise ValueError('check interpretation by hand for transcript start with {}, {}'.format(
-                '\n'.join([ival.data.short_str() for ival in intervals]), observed_types
+                '\n'.join([str(ival.data.data) for ival in intervals]), observed_types
             ))
         # interpret type combination
         if set_o_types == {exon, five_prime} or set_o_types == {five_prime}:

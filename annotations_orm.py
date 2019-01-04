@@ -205,6 +205,13 @@ class Feature(Base):
         'polymorphic_identity': 'general'
     }
 
+    def __repr__(self):
+        s = 'Feature: {givenid} of type: {type} from {start}-{end} on {coor}, is_plus: {plus}, phase: {phase}'.format(
+            type=self.type, start=self.start, end=self.end, coor=self.coordinates, plus=self.is_plus_strand,
+            phase=self.phase, givenid=self.given_id
+        )
+        return s
+
 
 class DownstreamFeature(Feature):
     __tablename__ = 'downstream_features'
