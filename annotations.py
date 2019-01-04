@@ -401,7 +401,7 @@ class TranslatedHandler(Handler):
 class FeatureHandler(Handler):
     def __init__(self):
         super().__init__()
-        self.copyable += ['given_id', 'type', 'start', 'end', 'seqid', 'is_plus_strand', 'score', 'source', 'phase']
+        self.copyable += ['given_id', 'type', 'start', 'end', 'coordinates', 'is_plus_strand', 'score', 'source', 'phase']
         self.linkable += ['super_locus', 'transcribed_pieces', 'translateds']
 
     @property

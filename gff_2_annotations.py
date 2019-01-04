@@ -113,11 +113,10 @@ class ImportControl(object):
         err_handle = open(self.err_path, 'w')
         for entry_group in self.group_gff_by_gene(gff_file):
             super_locus = SuperLocusHandler()
-            super_locus.add_gff_entry_group(entry_group, err_handle)
-            try:
-                super_locus.data.sequence_info = self.sequence_info.data
-            except AttributeError as e:
-                raise AttributeError(str(e) + ' You need to import sequence data (self.add_sequences(...)')
+            if self.sequence_info is None:
+                raise AttributeError(
+                    ' sequence_info cannot be None when .add_gff is called, use (self.add_sequences(...)')
+            super_locus.add_gff_entry_group(entry_group, err_handle, sequence_info=self.sequence_info.data)
             self.session.add(super_locus.data)
             self.session.commit()
             super_loci.append(super_locus)  # just to keep some direct python link to this
@@ -250,13 +249,13 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
 #            return transcript
 #
 
-    def add_gff_entry(self, entry):
+    def add_gff_entry(self, entry, sequence_info):
         exceptions = entry.attrib_filter(tag="exception")
         for exception in [x.value for x in exceptions]:
             if 'trans-splicing' in exception:
                 raise TransSplicingError('trans-splice in attribute {} {}'.format(entry.get_ID(), entry.attribute))
         if in_values(entry.type, type_enums.SuperLocusAll):
-            self.process_gffentry(gffentry=entry)
+            self.process_gffentry(gffentry=entry, sequence_info=sequence_info)
 
         elif in_values(entry.type, type_enums.TranscriptLevelAll):
             transcribed = TranscribedHandler()
@@ -269,21 +268,23 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
 
         elif in_values(entry.type, type_enums.OnSequence):
             feature = FeatureHandler()
+            coordinates = self.data.sequence_info.handler.gffid_to_coords[entry.seqid]
             assert len(self.transcribed_handlers) > 0, "no transcribeds found before feature"
             feature.process_gffentry(entry, super_locus=self.data,
-                                     transcribed_pieces=[self.transcribed_handlers[-1].one_piece().data])
+                                     transcribed_pieces=[self.transcribed_handlers[-1].one_piece().data],
+                                     coordinates=coordinates)
             self.feature_handlers.append(feature)
         else:
             raise ValueError("problem handling entry of type {}".format(entry.type))
 
-    def _add_gff_entry_group(self, entries):
+    def _add_gff_entry_group(self, entries, sequence_info):
         entries = list(entries)
         for entry in entries:
-            self.add_gff_entry(entry)
+            self.add_gff_entry(entry, sequence_info)
 
-    def add_gff_entry_group(self, entries, ts_err_handle):
+    def add_gff_entry_group(self, entries, ts_err_handle, sequence_info):
         try:
-            self._add_gff_entry_group(entries)
+            self._add_gff_entry_group(entries, sequence_info)
             #self.check_and_fix_structure(entries)
         except TransSplicingError as e:
             self._mark_erroneous(entries[0], 'trans-splicing')
@@ -335,7 +336,8 @@ class FeatureHandler(annotations.FeatureHandler, GFFDerived):
         annotations.FeatureHandler.__init__(self)
         GFFDerived.__init__(self)
 
-    def gen_data_from_gffentry(self, gffentry, super_locus=None, transcribed_pieces=None, translateds=None, **kwargs):
+    def gen_data_from_gffentry(self, gffentry, super_locus=None, transcribed_pieces=None, translateds=None,
+                               coordinates=None, **kwargs):
         if transcribed_pieces is None:
             transcribed_pieces = []
         if translateds is None:
@@ -351,7 +353,7 @@ class FeatureHandler(annotations.FeatureHandler, GFFDerived):
         data = self.data_type(
             given_id=given_id,
             type=gffentry.type,
-            coordinates=super_locus.sequence_info.handler.gffid_to_coords[gffentry.seqid],
+            coordinates=coordinates, #super_locus.sequence_info.handler.gffid_to_coords[gffentry.seqid],
             #seqid=gffentry.seqid,
             start=gffentry.start,
             end=gffentry.end,
@@ -612,7 +614,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
             for feature in piece.features:
                 features.add(feature)
         features = list(features)
-        seqids = [x.seqid for x in features]
+        seqids = [x.coordinates.seqid for x in features]
         if not all([x == seqids[0] for x in seqids]):
             raise TransSplicingError("non matching seqids {}, for {}".format(seqids, self.super_locus.id))
         if all([x.is_plus_strand for x in features]):
@@ -620,8 +622,9 @@ class TranscriptInterpreter(TranscriptInterpBase):
         elif all([not x.is_plus_strand for x in features]):
             return False
         else:
-            raise TransSplicingError("Mixed strands at {} with {}".format(self.super_locus.id,
-                                                                          [(x.seqid, x.strand) for x in features]))
+            raise TransSplicingError(
+                "Mixed strands at {} with {}".format(self.super_locus.id,
+                                                     [(x.coordinates.seqid, x.strand) for x in features]))
 
     def interpret_transition(self, ivals_before, ivals_after, plus_strand=True):
         sign = 1
@@ -694,7 +697,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
             gap_len = (after_upstream - (before_downstream + 1 * sign)) * sign
             assert gap_len > 0, "inverse gap between {} and {} at putative control codon seq {}, gene {}, " \
                                 "features {} {}".format(
-                before_downstream, after_upstream, after0.data.seqid, self.super_locus.id, before0.data.id,
+                before_downstream, after_upstream, after0.data.coordinates.seqid, self.super_locus.id, before0.data.id,
                 after0.data.id
             )
         return is_gap
@@ -803,14 +806,14 @@ class TranscriptInterpreter(TranscriptInterpBase):
             # mask a dummy region up-stream as it's very unclear whether it should be intergenic/intronic/utr
             if plus_strand:
                 # unless we're at the start of the sequence
-                start_of_sequence = self.get_seq_start(cds_feature.data.seqid)
+                start_of_sequence = cds_feature.data.coordinates.start
                 if at != start_of_sequence:
                     feature_e = self.new_feature(template=cds_feature, type=error,
                                                  start=max(start_of_sequence, at - error_buffer - 1),
                                                  end=at - 1, phase=None)
                     self.clean_features.insert(0, feature_e)
             else:
-                end_of_sequence = self.get_seq_end(cds_feature.data.seqid)
+                end_of_sequence = cds_feature.data.coordinates.end
                 if at != end_of_sequence:
                     feature_e = self.new_feature(template=cds_feature, type=error, start=at + 1,
                                                  end=min(end_of_sequence, at + error_buffer + 1),
@@ -831,8 +834,8 @@ class TranscriptInterpreter(TranscriptInterpBase):
             self.status.saw_tts()
         elif type_enums.CDS in possible_types:
             # may or may not be stop codon, but will just mark as error (unless at edge of sequence)
-            start_of_sequence = self.get_seq_start(i0.data.data.seqid)
-            end_of_sequence = self.get_seq_end(i0.data.data.seqid)
+            start_of_sequence = i0.data.data.coordinates.start
+            end_of_sequence = i0.data.data.coordinates.end
             if plus_strand:
                 if at != end_of_sequence:
                     feature_e = self.new_feature(template=i0.data, type=type_enums.ERROR, start=at + 1, phase=None,
@@ -917,12 +920,12 @@ class TranscriptInterpreter(TranscriptInterpBase):
                 out = [interval]
         yield out
 
-    def get_seq_end(self, seqid):
-        return self.transcript.data.super_locus.sequence_info.handler.seq_info[seqid].end
+    #def get_seq_end(self, seqid):
+    #    return self.transcript.data.super_locus.sequence_info.handler.seq_info[seqid].end
 
-    def get_seq_start(self, seqid):
-        print('getting start')
-        return self.transcript.data.super_locus.sequence_info.handler.seq_info[seqid].start
+    #def get_seq_start(self, seqid):
+    #    print('getting start')
+    #    return self.transcript.data.super_locus.sequence_info.handler.seq_info[seqid].start
 
 
 def min_max(x, y):

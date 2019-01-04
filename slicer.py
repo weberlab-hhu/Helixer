@@ -141,9 +141,6 @@ class TranscribedHandler(annotations.TranscribedHandler):
         pass
 
 
-
-
-
 class TranslatedHandler(annotations.TranslatedHandler):
     def reconcile_translated_with_slice(self, seqid, start, end):
         pass
@@ -151,9 +148,10 @@ class TranslatedHandler(annotations.TranslatedHandler):
 
 class FeatureHandler(annotations.FeatureHandler):
     def load_to_intervaltree(self, trees):
-        if self.data.seqid not in trees:
-            trees[self.data.seqid] = intervaltree.IntervalTree()
-        tree = trees[self.data.seqid]
+        seqid = self.data.coordinates.seqid
+        if seqid not in trees:
+            trees[seqid] = intervaltree.IntervalTree()
+        tree = trees[seqid]
         tree[self.py_start:self.py_end] = self
 
 
