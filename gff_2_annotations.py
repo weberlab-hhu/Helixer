@@ -623,10 +623,21 @@ class TranscriptInterpreter(TranscriptInterpBase):
                 "Mixed strands at {} with {}".format(self.super_locus.id,
                                                      [(x.coordinates.seqid, x.strand) for x in features]))
 
+    def drop_invervals_with_duplicated_data(self, ivals_before, ivals_after):
+        pass
+        # todo,
+        #  If non-unique data in ivals:
+        #    ID all 'data' causing the interval slice
+        #      (AKA, before: py_end matches interval, after: py_start matches interval)
+        #    Check slice-causers are only in before, or only after, else raise error
+        #    Drop any non-unique from the slice-causing side
+
     def interpret_transition(self, ivals_before, ivals_after, plus_strand=True):
         sign = 1
         if not plus_strand:
             sign = -1
+        # todo
+        # ivals_before, ivals_after = self.drop_invervals_with_duplicated_data(ivals_before, ivals_after)
         before_types = self.possible_types(ivals_before)
         after_types = self.possible_types(ivals_after)
         # 5' UTR can hit either start codon or splice site
@@ -876,11 +887,12 @@ class TranscriptInterpreter(TranscriptInterpBase):
         three_prime = type_enums.THREE_PRIME_UTR
 
         # what we see
-        observed_types = [x.data.data.type.name for x in intervals]
+        uniq_datas = set([x.data.data for x in intervals])  # todo, revert and skip unique once handled above
+        observed_types = [x.type.name for x in uniq_datas]
         set_o_types = set(observed_types)
         # check length
         if len(intervals) not in [1, 2]:
-            raise ValueError('check interpretation by hand for transcript start with {}, {}'.format(
+            raise IntervalCountError('check interpretation by hand for transcript start with {}, {}'.format(
                 '\n'.join([str(ival.data.data) for ival in intervals]), observed_types
             ))
         # interpret type combination
@@ -920,12 +932,9 @@ class TranscriptInterpreter(TranscriptInterpBase):
                 out = [interval]
         yield out
 
-    #def get_seq_end(self, seqid):
-    #    return self.transcript.data.super_locus.sequence_info.handler.seq_info[seqid].end
 
-    #def get_seq_start(self, seqid):
-    #    print('getting start')
-    #    return self.transcript.data.super_locus.sequence_info.handler.seq_info[seqid].start
+class IntervalCountError(Exception):
+    pass
 
 
 def min_max(x, y):
