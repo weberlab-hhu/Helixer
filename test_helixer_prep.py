@@ -1051,15 +1051,24 @@ def test_erroneous_splice():
         db_path = 'sqlite:///{}'.format(rel_path)
     sl, controller = setup_testable_super_loci(db_path)
     sess = controller.session
+    # get target transcript
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'x'][0]
     # fish out "first exon" features and extend so intron is of -length
     f0 = sess.query(annotations_orm.Feature).filter(annotations_orm.Feature.given_id == 'ftr000000').first()
     f1 = sess.query(annotations_orm.Feature).filter(annotations_orm.Feature.given_id == 'ftr000001').first()
-    f0.end = f1.end = 120
+    f0.end = f1.end = 115
 
-    sl.check_and_fix_structure(controller.session)
-    print(sess.query(annotations_orm.Feature).all())
-    assert False
+    ti = gff_2_annotations.TranscriptInterpreter(transcript.handler)
+    ti.decode_raw_features()  # todo, shouldn't this now through some sort of splicing error?
+    clean_datas = [x.data for x in ti.clean_features]
+    # TSS, start codon, error splice, error splice, error no stop
+    assert len(clean_datas) == 5
+    assert len([x for x in clean_datas if x.type == type_enums.ERROR]) == 3
+    # make sure splice error covers whole exon-intron-exon region
+    assert clean_datas[2].type == type_enums.ERROR
+    assert clean_datas[2].start == 11
+    assert clean_datas[2].end == 120
+
 
 #
 #def test_anno2json_and_back():

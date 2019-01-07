@@ -370,15 +370,27 @@ class FeatureHandler(annotations.FeatureHandler, GFFDerived):
     # inclusive and from 1 coordinates
     def upstream_from_interval(self, interval):
         if self.data.is_plus_strand:
-            return interval.begin + 1
+            return helpers.as_bio_start(interval.begin)
         else:
-            return interval.end
+            return helpers.as_bio_end(interval.end)
 
     def downstream_from_interval(self, interval):
         if self.data.is_plus_strand:
-            return interval.end
+            return helpers.as_bio_end(interval.end)
         else:
-            return interval.begin + 1
+            return helpers.as_bio_start(interval.begin)
+
+    def upstream(self):
+        if self.data.is_plus_strand:
+            return self.data.start
+        else:
+            return self.data.end
+
+    def downstream(self):
+        if self.data.is_plus_strand:
+            return self.data.end
+        else:
+            return self.data.start
 
 
 class TranscribedHandler(annotations.TranscribedHandler, GFFDerived):
@@ -624,20 +636,62 @@ class TranscriptInterpreter(TranscriptInterpBase):
                                                      [(x.coordinates.seqid, x.strand) for x in features]))
 
     def drop_invervals_with_duplicated_data(self, ivals_before, ivals_after):
-        pass
-        # todo,
-        #  If non-unique data in ivals:
-        #    ID all 'data' causing the interval slice
-        #      (AKA, before: py_end matches interval, after: py_start matches interval)
-        #    Check slice-causers are only in before, or only after, else raise error
-        #    Drop any non-unique from the slice-causing side
+        all_data = [x.data for x in ivals_before + ivals_after]
+        if len(all_data) > len(set(all_data)):
+
+            marked_before = []
+            for ival in ivals_before:
+                new = {'interval': ival, 'matches_edge': self.matches_edge_before(ival),
+                       'repeated': self.is_in_list(ival.data, [x.data for x in ivals_after])}
+                marked_before.append(new)
+            marked_after = []
+            for ival in ivals_after:
+                new = {'interval': ival, 'matches_edge': self.matches_edge_after(ival),
+                       'repeated': self.is_in_list(ival.data, [x.data for x in ivals_before])}
+                marked_after.append(new)
+
+            # warn if slice-causer (matches_edge) is on both sides
+            # should be fine in cases with [exon, CDS] -> [exon, UTR] or similar
+            slice_frm_before = any([x['matches_edge'] for x in marked_before])
+            slice_frm_after = any([x['matches_edge'] for x in marked_after])
+            if slice_frm_before and slice_frm_after:
+                logging.warning('slice causer on both sides with repeates\nbefore: {}, after: {}'.format(
+                    [x.data.type for x in ivals_before],
+                    [x.data.type for x in ivals_after]
+                ))
+            # finally, keep non repeats or where this side didn't cause slice
+            ivals_before = [x['interval'] for x in marked_before if not x['repeated'] or not slice_frm_before]
+            ivals_after = [x['interval'] for x in marked_after if not x['repeated'] or not slice_frm_after]
+        return ivals_before, ivals_after
+
+    @staticmethod
+    def is_in_list(target, the_list):
+        matches = [x for x in the_list if x is target]
+        return len(matches) > 0
+
+    @staticmethod
+    def matches_edge_before(ival):
+        data = ival.data
+        if data.data.is_plus_strand:
+            out = data.py_end == ival.end
+        else:
+            out = data.py_start == ival.begin
+        return out
+
+    @staticmethod
+    def matches_edge_after(ival):
+        data = ival.data
+        if data.data.is_plus_strand:
+            out = data.py_start == ival.begin
+        else:
+            out = data.py_end == ival.end
+        return out
 
     def interpret_transition(self, ivals_before, ivals_after, plus_strand=True):
         sign = 1
         if not plus_strand:
             sign = -1
-        # todo
-        # ivals_before, ivals_after = self.drop_invervals_with_duplicated_data(ivals_before, ivals_after)
+        ivals_before, ivals_after = self.drop_invervals_with_duplicated_data(ivals_before, ivals_after)
         before_types = self.possible_types(ivals_before)
         after_types = self.possible_types(ivals_after)
         # 5' UTR can hit either start codon or splice site
@@ -758,6 +812,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
                 self.handle_splice(ivals_before, ivals_after, sign)
 
     def handle_splice(self, ivals_before, ivals_after, sign):
+        print('handling splice')
         target_type = None
         if self.status.is_coding():
             target_type = type_enums.CDS
@@ -766,12 +821,13 @@ class TranscriptInterpreter(TranscriptInterpBase):
         after0 = self.pick_one_interval(ivals_after, target_type)
         donor_tmplt = before0.data
         acceptor_tmplt = after0.data
-        donor_at = donor_tmplt.downstream_from_interval(before0) + (1 * sign)
-        acceptor_at = acceptor_tmplt.upstream_from_interval(after0) - (1 * sign)
+        donor_at = donor_tmplt.downstream() + (1 * sign)  # mod by one because sites within intron
+        acceptor_at = acceptor_tmplt.upstream() - (1 * sign)
         # add splice sites if there's a gap
         between_splice_sites = (acceptor_at - donor_at) * sign
         min_intron_len = 3  # todo, maybe get something small but not entirely impossible?
         if between_splice_sites > min_intron_len - 1:  # -1 because the splice sites are _within_ the intron
+            print('positive intron')
             donor = self.new_feature(template=donor_tmplt, start=donor_at, end=donor_at, phase=None,
                                      type=type_enums.DONOR_SPLICE_SITE)
             # todo, check position of DSS/ASS to be consistent with Augustus, hopefully
@@ -780,9 +836,11 @@ class TranscriptInterpreter(TranscriptInterpBase):
             self.clean_features += [donor, acceptor]
         # do nothing if there is just no gap between exons for a techinical / reporting error
         elif between_splice_sites == -1:
+            print('null intron')
             pass
         # everything else is invalid
         else:
+            print('error')
             #feature_e = before0.data.clone()
             all_coords = sorted([before0.data.data.start, before0.data.data.end, after0.data.data.start,
                                  after0.data.data.end])
@@ -871,6 +929,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
     def decode_raw_features(self):
         plus_strand = self.is_plus_strand()
         interval_sets = self.intervals_5to3(plus_strand)
+        print([len(ivs) for ivs in interval_sets], 'ivs lengths')
         self.interpret_first_pos(interval_sets[0], plus_strand)
         for i in range(len(interval_sets) - 1):
             ivals_before = interval_sets[i]
@@ -887,8 +946,8 @@ class TranscriptInterpreter(TranscriptInterpBase):
         three_prime = type_enums.THREE_PRIME_UTR
 
         # what we see
-        uniq_datas = set([x.data.data for x in intervals])  # todo, revert and skip unique once handled above
-        observed_types = [x.type.name for x in uniq_datas]
+        #uniq_datas = set([x.data.data for x in intervals])  # todo, revert and skip unique once handled above
+        observed_types = [x.data.data.type.name for x in intervals]
         set_o_types = set(observed_types)
         # check length
         if len(intervals) not in [1, 2]:
