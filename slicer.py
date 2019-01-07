@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 import os
 import sequences
 from helpers import as_py_start, as_py_end
-from gff_2_annotations import TranscriptStatus  # todo, move to helpers?
+from gff_2_annotations import TranscriptStatus, TranscriptInterpBase  # todo, move to helpers?
 
 
 class SliceController(object):
@@ -208,47 +208,26 @@ class OverlapStatus(object):
         self.status = out
 
 
-class FeatureOrderer(object):
-    def __init__(self, features):
-        self.features = features
-        self.chunks = None
+class TranscriptTrimmer(TranscriptInterpBase):
+    """takes pre-cleaned/explicit transcripts and crops to what fits in a slice"""
+    def __init__(self, transcript):
+        super().__init__(transcript)
 
-    def sort_features(self):
-        self.features = sorted(self.features, key=self.orderable_feature)
-
-    def order_features(self):
-        self.sort_features()
-        self.chunks = self.chunk_sorted()
-
-    @staticmethod
-    def orderable_feature(feature):
-        return feature.seqid, feature.start, feature.end
-
-    def chunk_sorted(self):
-        chunk = [self.features[0]]
-        for i in range(1, len(self.features), 1):
-            pass  # todo, rewrite or remove after raw_transcripts are implemented
-
-    def to_split_between(self, f0, f1):
-        out = False
-        if f0.seqid != f1.seqid:
-            out = True
-        elif self.to_split_before(f1):
-            out = True
-        elif self.to_split_after(f0):
-            out = True
-        return out
-
-    def to_split_before(self, feature):
-        out = False
-        if feature.is_plus_strand:
-            if isinstance(feature, annotations_orm.DownstreamFeature):
-                out = True
-        else:
-            if isinstance(feature, annotations_orm.UpstreamFeature):
-                out = True
-        return out
-
-    def to_split_after(self, feature):
+    def crop_to_slice(self, seqid, start, end):
+        """crops transcript in place"""
         pass
 
+    def transition_5p_to_3p(self):
+        # setup
+        pass
+
+    @staticmethod
+    def sorted_features(piece):
+        features = piece.features
+        # confirm strand & seqid
+        assert all([f.coordinates == features[0].coordinates for f in features])
+        assert all([f.is_plus_strand == features[0].is_plus_strand for f in features])
+        features = sorted(features, key=lambda x: x.cmp_key())
+        if not features[0].is_plus_strand:
+            features.reverse()
+        return features

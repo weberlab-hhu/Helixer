@@ -2,6 +2,7 @@ import copy
 from types import GeneratorType
 import annotations_orm
 from helpers import as_py_end, as_py_start
+from functools import total_ordering
 
 
 def convert2list(obj):
@@ -111,15 +112,17 @@ class Handler(object):
                 for i in reversed(list(range(n))):  # go through backwards to hit every item even though we're removing
                     #for data in val:
                     data = val[i]
-                    self._copy_selflinks_to_another(another, data)
+                    self.copy_selflink_to_another(another, data)
             elif isinstance(val, annotations_orm.Base):
-                self._copy_selflinks_to_another(another, val)
+                self.copy_selflink_to_another(another, val)
             else:
                 raise ValueError("copy_selflinks_to_another only implemented for {} types".format(
                     [list, annotations_orm.Base]
                 ))
 
-    def _copy_selflinks_to_another(self, another, data):
+    # "selflink" for naming/usage consistency with 'replace' methods
+    @staticmethod
+    def copy_selflink_to_another(another, data):
         other = data.handler
         another.link_to(other)
 
@@ -438,6 +441,14 @@ class FeatureHandler(Handler):
     def py_end(self):
         return as_py_end(self.data.end)
 
+    def cmp_key(self):
+        return self.data.coordinates.seqid, self.data.is_plus_strand, self.data.start, self.data.end, self.data.type
+
+#    def __lt__(self, other):
+#        return self._cmp_key() < other._cmp_key()
+#
+#    def __eq__(self, other):
+#        return self._cmp_key() == other._cmp_key()
 #    def add_data(self, super_locus, gff_entry):
 #        gffkey = super_locus.genome.gffkey
 #        try:
@@ -503,20 +514,6 @@ class FeatureHandler(Handler):
 #        same_gene = self.super_locus is other.super_locus
 #        coordinates_within = self.start >= other.start and self.end <= other.end
 #        return all(does_it_match + [coordinates_within, same_gene])
-
-
-#    def upstream(self):
-#        if self.is_plus_strand():
-#            return self.start
-#        else:
-#            return self.end
-#
-#    def downstream(self):
-#        if self.is_plus_strand():
-#            return self.end
-#        else:
-#            return self.start
-#
 
 #
 #    def reconcile_with_slice(self, seqid, start, end, status, last_before_slice):

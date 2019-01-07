@@ -510,18 +510,6 @@ class TranscriptInterpBase(object):
         return self.transcript.data.super_locus.handler
 
 
-class TranscriptTrimmer(TranscriptInterpBase):
-    """takes pre-cleaned/explicit transcripts and crops to what fits in a slice"""
-    def __init__(self, transcript):
-        super().__init__(transcript)
-
-    def crop_to_slice(self, seqid, start, end):
-        """crops transcript in place"""
-        pass
-
-    def transition_5p_to_3p(self):
-        pass
-
 
 class TranscriptInterpreter(TranscriptInterpBase):
     """takes raw/from-gff transcript, and makes totally explicit"""
@@ -614,8 +602,9 @@ class TranscriptInterpreter(TranscriptInterpBase):
             if feature.data.type in [x.value for x in type_enums.TranslatedAll]:  # todo, fix brittle to pre/post commit
                 pid = self._get_protein_id_from_cds(feature)
                 piece = self.transcript.one_piece()
-                piece.replace_selflink_with_replacementlink(replacement=self.proteins[pid],
-                                                            data=feature.data)
+                #piece.replace_selflink_with_replacementlink(replacement=self.proteins[pid],
+                #                                            data=feature.data)
+                piece.copy_selflink_to_another(another=self.proteins[pid], data=feature.data)
 
     def is_plus_strand(self):
         features = set()
@@ -636,7 +625,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
                                                      [(x.coordinates.seqid, x.strand) for x in features]))
 
     def drop_invervals_with_duplicated_data(self, ivals_before, ivals_after):
-        all_data = [x.data for x in ivals_before + ivals_after]
+        all_data = [x.data.data for x in ivals_before + ivals_after]
         if len(all_data) > len(set(all_data)):
 
             marked_before = []

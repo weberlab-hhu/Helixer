@@ -1021,13 +1021,16 @@ def test_check_and_fix_structure():
     # check we get a protein with start and stop codon for the nice transcript
     assert len(protein.features) == 2  # start and stop codon
     assert set([x.type.value for x in protein.features]) == {type_enums.START_CODON, type_enums.STOP_CODON}
-    # check we get a transcript with tss, 2x(dss, ass), and tts
+    # check we get a transcript with tss, 2x(dss, ass), and tts (+ start & stop codons)
     piece = transcript.handler.one_piece().data
-    assert len(piece.features) == 6
+    assert len(piece.features) == 8
     assert set([x.type.value for x in piece.features]) == {type_enums.TRANSCRIPTION_START_SITE,
                                                            type_enums.TRANSCRIPTION_TERMINATION_SITE,
                                                            type_enums.ACCEPTOR_SPLICE_SITE,
-                                                           type_enums.DONOR_SPLICE_SITE}
+                                                           type_enums.DONOR_SPLICE_SITE,
+                                                           type_enums.START_CODON,
+                                                           type_enums.STOP_CODON
+                                                           }
     # check handling of truncated transcript
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'x'][0]
     piece = transcript.handler.one_piece().data
@@ -1035,11 +1038,12 @@ def test_check_and_fix_structure():
     assert len(protein.features) == 1
     assert set([x.type.value for x in protein.features]) == {type_enums.START_CODON}
 
-    assert len(piece.features) == 4
+    assert len(piece.features) == 5
     assert set([x.type.value for x in piece.features]) == {type_enums.TRANSCRIPTION_START_SITE,
                                                            type_enums.ACCEPTOR_SPLICE_SITE,
                                                            type_enums.DONOR_SPLICE_SITE,
-                                                           type_enums.ERROR}
+                                                           type_enums.ERROR,
+                                                           type_enums.START_CODON}
 
 
 def test_erroneous_splice():
@@ -1059,7 +1063,7 @@ def test_erroneous_splice():
     f0.end = f1.end = 115
 
     ti = gff_2_annotations.TranscriptInterpreter(transcript.handler)
-    ti.decode_raw_features()  # todo, shouldn't this now through some sort of splicing error?
+    ti.decode_raw_features()
     clean_datas = [x.data for x in ti.clean_features]
     # TSS, start codon, error splice, error splice, error no stop
     assert len(clean_datas) == 5
