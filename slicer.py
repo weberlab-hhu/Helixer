@@ -233,7 +233,33 @@ class TranscriptTrimmer(TranscriptInterpBase):
         return features
 
     def sort_pieces(self):
+        # get all up_down_pairs for this locus
+        # pick a pair. work upstream link->piece->link->piece until end
+        # repeat downstream
+
         pass
+
+    def get_upstream_piece(self, current_piece, sess):
+        downstreams = sess.query(annotations_orm.DownstreamFeature).all()
+        # DownstreamFeature s of this pice
+        downstreams_current = [x for x in downstreams if current_piece in x.transcribed_pieces]
+        if len(downstreams_current) == 0:
+            return None
+        elif len(downstreams_current) == 1:
+            # pairs going to downstream of choice
+            dc = downstreams_current[0]
+            pairs = self.transcript.pairs
+            upstreams = [x for x in pairs if x.downstream == dc]
+            if len(upstreams) == 0:
+                return 1
+            elif len(upstreams) == 1:
+                return upstreams[0]
+            else:
+                raise ValueError
+        else:
+            raise ValueError
+        # todo, replace ValueError with something more informative and test WAS HERE
+
 
 
     def sort_all(self):

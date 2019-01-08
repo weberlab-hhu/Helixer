@@ -1262,6 +1262,7 @@ def test_order_pieces():
     sess.commit()
     # setup some paired features
     feature0u = annotations_orm.UpstreamFeature
+    assert False  # todo, TranscriptTrimmer.sort_pieces(), starting with get_upstream_piece
 
 #### type_enumss ####
 def test_enum_non_inheritance():
