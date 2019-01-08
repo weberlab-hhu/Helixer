@@ -365,24 +365,26 @@ def test_feature_has_its_things():
 def test_feature_streamlinks():
     sess = mk_session()
     f = annotations_orm.Feature(start=1)
-    sfA0 = annotations_orm.UpstreamFeature(start=2)
-    sfA1 = annotations_orm.DownstreamFeature(start=3, upstream=sfA0)
-    sess.add_all([f, sfA0, sfA1])
+    pair = annotations_orm.UpDownPair()
+    sfA0 = annotations_orm.UpstreamFeature(start=2, pairs=[pair])
+    sfA1 = annotations_orm.DownstreamFeature(start=3, pairs=[pair])
+    sess.add_all([f, sfA0, sfA1, pair])
     sess.commit()
     sfA0back = sess.query(annotations_orm.UpstreamFeature).first()
     assert sfA0back is sfA0
-    sfA1back = sfA0back.downstream
+    sfA1back = sfA0back.pairs[0].downstream
     assert sfA1 is sfA1back
-    assert sfA1.upstream is sfA0
+    assert sfA1.pairs[0].upstream is sfA0
     sf_friendless = annotations_orm.DownstreamFeature(start=4)
     sess.add(sf_friendless)
     sess.commit()
     downstreams = sess.query(annotations_orm.DownstreamFeature).all()
-    downlinked = sess.query(annotations_orm.DownstreamFeature).filter(
-        annotations_orm.DownstreamFeature.upstream != None  # todo, isn't there a 'right' way to do this?
+    pre_downlinked = sess.query(annotations_orm.UpDownPair).filter(
+        annotations_orm.DownstreamFeature != None  # todo, isn't there a 'right' way to do this?
     ).all()
-    print([(x.start, x.upstream) for x in downstreams])
-    print([(x.start, x.upstream) for x in downlinked])
+    downlinked = [x.downstream for x in pre_downlinked]
+    print([(x.start, x.pairs) for x in downstreams])
+    print([(x.start, x.pairs[0].upstream) for x in downlinked])
     assert len(downstreams) == 2
     assert len(downlinked) == 1
 
@@ -390,13 +392,14 @@ def test_feature_streamlinks():
 def test_linking_via_fkey():
     sess = mk_session()
     sfA0 = annotations_orm.UpstreamFeature(start=2)
-    sess.add(sfA0)
+    sfA1 = annotations_orm.DownstreamFeature(start=3)
+    sess.add_all([sfA0, sfA1])
     sess.commit()
-    sfA1 = annotations_orm.DownstreamFeature(start=3, upstream_id=sfA0.id)
-    sess.add(sfA1)
+    pair = annotations_orm.UpDownPair(upstream_id=sfA0.id, downstream_id=sfA1.id)
+    sess.add_all([pair])
     sess.commit()
-    assert sfA1.upstream is sfA0
-    assert sfA0.downstream is sfA1
+    assert sfA1.pairs[0].upstream is sfA0
+    assert sfA0.pairs[0].downstream is sfA1
 
 
 def test_delinking_from_oneside():
@@ -1241,6 +1244,24 @@ def test_order_features():
     with pytest.raises(AssertionError):
         ti.sorted_features(piece)
 
+
+def test_order_pieces():
+    sess = mk_session()
+    ag = annotations_orm.AnnotatedGenome(species='Athaliana', version='1.2', acquired_from='Phytozome12')
+    sequence_info = annotations_orm.SequenceInfo(annotated_genome=ag)
+    coor = annotations_orm.Coordinates(seqid='a', start=1, end=1000, sequence_info=sequence_info)
+    sess.add_all([ag, sequence_info, coor])
+    sess.commit()
+    # setup one transcribed handler with pieces
+    scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed)
+    piece0 = annotations_orm.TranscribedPiece()
+    piece1 = annotations_orm.TranscribedPiece()
+    piece2 = annotations_orm.TranscribedPiece()
+    scribed.transcribed_pieces = [piece0, piece1, piece2]
+    sess.add_all([scribed, piece0, piece1, piece2])
+    sess.commit()
+    # setup some paired features
+    feature0u = annotations_orm.UpstreamFeature
 
 #### type_enumss ####
 def test_enum_non_inheritance():

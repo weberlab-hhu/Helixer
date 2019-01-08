@@ -108,7 +108,6 @@ association_transcribeds_to_transcribed_pieces = Table('association_transcribeds
     Column('transcribed_id', Integer, ForeignKey('transcribeds.id')),
     Column('transcribed_piece_id', Integer, ForeignKey('transcribed_pieces.id'))
 )
-# todo, association table DownstreamFeature <-> UpstreamFeature + fk -> Transcribed
 
 
 class Transcribed(Base):
@@ -127,8 +126,8 @@ class Transcribed(Base):
 
     transcribed_pieces = relationship('TranscribedPiece', secondary=association_transcribeds_to_transcribed_pieces,
                                       back_populates='transcribeds')
-    # todo
-    # join_pairs = relationship(...)
+
+    pairs = relationship('UpDownPair', back_populates='transcribed')
 
 
 class TranscribedPiece(Base):
@@ -220,8 +219,7 @@ class DownstreamFeature(Feature):
     __tablename__ = 'downstream_features'
 
     id = Column(Integer, ForeignKey('features.id'), primary_key=True)
-    upstream_id = Column(Integer, ForeignKey('upstream_features.id'))
-    upstream = relationship('UpstreamFeature', back_populates="downstream", foreign_keys=[upstream_id])
+    pairs = relationship('UpDownPair', back_populates="downstream")
 
     __mapper_args__ = {
         'polymorphic_identity': 'downstream'
@@ -232,8 +230,23 @@ class UpstreamFeature(Feature):
     __tablename__ = 'upstream_features'
 
     id = Column(Integer, ForeignKey('features.id'), primary_key=True)
-    downstream = relationship('DownstreamFeature', uselist=False, back_populates='upstream',
-                              foreign_keys=[DownstreamFeature.upstream_id])
+    pairs = relationship('UpDownPair', back_populates='upstream')
+
     __mapper_args__ = {
         'polymorphic_identity': 'upstream'
     }
+
+
+# todo, association table DownstreamFeature <-> UpstreamFeature + fk -> Transcribed
+class UpDownPair(Base):
+    __tablename__ = 'up_down_pairs'
+
+    id = Column(Integer, primary_key=True)
+    upstream_id = Column(Integer, ForeignKey('upstream_features.id'))
+    upstream = relationship('UpstreamFeature', uselist=False, back_populates="pairs")
+
+    downstream_id = Column(Integer, ForeignKey('downstream_features.id'))
+    downstream = relationship('DownstreamFeature', uselist=False, back_populates='pairs')
+
+    transcribed_id = Column(Integer, ForeignKey('transcribeds.id'))
+    transcribed = relationship('Transcribed', uselist=False, back_populates='pairs')

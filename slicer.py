@@ -231,3 +231,10 @@ class TranscriptTrimmer(TranscriptInterpBase):
         if not features[0].is_plus_strand:
             features.reverse()
         return features
+
+    def sort_pieces(self):
+        pass
+
+
+    def sort_all(self):
+        pass
