@@ -1254,6 +1254,7 @@ def test_order_pieces():
     sess.commit()
     # setup one transcribed handler with pieces
     scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed)
+    ti = slicer.TranscriptTrimmer(transcript=scribedh)
     piece0 = annotations_orm.TranscribedPiece()
     piece1 = annotations_orm.TranscribedPiece()
     piece2 = annotations_orm.TranscribedPiece()
@@ -1261,8 +1262,15 @@ def test_order_pieces():
     sess.add_all([scribed, piece0, piece1, piece2])
     sess.commit()
     # setup some paired features
-    feature0u = annotations_orm.UpstreamFeature
+    feature0u = annotations_orm.UpstreamFeature(transcribed_pieces=[piece0])
+    feature1d = annotations_orm.DownstreamFeature(transcribed_pieces=[piece1])
+    feature1u = annotations_orm.UpstreamFeature(transcribed_pieces=[piece1])
+    feature2d = annotations_orm.DownstreamFeature(transcribed_pieces=[piece2])
+    pair01 = annotations_orm.UpDownPair(upstream=feature0u, downstream=feature1d, transcribed=scribed)
+    pair12 = annotations_orm.UpDownPair(upstream=feature1u, downstream=feature2d, transcribed=scribed)
+    # and see if they can be ordered as expected
     assert False  # todo, TranscriptTrimmer.sort_pieces(), starting with get_upstream_piece
+
 
 #### type_enumss ####
 def test_enum_non_inheritance():
