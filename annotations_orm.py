@@ -212,6 +212,9 @@ class Feature(Base):
         )
         return s
 
+    def cmp_key(self):
+        return self.coordinates.seqid, self.is_plus_strand, self.start, self.end, self.type
+
 
 class DownstreamFeature(Feature):
     __tablename__ = 'downstream_features'

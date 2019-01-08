@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 import sqlalchemy
 import gff_2_annotations
 import slicer
+import random
 
 
 ### structure ###
@@ -1206,6 +1207,39 @@ def test_intervaltree():
     assert len(starts) == 2
     errors = [x for x in features if x.data.type.value == type_enums.ERROR]
     assert len(errors) == 1
+
+
+def test_order_features():
+    destination = 'testdata/tmp.db'
+    if os.path.exists(destination):
+        os.remove(destination)
+    source = 'testdata/dummyloci_annotations.sqlitedb'
+
+    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
+    controller.mk_session()
+    controller.load_annotations()
+    sl = controller.super_loci[0]
+    transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
+    transcripth = slicer.TranscribedHandler()
+    transcripth.add_data(transcript)
+    ti = slicer.TranscriptTrimmer(transcripth)
+    assert len(transcript.transcribed_pieces) == 1
+    piece = transcript.transcribed_pieces[0]
+    # features expected to be ordered by increasing position (note: as they are in db)\
+    ordered_starts = [1, 101, 110, 121, 200, 400]
+    features = ti.sorted_features(piece)
+    assert [x.start for x in features] == ordered_starts
+    for feature in piece.features:
+        feature.is_plus_strand = False
+    features = ti.sorted_features(piece)
+    ordered_starts.reverse()
+    assert [x.start for x in features] == ordered_starts
+    # force erroneous data
+    piece.features[0].is_plus_strand = True
+    controller.session.add(piece.features[0])
+    controller.session.commit()
+    with pytest.raises(AssertionError):
+        ti.sorted_features(piece)
 
 
 #### type_enumss ####

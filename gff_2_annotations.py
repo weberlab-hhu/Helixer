@@ -500,8 +500,9 @@ class TranscriptStatus(object):
 
 
 class TranscriptInterpBase(object):
+    # todo, move this to generic location and/or skip entirely
     def __init__(self, transcript):
-        assert isinstance(transcript, TranscribedHandler)
+        assert isinstance(transcript, annotations.TranscribedHandler)
         self.status = TranscriptStatus()
         self.transcript = transcript
 

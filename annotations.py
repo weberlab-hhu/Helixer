@@ -442,7 +442,7 @@ class FeatureHandler(Handler):
         return as_py_end(self.data.end)
 
     def cmp_key(self):
-        return self.data.coordinates.seqid, self.data.is_plus_strand, self.data.start, self.data.end, self.data.type
+        return self.data.cmp_key()
 
 #    def __lt__(self, other):
 #        return self._cmp_key() < other._cmp_key()
