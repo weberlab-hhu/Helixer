@@ -1255,8 +1255,8 @@ def test_order_pieces():
     # setup one transcribed handler with pieces
     scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed)
     ti = slicer.TranscriptTrimmer(transcript=scribedh)
-    piece0 = annotations_orm.TranscribedPiece()
     piece1 = annotations_orm.TranscribedPiece()
+    piece0 = annotations_orm.TranscribedPiece()
     piece2 = annotations_orm.TranscribedPiece()
     scribed.transcribed_pieces = [piece0, piece1, piece2]
     sess.add_all([scribed, piece0, piece1, piece2])
@@ -1268,7 +1268,21 @@ def test_order_pieces():
     feature2d = annotations_orm.DownstreamFeature(transcribed_pieces=[piece2])
     pair01 = annotations_orm.UpDownPair(upstream=feature0u, downstream=feature1d, transcribed=scribed)
     pair12 = annotations_orm.UpDownPair(upstream=feature1u, downstream=feature2d, transcribed=scribed)
-    # and see if they can be ordered as expected
+    # check getting upstream link
+    upstream_link = ti.get_upstream_link(piece1, sess)
+    assert upstream_link is pair01
+    upstream = upstream_link.upstream
+    assert upstream is feature0u
+    assert upstream.transcribed_pieces == [piece0]
+    # check getting downstream link
+    downstream_link = ti.get_downstream_link(piece1, sess)
+    assert downstream_link is pair12
+    downstream = downstream_link.downstream
+    assert downstream is feature2d
+    assert downstream.transcribed_pieces == [piece2]
+    # and see if they can be ordered as expected overall
+    op = ti.sort_pieces(sess)
+    assert op == [piece0, piece1, piece2]
     assert False  # todo, TranscriptTrimmer.sort_pieces(), starting with get_upstream_piece
 
 

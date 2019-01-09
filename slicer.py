@@ -208,6 +208,10 @@ class OverlapStatus(object):
         self.status = out
 
 
+class IndecipherableLinkageError(Exception):
+    pass
+
+
 class TranscriptTrimmer(TranscriptInterpBase):
     """takes pre-cleaned/explicit transcripts and crops to what fits in a slice"""
     def __init__(self, transcript):
@@ -232,35 +236,83 @@ class TranscriptTrimmer(TranscriptInterpBase):
             features.reverse()
         return features
 
-    def sort_pieces(self):
-        # get all up_down_pairs for this locus
-        # pick a pair. work upstream link->piece->link->piece until end
-        # repeat downstream
+    def sort_pieces(self, sess):
+        pieces = self.transcript.data.transcribed_pieces
+        # start with one piece, extend until both ends are reached
+        ordered_pieces = pieces[0:1]
+        self._extend_to_end(ordered_pieces, sess, downstream=True)
+        self._extend_to_end(ordered_pieces, sess, downstream=False)
+        assert set(ordered_pieces) == set(pieces)
+        return ordered_pieces
 
-        pass
+    def _extend_to_end(self, ordered_pieces, sess, downstream=True):
+        if downstream:
+            next_fn = self.get_downstream_link
+            latest_i = -1
+            attr = 'downstream'
+        else:
+            next_fn = self.get_upstream_link
+            latest_i = 0
+            attr = 'upstream'
 
-    def get_upstream_piece(self, current_piece, sess):
+        while True:
+            nextlink = next_fn(current_piece=ordered_pieces[latest_i], sess=sess)
+            if nextlink is None:
+                break
+            nextstream = nextlink.__getattribute__(attr)
+            nextpiece = self._get_one_piece_from_stream(nextstream)
+            if nextpiece in ordered_pieces:
+                raise IndecipherableLinkageError('Circular linkage inserting {} into {}'.format(nextpiece,
+                                                                                                ordered_pieces))
+            else:
+                self._extend_by_one(ordered_pieces, nextpiece, downstream)
+
+    @staticmethod
+    def _extend_by_one(ordered_pieces, new, downstream=True):
+        if downstream:
+            ordered_pieces.append(new)
+        else:
+            ordered_pieces.insert(0, new)
+
+    def _get_one_piece_from_stream(self, stream):
+        pieces = self.transcript.data.transcribed_pieces
+        matches = [x for x in stream.transcribed_pieces if x in pieces]
+        assert len(matches) == 1  # todo; can we guarantee this?
+        return matches[0]
+
+    def get_upstream_link(self, current_piece, sess):
         downstreams = sess.query(annotations_orm.DownstreamFeature).all()
         # DownstreamFeature s of this pice
         downstreams_current = [x for x in downstreams if current_piece in x.transcribed_pieces]
-        if len(downstreams_current) == 0:
-            return None
-        elif len(downstreams_current) == 1:
-            # pairs going to downstream of choice
-            dc = downstreams_current[0]
-            pairs = self.transcript.pairs
-            upstreams = [x for x in pairs if x.downstream == dc]
-            if len(upstreams) == 0:
-                return 1
-            elif len(upstreams) == 1:
-                return upstreams[0]
+        links = self._find_matching_links(updown_candidates=downstreams_current, get_upstreams=True)
+        return self._links_list2link(links, direction='upstream', current_piece=current_piece)
+
+    def get_downstream_link(self, current_piece, sess):
+        upstreams = sess.query(annotations_orm.UpstreamFeature).all()
+        upstreams_current = [x for x in upstreams if current_piece in x.transcribed_pieces]
+        links = self._find_matching_links(updown_candidates=upstreams_current, get_upstreams=False)
+        return self._links_list2link(links, direction='downstream', current_piece=current_piece)
+
+    def _find_matching_links(self, updown_candidates, get_upstreams=True):
+        links = []
+        pairs = self.transcript.data.pairs
+        for cand in updown_candidates:
+            if get_upstreams:
+                links += [x for x in pairs if x.downstream == cand]
             else:
-                raise ValueError
+                links += [x for x in pairs if x.upstream == cand]
+        return links
+
+    @staticmethod
+    def _links_list2link(links, direction, current_piece):
+        if len(links) == 0:
+            return None
+        elif len(links) == 1:
+            return links[0]
         else:
-            raise ValueError
-        # todo, replace ValueError with something more informative and test WAS HERE
-
-
+            raise IndecipherableLinkageError("Multiple possible within-transcript {} links found from {}, ({})".format(
+                direction, current_piece, links
+            ))
 
     def sort_all(self):
         pass
