@@ -86,6 +86,52 @@ class SliceController(object):
         pass
 
 
+class SuperLocusCopier(object):
+    def __init__(self, super_locus_handler, new_sequence_info):
+        self.super_locus_handler = super_locus_handler
+        self.new_sequence_info = new_sequence_info
+        self.old2new = []
+
+    def get_new(self, old):
+        return self._get_paired_item(search4=old, search_col=0, return_col=1, nested_list=self.old2new)
+
+    @staticmethod
+    def _get_paired_item(search4, search_col, return_col, nested_list):
+        matches = [x[return_col] for x in nested_list if x[search_col] == search4]
+        assert len(matches) == 1
+        return matches[0]
+
+    def make_new(self):
+        pass  # todo, loop through super_locus, translated, transcribed, transcribed_pieces, features, updown_pairs
+        #         and recreate basic pieces
+
+    def _make_one_new(self, old_data):
+        old_handler = self._get_or_make_one_handler(old_data)
+        new_data = type(old_data)()
+        new_handler = self._get_or_make_one_handler(new_data)
+
+    def make_all_handlers(self):
+        pass
+
+    def _get_or_make_one_handler(self, data):
+        try:
+            handler = data.hanlder
+        except AttributeError:
+            handler_type = self._get_handler_type(data)
+            handler = handler_type()
+            handler.add_data(data)
+        return handler
+
+    def _get_handler_type(self, old_data):
+        key = [(SuperLocusHandler, annotations_orm.SuperLocus),
+               (TranscribedHandler, annotations_orm.Transcribed),
+               (TranslatedHandler, annotations_orm.Translated),
+               (TranscribedPieceHandler, annotations_orm.TranscribedPiece),
+               (FeatureHandler, annotations_orm.Feature), ]  # todo, up/downstream feature handler, updownpair
+
+        return self._get_paired_item(type(old_data), search_col=1, return_col=0, nested_list=key)
+
+
 class SuperLocusHandler(annotations.SuperLocusHandler):
 
     def load_to_intervaltree(self, trees):
@@ -97,6 +143,15 @@ class SuperLocusHandler(annotations.SuperLocusHandler):
 
     def reconcile_with_slice(self, seqid, start, end):
         pass
+
+    def recursive_copy(self, sequence_info):
+        pass
+        # todo,
+        #  setup SuperLocus with new sequence_info (otherwise as-is but linkable empty)
+        #  setup pairs (Translated old, new), (Transcribed old, new), (Features old, new), (TranscribedPieces old, new)
+        #  get coordinate mapping for old -> new/None
+        #  update coordinates of new features
+        #  resetup links based on pairs
 #
 #    def reconcile_with_slice(self, seqid, start, end, status, last_before_slice):
 #        #overlap_status = OverlapStatus()
@@ -144,6 +199,10 @@ class TranscribedHandler(annotations.TranscribedHandler):
 class TranslatedHandler(annotations.TranslatedHandler):
     def reconcile_translated_with_slice(self, seqid, start, end):
         pass
+
+
+class TranscribedPieceHandler(annotations.TranscribedPieceHandler):
+    pass
 
 
 class FeatureHandler(annotations.FeatureHandler):
