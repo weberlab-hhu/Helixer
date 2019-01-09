@@ -314,5 +314,8 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 direction, current_piece, links
             ))
 
-    def sort_all(self):
-        pass
+    def sort_all(self, sess):
+        out = []
+        for piece in self.sort_pieces(sess):
+            out.append(self.sorted_features(piece))
+        return out

@@ -1262,10 +1262,14 @@ def test_order_pieces():
     sess.add_all([scribed, piece0, piece1, piece2])
     sess.commit()
     # setup some paired features
-    feature0u = annotations_orm.UpstreamFeature(transcribed_pieces=[piece0])
-    feature1d = annotations_orm.DownstreamFeature(transcribed_pieces=[piece1])
-    feature1u = annotations_orm.UpstreamFeature(transcribed_pieces=[piece1])
-    feature2d = annotations_orm.DownstreamFeature(transcribed_pieces=[piece2])
+    feature0u = annotations_orm.UpstreamFeature(transcribed_pieces=[piece0], coordinates=coor, start=100, given_id='0u',
+                                                is_plus_strand=True)
+    feature1d = annotations_orm.DownstreamFeature(transcribed_pieces=[piece1], coordinates=coor, start=1, given_id='1d',
+                                                  is_plus_strand=True)
+    feature1u = annotations_orm.UpstreamFeature(transcribed_pieces=[piece1], coordinates=coor, start=100, given_id='1u',
+                                                is_plus_strand=True)
+    feature2d = annotations_orm.DownstreamFeature(transcribed_pieces=[piece2], coordinates=coor, start=1, given_id='2d',
+                                                  is_plus_strand=True)
     pair01 = annotations_orm.UpDownPair(upstream=feature0u, downstream=feature1d, transcribed=scribed)
     pair12 = annotations_orm.UpDownPair(upstream=feature1u, downstream=feature2d, transcribed=scribed)
     # check getting upstream link
@@ -1283,7 +1287,23 @@ def test_order_pieces():
     # and see if they can be ordered as expected overall
     op = ti.sort_pieces(sess)
     assert op == [piece0, piece1, piece2]
-    assert False  # todo, TranscriptTrimmer.sort_pieces(), starting with get_upstream_piece
+    # and finally, order features by piece
+    fully_sorted = ti.sort_all(sess)
+    expected = [[feature0u],
+                [feature1d, feature1u],
+                [feature2d]]
+    assert fully_sorted == expected
+    # finally make it circular, and make sure it throws an error
+    feature2u = annotations_orm.UpstreamFeature(transcribed_pieces=[piece2], coordinates=coor, start=100, given_id='2u',
+                                                is_plus_strand=True)
+    feature0d = annotations_orm.DownstreamFeature(transcribed_pieces=[piece0], coordinates=coor, start=1, given_id='0d',
+                                                  is_plus_strand=True)
+    pair20 = annotations_orm.UpDownPair(upstream=feature2u, downstream=feature0d, transcribed=scribed)
+    sess.add(pair20)
+    sess.commit()
+    with pytest.raises(slicer.IndecipherableLinkageError):
+        ti.sort_pieces(sess)
+
 
 
 #### type_enumss ####
