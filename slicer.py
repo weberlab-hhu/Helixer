@@ -86,52 +86,6 @@ class SliceController(object):
         pass
 
 
-class SuperLocusCopier(object):
-    def __init__(self, super_locus_handler, new_sequence_info):
-        self.super_locus_handler = super_locus_handler
-        self.new_sequence_info = new_sequence_info
-        self.old2new = []
-
-    def get_new(self, old):
-        return self._get_paired_item(search4=old, search_col=0, return_col=1, nested_list=self.old2new)
-
-    @staticmethod
-    def _get_paired_item(search4, search_col, return_col, nested_list):
-        matches = [x[return_col] for x in nested_list if x[search_col] == search4]
-        assert len(matches) == 1
-        return matches[0]
-
-    def make_new(self):
-        pass  # todo, loop through super_locus, translated, transcribed, transcribed_pieces, features, updown_pairs
-        #         and recreate basic pieces
-
-    def _make_one_new(self, old_data):
-        old_handler = self._get_or_make_one_handler(old_data)
-        new_data = type(old_data)()
-        new_handler = self._get_or_make_one_handler(new_data)
-
-    def make_all_handlers(self):
-        pass
-
-    def _get_or_make_one_handler(self, data):
-        try:
-            handler = data.hanlder
-        except AttributeError:
-            handler_type = self._get_handler_type(data)
-            handler = handler_type()
-            handler.add_data(data)
-        return handler
-
-    def _get_handler_type(self, old_data):
-        key = [(SuperLocusHandler, annotations_orm.SuperLocus),
-               (TranscribedHandler, annotations_orm.Transcribed),
-               (TranslatedHandler, annotations_orm.Translated),
-               (TranscribedPieceHandler, annotations_orm.TranscribedPiece),
-               (FeatureHandler, annotations_orm.Feature), ]  # todo, up/downstream feature handler, updownpair
-
-        return self._get_paired_item(type(old_data), search_col=1, return_col=0, nested_list=key)
-
-
 class SuperLocusHandler(annotations.SuperLocusHandler):
 
     def load_to_intervaltree(self, trees):
@@ -140,55 +94,6 @@ class SuperLocusHandler(annotations.SuperLocusHandler):
             feature = FeatureHandler()  # recreate feature handler post load (todo, mv elsewhere so it's always done?)
             feature.add_data(f)
             feature.load_to_intervaltree(trees)
-
-    def reconcile_with_slice(self, seqid, start, end):
-        pass
-
-    def recursive_copy(self, sequence_info):
-        pass
-        # todo,
-        #  setup SuperLocus with new sequence_info (otherwise as-is but linkable empty)
-        #  setup pairs (Translated old, new), (Transcribed old, new), (Features old, new), (TranscribedPieces old, new)
-        #  get coordinate mapping for old -> new/None
-        #  update coordinates of new features
-        #  resetup links based on pairs
-#
-#    def reconcile_with_slice(self, seqid, start, end, status, last_before_slice):
-#        #overlap_status = OverlapStatus()
-#        #overlap_status.set_status(self, seqid, start, end)
-#        #status = overlap_status.status
-#        if status == OverlapStatus.contained:
-#            pass  # leave it alone
-#        elif status == OverlapStatus.no_overlap:
-#            # todo, if it is the last feature before the slice (aka, if the next one is contained)
-#            if last_before_slice:
-#                self.shift_phase(start, end)
-#                pass  # todo, change to 1bp status_at (w/ phase if appropriate)
-#            pass  # todo, delete (and from transcripts / super_locus)
-#        elif status == OverlapStatus.overlaps_upstream:
-#            self.shift_phase(start, end)
-#            self.crop(start, end)
-#        elif status == OverlapStatus.overlaps_downstream:
-#            # just crop
-#            self.crop(start, end)
-
-#    def length_outside_slice(self, start, end):
-#        if self.is_plus_strand():
-#            length_outside_slice = start - self.start
-#        else:
-#            length_outside_slice = self.end - end
-#        return length_outside_slice
-#
-#    def crop(self, start, end):
-#        if self.start < start:
-#            self.start = start
-#        if self.end > end:
-#            self.end = end
-#
-#    def shift_phase(self, start, end):
-#        if self.phase is not None:
-#            l_out = self.length_outside_slice(start, end)
-#            self.phase = (l_out - self.phase) % 3
 
 
 class TranscribedHandler(annotations.TranscribedHandler):
@@ -276,12 +181,17 @@ class TranscriptTrimmer(TranscriptInterpBase):
     def __init__(self, transcript):
         super().__init__(transcript)
 
-    def crop_to_slice(self, seqid, start, end):
-        """crops transcript in place"""
+    def transition_5p_to_3p(self):
+        # todo,
+        #  for each protein:
+        #    _transition_w_prot
+        # setup
         pass
 
-    def transition_5p_to_3p(self):
-        # setup
+    def _transition_w_prot(self, protein):
+        # todo,
+        #  get ordered pieces/features
+        #  setup transcript status @ first feature
         pass
 
     @staticmethod
