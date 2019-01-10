@@ -1197,9 +1197,11 @@ def test_order_features():
     ti = slicer.TranscriptTrimmer(transcripth, sess=controller.session)
     assert len(transcript.transcribed_pieces) == 1
     piece = transcript.transcribed_pieces[0]
-    # features expected to be ordered by increasing position (note: as they are in db)\
-    ordered_starts = [1, 101, 110, 121, 200, 400]
+    # features expected to be ordered by increasing position (note: as they are in db)
+    ordered_starts = [1, 11, 101, 110, 121, 200, 300, 400]
     features = ti.sorted_features(piece)
+    for f in features:
+        print(f)
     assert [x.start for x in features] == ordered_starts
     for feature in piece.features:
         feature.is_plus_strand = False
@@ -1273,6 +1275,34 @@ def test_order_pieces():
     with pytest.raises(slicer.IndecipherableLinkageError):
         ti.sort_pieces()
 
+
+def test_slicer_transition():
+    destination = 'testdata/tmp.db'
+    if os.path.exists(destination):
+        os.remove(destination)
+    source = 'testdata/dummyloci_annotations.sqlitedb'
+
+    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
+    controller.mk_session()
+    controller.load_annotations()
+    sl = controller.super_loci[0]
+    transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
+    transcripth = slicer.TranscribedHandler()
+    transcripth.add_data(transcript)
+    ti = slicer.TranscriptTrimmer(transcript=transcripth, sess=controller.session)
+    transition_gen = ti.transition_5p_to_3p()
+    transitions = list(transition_gen)
+    assert len(transitions) == 8
+    statusses = [x[1] for x in transitions]
+    features = [x[0][0] for x in transitions]
+    ordered_starts = [1, 11, 101, 110, 121, 200, 300, 400]
+    assert [x.start for x in features] == ordered_starts
+    expected_intronic = [False, False, True, False, True, False, False, False]
+    assert [x.in_intron for x in statusses] == expected_intronic
+    expected_genic = [True] * 7 + [False]
+    assert [x.genic for x in statusses] == expected_genic
+    expected_seen_startstop = [(False, False)] + [(True, False)] * 5 + [(True, True)] * 2
+    assert [(x.seen_start, x.seen_stop) for x in statusses] == expected_seen_startstop
 
 
 #### type_enumss ####

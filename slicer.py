@@ -186,18 +186,12 @@ class TranscriptTrimmer(TranscriptInterpBase):
         self.session = sess
 
     def transition_5p_to_3p(self):
-        # todo,
-        #  for each protein:
-        #    _transition_w_prot
-        # setup
-        pass
-
-    def _transition_w_prot(self):
         status = TranscriptStatus()
-        for piece_features in self.sort_all():
+        for piece in self.sort_pieces():
+            piece_features = self.sorted_features(piece)
             for aligned_features in self.stack_matches(piece_features):
                 self.update_status(status, aligned_features)
-                yield aligned_features, copy.deepcopy(status)
+                yield aligned_features, copy.deepcopy(status), piece
 
         # todo,
         #  get ordered pieces/features
@@ -243,10 +237,10 @@ class TranscriptTrimmer(TranscriptInterpBase):
         new_piece = annotations_orm.TranscribedPiece(super_locus=self.transcript.data.super_locus,
                                                      transcribed=self.transcript.data)
 
-        transition_gen = self._transition_w_prot()  # todo, I need to get TranscribedPiece obj, out of this too
-        prev_features, prev_status = next(transition_gen)  # todo, check and handle things for these!
+        transition_gen = self.transition_5p_to_3p()
+        prev_features, prev_status, prev_piece = next(transition_gen)  # todo, check and handle things for these!
 
-        for aligned_features, status in transition_gen:
+        for aligned_features, status, piece in transition_gen:
             f0 = aligned_features[0]  # take first as all "aligned" features have the same coordinates
             same_seq = f0.coordinate.seqid == new_coords.seqid
             # before or detached coordinates (already handled or good as-is, at least for now)
@@ -267,14 +261,17 @@ class TranscriptTrimmer(TranscriptInterpBase):
             # handle pass end of coordinates between previous and current feature, [p] | [f]
             elif prev_features[0].end <= downstream_border < f0.start:
                 self.set_status_at_border(new_coords, is_plus_strand, prev_features[0], prev_status)
-                # todo
-                #  self.swap_piece(f0, new_piece, old_piece=?)
+                self.swap_piece(f0, new_piece, old_piece=piece)
             elif f0.start > downstream_border:
-                # todo
-                #  self.swap_piece(f0, new_piece, old_piece=?)
-                pass
+                self.swap_piece(f0, new_piece, old_piece=piece)
             else:
                 raise AssertionError('this code should be unreachable...? Check what is up!')
+
+            # and step
+            prev_features = aligned_features
+            prev_status = status
+            prev_piece = piece
+
         if not new_piece.features:
             self.session.delete(new_piece)
 
@@ -388,7 +385,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         prev = next(ifeatures)
         current = [prev]
         for feature in ifeatures:
-            if feature.cmp_key[0:4] == prev.cmp_key()[0:4]:
+            if feature.cmp_key()[0:4] == prev.cmp_key()[0:4]:
                 current.append(feature)
             else:
                 yield current

@@ -457,7 +457,7 @@ class TranscriptStatus(object):
         # initializes to intergenic
         self.genic = False  # todo, have some thoughts about how trans-splicing will fit in
         self.in_intron = False
-        self.seen_start = False
+        self.seen_start = False  # todo, make this match in_transcribed_region (also better for prokaryotes...)
         self.seen_stop = False
         self.phase = None  # todo, proper tracking / handling
 
