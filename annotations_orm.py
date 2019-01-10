@@ -36,7 +36,6 @@ class SequenceInfo(Base):
     annotated_genome = relationship('AnnotatedGenome', back_populates="sequence_infos")
     processing_set = Column(Enum(ProcessingSet))
     coordinates = relationship('Coordinates', back_populates="sequence_info")
-    super_loci = relationship('SuperLocus', back_populates="sequence_info")
 
 
 class Coordinates(Base):
@@ -76,9 +75,6 @@ class SuperLocus(Base):
     id = Column(Integer, primary_key=True)
     given_id = Column(String)
     type = Column(Enum(type_enums.SuperLocusAll))
-    # relations
-    sequence_info_id = Column(Integer, ForeignKey('sequence_infos.id'))
-    sequence_info = relationship('SequenceInfo', back_populates='super_loci')
     # things SuperLocus can have a lot of
     aliases = relationship('SuperLocusAliases', back_populates='super_locus')
     features = relationship('Feature', back_populates='super_locus')

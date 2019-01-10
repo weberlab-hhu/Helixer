@@ -260,7 +260,7 @@ def test_coordinate_seqinfo_query():
     slic.add_data(si_model)
     coors = annotations_orm.Coordinates(start=1, end=30, seqid='abc', sequence_info=si_model)
     coors2 = annotations_orm.Coordinates(start=11, end=330, seqid='def', sequence_info=si_model)
-    sl = annotations_orm.SuperLocus(sequence_info=slic.data)
+    sl = annotations_orm.SuperLocus()
     f0 = annotations_orm.Feature(super_locus=sl, coordinates=coors)
     f1 = annotations_orm.Feature(super_locus=sl, coordinates=coors2)
     # should be ok
@@ -271,10 +271,8 @@ def test_coordinate_seqinfo_query():
 
 
 def test_many2many_scribed2slated():
-    ag = annotations_orm.AnnotatedGenome()
-    sinfo = annotations_orm.SequenceInfo(annotated_genome=ag)
     # test transcript to multi proteins
-    sl = annotations_orm.SuperLocus(sequence_info=sinfo)
+    sl = annotations_orm.SuperLocus()
     scribed0 = annotations_orm.Transcribed(super_locus=sl)
     slated0 = annotations_orm.Translated(super_locus=sl, transcribeds=[scribed0])
     slated1 = annotations_orm.Translated(super_locus=sl, transcribeds=[scribed0])
@@ -294,9 +292,7 @@ def test_many2many_scribed2slated():
 
 
 def test_many2many_with_features():
-    ag = annotations_orm.AnnotatedGenome()
-    sinfo = annotations_orm.SequenceInfo(annotated_genome=ag)
-    sl = annotations_orm.SuperLocus(sequence_info=sinfo)
+    sl = annotations_orm.SuperLocus()
     # one transcript, multiple proteins
     piece0 = annotations_orm.TranscribedPiece(super_locus=sl)
     scribed0 = annotations_orm.Transcribed(super_locus=sl, transcribed_pieces=[piece0])
@@ -327,10 +323,7 @@ def test_many2many_with_features():
 def test_feature_has_its_things():
     sess = mk_session()
     # should be ok
-
-    ag = annotations_orm.AnnotatedGenome()
-    sinfo = annotations_orm.SequenceInfo(annotated_genome=ag)
-    sl = annotations_orm.SuperLocus(sequence_info=sinfo)
+    sl = annotations_orm.SuperLocus()
     # test feature with nothing much set
     f = annotations_orm.Feature(super_locus=sl)
     sess.add(f)
@@ -470,29 +463,6 @@ def test_swap_link_annogenome2seqinfo():
     sih.link_to(agh)
     assert agh.data.sequence_infos == [sih.data]
     assert ag2h.data.sequence_infos == []
-
-
-def test_swap_link_seqinfo2superlocus():
-    sess = mk_session()
-    ag = annotations_orm.AnnotatedGenome()
-
-    si, sih = setup_data_handler(annotations.SequenceInfoHandler, annotations_orm.SequenceInfo, annotated_genome=ag)
-
-    si2, si2h = setup_data_handler(annotations.SequenceInfoHandler, annotations_orm.SequenceInfo, annotated_genome=ag)
-
-    slc, slch = setup_data_handler(annotations.SuperLocusHandler, annotations_orm.SuperLocus, sequence_info=si)
-    sess.add_all([si, si2, slc])
-    sess.commit()
-
-    sih.de_link(slch)
-    si2h.link_to(slch)
-    assert sih.data.super_loci == []
-    assert si2h.data.super_loci == [slch.data]
-    # and back from super locus side
-    slch.de_link(si2h)
-    slch.link_to(sih)
-    assert si2h.data.super_loci == []
-    assert sih.data.super_loci == [slch.data]
 
 
 def test_swap_links_superlocus2ttfs():
@@ -846,7 +816,6 @@ def test_transcript_interpreter():
 def test_transcript_get_first():
     # plus strand
     sl, controller = setup_testable_super_loci()
-    print(sl.data.sequence_info)
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
     t_interp = gff_2_annotations.TranscriptInterpreter(transcript.handler)
     i0 = t_interp.intervals_5to3(plus_strand=True)[0]

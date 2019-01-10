@@ -227,10 +227,9 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
         self.transcribed_piece_handlers = []
         self.feature_handlers = []
 
-    def gen_data_from_gffentry(self, gffentry, sequence_info=None, **kwargs):
+    def gen_data_from_gffentry(self, gffentry, **kwargs):
         data = self.data_type(type=gffentry.type,
-                              given_id=gffentry.get_ID(),
-                              sequence_info=sequence_info)
+                              given_id=gffentry.get_ID())
         self.add_data(data)
         # todo, grab more aliases from gff attribute
 
@@ -253,7 +252,7 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
             if 'trans-splicing' in exception:
                 raise TransSplicingError('trans-splice in attribute {} {}'.format(entry.get_ID(), entry.attribute))
         if in_values(entry.type, type_enums.SuperLocusAll):
-            self.process_gffentry(gffentry=entry, sequence_info=sequence_info)
+            self.process_gffentry(gffentry=entry)
 
         elif in_values(entry.type, type_enums.TranscriptLevelAll):
             transcribed = TranscribedHandler()
@@ -266,7 +265,7 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
 
         elif in_values(entry.type, type_enums.OnSequence):
             feature = FeatureHandler()
-            coordinates = self.data.sequence_info.handler.gffid_to_coords[entry.seqid]
+            coordinates = sequence_info.handler.gffid_to_coords[entry.seqid]
             assert len(self.transcribed_handlers) > 0, "no transcribeds found before feature"
             feature.process_gffentry(entry, super_locus=self.data,
                                      transcribed_pieces=[self.transcribed_handlers[-1].one_piece().data],
