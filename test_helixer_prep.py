@@ -1194,7 +1194,7 @@ def test_order_features():
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
     transcripth = slicer.TranscribedHandler()
     transcripth.add_data(transcript)
-    ti = slicer.TranscriptTrimmer(transcripth)
+    ti = slicer.TranscriptTrimmer(transcripth, sess=controller.session)
     assert len(transcript.transcribed_pieces) == 1
     piece = transcript.transcribed_pieces[0]
     # features expected to be ordered by increasing position (note: as they are in db)\
@@ -1223,7 +1223,7 @@ def test_order_pieces():
     sess.commit()
     # setup one transcribed handler with pieces
     scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed)
-    ti = slicer.TranscriptTrimmer(transcript=scribedh)
+    ti = slicer.TranscriptTrimmer(transcript=scribedh, sess=sess)
     piece1 = annotations_orm.TranscribedPiece()
     piece0 = annotations_orm.TranscribedPiece()
     piece2 = annotations_orm.TranscribedPiece()
@@ -1242,22 +1242,22 @@ def test_order_pieces():
     pair01 = annotations_orm.UpDownPair(upstream=feature0u, downstream=feature1d, transcribed=scribed)
     pair12 = annotations_orm.UpDownPair(upstream=feature1u, downstream=feature2d, transcribed=scribed)
     # check getting upstream link
-    upstream_link = ti.get_upstream_link(piece1, sess)
+    upstream_link = ti.get_upstream_link(piece1)
     assert upstream_link is pair01
     upstream = upstream_link.upstream
     assert upstream is feature0u
     assert upstream.transcribed_pieces == [piece0]
     # check getting downstream link
-    downstream_link = ti.get_downstream_link(piece1, sess)
+    downstream_link = ti.get_downstream_link(piece1)
     assert downstream_link is pair12
     downstream = downstream_link.downstream
     assert downstream is feature2d
     assert downstream.transcribed_pieces == [piece2]
     # and see if they can be ordered as expected overall
-    op = ti.sort_pieces(sess)
+    op = ti.sort_pieces()
     assert op == [piece0, piece1, piece2]
     # and finally, order features by piece
-    fully_sorted = ti.sort_all(sess)
+    fully_sorted = ti.sort_all()
     expected = [[feature0u],
                 [feature1d, feature1u],
                 [feature2d]]
@@ -1271,7 +1271,7 @@ def test_order_pieces():
     sess.add(pair20)
     sess.commit()
     with pytest.raises(slicer.IndecipherableLinkageError):
-        ti.sort_pieces(sess)
+        ti.sort_pieces()
 
 
 
