@@ -444,6 +444,67 @@ class FeatureHandler(Handler):
     def cmp_key(self):
         return self.data.cmp_key()
 
+
+class DownstreamFeatureHandler(FeatureHandler):
+    def __init__(self):
+        super().__init__()
+        self.linkable += ['pairs']
+
+    @property
+    def data_type(self):
+        return annotations_orm.DownstreamFeature
+
+    @property
+    def _valid_links(self):
+        return super()._valid_links + [UpDownPairHandler]
+
+    def link_to(self, other):
+        try:
+            super().link_to(other)
+        except ValueError:
+            if isinstance(other, UpDownPairHandler):
+                other.downstream = self.data
+            else:
+                raise self._link_value_error(other)
+
+    def de_link(self, other):
+        if any([isinstance(other, x) for x in [TranscribedPieceHandler, SuperLocusHandler, TranslatedHandler]]):
+            other.data.features.remove(self.data)
+        elif isinstance(other, UpDownPairHandler):
+            other.data.downstream = None
+        else:
+            raise self._link_value_error(other)
+
+
+class UpstreamFeatureHandler(FeatureHandler):
+    def __init__(self):
+        super().__init__()
+        self.linkable += ['pairs']
+
+    @property
+    def data_type(self):
+        return annotations_orm.UpstreamFeature
+
+    @property
+    def _valid_links(self):
+        return super()._valid_links + [UpDownPairHandler]
+
+    def link_to(self, other):
+        try:
+            super().link_to(other)
+        except ValueError:
+            if isinstance(other, UpDownPairHandler):
+                other.upstream = self.data
+            else:
+                raise self._link_value_error(other)
+
+    def de_link(self, other):
+        if any([isinstance(other, x) for x in [TranscribedPieceHandler, SuperLocusHandler, TranslatedHandler]]):
+            other.data.features.remove(self.data)
+        elif isinstance(other, UpDownPairHandler):
+            other.data.upstream = None
+        else:
+            raise self._link_value_error(other)
 #    def __lt__(self, other):
 #        return self._cmp_key() < other._cmp_key()
 #
@@ -552,3 +613,32 @@ class FeatureHandler(Handler):
 #        if self.phase is not None:
 #            l_out = self.length_outside_slice(start, end)
 #            self.phase = (l_out - self.phase) % 3
+
+
+class UpDownPairHandler(Handler):
+    def __init__(self):
+        super().__init__()
+        self.linkable += ['upstream', 'transcribed', 'downstream']
+
+    @property
+    def data_type(self):
+        return annotations_orm.UpDownPair
+
+    @property
+    def _valid_links(self):
+        return [TranscribedHandler, DownstreamFeatureHandler, UpstreamFeatureHandler]
+
+    # todo, WAS HERE, finish implementing and test; don't forget to update TranscribedHandler
+    def link_to(self, other):
+        if isinstance(other.data, SuperLocusHandler):
+            self.data.super_locus = other.data
+        elif any([isinstance(other, x) for x in [TranslatedHandler, TranscribedPieceHandler]]):
+            other.data.transcribeds.append(self.data)
+        else:
+            raise self._link_value_error(other)
+
+    def de_link(self, other):
+        if any([isinstance(other, x) for x in self._valid_links]):
+            other.data.transcribeds.remove(self.data)
+        else:
+            raise self._link_value_error(other)
