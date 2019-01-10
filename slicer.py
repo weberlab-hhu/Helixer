@@ -89,6 +89,46 @@ class SliceController(object):
         pass
 
 
+class HandleMaker(object):
+    def __init__(self, super_locus_handler):
+        self.super_locus_handler = super_locus_handler
+        self.handles = []
+
+    @staticmethod
+    def _get_paired_item(search4, search_col, return_col, nested_list):
+        matches = [x[return_col] for x in nested_list if x[search_col] == search4]
+        assert len(matches) == 1
+        return matches[0]
+
+    def make_all_handlers(self):
+        sl = self.super_locus_handler.data
+        datas = sl.transcribed_pieces + sl.translateds + sl.features
+        for transcribed in sl.transcribeds:
+            datas.append(transcribed)
+            datas += transcribed.pairs
+
+        for item in datas:
+            self.handles.append(self._get_or_make_one_handler(item))
+
+    def _get_or_make_one_handler(self, data):
+        try:
+            handler = data.hanlder
+        except AttributeError:
+            handler_type = self._get_handler_type(data)
+            handler = handler_type()
+            handler.add_data(data)
+        return handler
+
+    def _get_handler_type(self, old_data):
+        key = [(SuperLocusHandler, annotations_orm.SuperLocus),
+               (TranscribedHandler, annotations_orm.Transcribed),
+               (TranslatedHandler, annotations_orm.Translated),
+               (TranscribedPieceHandler, annotations_orm.TranscribedPiece),
+               (FeatureHandler, annotations_orm.Feature), ]  # todo, up/downstream feature handler, updownpair
+
+        return self._get_paired_item(type(old_data), search_col=1, return_col=0, nested_list=key)
+
+
 class SuperLocusHandler(annotations.SuperLocusHandler):
 
     def load_to_intervaltree(self, trees):
@@ -184,6 +224,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
     def __init__(self, transcript, sess):
         super().__init__(transcript)
         self.session = sess
+        self.handlers = []
 
     def transition_5p_to_3p(self):
         status = TranscriptStatus()
