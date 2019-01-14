@@ -309,6 +309,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 raise ValueError('no implementation for updating status with feature of type {}'.format(ftype))
 
     def modify4new_slice(self, new_coords, is_plus_strand=True):
+        # TODO TUESDAY TEST
         if is_plus_strand:
             downstream_border = new_coords.end
             upstream_border = new_coords.start
@@ -374,15 +375,24 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                            down_at)
 
     def _set_one_status_at_border(self, new_coords, template_feature, status_type, up_at, down_at):
+        # TODO TUESDAY TEST
         upstream = self.new_handled_data(template_feature, annotations_orm.UpstreamFeature, start=up_at, end=up_at,
                                          given_id=None, type=status_type, coordinates=new_coords)
         downstream = self.new_handled_data(template_feature, annotations_orm.DownstreamFeature, start=down_at,
                                            end=down_at, given_id=None, type=status_type)
-        pair = self.new_handled_data(new_type=annotations_orm.UpDownPair, upstream=upstream.data,
-                                     downstream=downstream.data, transcribed=self.transcript.data)
+        self.new_handled_data(new_type=annotations_orm.UpDownPair, upstream=upstream.data,
+                              downstream=downstream.data, transcribed=self.transcript.data)
 
-    def split_feature_at_border(self, new_coords, is_plus_strand, feature):
-        pass  # todo
+    def split_feature_downstream_border(self, new_coords, is_plus_strand, feature):
+        # TODO TUESDAY TEST
+        if is_plus_strand:
+            before_border = self.new_handled_data(template=feature, new_type=annotations_orm.Feature,
+                                                  end=new_coords.end, coordinates=new_coords)
+            feature.start = new_coords.end + 1
+        else:
+            before_border = self.new_handled_data(template=feature, new_type=annotations_orm.Feature,
+                                                  start=new_coords.start, coordinates=new_coords)
+            feature.end = new_coords.start - 1
 
     @staticmethod
     def sorted_features(piece):
