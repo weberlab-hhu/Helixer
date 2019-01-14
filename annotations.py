@@ -330,18 +330,22 @@ class TranscribedHandler(Handler):
 
     @property
     def _valid_links(self):
-        return [TranslatedHandler, SuperLocusHandler, TranscribedPieceHandler]
+        return [TranslatedHandler, SuperLocusHandler, TranscribedPieceHandler, UpDownPairHandler]
 
     def link_to(self, other):
         if isinstance(other, SuperLocusHandler):
             self.data.super_locus = other.data
+        elif isinstance(other, UpDownPairHandler):
+            other.data.transcribed = self.data
         elif any([isinstance(other, x) for x in [TranslatedHandler, TranscribedPieceHandler]]):
             other.data.transcribeds.append(self.data)
         else:
             raise self._link_value_error(other)
 
     def de_link(self, other):
-        if any([isinstance(other, x) for x in self._valid_links]):
+        if isinstance(other, UpDownPairHandler):
+            other.data.transcribed = None
+        elif any([isinstance(other, x) for x in self._valid_links]):
             other.data.transcribeds.remove(self.data)
         else:
             raise self._link_value_error(other)
@@ -630,15 +634,13 @@ class UpDownPairHandler(Handler):
 
     # todo, WAS HERE, finish implementing and test; don't forget to update TranscribedHandler
     def link_to(self, other):
-        if isinstance(other.data, SuperLocusHandler):
-            self.data.super_locus = other.data
-        elif any([isinstance(other, x) for x in [TranslatedHandler, TranscribedPieceHandler]]):
-            other.data.transcribeds.append(self.data)
+        if any([isinstance(other, x) for x in self._valid_links]):
+            other.data.pairs.append(self.data)
         else:
             raise self._link_value_error(other)
 
     def de_link(self, other):
         if any([isinstance(other, x) for x in self._valid_links]):
-            other.data.transcribeds.remove(self.data)
+            other.data.pairs.remove(self.data)
         else:
             raise self._link_value_error(other)

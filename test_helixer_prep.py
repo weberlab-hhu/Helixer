@@ -558,6 +558,35 @@ def test_swap_links_t2t2f():
     sess.commit()
 
 
+def test_updownhandler_links():
+    sess = mk_session()
+    coor_old = annotations_orm.Coordinates(start=1, end=1000, seqid='a')
+    coor_new = annotations_orm.Coordinates(start=1, end=100, seqid='a')
+    slc = annotations_orm.SuperLocus()
+    scribedpiece, scribedpieceh = setup_data_handler(annotations.TranscribedPieceHandler,
+                                                     annotations_orm.TranscribedPiece, super_locus=slc)
+    scribed, scribedh = setup_data_handler(annotations.TranscribedHandler, annotations_orm.Transcribed,
+                                           super_locus=slc, transcribed_pieces=[scribedpiece])
+    up, uph = setup_data_handler(annotations.UpstreamFeatureHandler, annotations_orm.UpstreamFeature, super_locus=slc,
+                                 transcribed_pieces=[scribedpiece], coordinates=coor_old)
+    up2, up2h = setup_data_handler(annotations.UpstreamFeatureHandler, annotations_orm.UpstreamFeature, super_locus=slc,
+                                   transcribed_pieces=[scribedpiece], coordinates=coor_new)
+
+    down, downh = setup_data_handler(annotations.DownstreamFeatureHandler, annotations_orm.DownstreamFeature,
+                                     coordinates=coor_old)
+
+    pair, pairh = setup_data_handler(annotations.UpDownPairHandler, annotations_orm.UpDownPair, transcribed=scribed,
+                                     upstream=up, downstream=down)
+    sess.add_all([up, up2, down, slc, coor_old, coor_new, pair])
+    sess.commit()
+    assert up2.pairs == []
+    assert up.pairs[0].downstream == down
+    pairh.de_link(uph)
+    pairh.link_to(up2h)
+    assert up2.pairs[0].downstream == down
+    assert up.pairs == []
+
+
 def setup_data_handler(handler_type, data_type, **kwargs):
     data = data_type(**kwargs)
     handler = handler_type()
