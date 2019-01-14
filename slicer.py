@@ -37,7 +37,7 @@ class SliceController(object):
     def mk_session(self):
         if not os.path.exists(self.db_path_sliced):
             self.copy_db()
-        self.engine = create_engine(self.full_db_path(), echo=False)  # todo, dynamic / real path
+        self.engine = create_engine(self.full_db_path(), echo=False)
         annotations_orm.Base.metadata.create_all(self.engine)
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
@@ -101,6 +101,7 @@ class HandleMaker(object):
         return matches[0]
 
     def make_all_handlers(self):
+        self.handles = []
         sl = self.super_locus_handler.data
         datas = sl.transcribed_pieces + sl.translateds + sl.features
         for transcribed in sl.transcribeds:
@@ -124,12 +125,21 @@ class HandleMaker(object):
                (TranscribedHandler, annotations_orm.Transcribed),
                (TranslatedHandler, annotations_orm.Translated),
                (TranscribedPieceHandler, annotations_orm.TranscribedPiece),
-               (FeatureHandler, annotations_orm.Feature), ]  # todo, up/downstream feature handler, updownpair
+               (FeatureHandler, annotations_orm.Feature),
+               (UpstreamFeatureHandler, annotations_orm.UpstreamFeature),
+               (DownstreamFeatureHandler, annotations_orm.DownstreamFeature),
+               (UpDownPairHandler, annotations_orm.UpDownPair)]
 
         return self._get_paired_item(type(old_data), search_col=1, return_col=0, nested_list=key)
 
 
 class SuperLocusHandler(annotations.SuperLocusHandler):
+    def __init__(self):
+        super().__init__()
+        self.handle_holder = HandleMaker(self)
+
+    def make_all_handlers(self):
+        self.handle_holder.make_all_handlers()
 
     def load_to_intervaltree(self, trees):
         features = self.data.features
@@ -160,6 +170,18 @@ class FeatureHandler(annotations.FeatureHandler):
             trees[seqid] = intervaltree.IntervalTree()
         tree = trees[seqid]
         tree[self.py_start:self.py_end] = self
+
+
+class UpstreamFeatureHandler(annotations.UpstreamFeatureHandler):
+    pass
+
+
+class DownstreamFeatureHandler(annotations.DownstreamFeatureHandler):
+    pass
+
+
+class UpDownPairHandler(annotations.UpDownPairHandler):
+    pass
 
 
 class OverlapStatus(object):

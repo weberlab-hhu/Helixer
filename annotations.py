@@ -632,7 +632,6 @@ class UpDownPairHandler(Handler):
     def _valid_links(self):
         return [TranscribedHandler, DownstreamFeatureHandler, UpstreamFeatureHandler]
 
-    # todo, WAS HERE, finish implementing and test; don't forget to update TranscribedHandler
     def link_to(self, other):
         if any([isinstance(other, x) for x in self._valid_links]):
             other.data.pairs.append(self.data)
