@@ -114,6 +114,7 @@ class HandleMaker(object):
     def mk_n_append_handler(self, data):
         handler = self._get_or_make_one_handler(data)
         self.handles.append(handler)
+        return handler
 
     def _get_or_make_one_handler(self, data):
         try:
@@ -140,10 +141,10 @@ class HandleMaker(object):
 class SuperLocusHandler(annotations.SuperLocusHandler):
     def __init__(self):
         super().__init__()
-        self.handle_holder = HandleMaker(self)
+        self.handler_holder = HandleMaker(self)
 
     def make_all_handlers(self):
-        self.handle_holder.make_all_handlers()
+        self.handler_holder.make_all_handlers()
 
     def load_to_intervaltree(self, trees):
         features = self.data.features
@@ -174,10 +175,6 @@ class FeatureHandler(annotations.FeatureHandler):
             trees[seqid] = intervaltree.IntervalTree()
         tree = trees[seqid]
         tree[self.py_start:self.py_end] = self
-
-    def swap_piece(self, new_piece, old_piece):
-        self.de_link(old_piece.handler)
-        self.link_to(new_piece.handler)
 
 
 class UpstreamFeatureHandler(annotations.UpstreamFeatureHandler):
@@ -259,9 +256,9 @@ class TranscriptTrimmer(TranscriptInterpBase):
     def new_handled_data(self, template=None, new_type=annotations_orm.Feature, **kwargs):
         data = new_type()
         # todo, simplify below...
-        handler = self.transcript.super_locus.handler.handler_holder.mk_n_append_one_handler(data)
+        handler = self.transcript.data.super_locus.handler.handler_holder.mk_n_append_handler(data)
         if template is not None:
-            template.fax_all_attrs_to_another(another=handler)
+            template.handler.fax_all_attrs_to_another(another=handler)
 
         for key in kwargs:
             handler.set_data_attribute(key, kwargs[key])
@@ -320,6 +317,9 @@ class TranscriptTrimmer(TranscriptInterpBase):
         new_piece = annotations_orm.TranscribedPiece(super_locus=self.transcript.data.super_locus,
                                                      transcribed=self.transcript.data)
 
+        new_handler = TranscribedPieceHandler()
+        new_handler.add_data(new_piece)
+
         transition_gen = self.transition_5p_to_3p()
         prev_features, prev_status, prev_piece = next(transition_gen)  # todo, check and handle things for these!
 
@@ -336,17 +336,21 @@ class TranscriptTrimmer(TranscriptInterpBase):
             elif f0.start >= upstream_border and f0.end <= downstream_border:
                 for f in aligned_features:
                     f.coordinates = new_coords
+                    self.swap_piece(feature_handler=f, new_piece=new_piece, old_piece=piece)
             # handle feature [  |  ] straddling end of coordinates
             elif f0.start <= downstream_border < f0.end:
                 # make new UpDownLink and status features to handle split
-                self.set_status_downstream_border(new_coords, is_plus_strand, f0, status)
-                self.split_feature_at_border(new_coords, is_plus_strand, f0)
+                self.set_status_downstream_border(new_coords, is_plus_strand, f0, status, old_piece=piece)
+                self.split_feature_downstream_border(new_coords, is_plus_strand, f0)
+
             # handle pass end of coordinates between previous and current feature, [p] | [f]
             elif prev_features[0].end <= downstream_border < f0.start:
-                self.set_status_downstream_border(new_coords, is_plus_strand, prev_features[0], prev_status)
-                f0.handler.swap_piece(new_piece, old_piece=piece)
+                self.set_status_downstream_border(new_coords=new_coords, old_coords=old_coords,
+                                                  is_plus_strand=is_plus_strand, template_feature=prev_features[0],
+                                                  status=prev_status, old_piece=piece, new_piece=new_piece)
+                self.swap_piece(f0.handler, new_piece, old_piece=piece)
             elif f0.start > downstream_border:
-                f0.handler.swap_piece(new_piece, old_piece=piece)
+                self.swap_piece(f0.handler, new_piece, old_piece=piece)
             else:
                 raise AssertionError('this code should be unreachable...? Check what is up!')
 
@@ -358,7 +362,13 @@ class TranscriptTrimmer(TranscriptInterpBase):
         if not new_piece.features:
             self.session.delete(new_piece)
 
-    def set_status_downstream_border(self, new_coords, is_plus_strand, template_feature, status):
+    @staticmethod
+    def swap_piece(feature_handler, new_piece, old_piece):
+        feature_handler.de_link(old_piece.handler)
+        feature_handler.link_to(new_piece.handler)
+
+    def set_status_downstream_border(self, new_coords, old_coords, is_plus_strand, template_feature, status, new_piece,
+                                     old_piece):
         if is_plus_strand:
             up_at = new_coords.end
             down_at = new_coords.end + 1
@@ -367,19 +377,25 @@ class TranscriptTrimmer(TranscriptInterpBase):
             down_at = new_coords.start - 1
 
         if status.genic:
-            self._set_one_status_at_border(new_coords, template_feature, type_enums.IN_RAW_TRANSCRIPT, up_at, down_at)
+            self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_RAW_TRANSCRIPT, up_at, down_at,
+                                           new_piece, old_piece)
         if status.in_intron:
-            self._set_one_status_at_border(new_coords, template_feature, type_enums.IN_INTRON, up_at, down_at)
+            self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_INTRON, up_at, down_at,
+                                           new_piece, old_piece)
         if status.seen_start and not status.seen_stop:
-            self._set_one_status_at_border(new_coords, template_feature, type_enums.IN_TRANSLATED_REGION, up_at,
-                                           down_at)
+            self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_TRANSLATED_REGION, up_at,
+                                           down_at, new_piece, old_piece)
 
-    def _set_one_status_at_border(self, new_coords, template_feature, status_type, up_at, down_at):
+    def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
+                                  old_piece):
         # TODO TUESDAY TEST
         upstream = self.new_handled_data(template_feature, annotations_orm.UpstreamFeature, start=up_at, end=up_at,
-                                         given_id=None, type=status_type, coordinates=new_coords)
+                                         given_id=None, type=status_type)
         downstream = self.new_handled_data(template_feature, annotations_orm.DownstreamFeature, start=down_at,
-                                           end=down_at, given_id=None, type=status_type)
+                                           end=down_at, given_id=None, type=status_type, coordinates=old_coords)
+        # swap piece back to previous, as downstream is outside of new_coordinates (slice), and will be ran through
+        # modify4new_slice once more and get it's final coordinates/piece then
+        self.swap_piece(feature_handler=downstream, new_piece=old_piece, old_piece=new_piece)
         self.new_handled_data(new_type=annotations_orm.UpDownPair, upstream=upstream.data,
                               downstream=downstream.data, transcribed=self.transcript.data)
 

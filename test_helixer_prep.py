@@ -1334,6 +1334,41 @@ def test_slicer_transition():
     assert [(x.seen_start, x.seen_stop) for x in statusses] == expected_seen_startstop
 
 
+def test_set_updown_features_downstream_border():
+    sess = mk_session()
+    old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=1000)
+    new_coord = annotations_orm.Coordinates(seqid='a', start=1, end=100)
+    sl, slh = setup_data_handler(slicer.SuperLocusHandler, annotations_orm.SuperLocus)
+    scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed, super_locus=sl)
+    ti = slicer.TranscriptTrimmer(transcript=scribedh, sess=sess)
+    piece0 = annotations_orm.TranscribedPiece(super_locus=sl)
+    piece1 = annotations_orm.TranscribedPiece(super_locus=sl)
+    scribed.transcribed_pieces = [piece0]
+    # setup some paired features
+    # new coords, is plus, template, status
+    feature = annotations_orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, start=10,
+                                      is_plus_strand=True, super_locus=sl, type=type_enums.START_CODON)
+
+    sess.add_all([scribed, piece0, old_coor, new_coord])
+    sess.commit()
+    slh.make_all_handlers()
+    # set to genic, non intron area
+    status = slicer.TranscriptStatus()
+    status.saw_tss()
+    status.saw_start(0)
+
+    ti.set_status_downstream_border(new_coords=new_coord, is_plus_strand=True, template_feature=feature, status=status,
+                                    old_piece=piece0, new_piece=piece1, old_coords=old_coor)
+
+    sess.commit()
+    assert len(piece1.features) == 3  # feature, 2x upstream
+    assert len(piece0.features) == 2  # 2x downstream
+    assert set([x.type.value for x in piece1.features]) == {type_enums.START_CODON, type_enums.IN_TRANSLATED_REGION,
+                                                            type_enums.IN_RAW_TRANSCRIPT}
+    assert set([x.type.value for x in piece0.features]) == {type_enums.IN_TRANSLATED_REGION,
+                                                            type_enums.IN_RAW_TRANSCRIPT}
+
+
 #### type_enumss ####
 def test_enum_non_inheritance():
     allknown = [x.name for x in list(type_enums.AllKnown)]
