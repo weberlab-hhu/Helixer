@@ -1337,7 +1337,7 @@ def test_slicer_transition():
 def test_set_updown_features_downstream_border():
     sess = mk_session()
     old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=1000)
-    new_coord = annotations_orm.Coordinates(seqid='a', start=1, end=100)
+    new_coord = annotations_orm.Coordinates(seqid='a', start=100, end=200)
     sl, slh = setup_data_handler(slicer.SuperLocusHandler, annotations_orm.SuperLocus)
     scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed, super_locus=sl)
     ti = slicer.TranscriptTrimmer(transcript=scribedh, sess=sess)
@@ -1346,7 +1346,7 @@ def test_set_updown_features_downstream_border():
     scribed.transcribed_pieces = [piece0]
     # setup some paired features
     # new coords, is plus, template, status
-    feature = annotations_orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, start=10,
+    feature = annotations_orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, start=110,
                                       is_plus_strand=True, super_locus=sl, type=type_enums.START_CODON)
 
     sess.add_all([scribed, piece0, piece1, old_coor, new_coord, sl])
@@ -1370,8 +1370,36 @@ def test_set_updown_features_downstream_border():
 
     translated_up_status = [x for x in piece1.features if x.type.value == type_enums.IN_TRANSLATED_REGION][0]
     translated_down_status = [x for x in piece0.features if x.type.value == type_enums.IN_TRANSLATED_REGION][0]
+    assert translated_up_status.start == 200
+    assert translated_down_status.start == 201
+    # cleanup to try similar again
+    for f in piece0.features:
+        sess.delete(f)
+    for f in piece1.features:
+        sess.delete(f)
+    sess.commit()
+
+    # and now try backwards pass
+    feature = annotations_orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, start=110,
+                                      is_plus_strand=False, super_locus=sl, type=type_enums.START_CODON)
+    sess.add(feature)
+    sess.commit()
+    slh.make_all_handlers()
+    ti.set_status_downstream_border(new_coords=new_coord, is_plus_strand=False, template_feature=feature, status=status,
+                                    old_piece=piece0, new_piece=piece1, old_coords=old_coor)
+    sess.commit()
+
+    assert len(piece1.features) == 3  # feature, 2x upstream
+    assert len(piece0.features) == 2  # 2x downstream
+    assert set([x.type.value for x in piece1.features]) == {type_enums.START_CODON, type_enums.IN_TRANSLATED_REGION,
+                                                            type_enums.IN_RAW_TRANSCRIPT}
+    assert set([x.type.value for x in piece0.features]) == {type_enums.IN_TRANSLATED_REGION,
+                                                            type_enums.IN_RAW_TRANSCRIPT}
+
+    translated_up_status = [x for x in piece1.features if x.type.value == type_enums.IN_TRANSLATED_REGION][0]
+    translated_down_status = [x for x in piece0.features if x.type.value == type_enums.IN_TRANSLATED_REGION][0]
     assert translated_up_status.start == 100
-    assert translated_down_status.start == 101
+    assert translated_down_status.start == 99
 
 
 def test_split_feature_downstream_border():
