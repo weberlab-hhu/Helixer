@@ -1531,11 +1531,62 @@ def test_modify4slice():
                                                                type_enums.IN_RAW_TRANSCRIPT}
     print('starting second modify...')
     ti.modify4new_slice(new_coords=newer_coords, is_plus_strand=True)
-    assert sorted([len(x.features) for x in transcript.transcribed_pieces]) == [4, 4, 8]
+    assert sorted([len(x.features) for x in transcript.transcribed_pieces]) == [4, 4, 8]  # todo, why does this occasionally fail??
     assert set([x.type.value for x in ori_piece.features]) == {type_enums.IN_RAW_TRANSCRIPT,
                                                                type_enums.IN_TRANSLATED_REGION,
                                                                type_enums.STOP_CODON,
                                                                type_enums.TRANSCRIPTION_TERMINATION_SITE}
+
+
+def test_modify4slice_directions():
+    sess = mk_session()
+    old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=1000)
+    # setup two transitions:
+    # 2) scribedlong - [[D<-,C<-],[->A,->B]] -> ABCD, -> two pieces forward, one backward
+    sl, slh = setup_data_handler(slicer.SuperLocusHandler, annotations_orm.SuperLocus)
+    scribedlong, scribedlongh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed,
+                                                   super_locus=sl)
+
+    tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, sess=sess)
+
+    pieceAB = annotations_orm.TranscribedPiece(super_locus=sl)
+    pieceCD = annotations_orm.TranscribedPiece(super_locus=sl)
+    scribedlong.transcribed_pieces = [pieceAB, pieceCD]
+
+    fA = annotations_orm.Feature(transcribed_pieces=[pieceAB], coordinates=old_coor, start=190, end=190, given_id='A',
+                                 is_plus_strand=True, super_locus=sl, type=type_enums.TRANSCRIPTION_START_SITE)
+    fB = annotations_orm.UpstreamFeature(transcribed_pieces=[pieceAB], coordinates=old_coor, start=210, end=210,
+                                         is_plus_strand=True, super_locus=sl, type=type_enums.IN_RAW_TRANSCRIPT, given_id='B')
+
+    fC = annotations_orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=110, end=110,
+                                           is_plus_strand=False, super_locus=sl, type=type_enums.IN_RAW_TRANSCRIPT, given_id='C')
+    fD = annotations_orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=90, end=90,
+                                 is_plus_strand=False, super_locus=sl, type=type_enums.TRANSCRIPTION_TERMINATION_SITE, given_id='D')
+
+    pair = annotations_orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
+
+    half1_coords = annotations_orm.Coordinates(seqid='a', start=1, end=200)
+    half2_coords = annotations_orm.Coordinates(seqid='a', start=201, end=400)
+    sess.add_all([scribedlong, pieceAB, pieceCD, fA, fB, fC, fD, pair, old_coor, sl, half1_coords, half2_coords])
+    sess.commit()
+    slh.make_all_handlers()
+
+    tilong.modify4new_slice(new_coords=half1_coords, is_plus_strand=True)
+    newest_piece = fA.transcribed_pieces
+    sess.commit()
+    tilong.modify4new_slice(new_coords=half2_coords, is_plus_strand=True)
+    tilong.modify4new_slice(new_coords=half2_coords, is_plus_strand=False)
+    tilong.modify4new_slice(new_coords=half2_coords, is_plus_strand=False)
+    for f in sess.query(annotations_orm.Feature).all():
+        assert len(f.transcribed_pieces) == 1
+    slice0 = fA.transcribed_pieces[0]
+    slice1 = fB.transcribed_pieces[0]
+    slice2 = fC.transcribed_pieces[0]
+    print(slice0, [f for f in slice0.features])
+    print(slice1, [f for f in slice1.features])
+    print(slice2, [f for f in slice2.features])
+    assert sorted([len(x.features) for x in tilong.transcript.data.transcribed_pieces]) == [2, 2, 2]
+    assert set(slice2.features) == {fC, fD}
 
 
 #### type_enumss ####

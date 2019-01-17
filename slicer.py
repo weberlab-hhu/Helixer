@@ -439,7 +439,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
             else:
                 print('ooops', f0)
                 raise AssertionError('this code should be unreachable...? Check what is up!')
-
+            # todo, what about transsplicing links, on strand after e.g. large gap?
             # and step
             prev_features = aligned_features
             prev_status = status
@@ -478,6 +478,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         if status.seen_start and not status.seen_stop:
             self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_TRANSLATED_REGION, up_at,
                                            down_at, new_piece, old_piece)
+        # todo, make sure that at least one link has been set (default to error?)
 
     def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
                                   old_piece):
@@ -518,9 +519,10 @@ class TranscriptTrimmer(TranscriptInterpBase):
         pieces = self.transcript.data.transcribed_pieces
         # start with one piece, extend until both ends are reached
         ordered_pieces = pieces[0:1]
+        print(ordered_pieces, 'start')
         self._extend_to_end(ordered_pieces, downstream=True)
         self._extend_to_end(ordered_pieces, downstream=False)
-        assert set(ordered_pieces) == set(pieces)
+        assert set(ordered_pieces) == set(pieces), "{} != {}".format(set(ordered_pieces), set(pieces))
         return ordered_pieces
 
     def _extend_to_end(self, ordered_pieces, downstream=True):

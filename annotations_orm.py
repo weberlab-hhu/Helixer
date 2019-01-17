@@ -145,6 +145,8 @@ class TranscribedPiece(Base):
     features = relationship('Feature', secondary=association_transcribeds_to_features,
                             back_populates='transcribed_pieces')
 
+    def __repr__(self):
+        return "<TranscribedPiece, {}: with features {}>".format(self.id, [(x.id, x.given_id) for x in self.features])
 
 class Translated(Base):
     __tablename__ = 'translateds'
@@ -204,9 +206,9 @@ class Feature(Base):
     }
 
     def __repr__(self):
-        s = '<Feature: {givenid} of type: {type} from {start}-{end} on {coor}, is_plus: {plus}, phase: {phase}>'.format(
+        s = '<{py_type}: {givenid} of type: {type} from {start}-{end} on {coor}, is_plus: {plus}, phase: {phase}>'.format(
             type=self.type, start=self.start, end=self.end, coor=self.coordinates, plus=self.is_plus_strand,
-            phase=self.phase, givenid=self.given_id
+            phase=self.phase, givenid=self.given_id, py_type=type(self)
         )
         return s
 
