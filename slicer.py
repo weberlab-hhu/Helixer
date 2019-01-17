@@ -404,6 +404,8 @@ class TranscriptTrimmer(TranscriptInterpBase):
             if position_interp.is_detached():
                 print('detached', f0)
                 pass
+            if position_interp.is_upstream():
+                print('upstream', f0)
             # it should never overlap start (because this should have been handled and split already)
             elif position_interp.overlaps_upstream():
                 raise ValueError('unhandled straddling of upstream boarder')
@@ -435,6 +437,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 pass  # will get to this at next slice
                 #self.swap_piece(f0.handler, new_piece, old_piece=piece)
             else:
+                print('ooops', f0)
                 raise AssertionError('this code should be unreachable...? Check what is up!')
 
             # and step
@@ -444,8 +447,10 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
         # clean up any unused or abandoned pieces
         for piece in self.transcript.data.transcribed_pieces:
-            if not piece.features:
+            print(len(piece.features), 'len piece features, pid {}'.format(piece.id))
+            if piece.features == []:
                 self.session.delete(piece)
+        self.session.commit()
 
     def get_rel_feature_position(self, feature, prev_feature, new_coords, is_plus_strand):
         pass
@@ -504,7 +509,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         # confirm strand & seqid
         assert all([f.coordinates == features[0].coordinates for f in features])
         assert all([f.is_plus_strand == features[0].is_plus_strand for f in features])
-        features = sorted(features, key=lambda x: x.cmp_key())
+        features = sorted(features, key=lambda x: x.pos_cmp_key())
         if not features[0].is_plus_strand:
             features.reverse()
         return features
@@ -576,15 +581,17 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 links += [x for x in pairs if x.upstream == cand]
         return links
 
-    @staticmethod
-    def _links_list2link(links, direction, current_piece):
-        if len(links) == 0:
+    def _links_list2link(self, links, direction, current_piece):
+        stacked = self.stack_matches(links)
+        collapsed = [x[0] for x in stacked]
+        # todo, modify so that matching links are counted as one
+        if len(collapsed) == 0:
             return None
-        elif len(links) == 1:
-            return links[0]
+        elif len(collapsed) == 1:
+            return collapsed[0]
         else:
             raise IndecipherableLinkageError("Multiple possible within-transcript {} links found from {}, ({})".format(
-                direction, current_piece, links
+                direction, current_piece, collapsed
             ))
 
     def sort_all(self):
@@ -599,7 +606,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         prev = next(ifeatures)
         current = [prev]
         for feature in ifeatures:
-            if feature.cmp_key()[0:4] == prev.cmp_key()[0:4]:
+            if feature.pos_cmp_key() == prev.pos_cmp_key():
                 current.append(feature)
             else:
                 yield current

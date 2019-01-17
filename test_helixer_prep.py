@@ -1515,11 +1515,27 @@ def test_modify4slice():
     slh.make_all_handlers()
     ti = slicer.TranscriptTrimmer(transcript=transcript.handler, sess=controller.session)
     new_coords = annotations_orm.Coordinates(seqid='1', start=1, end=100)
+    newer_coords = annotations_orm.Coordinates(seqid='1', start=101, end=200)
     ti.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     assert len(transcript.transcribed_pieces) == 2
     print('piece0, features:\n', transcript.transcribed_pieces[0].features)
     print('piece1, features:\n', transcript.transcribed_pieces[1].features)
+    controller.session.add_all([new_coords, newer_coords])
+    controller.session.commit()
     assert {len(transcript.transcribed_pieces[0].features), len(transcript.transcribed_pieces[1].features)} == {8, 4}
+    new_piece = [x for x in transcript.transcribed_pieces if len(x.features) == 4][0]
+    ori_piece = [x for x in transcript.transcribed_pieces if len(x.features) == 8][0]
+    assert set([x.type.value for x in new_piece.features]) == {type_enums.TRANSCRIPTION_START_SITE,
+                                                               type_enums.START_CODON,
+                                                               type_enums.IN_TRANSLATED_REGION,
+                                                               type_enums.IN_RAW_TRANSCRIPT}
+    print('starting second modify...')
+    ti.modify4new_slice(new_coords=newer_coords, is_plus_strand=True)
+    assert sorted([len(x.features) for x in transcript.transcribed_pieces]) == [4, 4, 8]
+    assert set([x.type.value for x in ori_piece.features]) == {type_enums.IN_RAW_TRANSCRIPT,
+                                                               type_enums.IN_TRANSLATED_REGION,
+                                                               type_enums.STOP_CODON,
+                                                               type_enums.TRANSCRIPTION_TERMINATION_SITE}
 
 
 #### type_enumss ####

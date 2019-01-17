@@ -448,6 +448,9 @@ class FeatureHandler(Handler):
     def cmp_key(self):
         return self.data.cmp_key()
 
+    def pos_cmp_key(self):
+        return self.data.pos_cmp_key()
+
 
 class DownstreamFeatureHandler(FeatureHandler):
     def __init__(self):
@@ -643,3 +646,6 @@ class UpDownPairHandler(Handler):
             other.data.pairs.remove(self.data)
         else:
             raise self._link_value_error(other)
+
+    def pos_cmp_key(self):
+        return self.data.pos_cmp_key()

@@ -210,8 +210,11 @@ class Feature(Base):
         )
         return s
 
-    def cmp_key(self):
+    def cmp_key(self):  # todo, pos_cmp & full_cmp
         return self.coordinates.seqid, self.is_plus_strand, self.start, self.end, self.type
+
+    def pos_cmp_key(self):
+        return self.coordinates.seqid, self.is_plus_strand, self.start, self.end
 
 
 class DownstreamFeature(Feature):
@@ -249,3 +252,12 @@ class UpDownPair(Base):
 
     transcribed_id = Column(Integer, ForeignKey('transcribeds.id'))
     transcribed = relationship('Transcribed', uselist=False, back_populates='pairs')
+
+    def pos_cmp_key(self):
+        upstream_key = (None, None, None, None)
+        downstream_key = (None, None, None, None)
+        if self.upstream is not None:
+            upstream_key = self.upstream.pos_cmp_key()
+        if self.downstream is not None:
+            downstream_key = self.downstream.pos_cmp_key()
+        return upstream_key + downstream_key
