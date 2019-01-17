@@ -201,7 +201,7 @@ class Feature(Base):
     }
 
     def __repr__(self):
-        s = 'Feature: {givenid} of type: {type} from {start}-{end} on {coor}, is_plus: {plus}, phase: {phase}'.format(
+        s = '<Feature: {givenid} of type: {type} from {start}-{end} on {coor}, is_plus: {plus}, phase: {phase}>'.format(
             type=self.type, start=self.start, end=self.end, coor=self.coordinates, plus=self.is_plus_strand,
             phase=self.phase, givenid=self.given_id
         )

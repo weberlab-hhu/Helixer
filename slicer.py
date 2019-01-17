@@ -325,7 +325,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
         for aligned_features, status, piece in transition_gen:
             f0 = aligned_features[0]  # take first as all "aligned" features have the same coordinates
-            same_seq = f0.coordinate.seqid == new_coords.seqid
+            same_seq = f0.coordinates.seqid == new_coords.seqid
             # before or detached coordinates (already handled or good as-is, at least for now)
             if not same_seq or f0.end < upstream_border:
                 pass
@@ -340,12 +340,15 @@ class TranscriptTrimmer(TranscriptInterpBase):
             # handle feature [  |  ] straddling end of coordinates
             elif f0.start <= downstream_border < f0.end:
                 # make new UpDownLink and status features to handle split
-                self.set_status_downstream_border(new_coords, is_plus_strand, f0, status, old_piece=piece)
-                self.split_feature_downstream_border(new_coords, is_plus_strand, f0)
+                self.set_status_downstream_border(new_coords=new_coords, new_piece=new_piece, old_coords=f0.coordinates,
+                                                  old_piece=piece, is_plus_strand=is_plus_strand, template_feature=f0,
+                                                  status=status)
+                self.split_feature_downstream_border(new_coords=new_coords, new_piece=new_piece, old_piece=piece,
+                                                     is_plus_strand=is_plus_strand, feature=f0)
 
             # handle pass end of coordinates between previous and current feature, [p] | [f]
             elif prev_features[0].end <= downstream_border < f0.start:
-                self.set_status_downstream_border(new_coords=new_coords, old_coords=old_coords,
+                self.set_status_downstream_border(new_coords=new_coords, old_coords=f0.coordinates,
                                                   is_plus_strand=is_plus_strand, template_feature=prev_features[0],
                                                   status=prev_status, old_piece=piece, new_piece=new_piece)
                 self.swap_piece(f0.handler, new_piece, old_piece=piece)
@@ -388,7 +391,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
     def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
                                   old_piece):
-        # TODO TUESDAY TEST
         upstream = self.new_handled_data(template_feature, annotations_orm.UpstreamFeature, start=up_at, end=up_at,
                                          given_id=None, type=status_type)
         downstream = self.new_handled_data(template_feature, annotations_orm.DownstreamFeature, start=down_at,
@@ -399,15 +401,16 @@ class TranscriptTrimmer(TranscriptInterpBase):
         self.new_handled_data(new_type=annotations_orm.UpDownPair, upstream=upstream.data,
                               downstream=downstream.data, transcribed=self.transcript.data)
 
-    def split_feature_downstream_border(self, new_coords, is_plus_strand, feature):
-        # TODO TUESDAY TEST
+    def split_feature_downstream_border(self, new_coords, new_piece, old_piece, is_plus_strand, feature):
         if is_plus_strand:
             before_border = self.new_handled_data(template=feature, new_type=annotations_orm.Feature,
                                                   end=new_coords.end, coordinates=new_coords)
+            self.swap_piece(feature_handler=before_border, new_piece=new_piece, old_piece=old_piece)
             feature.start = new_coords.end + 1
         else:
             before_border = self.new_handled_data(template=feature, new_type=annotations_orm.Feature,
                                                   start=new_coords.start, coordinates=new_coords)
+            self.swap_piece(feature_handler=before_border, new_piece=new_piece, old_piece=old_piece)
             feature.end = new_coords.start - 1
 
     @staticmethod

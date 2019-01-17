@@ -1349,7 +1349,7 @@ def test_set_updown_features_downstream_border():
     feature = annotations_orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, start=10,
                                       is_plus_strand=True, super_locus=sl, type=type_enums.START_CODON)
 
-    sess.add_all([scribed, piece0, old_coor, new_coord])
+    sess.add_all([scribed, piece0, piece1, old_coor, new_coord, sl])
     sess.commit()
     slh.make_all_handlers()
     # set to genic, non intron area
@@ -1367,6 +1367,70 @@ def test_set_updown_features_downstream_border():
                                                             type_enums.IN_RAW_TRANSCRIPT}
     assert set([x.type.value for x in piece0.features]) == {type_enums.IN_TRANSLATED_REGION,
                                                             type_enums.IN_RAW_TRANSCRIPT}
+
+    translated_up_status = [x for x in piece1.features if x.type.value == type_enums.IN_TRANSLATED_REGION][0]
+    translated_down_status = [x for x in piece0.features if x.type.value == type_enums.IN_TRANSLATED_REGION][0]
+    assert translated_up_status.start == 100
+    assert translated_down_status.start == 101
+
+
+def test_split_feature_downstream_border():
+    # TODO, make sure any non-transcript level errors (super locus linked only) also go through this
+    sess = mk_session()
+    old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=1000)
+    new_coord = annotations_orm.Coordinates(seqid='a', start=101, end=200)
+    sl, slh = setup_data_handler(slicer.SuperLocusHandler, annotations_orm.SuperLocus)
+    scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed, super_locus=sl)
+    ti = slicer.TranscriptTrimmer(transcript=scribedh, sess=sess)
+    piece0 = annotations_orm.TranscribedPiece(super_locus=sl)
+    piece1 = annotations_orm.TranscribedPiece(super_locus=sl)
+    scribed.transcribed_pieces = [piece0, piece1]
+    f_feature = annotations_orm.Feature(transcribed_pieces=[piece0], coordinates=old_coor, start=110, end=230,
+                                        is_plus_strand=True, super_locus=sl, type=type_enums.ERROR)
+
+    sess.add_all([scribed, piece0, piece1, old_coor, new_coord, sl])
+    sess.commit()
+    slh.make_all_handlers()
+    print(slh.handler_holder)
+    ti.split_feature_downstream_border(new_coords=new_coord, is_plus_strand=True, feature=f_feature, new_piece=piece1,
+                                       old_piece=piece0)
+    assert len(piece0.features) == 1
+    assert len(piece1.features) == 1
+    upstream_half = piece1.features[0]
+    downstream_half = piece0.features[0]
+    assert upstream_half.start == 110
+    assert upstream_half.end == 200
+    assert upstream_half.coordinates is new_coord
+    assert downstream_half is f_feature
+    assert downstream_half.start == 201
+    assert downstream_half.end == 230
+    assert downstream_half.coordinates is old_coor
+
+    sess.delete(upstream_half)
+    sess.delete(downstream_half)
+    sess.commit()
+    f_feature = annotations_orm.Feature(transcribed_pieces=[piece0], coordinates=old_coor, start=10, end=130,
+                                        is_plus_strand=False, super_locus=sl, type=type_enums.ERROR)
+
+    sess.add_all([f_feature])
+    sess.commit()
+    slh.make_all_handlers()
+    assert len(sl.features) == 1  # just make sure cleanup worked
+    ti.split_feature_downstream_border(new_coords=new_coord, is_plus_strand=False, feature=f_feature, new_piece=piece1,
+                                       old_piece=piece0)
+    sess.commit()  # double new feature before commit?
+
+    assert len(piece0.features) == 1
+    assert len(piece1.features) == 1
+    upstream_half = piece1.features[0]
+    downstream_half = piece0.features[0]
+    assert upstream_half.start == 101
+    assert upstream_half.end == 130
+    assert upstream_half.coordinates is new_coord
+    assert downstream_half is f_feature
+    assert downstream_half.start == 10
+    assert downstream_half.end == 100
+    assert downstream_half.coordinates is old_coor
 
 
 #### type_enumss ####
