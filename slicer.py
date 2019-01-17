@@ -242,6 +242,12 @@ class OverlapStatus(object):
         self.status = out
 
 
+class PositionInterpreter(object):
+    DETACHED = 'detached'  # diff sequence or strand
+
+    def __init__(self, feature, prev_feature, slice_coordinates, is_plus_strand):
+        pass
+
 class IndecipherableLinkageError(Exception):
     pass
 
@@ -275,6 +281,25 @@ class TranscriptTrimmer(TranscriptInterpBase):
         # todo,
         #  get ordered pieces/features
         #  setup transcript status @ first feature
+
+    def transition_5p_to_3p_with_new_pieces(self):
+        transition_gen = self.transition_5p_to_3p()
+        aligned_features, status, prev_piece = next(transition_gen)  # todo, check and handle things for these!
+        new_piece = self.mk_new_piece()
+        yield aligned_features, status, prev_piece, new_piece
+
+        for aligned_features, status, piece in transition_gen:
+            if piece is not prev_piece:
+                new_piece = self.mk_new_piece()
+            yield aligned_features, status, piece, new_piece
+            prev_piece = piece
+
+    def mk_new_piece(self):
+        new_piece = annotations_orm.TranscribedPiece(super_locus=self.transcript.data.super_locus,
+                                                     transcribeds=[self.transcript.data])
+        new_handler = TranscribedPieceHandler()
+        new_handler.add_data(new_piece)
+        return new_piece
 
     def update_status(self, status, aligned_features):
         for feature in aligned_features:
@@ -314,16 +339,10 @@ class TranscriptTrimmer(TranscriptInterpBase):
             # todo, allow - pass of new_coords
             raise NotImplementedError
 
-        new_piece = annotations_orm.TranscribedPiece(super_locus=self.transcript.data.super_locus,
-                                                     transcribed=self.transcript.data)
+        transition_gen = self.transition_5p_to_3p_with_new_pieces()
+        prev_features, prev_status, prev_piece, new_piece = next(transition_gen)  # todo, check and handle things for these!
 
-        new_handler = TranscribedPieceHandler()
-        new_handler.add_data(new_piece)
-
-        transition_gen = self.transition_5p_to_3p()
-        prev_features, prev_status, prev_piece = next(transition_gen)  # todo, check and handle things for these!
-
-        for aligned_features, status, piece in transition_gen:
+        for aligned_features, status, piece, new_piece in transition_gen:
             f0 = aligned_features[0]  # take first as all "aligned" features have the same coordinates
             same_seq = f0.coordinates.seqid == new_coords.seqid
             # before or detached coordinates (already handled or good as-is, at least for now)
@@ -353,7 +372,8 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                                   status=prev_status, old_piece=piece, new_piece=new_piece)
                 self.swap_piece(f0.handler, new_piece, old_piece=piece)
             elif f0.start > downstream_border:
-                self.swap_piece(f0.handler, new_piece, old_piece=piece)
+                pass  # will get to this at next slice
+                #self.swap_piece(f0.handler, new_piece, old_piece=piece)
             else:
                 raise AssertionError('this code should be unreachable...? Check what is up!')
 
@@ -362,8 +382,13 @@ class TranscriptTrimmer(TranscriptInterpBase):
             prev_status = status
             prev_piece = piece
 
-        if not new_piece.features:
-            self.session.delete(new_piece)
+        # clean up any unused or abandoned pieces
+        for piece in self.transcript.data.transcribed_pieces:
+            if not piece.features:
+                self.session.delete(piece)
+
+    def get_rel_feature_position(self, feature, prev_feature, new_coords, is_plus_strand):
+        pass
 
     @staticmethod
     def swap_piece(feature_handler, new_piece, old_piece):

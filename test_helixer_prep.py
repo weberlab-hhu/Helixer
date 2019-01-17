@@ -1461,6 +1461,46 @@ def test_split_feature_downstream_border():
     assert downstream_half.coordinates is old_coor
 
 
+def test_transition_with_right_new_pieces():
+    sess = mk_session()
+    old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=1000)
+    # setup two transitions:
+    # 1) scribed - [[A,B]] -> AB, -> one expected new piece
+    # 2) scribedlong - [[C,D],[A,B]] -> ABCD, -> two expected new pieces
+    sl, slh = setup_data_handler(slicer.SuperLocusHandler, annotations_orm.SuperLocus)
+    scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed, super_locus=sl)
+    scribedlong, scribedlongh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed,
+                                                   super_locus=sl)
+
+    ti = slicer.TranscriptTrimmer(transcript=scribedh, sess=sess)
+    tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, sess=sess)
+
+    pieceAB = annotations_orm.TranscribedPiece(super_locus=sl)
+    pieceCD = annotations_orm.TranscribedPiece(super_locus=sl)
+    scribed.transcribed_pieces = [pieceAB]
+    scribedlong.transcribed_pieces = [pieceAB, pieceCD]
+
+    fA = annotations_orm.Feature(transcribed_pieces=[pieceAB], coordinates=old_coor, start=190, end=190,
+                                 is_plus_strand=True, super_locus=sl, type=type_enums.ERROR)
+    fB = annotations_orm.UpstreamFeature(transcribed_pieces=[pieceAB], coordinates=old_coor, start=210, end=210,
+                                         is_plus_strand=True, super_locus=sl, type=type_enums.ERROR)
+
+    fC = annotations_orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=90, end=90,
+                                           is_plus_strand=True, super_locus=sl, type=type_enums.ERROR)
+    fD = annotations_orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=110, end=110,
+                                 is_plus_strand=True, super_locus=sl, type=type_enums.ERROR)
+
+    pair = annotations_orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
+    sess.add_all([scribed, scribedlong, pieceAB, pieceCD, fA, fB, fC, fD, pair, old_coor, sl])
+    sess.commit()
+    short_transition = list(ti.transition_5p_to_3p_with_new_pieces())
+    assert len(set([x[3] for x in short_transition])) == 1
+    long_transition = list(tilong.transition_5p_to_3p_with_new_pieces())
+    assert len(long_transition) == 4
+    assert len(set([x[3] for x in long_transition])) == 2
+    assert long_transition[1][3] is not long_transition[2][3]  # make sure piece swap is between B(1) & C(2) as expected
+
+
 #### type_enumss ####
 def test_enum_non_inheritance():
     allknown = [x.name for x in list(type_enums.AllKnown)]
