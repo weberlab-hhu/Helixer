@@ -1501,6 +1501,27 @@ def test_transition_with_right_new_pieces():
     assert long_transition[1][3] is not long_transition[2][3]  # make sure piece swap is between B(1) & C(2) as expected
 
 
+def test_modify4slice():
+    destination = 'testdata/tmp.db'
+    if os.path.exists(destination):
+        os.remove(destination)
+    source = 'testdata/dummyloci_annotations.sqlitedb'
+
+    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
+    controller.mk_session()
+    controller.load_annotations()
+    slh = controller.super_loci[0]
+    transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
+    slh.make_all_handlers()
+    ti = slicer.TranscriptTrimmer(transcript=transcript.handler, sess=controller.session)
+    new_coords = annotations_orm.Coordinates(seqid='1', start=1, end=100)
+    ti.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
+    assert len(transcript.transcribed_pieces) == 2
+    print('piece0, features:\n', transcript.transcribed_pieces[0].features)
+    print('piece1, features:\n', transcript.transcribed_pieces[1].features)
+    assert {len(transcript.transcribed_pieces[0].features), len(transcript.transcribed_pieces[1].features)} == {8, 4}
+
+
 #### type_enumss ####
 def test_enum_non_inheritance():
     allknown = [x.name for x in list(type_enums.AllKnown)]

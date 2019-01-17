@@ -243,10 +243,71 @@ class OverlapStatus(object):
 
 
 class PositionInterpreter(object):
-    DETACHED = 'detached'  # diff sequence or strand
 
     def __init__(self, feature, prev_feature, slice_coordinates, is_plus_strand):
-        pass
+        self.feature = feature
+        self.prev_feature = prev_feature
+        self.slice_coordinates = slice_coordinates
+        self.is_plus_strand = is_plus_strand
+        # precalculate shared data
+        if is_plus_strand:
+            self.sign = 1
+            self.f_upstream = feature.start
+            self.f_downstream = feature.end
+            self.c_upstream = slice_coordinates.start
+            self.c_downstream = slice_coordinates.end
+        else:
+            self.sign = -1
+            self.f_upstream = feature.end
+            self.f_downstream = feature.start
+            self.c_upstream = slice_coordinates.end
+            self.c_downstream = slice_coordinates.start
+
+    def is_detached(self):
+        out = False
+        if self.slice_coordinates.seqid != self.feature.coordinates.seqid:
+            out = True
+        elif self.is_plus_strand != self.feature.is_plus_strand:
+            out = True
+        return out
+
+    def is_upstream(self):
+        return self.sign * (self.c_upstream - self.f_downstream) > 0
+
+    def is_downstream(self):
+        return self.sign * (self.f_upstream - self.c_downstream) > 0
+
+    def overlaps_downstream(self):
+        f_upstream_contained = self.slice_coordinates.start <= self.f_upstream <= self.slice_coordinates.end
+        f_downstream_is_downstream = self.sign * (self.f_downstream - self.c_downstream) > 0
+        return f_upstream_contained and f_downstream_is_downstream
+
+    def overlaps_upstream(self):
+        f_downstream_contained = self.slice_coordinates.start <= self.f_downstream <= self.slice_coordinates.end
+        f_upstream_is_upstream = self.sign * (self.c_upstream - self.f_upstream) > 0
+        return f_downstream_contained and f_upstream_is_upstream
+
+    def is_contained(self):
+        start_contained = self.slice_coordinates.start <= self.feature.start <= self.slice_coordinates.end
+        end_contained = self.slice_coordinates.start <= self.feature.end <= self.slice_coordinates.end
+        return start_contained and end_contained
+
+    def just_passed_downstream(self):
+        if self.prev_feature is None:
+            out = False
+        else:
+            if self.is_plus_strand:
+                if self.prev_feature.end <= self.c_downstream <= self.feature.start:
+                    out = True
+                else:
+                    out = False
+            else:
+                if self.feature.end <= self.c_downstream <= self.prev_feature.start:
+                    out = True
+                else:
+                    out = False
+        return out
+
 
 class IndecipherableLinkageError(Exception):
     pass
@@ -331,33 +392,30 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 raise ValueError('no implementation for updating status with feature of type {}'.format(ftype))
 
     def modify4new_slice(self, new_coords, is_plus_strand=True):
-        # TODO TUESDAY TEST
-        if is_plus_strand:
-            downstream_border = new_coords.end
-            upstream_border = new_coords.start
-        else:
-            # todo, allow - pass of new_coords
-            raise NotImplementedError
 
         transition_gen = self.transition_5p_to_3p_with_new_pieces()
-        prev_features, prev_status, prev_piece, new_piece = next(transition_gen)  # todo, check and handle things for these!
-
+        prev_status = None
+        prev_features = [None]
         for aligned_features, status, piece, new_piece in transition_gen:
+            print(aligned_features)
             f0 = aligned_features[0]  # take first as all "aligned" features have the same coordinates
-            same_seq = f0.coordinates.seqid == new_coords.seqid
+            position_interp = PositionInterpreter(f0, prev_features[0], new_coords, is_plus_strand)
             # before or detached coordinates (already handled or good as-is, at least for now)
-            if not same_seq or f0.end < upstream_border:
+            if position_interp.is_detached():
+                print('detached', f0)
                 pass
             # it should never overlap start (because this should have been handled and split already)
-            elif f0.start < upstream_border <= f0.end:
+            elif position_interp.overlaps_upstream():
                 raise ValueError('unhandled straddling of upstream boarder')
             # within new_coords -> swap coordinates
-            elif f0.start >= upstream_border and f0.end <= downstream_border:
+            elif position_interp.is_contained():
+                print('contained', f0)
                 for f in aligned_features:
                     f.coordinates = new_coords
-                    self.swap_piece(feature_handler=f, new_piece=new_piece, old_piece=piece)
+                    self.swap_piece(feature_handler=f.handler, new_piece=new_piece, old_piece=piece)
             # handle feature [  |  ] straddling end of coordinates
-            elif f0.start <= downstream_border < f0.end:
+            elif position_interp.overlaps_downstream():
+                print('overlaps down', f0)
                 # make new UpDownLink and status features to handle split
                 self.set_status_downstream_border(new_coords=new_coords, new_piece=new_piece, old_coords=f0.coordinates,
                                                   old_piece=piece, is_plus_strand=is_plus_strand, template_feature=f0,
@@ -366,12 +424,14 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                                      is_plus_strand=is_plus_strand, feature=f0)
 
             # handle pass end of coordinates between previous and current feature, [p] | [f]
-            elif prev_features[0].end <= downstream_border < f0.start:
+            elif position_interp.just_passed_downstream():
+                print('passed down', f0)
                 self.set_status_downstream_border(new_coords=new_coords, old_coords=f0.coordinates,
                                                   is_plus_strand=is_plus_strand, template_feature=prev_features[0],
                                                   status=prev_status, old_piece=piece, new_piece=new_piece)
-                self.swap_piece(f0.handler, new_piece, old_piece=piece)
-            elif f0.start > downstream_border:
+                #self.swap_piece(f0.handler, new_piece, old_piece=piece)
+            elif position_interp.is_downstream():
+                print('downstream', f0)
                 pass  # will get to this at next slice
                 #self.swap_piece(f0.handler, new_piece, old_piece=piece)
             else:

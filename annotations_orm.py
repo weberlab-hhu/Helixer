@@ -55,6 +55,9 @@ class Coordinates(Base):
         CheckConstraint(end >= start, name='check_end_gr_start'),
         {})
 
+    def __repr__(self):
+        return '<Coordinate {}, {}:{}-{}>'.format(self.id, self.seqid, self.start, self.end)
+
 
 class SuperLocusAliases(Base):
     __tablename__ = 'super_locus_aliases'
