@@ -453,11 +453,14 @@ class NoGFFEntryError(Exception):
 #### section TranscriptInterpreter, might end up in a separate file later
 class TranscriptStatus(object):
     """can hold and manipulate all the info on current status of a transcript"""
+
     def __init__(self):
         # initializes to intergenic
-        self.genic = False  # todo, have some thoughts about how trans-splicing will fit in
+        self.genic = False
         self.in_intron = False
-        self.seen_start = False  # todo, make this match in_transcribed_region (also better for prokaryotes...)
+        self.in_trans_intron = False
+        self.in_translated_region = False
+        self.seen_start = False  # todo, move EUK specific stuff to subclass?
         self.seen_stop = False
         self.phase = None  # todo, proper tracking / handling
 
@@ -467,10 +470,12 @@ class TranscriptStatus(object):
     def saw_start(self, phase):
         self.genic = True
         self.seen_start = True
+        self.in_translated_region = True
         self.phase = phase
 
     def saw_stop(self):
         self.seen_stop = True
+        self.in_translated_region = False
         self.phase = None
 
     def saw_tts(self):
@@ -482,17 +487,29 @@ class TranscriptStatus(object):
     def splice_close(self):
         self.in_intron = False
 
+    def trans_splice_open(self):
+        self.in_trans_intron = True
+
+    def trans_splice_close(self):
+        self.in_trans_intron = False
+
     def is_5p_utr(self):
-        return self.genic and not any([self.in_intron, self.seen_start, self.seen_stop])
+        return self.is_utr() and not any([self.seen_start, self.seen_stop])
 
     def is_3p_utr(self):
-        return all([self.genic, self.seen_stop, self.seen_start]) and not self.in_intron
+        return self.is_utr() and self.seen_stop and self.seen_start
+
+    def is_utr(self):
+        return self.genic and not any([self.in_intron, self.in_translated_region, self.in_trans_intron])
 
     def is_coding(self):
-        return self.genic and self.seen_start and not any([self.in_intron, self.seen_stop])
+        return self.genic and self.in_translated_region and not any([self.in_intron, self.in_trans_intron])
 
     def is_intronic(self):
         return self.in_intron and self.genic
+
+    def is_trans_intronic(self):
+        return self.in_trans_intron and self.genic
 
     def is_intergenic(self):
         return not self.genic
