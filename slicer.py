@@ -612,7 +612,10 @@ class TranscriptTrimmer(TranscriptInterpBase):
     @staticmethod
     def stack_matches(features):
         ifeatures = iter(features)
-        prev = next(ifeatures)
+        try:
+            prev = next(ifeatures)
+        except StopIteration:
+            return
         current = [prev]
         for feature in ifeatures:
             if feature.pos_cmp_key() == prev.pos_cmp_key():
