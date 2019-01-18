@@ -476,8 +476,11 @@ class TranscriptTrimmer(TranscriptInterpBase):
             self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_INTRON, up_at, down_at,
                                            new_piece, old_piece)
         if status.seen_start and not status.seen_stop:
+            print('setting translated status')
             self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_TRANSLATED_REGION, up_at,
                                            down_at, new_piece, old_piece)
+        else:
+            print(status.seen_start, status.seen_stop, status.in_intron, status.genic)
         # todo, make sure that at least one link has been set (default to error?)
 
     def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
@@ -491,6 +494,8 @@ class TranscriptTrimmer(TranscriptInterpBase):
         self.swap_piece(feature_handler=downstream, new_piece=old_piece, old_piece=new_piece)
         self.new_handled_data(new_type=annotations_orm.UpDownPair, upstream=upstream.data,
                               downstream=downstream.data, transcribed=self.transcript.data)
+        self.session.add_all([upstream.data, downstream.data])
+        self.session.commit()  # todo, figure out what the real rules are for committing, bc slower, but less buggy?
 
     def split_feature_downstream_border(self, new_coords, new_piece, old_piece, is_plus_strand, feature):
         if is_plus_strand:
@@ -503,6 +508,8 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                                   start=new_coords.start, coordinates=new_coords)
             self.swap_piece(feature_handler=before_border, new_piece=new_piece, old_piece=old_piece)
             feature.end = new_coords.start - 1
+        self.session.add(before_border.data)
+        self.session.commit()
 
     @staticmethod
     def sorted_features(piece):
@@ -615,3 +622,4 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 current = [feature]
             prev = feature
         yield current
+        return

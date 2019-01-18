@@ -1518,8 +1518,6 @@ def test_modify4slice():
     newer_coords = annotations_orm.Coordinates(seqid='1', start=101, end=200)
     ti.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     assert len(transcript.transcribed_pieces) == 2
-    print('piece0, features:\n', transcript.transcribed_pieces[0].features)
-    print('piece1, features:\n', transcript.transcribed_pieces[1].features)
     controller.session.add_all([new_coords, newer_coords])
     controller.session.commit()
     assert {len(transcript.transcribed_pieces[0].features), len(transcript.transcribed_pieces[1].features)} == {8, 4}
@@ -1531,6 +1529,10 @@ def test_modify4slice():
                                                                type_enums.IN_RAW_TRANSCRIPT}
     print('starting second modify...')
     ti.modify4new_slice(new_coords=newer_coords, is_plus_strand=True)
+    for piece in transcript.transcribed_pieces:
+        print(piece)
+        for f in piece.features:
+            print('::::', f)
     assert sorted([len(x.features) for x in transcript.transcribed_pieces]) == [4, 4, 8]  # todo, why does this occasionally fail??
     assert set([x.type.value for x in ori_piece.features]) == {type_enums.IN_RAW_TRANSCRIPT,
                                                                type_enums.IN_TRANSLATED_REGION,
