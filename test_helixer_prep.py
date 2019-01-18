@@ -1591,6 +1591,69 @@ def test_modify4slice_directions():
     assert set(slice2.features) == {fC, fD}
 
 
+def test_mod4slice_transsplice():
+    sess = mk_session()
+    old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=1000)
+    # setup two transitions:
+    # 1) scribed - [->[TSS(A),START(B),TDSS(C{->F}),TTS(D)], ->[TSS(E), <<slice>>> TASS(F),STOP(G),TTS(H)]]
+    # 2) scribedflip - [->[TSS(A),START(B),TDSS(C{->F'}),TTS(D)], <-[TTS(H'), <<slice>> STOP(G'),TASS(F'),TSS(E')]]
+
+    sl, slh = setup_data_handler(slicer.SuperLocusHandler, annotations_orm.SuperLocus)
+    scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed,
+                                           super_locus=sl)
+    scribedflip, scribedfliph = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed,
+                                                   super_locus=sl)
+
+    ti = slicer.TranscriptTrimmer(transcript=scribedh, sess=sess)
+
+    pieceA2D = annotations_orm.TranscribedPiece(super_locus=sl)
+    pieceE2H = annotations_orm.TranscribedPiece(super_locus=sl)
+    pieceEp2Hp = annotations_orm.TranscribedPiece(super_locus=sl)
+    scribed.transcribed_pieces = [pieceA2D, pieceE2H]
+    scribedflip.transcribed_pieces = [pieceA2D, pieceEp2Hp]
+    # pieceA2D features
+    fA = annotations_orm.Feature(coordinates=old_coor, start=10, end=10, given_id='A',
+                                 is_plus_strand=True, super_locus=sl, type=type_enums.TRANSCRIPTION_START_SITE)
+    fB = annotations_orm.Feature(coordinates=old_coor, start=20, end=20, given_id='B',
+                                 is_plus_strand=True, super_locus=sl, type=type_enums.START_CODON)
+
+    fC = annotations_orm.UpstreamFeature(coordinates=old_coor, start=30, end=30, given_id='C',
+                                         is_plus_strand=True, super_locus=sl, type=type_enums.DONOR_TRANS_SPLICE_SITE)
+    fD = annotations_orm.Feature(coordinates=old_coor, start=40, end=40, given_id='D',
+                                 is_plus_strand=True, super_locus=sl, type=type_enums.TRANSCRIPTION_TERMINATION_SITE)
+    # pieceE2H features
+    fE = annotations_orm.Feature(coordinates=old_coor, start=910, end=910, given_id='E',
+                                 is_plus_strand=True, super_locus=sl, type=type_enums.TRANSCRIPTION_START_SITE)
+    fF = annotations_orm.DownstreamFeature(coordinates=old_coor, start=920, end=920, given_id='F', super_locus=sl,
+                                           is_plus_strand=True, type=type_enums.ACCEPTOR_TRANS_SPLICE_SITE)
+    fG = annotations_orm.Feature(coordinates=old_coor, start=930, end=930, given_id='G',
+                                 is_plus_strand=True, super_locus=sl, type=type_enums.STOP_CODON)
+    fH = annotations_orm.Feature(coordinates=old_coor, start=940, end=940, given_id='H',
+                                 is_plus_strand=True, super_locus=sl, type=type_enums.TRANSCRIPTION_TERMINATION_SITE)
+    # pieceEp2Hp features
+    fEp = annotations_orm.Feature(coordinates=old_coor, start=940, end=940, given_id='Ep',
+                                  is_plus_strand=False, super_locus=sl, type=type_enums.TRANSCRIPTION_START_SITE)
+    fFp = annotations_orm.DownstreamFeature(coordinates=old_coor, start=930, end=930, given_id='Fp', super_locus=sl,
+                                            is_plus_strand=False, type=type_enums.ACCEPTOR_TRANS_SPLICE_SITE)
+    fGp = annotations_orm.Feature(coordinates=old_coor, start=920, end=920, given_id='Gp',
+                                  is_plus_strand=False, super_locus=sl, type=type_enums.STOP_CODON)
+    fHp = annotations_orm.Feature(coordinates=old_coor, start=910, end=910, given_id='Hp',
+                                  is_plus_strand=False, super_locus=sl, type=type_enums.TRANSCRIPTION_TERMINATION_SITE)
+
+    pieceA2D.features = [fA, fB, fC, fD]
+    pieceE2H.features = [fE, fF, fG, fH]
+    pieceEp2Hp.features = [fEp, fFp, fGp, fHp]
+    pair = annotations_orm.UpDownPair(upstream=fC, downstream=fF, transcribed=scribed)
+    pair2 = annotations_orm.UpDownPair(upstream=fC, downstream=fFp, transcribed=scribedflip)
+    sess.add(sl)
+    sess.commit()
+
+    slh.make_all_handlers()
+    # todo, test transcript status updates across both transcripts
+    # todo, test slicing both transcripts (at <<slice>>)
+    assert False
+    
+
 #### type_enumss ####
 def test_enum_non_inheritance():
     allknown = [x.name for x in list(type_enums.AllKnown)]
