@@ -378,7 +378,10 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 status.splice_open()
             elif ftype == type_enums.ACCEPTOR_SPLICE_SITE:
                 status.splice_close()
-            # todo, trans-splicing features
+            elif ftype == type_enums.DONOR_TRANS_SPLICE_SITE:
+                status.trans_splice_open()
+            elif ftype == type_enums.ACCEPTOR_SPLICE_SITE:
+                status.trans_splice_close()
             # status features
             elif ftype == type_enums.IN_RAW_TRANSCRIPT:
                 status.saw_tts()
@@ -386,6 +389,8 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 status.saw_start(phase=feature.phase)
             elif ftype == type_enums.IN_INTRON:
                 status.splice_open()
+            elif ftype == type_enums.IN_TRANS_INTRON:
+                status.trans_splice_open()
             elif ftype == type_enums.ERROR:
                 pass
             else:

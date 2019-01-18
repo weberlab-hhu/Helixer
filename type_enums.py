@@ -69,6 +69,7 @@ THREE_PRIME_UTR = 'three_prime_UTR'
 # TranscribedStatus
 IN_RAW_TRANSCRIPT = 'in_raw_transcript'
 IN_INTRON = 'in_intron'
+IN_TRANS_INTRON = 'in_trans_intron'
 # TranscribedTransSplice
 DONOR_TRANS_SPLICE_SITE = 'donor_trans_splice_site'
 ACCEPTOR_TRANS_SPLICE_SITE = 'acceptor_trans_splice_site'
@@ -77,7 +78,7 @@ ACCEPTOR_TRANS_SPLICE_SITE = 'acceptor_trans_splice_site'
 TranscribedGeneral = make_enum('TranscribedGeneral', TRANSCRIPTION_START_SITE, TRANSCRIPTION_TERMINATION_SITE,
                                DONOR_SPLICE_SITE, ACCEPTOR_SPLICE_SITE)
 TranscribedInput = make_enum('TranscribedInput', EXON, INTRON, FIVE_PRIME_UTR, THREE_PRIME_UTR)
-TranscribedStatus = make_enum('TranscribedStatus', IN_RAW_TRANSCRIPT, IN_INTRON)
+TranscribedStatus = make_enum('TranscribedStatus', IN_RAW_TRANSCRIPT, IN_INTRON, IN_TRANS_INTRON)
 TranscribedTransSplice = make_enum('TranscribedTransSplice', DONOR_TRANS_SPLICE_SITE, ACCEPTOR_TRANS_SPLICE_SITE)
 # joining transcription related
 TranscribedAll = join_to_enum('TranscribedFeature', TranscribedGeneral, TranscribedStatus, TranscribedTransSplice,
