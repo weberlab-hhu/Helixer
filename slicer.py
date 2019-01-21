@@ -380,7 +380,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 status.splice_close()
             elif ftype == type_enums.DONOR_TRANS_SPLICE_SITE:
                 status.trans_splice_open()
-            elif ftype == type_enums.ACCEPTOR_SPLICE_SITE:
+            elif ftype == type_enums.ACCEPTOR_TRANS_SPLICE_SITE:
                 status.trans_splice_close()
             # status features
             elif ftype == type_enums.IN_RAW_TRANSCRIPT:
@@ -572,14 +572,16 @@ class TranscriptTrimmer(TranscriptInterpBase):
         assert len(matches) == 1  # todo; can we guarantee this?
         return matches[0]
 
-    def get_upstream_link(self, current_piece):
+    def get_upstream_link(self, current_piece, trans=False):
+        # todo, modify so it can take current_pieceS, that it grabs just trans or just non-trans-splice-links
         downstreams = self.session.query(annotations_orm.DownstreamFeature).all()
         # DownstreamFeature s of this pice
         downstreams_current = [x for x in downstreams if current_piece in x.transcribed_pieces]
         links = self._find_matching_links(updown_candidates=downstreams_current, get_upstreams=True)
         return self._links_list2link(links, direction='upstream', current_piece=current_piece)
 
-    def get_downstream_link(self, current_piece):
+    def get_downstream_link(self, current_piece, trans=False):
+        # todo, as upstream
         upstreams = self.session.query(annotations_orm.UpstreamFeature).all()
         upstreams_current = [x for x in upstreams if current_piece in x.transcribed_pieces]
         links = self._find_matching_links(updown_candidates=upstreams_current, get_upstreams=False)
