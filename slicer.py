@@ -548,7 +548,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
             attr = 'upstream'
 
         while True:
-            nextlink = next_fn(current_piece=ordered_pieces[latest_i])
+            nextlink = next_fn(current_pieces=ordered_pieces[latest_i:(latest_i + 1)])
             if nextlink is None:
                 break
             nextstream = nextlink.__getattribute__(attr)
@@ -572,20 +572,36 @@ class TranscriptTrimmer(TranscriptInterpBase):
         assert len(matches) == 1  # todo; can we guarantee this?
         return matches[0]
 
-    def get_upstream_link(self, current_piece, trans=False):
+    def get_upstream_link(self, current_pieces, trans=False):
+        if not isinstance(current_pieces, list):
+            current_pieces = [current_pieces]
         # todo, modify so it can take current_pieceS, that it grabs just trans or just non-trans-splice-links
         downstreams = self.session.query(annotations_orm.DownstreamFeature).all()
+        if trans:
+            downstreams = [x for x in downstreams if x.type.value == type_enums.ACCEPTOR_TRANS_SPLICE_SITE]
+        else:
+            downstreams = [x for x in downstreams if x.type.value != type_enums.ACCEPTOR_TRANS_SPLICE_SITE]
         # DownstreamFeature s of this pice
-        downstreams_current = [x for x in downstreams if current_piece in x.transcribed_pieces]
+        downstreams_current = [x for x in downstreams if self.any_shared_elements(current_pieces, x.transcribed_pieces)]
         links = self._find_matching_links(updown_candidates=downstreams_current, get_upstreams=True)
-        return self._links_list2link(links, direction='upstream', current_piece=current_piece)
+        return self._links_list2link(links, direction='upstream', current_pieces=current_pieces)
 
-    def get_downstream_link(self, current_piece, trans=False):
+    def get_downstream_link(self, current_pieces, trans=False):
+        if not isinstance(current_pieces, list):  # todo, remove flexible input one the rest is working
+            current_pieces = [current_pieces]
         # todo, as upstream
         upstreams = self.session.query(annotations_orm.UpstreamFeature).all()
-        upstreams_current = [x for x in upstreams if current_piece in x.transcribed_pieces]
+        if trans:
+            upstreams = [x for x in upstreams if x.type.value == type_enums.DONOR_TRANS_SPLICE_SITE]
+        else:
+            upstreams = [x for x in upstreams if x.type.value != type_enums.DONOR_TRANS_SPLICE_SITE]
+        upstreams_current = [x for x in upstreams if self.any_shared_elements(current_pieces, x.transcribed_pieces)]
         links = self._find_matching_links(updown_candidates=upstreams_current, get_upstreams=False)
-        return self._links_list2link(links, direction='downstream', current_piece=current_piece)
+        return self._links_list2link(links, direction='downstream', current_pieces=current_pieces)
+
+    @staticmethod
+    def any_shared_elements(x, y):
+        return len(set(x).intersection(set(y))) > 0
 
     def _find_matching_links(self, updown_candidates, get_upstreams=True):
         links = []
@@ -597,7 +613,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 links += [x for x in pairs if x.upstream == cand]
         return links
 
-    def _links_list2link(self, links, direction, current_piece):
+    def _links_list2link(self, links, direction, current_pieces):
         stacked = self.stack_matches(links)
         collapsed = [x[0] for x in stacked]
         # todo, modify so that matching links are counted as one
@@ -607,7 +623,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
             return collapsed[0]
         else:
             raise IndecipherableLinkageError("Multiple possible within-transcript {} links found from {}, ({})".format(
-                direction, current_piece, collapsed
+                direction, current_pieces, collapsed
             ))
 
     def sort_all(self):
