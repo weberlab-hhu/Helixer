@@ -521,61 +521,14 @@ class TranscriptTrimmer(TranscriptInterpBase):
         return features
 
     def sort_pieces(self):
-        piece_set = set(self.transcript.data.transcribed_pieces)
-        pre_ordered_pieces = self.pre_sort_pieces()
-        ordered_pieces = self.arrange_any_translinkages(pre_ordered_pieces)
-        assert set(ordered_pieces) == piece_set, "{} != {}".format(set(ordered_pieces), piece_set)
-        return ordered_pieces
-
-    def pre_sort_pieces(self):
         pieces = self.transcript.data.transcribed_pieces
         # start with one piece, extend until both ends are reached
-        pre_organized_pieces = []  # ordered as far as can be without using trans-splicing links
-        handled_pieces = []  # tracker for all pieces we've placed so far
-        remaining_pieces = set(pieces) - set(handled_pieces)
-        while remaining_pieces:
-            ordered_pieces = list(remaining_pieces)[0:1]
-            self._extend_to_end(ordered_pieces, downstream=True, filter_fn=self.not_trans_splicing)
-            self._extend_to_end(ordered_pieces, downstream=False, filter_fn=self.not_trans_splicing)
-            handled_pieces += ordered_pieces
-            remaining_pieces = set(pieces) - set(handled_pieces)
-            pre_organized_pieces.append(ordered_pieces)
-        return pre_organized_pieces
-
-    def arrange_any_translinkages(self, presorted):
-        # todo, don't just flatten but arrange based on translinkages
-        fully_sorted = presorted[0:1]
-        self._extend_to_end_presorted_chunks(fully_sorted, presorted, downstream=True,
-                                             filter_fn=self.trans_splicing_only)
-        self._extend_to_end_presorted_chunks(fully_sorted, presorted, downstream=False,
-                                             filter_fn=self.trans_splicing_only)
-        return [item for sublist in fully_sorted for item in sublist]
-
-    def _extend_to_end_presorted_chunks(self, fully_sorted, presorted, downstream=True, filter_fn=None):
-        # todo, can I reduce redundancy between this and _extend_to_end
-        if downstream:
-            next_fn = self.get_downstream_link
-            latest_i = -1
-            attr = 'downstream'
-        else:
-            next_fn = self.get_upstream_link
-            latest_i = 0
-            attr = 'upstream'
-
-        while True:
-            nextlink = next_fn(current_pieces=fully_sorted[latest_i], filter_fn=filter_fn)
-            if nextlink is None:
-                break
-            nextstream = nextlink.__getattribute__(attr)
-            nextpiece = self._get_one_piece_from_stream(nextstream)
-            next_piece_chunks = [chunk for chunk in presorted if nextpiece in chunk]
-            assert len(next_piece_chunks) == 1
-            next_piece_chunk = next_piece_chunks[0]
-            if any([next_piece_chunk == chunk for chunk in fully_sorted]):
-                raise IndecipherableLinkageError('Circular linkage inserting {} into {}'.format(next_piece_chunk,
-                                                                                                fully_sorted))
-            else:
-                self._extend_by_one(fully_sorted, next_piece_chunk, downstream)
+        ordered_pieces = pieces[0:1]
+        print(ordered_pieces, 'start')
+        self._extend_to_end(ordered_pieces, downstream=True)
+        self._extend_to_end(ordered_pieces, downstream=False)
+        assert set(ordered_pieces) == set(pieces), "{} != {}".format(set(ordered_pieces), set(pieces))
+        return ordered_pieces
 
     def _extend_to_end(self, ordered_pieces, downstream=True, filter_fn=None):
         if downstream:
@@ -588,7 +541,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
             attr = 'upstream'
 
         while True:
-            nextlink = next_fn(current_pieces=[ordered_pieces[latest_i]], filter_fn=filter_fn)
+            nextlink = next_fn(current_piece=ordered_pieces[latest_i])
             if nextlink is None:
                 break
             nextstream = nextlink.__getattribute__(attr)
@@ -612,46 +565,18 @@ class TranscriptTrimmer(TranscriptInterpBase):
         assert len(matches) == 1  # todo; can we guarantee this?
         return matches[0]
 
-    @staticmethod
-    def trans_splicing_only(x):
-        if x.type is None:
-            return False
-        else:
-            return x.type.value in [type_enums.ACCEPTOR_TRANS_SPLICE_SITE, type_enums.DONOR_TRANS_SPLICE_SITE]
-
-    @staticmethod
-    def not_trans_splicing(x):
-        if x.type is None:
-            return True
-        else:
-            return x.type.value not in [type_enums.ACCEPTOR_TRANS_SPLICE_SITE, type_enums.DONOR_TRANS_SPLICE_SITE]
-
-    def get_upstream_link(self, current_pieces, filter_fn=None):
-        if not isinstance(current_pieces, list):
-            current_pieces = [current_pieces]
-        # todo, modify so it can take current_pieceS, that it grabs just trans or just non-trans-splice-links
+    def get_upstream_link(self, current_piece):
         downstreams = self.session.query(annotations_orm.DownstreamFeature).all()
-        if filter_fn is not None:
-            downstreams = [x for x in downstreams if filter_fn(x)]
         # DownstreamFeature s of this pice
-        downstreams_current = [x for x in downstreams if self.any_shared_elements(current_pieces, x.transcribed_pieces)]
+        downstreams_current = [x for x in downstreams if current_piece in x.transcribed_pieces]
         links = self._find_matching_links(updown_candidates=downstreams_current, get_upstreams=True)
-        return self._links_list2link(links, direction='upstream', current_pieces=current_pieces)
+        return self._links_list2link(links, direction='upstream', current_piece=current_piece)
 
-    def get_downstream_link(self, current_pieces, filter_fn=None):
-        if not isinstance(current_pieces, list):  # todo, remove flexible input one the rest is working
-            current_pieces = [current_pieces]
-        # todo, as upstream
+    def get_downstream_link(self, current_piece):
         upstreams = self.session.query(annotations_orm.UpstreamFeature).all()
-        if filter_fn is not None:
-            upstreams = [x for x in upstreams if filter_fn(x)]
-        upstreams_current = [x for x in upstreams if self.any_shared_elements(current_pieces, x.transcribed_pieces)]
+        upstreams_current = [x for x in upstreams if current_piece in x.transcribed_pieces]
         links = self._find_matching_links(updown_candidates=upstreams_current, get_upstreams=False)
-        return self._links_list2link(links, direction='downstream', current_pieces=current_pieces)
-
-    @staticmethod
-    def any_shared_elements(x, y):
-        return len(set(x).intersection(set(y))) > 0
+        return self._links_list2link(links, direction='downstream', current_piece=current_piece)
 
     def _find_matching_links(self, updown_candidates, get_upstreams=True):
         links = []
@@ -663,7 +588,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 links += [x for x in pairs if x.upstream == cand]
         return links
 
-    def _links_list2link(self, links, direction, current_pieces):
+    def _links_list2link(self, links, direction, current_piece):
         stacked = self.stack_matches(links)
         collapsed = [x[0] for x in stacked]
         # todo, modify so that matching links are counted as one
@@ -673,7 +598,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
             return collapsed[0]
         else:
             raise IndecipherableLinkageError("Multiple possible within-transcript {} links found from {}, ({})".format(
-                direction, current_pieces, collapsed
+                direction, current_piece, collapsed
             ))
 
     def sort_all(self):

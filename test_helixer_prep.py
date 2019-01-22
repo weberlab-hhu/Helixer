@@ -1666,9 +1666,9 @@ class TransspliceDemoData(object):
                                            is_plus_strand=False, super_locus=self.sl,
                                            type=type_enums.TRANSCRIPTION_TERMINATION_SITE)
 
-        self.pieceA2D.features = [self.fA, self.fB, self.fC, self.fD]
-        self.pieceE2H.features = [self.fE, self.fF, self.fG, self.fH]
-        self.pieceEp2Hp.features = [self.fEp, self.fFp, self.fGp, self.fHp]
+        self.pieceA2D.features = [self.fA, self.fB, self.fC, self.fD, self.fADs0, self.fADs1]
+        self.pieceE2H.features = [self.fE, self.fF, self.fG, self.fH, self.fEHs0, self.fEHs1]
+        self.pieceEp2Hp.features = [self.fEp, self.fFp, self.fGp, self.fHp, self.fEHps0, self.fEHps1]
         self.pairADEH0 = annotations_orm.UpDownPair(upstream=self.fADs0, downstream=self.fEHs0,
                                                     transcribed=self.scribed)
         self.pairADEH1 = annotations_orm.UpDownPair(upstream=self.fADs1, downstream=self.fEHs1,
@@ -1677,7 +1677,7 @@ class TransspliceDemoData(object):
                                                      transcribed=self.scribedflip)
         self.pairADEHp1 = annotations_orm.UpDownPair(upstream=self.fADs1, downstream=self.fEHps1,
                                                      transcribed=self.scribedflip)
-        sess.add_all([self.sl, self.pair, self.pair2])
+        sess.add_all([self.sl, self.pairADEH0, self.pairADEH1, self.pairADEHp0, self.pairADEHp1])
         sess.commit()
 
         self.slh.make_all_handlers()
