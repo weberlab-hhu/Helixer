@@ -545,9 +545,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         handled_pieces = []  # tracker for all pieces we've placed so far
         remaining_pieces = set(pieces) - set(handled_pieces)
         while remaining_pieces:
-            print(remaining_pieces, 'remaining...')
             ordered_pieces = list(remaining_pieces)[0:1]
-            print(ordered_pieces, 'start_sub_loop')
             self._extend_to_end(ordered_pieces, downstream=True, filter_fn=self.not_trans_splicing)
             self._extend_to_end(ordered_pieces, downstream=False, filter_fn=self.not_trans_splicing)
             handled_pieces += ordered_pieces
@@ -557,7 +555,38 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
     def arrange_any_translinkages(self, presorted):
         # todo, don't just flatten but arrange based on translinkages
-        return [item for sublist in presorted for item in sublist]
+        fully_sorted = presorted[0:1]
+        self._extend_to_end_presorted_chunks(fully_sorted, presorted, downstream=True,
+                                             filter_fn=self.trans_splicing_only)
+        self._extend_to_end_presorted_chunks(fully_sorted, presorted, downstream=False,
+                                             filter_fn=self.trans_splicing_only)
+        return [item for sublist in fully_sorted for item in sublist]
+
+    def _extend_to_end_presorted_chunks(self, fully_sorted, presorted, downstream=True, filter_fn=None):
+        # todo, can I reduce redundancy between this and _extend_to_end
+        if downstream:
+            next_fn = self.get_downstream_link
+            latest_i = -1
+            attr = 'downstream'
+        else:
+            next_fn = self.get_upstream_link
+            latest_i = 0
+            attr = 'upstream'
+
+        while True:
+            nextlink = next_fn(current_pieces=fully_sorted[latest_i], filter_fn=filter_fn)
+            if nextlink is None:
+                break
+            nextstream = nextlink.__getattribute__(attr)
+            nextpiece = self._get_one_piece_from_stream(nextstream)
+            next_piece_chunks = [chunk for chunk in presorted if nextpiece in chunk]
+            assert len(next_piece_chunks) == 1
+            next_piece_chunk = next_piece_chunks[0]
+            if any([next_piece_chunk == chunk for chunk in fully_sorted]):
+                raise IndecipherableLinkageError('Circular linkage inserting {} into {}'.format(next_piece_chunk,
+                                                                                                fully_sorted))
+            else:
+                self._extend_by_one(fully_sorted, next_piece_chunk, downstream)
 
     def _extend_to_end(self, ordered_pieces, downstream=True, filter_fn=None):
         if downstream:
