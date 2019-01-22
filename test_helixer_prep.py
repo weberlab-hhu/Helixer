@@ -1617,41 +1617,66 @@ class TransspliceDemoData(object):
         self.fB = annotations_orm.Feature(coordinates=self.old_coor, start=20, end=20, given_id='B',
                                           is_plus_strand=True, super_locus=self.sl, type=type_enums.START_CODON)
 
-        self.fC = annotations_orm.UpstreamFeature(coordinates=self.old_coor, start=30, end=30, given_id='C',
-                                                  is_plus_strand=True, super_locus=self.sl,
-                                                  type=type_enums.DONOR_TRANS_SPLICE_SITE)
+        self.fC = annotations_orm.Feature(coordinates=self.old_coor, start=30, end=30, given_id='C',
+                                          is_plus_strand=True, super_locus=self.sl,
+                                          type=type_enums.DONOR_TRANS_SPLICE_SITE)
         self.fD = annotations_orm.Feature(coordinates=self.old_coor, start=40, end=40, given_id='D',
                                           is_plus_strand=True, super_locus=self.sl,
                                           type=type_enums.TRANSCRIPTION_TERMINATION_SITE)
+        self.fADs0 = annotations_orm.UpstreamFeature(coordinates=self.old_coor, start=40, end=40, given_id='ADs0',
+                                                     is_plus_strand=True, super_locus=self.sl,
+                                                     type=type_enums.IN_TRANS_INTRON)
+        self.fADs1 = annotations_orm.UpstreamFeature(coordinates=self.old_coor, start=40, end=40, given_id='ADs1',
+                                                     is_plus_strand=True, super_locus=self.sl,
+                                                     type=type_enums.IN_TRANSLATED_REGION)
         # pieceE2H features
+        self.fEHs0 = annotations_orm.DownstreamFeature(coordinates=self.old_coor, start=910, end=910, given_id='EHs0',
+                                                       is_plus_strand=True, super_locus=self.sl,
+                                                       type=type_enums.IN_TRANS_INTRON)
+        self.fEHs1 = annotations_orm.DownstreamFeature(coordinates=self.old_coor, start=910, end=910, given_id='EHs1',
+                                                       is_plus_strand=True, super_locus=self.sl,
+                                                       type=type_enums.IN_TRANSLATED_REGION)
         self.fE = annotations_orm.Feature(coordinates=self.old_coor, start=910, end=910, given_id='E',
                                           is_plus_strand=True, super_locus=self.sl,
                                           type=type_enums.TRANSCRIPTION_START_SITE)
-        self.fF = annotations_orm.DownstreamFeature(coordinates=self.old_coor, start=920, end=920, given_id='F',
-                                                    super_locus=self.sl,
-                                                    is_plus_strand=True, type=type_enums.ACCEPTOR_TRANS_SPLICE_SITE)
+        self.fF = annotations_orm.Feature(coordinates=self.old_coor, start=920, end=920, given_id='F',
+                                          super_locus=self.sl, is_plus_strand=True,
+                                          type=type_enums.ACCEPTOR_TRANS_SPLICE_SITE)
         self.fG = annotations_orm.Feature(coordinates=self.old_coor, start=930, end=930, given_id='G',
                                           is_plus_strand=True, super_locus=self.sl, type=type_enums.STOP_CODON)
         self.fH = annotations_orm.Feature(coordinates=self.old_coor, start=940, end=940, given_id='H',
                                           is_plus_strand=True, super_locus=self.sl,
                                           type=type_enums.TRANSCRIPTION_TERMINATION_SITE)
         # pieceEp2Hp features
+        self.fEHps0 = annotations_orm.DownstreamFeature(coordinates=self.old_coor, start=940, end=940, given_id='EHsp0',
+                                                        is_plus_strand=False, super_locus=self.sl,
+                                                        type=type_enums.IN_TRANS_INTRON)
+        self.fEHps1 = annotations_orm.DownstreamFeature(coordinates=self.old_coor, start=940, end=940, given_id='EHsp1',
+                                                        is_plus_strand=False, super_locus=self.sl,
+                                                        type=type_enums.IN_TRANSLATED_REGION)
         self.fEp = annotations_orm.Feature(coordinates=self.old_coor, start=940, end=940, given_id='Ep',
                                            is_plus_strand=False, super_locus=self.sl,
                                            type=type_enums.TRANSCRIPTION_START_SITE)
-        self.fFp = annotations_orm.DownstreamFeature(coordinates=self.old_coor, start=930, end=930, given_id='Fp',
-                                                     super_locus=self.sl,
-                                                     is_plus_strand=False, type=type_enums.ACCEPTOR_TRANS_SPLICE_SITE)
+        self.fFp = annotations_orm.Feature(coordinates=self.old_coor, start=930, end=930, given_id='Fp',
+                                           super_locus=self.sl,
+                                           is_plus_strand=False, type=type_enums.ACCEPTOR_TRANS_SPLICE_SITE)
         self.fGp = annotations_orm.Feature(coordinates=self.old_coor, start=920, end=920, given_id='Gp',
                                            is_plus_strand=False, super_locus=self.sl, type=type_enums.STOP_CODON)
         self.fHp = annotations_orm.Feature(coordinates=self.old_coor, start=910, end=910, given_id='Hp',
                                            is_plus_strand=False, super_locus=self.sl,
                                            type=type_enums.TRANSCRIPTION_TERMINATION_SITE)
+
         self.pieceA2D.features = [self.fA, self.fB, self.fC, self.fD]
         self.pieceE2H.features = [self.fE, self.fF, self.fG, self.fH]
         self.pieceEp2Hp.features = [self.fEp, self.fFp, self.fGp, self.fHp]
-        self.pair = annotations_orm.UpDownPair(upstream=self.fC, downstream=self.fF, transcribed=self.scribed)
-        self.pair2 = annotations_orm.UpDownPair(upstream=self.fC, downstream=self.fFp, transcribed=self.scribedflip)
+        self.pairADEH0 = annotations_orm.UpDownPair(upstream=self.fADs0, downstream=self.fEHs0,
+                                                    transcribed=self.scribed)
+        self.pairADEH1 = annotations_orm.UpDownPair(upstream=self.fADs1, downstream=self.fEHs1,
+                                                    transcribed=self.scribed)
+        self.pairADEHp0 = annotations_orm.UpDownPair(upstream=self.fADs0, downstream=self.fEHps0,
+                                                     transcribed=self.scribedflip)
+        self.pairADEHp1 = annotations_orm.UpDownPair(upstream=self.fADs1, downstream=self.fEHps1,
+                                                     transcribed=self.scribedflip)
         sess.add_all([self.sl, self.pair, self.pair2])
         sess.commit()
 
@@ -1684,7 +1709,19 @@ def test_modify4slice_transsplice():
     new_coords_1 = annotations_orm.Coordinates(seqid='a', start=916, end=2000)
     d.ti.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
     d.ti.modify4new_slice(new_coords=new_coords_1, is_plus_strand=True)
-
+    # we expect 3 new pieces,
+    #    1: TSS-start-TTS via <trans-splice> to
+    #    2: TSS-... via <3x status> to
+    #    3: >> stop TTS
+    pieces = d.ti.transcript.data.transcribed_pieces
+    assert len(pieces) == 3
+    assert d.pieceA2D not in pieces
+    sorted_pieces = d.ti.sort_pieces()
+    for x in sorted_pieces:
+        print(x, '----')
+        for f in x.features:
+            print('    ', f)
+    assert [len(x.features) for x in sorted_pieces] == [4, 4, 6]
     assert False
 
     # todo, test slicing both transcripts (at <<slice>>)

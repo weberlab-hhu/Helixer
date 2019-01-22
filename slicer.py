@@ -60,9 +60,7 @@ class SliceController(object):
 
     def slice_annotations(self):
         for seq in self.structured_genome.sequences:
-            print(seq.meta_info.seqid)
             for slice in seq.slices:
-                print('start: {}, end: {}, slice id: {}'.format(slice.start, slice.end, slice.slice_id))
                 yield seq.meta_info.seqid, slice.start, slice.end, slice.slice_id
             # todo, setup slice as sequence_info in database
             # todo, get features & there by superloci in slice
@@ -405,27 +403,23 @@ class TranscriptTrimmer(TranscriptInterpBase):
         prev_status = None
         prev_features = [None]
         for aligned_features, status, piece, new_piece in transition_gen:
-            print(aligned_features)
             f0 = aligned_features[0]  # take first as all "aligned" features have the same coordinates
             position_interp = PositionInterpreter(f0, prev_features[0], new_coords, is_plus_strand)
             # before or detached coordinates (already handled or good as-is, at least for now)
             if position_interp.is_detached():
-                print('detached', f0)
                 pass
             if position_interp.is_upstream():
-                print('upstream', f0)
+                pass
             # it should never overlap start (because this should have been handled and split already)
             elif position_interp.overlaps_upstream():
                 raise ValueError('unhandled straddling of upstream boarder')
             # within new_coords -> swap coordinates
             elif position_interp.is_contained():
-                print('contained', f0)
                 for f in aligned_features:
                     f.coordinates = new_coords
                     self.swap_piece(feature_handler=f.handler, new_piece=new_piece, old_piece=piece)
             # handle feature [  |  ] straddling end of coordinates
             elif position_interp.overlaps_downstream():
-                print('overlaps down', f0)
                 # make new UpDownLink and status features to handle split
                 self.set_status_downstream_border(new_coords=new_coords, new_piece=new_piece, old_coords=f0.coordinates,
                                                   old_piece=piece, is_plus_strand=is_plus_strand, template_feature=f0,
@@ -435,13 +429,11 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
             # handle pass end of coordinates between previous and current feature, [p] | [f]
             elif position_interp.just_passed_downstream():
-                print('passed down', f0)
                 self.set_status_downstream_border(new_coords=new_coords, old_coords=f0.coordinates,
                                                   is_plus_strand=is_plus_strand, template_feature=prev_features[0],
                                                   status=prev_status, old_piece=piece, new_piece=new_piece)
                 #self.swap_piece(f0.handler, new_piece, old_piece=piece)
             elif position_interp.is_downstream():
-                print('downstream', f0)
                 pass  # will get to this at next slice
                 #self.swap_piece(f0.handler, new_piece, old_piece=piece)
             else:
@@ -455,7 +447,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
         # clean up any unused or abandoned pieces
         for piece in self.transcript.data.transcribed_pieces:
-            print(len(piece.features), 'len piece features, pid {}'.format(piece.id))
             if piece.features == []:
                 self.session.delete(piece)
         self.session.commit()
@@ -484,12 +475,11 @@ class TranscriptTrimmer(TranscriptInterpBase):
             self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_INTRON, up_at, down_at,
                                            new_piece, old_piece)
         if status.seen_start and not status.seen_stop:
-            print('setting translated status')
             self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_TRANSLATED_REGION, up_at,
                                            down_at, new_piece, old_piece)
-        else:
-            print(status.seen_start, status.seen_stop, status.in_intron, status.genic)
-        # todo, make sure that at least one link has been set (default to error?)
+        if status.in_trans_intron:
+            self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_TRANS_INTRON, up_at, down_at,
+                                           new_piece, old_piece)
 
     def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
                                   old_piece):
@@ -533,7 +523,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
     def sort_pieces(self):
         piece_set = set(self.transcript.data.transcribed_pieces)
         pre_ordered_pieces = self.pre_sort_pieces()
-        print([len(x) for x in pre_ordered_pieces])
         ordered_pieces = self.arrange_any_translinkages(pre_ordered_pieces)
         assert set(ordered_pieces) == piece_set, "{} != {}".format(set(ordered_pieces), piece_set)
         return ordered_pieces
