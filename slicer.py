@@ -360,6 +360,9 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                                      transcribeds=[self.transcript.data])
         new_handler = TranscribedPieceHandler()
         new_handler.add_data(new_piece)
+        self.session.add(new_piece)
+        self.session.commit()
+        self.handlers.append(new_handler)
         return new_piece
 
     def update_status(self, status, aligned_features):

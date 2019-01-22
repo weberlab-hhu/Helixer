@@ -1286,6 +1286,8 @@ def test_order_pieces():
     assert downstream.transcribed_pieces == [piece2]
     # and see if they can be ordered as expected overall
     op = ti.sort_pieces()
+    print([piece0, piece1, piece2], 'expected')
+    print(op, 'sorted')
     assert op == [piece0, piece1, piece2]
     # and finally, order features by piece
     fully_sorted = ti.sort_all()
@@ -1574,19 +1576,16 @@ def test_modify4slice_directions():
     slh.make_all_handlers()
 
     tilong.modify4new_slice(new_coords=half1_coords, is_plus_strand=True)
-    newest_piece = fA.transcribed_pieces
+
     sess.commit()
     tilong.modify4new_slice(new_coords=half2_coords, is_plus_strand=True)
     tilong.modify4new_slice(new_coords=half2_coords, is_plus_strand=False)
-    tilong.modify4new_slice(new_coords=half2_coords, is_plus_strand=False)
+    tilong.modify4new_slice(new_coords=half1_coords, is_plus_strand=False)
     for f in sess.query(annotations_orm.Feature).all():
         assert len(f.transcribed_pieces) == 1
     slice0 = fA.transcribed_pieces[0]
     slice1 = fB.transcribed_pieces[0]
     slice2 = fC.transcribed_pieces[0]
-    print(slice0, [f for f in slice0.features])
-    print(slice1, [f for f in slice1.features])
-    print(slice2, [f for f in slice2.features])
     assert sorted([len(x.features) for x in tilong.transcript.data.transcribed_pieces]) == [2, 2, 2]
     assert set(slice2.features) == {fC, fD}
 
