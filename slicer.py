@@ -542,12 +542,13 @@ class TranscriptTrimmer(TranscriptInterpBase):
         handled_pieces = []  # tracker for all pieces we've placed so far
         remaining_pieces = set(pieces) - set(handled_pieces)
         while remaining_pieces:
+            print(remaining_pieces, 'remaining...')
             ordered_pieces = list(remaining_pieces)[0:1]
             print(ordered_pieces, 'start_sub_loop')
             self._extend_to_end(ordered_pieces, downstream=True, filter_fn=self.not_trans_splicing)
             self._extend_to_end(ordered_pieces, downstream=False, filter_fn=self.not_trans_splicing)
-            remaining_pieces = set(pieces) - set(handled_pieces)
             handled_pieces += ordered_pieces
+            remaining_pieces = set(pieces) - set(handled_pieces)
             pre_organized_pieces.append(ordered_pieces)
         return pre_organized_pieces
 
