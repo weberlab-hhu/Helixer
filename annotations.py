@@ -116,8 +116,8 @@ class Handler(object):
             elif isinstance(val, annotations_orm.Base):
                 self.copy_selflink_to_another(another, val)
             else:
-                raise ValueError("copy_selflinks_to_another only implemented for {} types".format(
-                    [list, annotations_orm.Base]
+                raise ValueError("copy_selflinks_to_another only implemented for {} types. {} found".format(
+                    [list, annotations_orm.Base], type(val)
                 ))
 
     # "selflink" for naming/usage consistency with 'replace' methods
@@ -335,9 +335,9 @@ class TranscribedHandler(Handler):
     def link_to(self, other):
         if isinstance(other, SuperLocusHandler):
             self.data.super_locus = other.data
-        elif isinstance(other, UpDownPairHandler):
+        elif any([isinstance(other, x) for x in [UpDownPairHandler, TranscribedPieceHandler]]):
             other.data.transcribed = self.data
-        elif any([isinstance(other, x) for x in [TranslatedHandler, TranscribedPieceHandler]]):
+        elif any([isinstance(other, x) for x in [TranslatedHandler]]):
             other.data.transcribeds.append(self.data)
         else:
             raise self._link_value_error(other)
@@ -355,7 +355,7 @@ class TranscribedPieceHandler(Handler):
     def __init__(self):
         super().__init__()
         self.copyable += ['given_id']
-        self.linkable += ['super_locus', 'features', 'transcribeds']
+        self.linkable += ['super_locus', 'features', 'transcribed']
 
     @property
     def data_type(self):

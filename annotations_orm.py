@@ -101,13 +101,6 @@ association_translateds_to_transcribeds = Table('association_translateds_to_tran
     Column('transcribed_id', Integer, ForeignKey('transcribeds.id'))
 )
 
-# todo, association table Transcribed <-> TranscribedPiece
-association_transcribeds_to_transcribed_pieces = Table('association_transcribeds_to_transcribed_pieces',
-    Base.metadata,
-    Column('transcribed_id', Integer, ForeignKey('transcribeds.id')),
-    Column('transcribed_piece_id', Integer, ForeignKey('transcribed_pieces.id'))
-)
-
 
 class Transcribed(Base):
     __tablename__ = 'transcribeds'
@@ -123,8 +116,7 @@ class Transcribed(Base):
     translateds = relationship('Translated', secondary=association_translateds_to_transcribeds,
                                back_populates='transcribeds')
 
-    transcribed_pieces = relationship('TranscribedPiece', secondary=association_transcribeds_to_transcribed_pieces,
-                                      back_populates='transcribeds')
+    transcribed_pieces = relationship('TranscribedPiece', back_populates='transcribed')
 
     pairs = relationship('UpDownPair', back_populates='transcribed')
 
@@ -138,15 +130,15 @@ class TranscribedPiece(Base):
     super_locus_id = Column(Integer, ForeignKey('super_loci.id'))
     super_locus = relationship('SuperLocus', back_populates='transcribed_pieces')
 
-    #transcribed_id = Column(Integer, ForeignKey('transcribeds.id'))  # todo, association table, secondary...
-    transcribeds = relationship('Transcribed', secondary=association_transcribeds_to_transcribed_pieces,
-                                back_populates='transcribed_pieces')
+    transcribed_id = Column(Integer, ForeignKey('transcribeds.id'))
+    transcribed = relationship('Transcribed', back_populates='transcribed_pieces')
 
     features = relationship('Feature', secondary=association_transcribeds_to_features,
                             back_populates='transcribed_pieces')
 
     def __repr__(self):
         return "<TranscribedPiece, {}: with features {}>".format(self.id, [(x.id, x.given_id) for x in self.features])
+
 
 class Translated(Base):
     __tablename__ = 'translateds'

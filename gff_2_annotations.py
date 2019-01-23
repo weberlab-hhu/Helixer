@@ -260,7 +260,7 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
             self.transcribed_handlers.append(transcribed)
 
             piece = TranscribedPieceHandler()
-            piece.process_gffentry(entry, super_locus=self.data, transcribeds=[transcribed.data])
+            piece.process_gffentry(entry, super_locus=self.data, transcribed=transcribed.data)
             self.transcribed_piece_handlers.append(piece)
 
         elif in_values(entry.type, type_enums.OnSequence):
@@ -420,16 +420,14 @@ class TranscribedPieceHandler(annotations.TranscribedPieceHandler, GFFDerived):
         annotations.TranscribedPieceHandler.__init__(self)
         GFFDerived.__init__(self)
 
-    def gen_data_from_gffentry(self, gffentry, super_locus=None, transcribeds=None, **kwargs):
-        if transcribeds is None:
-            transcribeds = []
+    def gen_data_from_gffentry(self, gffentry, super_locus=None, transcribed=None, **kwargs):
         parents = gffentry.get_Parent()
         # the simple case
         if len(parents) == 1:
             assert super_locus.given_id == parents[0]
             data = self.data_type(given_id=gffentry.get_ID(),
                                   super_locus=super_locus,
-                                  transcribeds=transcribeds)
+                                  transcribed=transcribed)
             self.add_data(data)
         else:
             raise NotImplementedError  # todo handle multi inheritance, etc...

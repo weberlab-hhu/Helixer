@@ -277,7 +277,7 @@ def test_many2many_scribed2slated():
     slated0 = annotations_orm.Translated(super_locus=sl, transcribeds=[scribed0])
     slated1 = annotations_orm.Translated(super_locus=sl, transcribeds=[scribed0])
     # test scribed 2 scribed_piece works
-    piece0 = annotations_orm.TranscribedPiece(transcribeds=[scribed0])
+    piece0 = annotations_orm.TranscribedPiece(transcribed=scribed0)
     assert piece0 == slated0.transcribeds[0].transcribed_pieces[0]
     # test protein to multi transcripts
     assert set(scribed0.translateds) == {slated0, slated1}
@@ -529,7 +529,7 @@ def test_swap_links_t2t2f():
 
     assert scribed.translateds == [slated]
     assert slated.transcribeds == [scribed]
-    assert scribedpiece.transcribeds == [scribed]
+    assert scribedpiece.transcribed == scribed
     assert feature.transcribed_pieces == [scribedpiece]
     # de_link / link_to from scribed side
     scribedh.de_link(slatedh)
@@ -651,7 +651,7 @@ def test_data_frm_gffentry():
     mrna_handler = gff_2_annotations.TranscribedHandler()
     mrna_handler.gen_data_from_gffentry(mrna_entry, super_locus=handler.data)
     piece_handler = gff_2_annotations.TranscribedPieceHandler()
-    piece_handler.gen_data_from_gffentry(mrna_entry, super_locus=handler.data, transcribeds=[mrna_handler.data])
+    piece_handler.gen_data_from_gffentry(mrna_entry, super_locus=handler.data, transcribed=mrna_handler.data)
 
     sess.add_all([mrna_handler.data, piece_handler.data])
     sess.commit()
@@ -694,6 +694,7 @@ def test_data_frm_gffentry():
     assert exon_handler.data.super_locus is handler.data
     assert piece_handler.data in exon_handler.data.transcribed_pieces
     assert exon_handler.data.translateds == []
+    assert exon_handler.data.transcribed_pieces[0].transcribed == mrna_handler.data
 
 
 def test_data_from_cds_gffentry():
@@ -727,6 +728,7 @@ def setup_testable_super_loci(db_path='sqlite:///:memory:'):
 def test_organize_and_split_features():
     sl, _ = setup_testable_super_loci()
     transcript_full = [x for x in sl.transcribed_handlers if x.data.given_id == 'y']
+    print([x.data.given_id for x in sl.transcribed_handlers])
     assert len(transcript_full) == 1
     transcript_full = transcript_full[0]
     transcript_interpreter = gff_2_annotations.TranscriptInterpreter(transcript_full)
@@ -781,9 +783,10 @@ def test_import_seqinfo():
 def test_fullcopy():
     sess = mk_session()
     sl, slh = setup_data_handler(annotations.SuperLocusHandler, annotations_orm.SuperLocus)
+    scribed, scribedh = setup_data_handler(annotations.TranscribedHandler, annotations_orm.Transcribed, super_locus=sl)
     scribedpiece, scribedpieceh = setup_data_handler(annotations.TranscribedPieceHandler,
-                                                     annotations_orm.TranscribedPiece,
-                                                     super_locus=sl, given_id='soup')
+                                                     annotations_orm.TranscribedPiece, transcribed=scribed,
+                                                     super_locus=sl, given_id='soup',)
     f, fh = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, super_locus=sl,
                                transcribed_pieces=[scribedpiece], start=13, end=33)
     sess.add_all([scribedpiece, f])
@@ -805,6 +808,7 @@ def test_fullcopy():
 
     # try copying most of transcribed things to translated
     slated, slatedh = setup_data_handler(annotations.TranslatedHandler, annotations_orm.Translated)
+    print(scribedpiece.transcribed, 'piece.transcriebd')
     scribedpieceh.fax_all_attrs_to_another(slatedh, skip_copying=None, skip_linking=None)
     sess.commit()
     assert slated.given_id == 'soup'
