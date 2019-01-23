@@ -491,8 +491,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                          given_id=None, type=status_type)
         downstream = self.new_handled_data(template_feature, annotations_orm.DownstreamFeature, start=down_at,
                                            end=down_at, given_id=None, type=status_type, coordinates=old_coords)
-        print(downstream.data, '...downstream data, right after creation')
-        print(downstream.data.transcribed_pieces, '...piece (new?) it was assigned to')
         # swap piece back to previous, as downstream is outside of new_coordinates (slice), and will be ran through
         # modify4new_slice once more and get it's final coordinates/piece then
         self.swap_piece(feature_handler=downstream, new_piece=old_piece, old_piece=new_piece)
@@ -551,6 +549,9 @@ class TranscriptTrimmer(TranscriptInterpBase):
             if nextlink is None:
                 break
             nextstream = nextlink.__getattribute__(attr)
+            print(nextstream, 'nextstream')
+            print(nextstream.transcribed_pieces)
+
             nextpiece = self._get_one_piece_from_stream(nextstream)
             if nextpiece in ordered_pieces:
                 raise IndecipherableLinkageError('Circular linkage inserting {} into {}'.format(nextpiece,
@@ -568,7 +569,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
     def _get_one_piece_from_stream(self, stream):
         pieces = self.transcript.data.transcribed_pieces
         matches = [x for x in stream.transcribed_pieces if x in pieces]
-        assert len(matches) == 1  # todo; can we guarantee this?
+        assert len(matches) == 1, 'len(matches) != 1, matches: {}'.format(matches)  # todo; can we guarantee this?
         return matches[0]
 
     def get_upstream_link(self, current_piece):

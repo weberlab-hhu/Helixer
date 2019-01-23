@@ -1685,7 +1685,6 @@ class TransspliceDemoData(object):
 def test_transition_transsplice():
     sess = mk_session()
     d = TransspliceDemoData(sess)  # setup _d_ata
-    # todo, test transcript status updates across both transcripts
     # forward pass, same sequence, two pieces
     ti_transitions = list(d.ti.transition_5p_to_3p())
     # from transition gen: 0 -> aligned_Features, 1 -> status copy
@@ -1697,7 +1696,8 @@ def test_transition_transsplice():
     assert [x[1].in_trans_intron for x in ti_transitions] == [False] * 2 + [True] * 3 + [False] * 3
     # forward, then backward pass, same sequence, two pieces
     ti_transitions = list(d.tiflip.transition_5p_to_3p())
-    assert [x[0] for x in ti_transitions] == [[x] for x in [d.fA, d.fB, d.fC, d.fD, d.fEp, d.fFp, d.fGp, d.fHp]]
+    assert [set(x[0]) for x in ti_transitions] == [{d.fA}, {d.fB}, {d.fC}, {d.fD, d.fADs0, d.fADs1},
+                                                   {d.fEp, d.fEHps0, d.fEHps1}, {d.fFp}, {d.fGp}, {d.fHp}]
     assert [x[1].genic for x in ti_transitions] == list([True] * 3 + [False]) * 2
     assert [x[1].in_translated_region for x in ti_transitions] == [False] + [True] * 5 + [False] * 2
     assert [x[1].in_trans_intron for x in ti_transitions] == [False] * 2 + [True] * 3 + [False] * 3
@@ -1711,25 +1711,74 @@ def test_modify4slice_transsplice():
     d.ti.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
     d.ti.modify4new_slice(new_coords=new_coords_1, is_plus_strand=True)
     # we expect 3 new pieces,
-    #    1: TSS-start-TTS via <trans-splice> to
-    #    2: TSS-... via <3x status> to
-    #    3: >> stop TTS
+    #    1: TSS-start-DonorTranssplice-TTS via <2x status> to (6 features)
+    #    2: <2x status>-TSS- via <3x status> to (6 features)
+    #    3: <3x status>-AcceptorTranssplice-stop-TTS (6 features)
     pieces = d.ti.transcript.data.transcribed_pieces
     assert len(pieces) == 3
-    assert d.pieceA2D not in pieces
+    assert d.pieceA2D not in pieces  # pieces themselves should have been replaced
     sorted_pieces = d.ti.sort_pieces()
-    for x in sorted_pieces:
-        print(x, '----')
-        for f in x.features:
-            print('    ', f)
-    assert [len(x.features) for x in sorted_pieces] == [4, 4, 6]
-    assert False
 
-    # todo, test slicing both transcripts (at <<slice>>)
+    assert [len(x.features) for x in sorted_pieces] == [6, 6, 6]
+    ftypes_0 = set([x.type.value for x in sorted_pieces[0].features])
+    assert ftypes_0 == {type_enums.TRANSCRIPTION_START_SITE, type_enums.START_CODON, type_enums.DONOR_TRANS_SPLICE_SITE,
+                        type_enums.TRANSCRIPTION_TERMINATION_SITE, type_enums.IN_TRANS_INTRON,
+                        type_enums.IN_TRANSLATED_REGION}
+    ftypes_2 = set([x.type.value for x in sorted_pieces[2].features])
+    assert ftypes_2 == {type_enums.IN_TRANSLATED_REGION, type_enums.IN_RAW_TRANSCRIPT, type_enums.IN_TRANS_INTRON,
+                        type_enums.ACCEPTOR_TRANS_SPLICE_SITE, type_enums.STOP_CODON,
+                        type_enums.TRANSCRIPTION_TERMINATION_SITE}
+    # and now where second original piece is flipped and slice is thus between STOP and TTS
+    print('moving on to flipped...')
+    d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
+    d.tiflip.modify4new_slice(new_coords=new_coords_1, is_plus_strand=False)
+    d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=False)
+    # we expect 3 new pieces,
+    #    1: TSS-start-DonorTranssplice-TTS via <2x status> to (6 features)
+    #    2: <2x status>-TSS-AcceptorTranssplice-stop via <1x status> to (6 features)
+    #    3: <1x status>-TTS (2 features)
+    pieces = d.ti.transcript.data.transcribed_pieces
+    assert len(pieces) == 3
+    assert d.pieceA2D not in pieces  # pieces themselves should have been replaced
+    sorted_pieces = d.ti.sort_pieces()
+
+    assert [len(x.features) for x in sorted_pieces] == [2, 6, 6]
+    ftypes_0 = set([x.type.value for x in sorted_pieces[0].features])
+    assert ftypes_0 == {type_enums.TRANSCRIPTION_START_SITE, type_enums.START_CODON, type_enums.DONOR_TRANS_SPLICE_SITE,
+                        type_enums.TRANSCRIPTION_TERMINATION_SITE, type_enums.IN_TRANS_INTRON,
+                        type_enums.IN_TRANSLATED_REGION}
+    ftypes_2 = set([x.type.value for x in sorted_pieces[2].features])
+    assert ftypes_2 == {type_enums.IN_RAW_TRANSCRIPT, type_enums.TRANSCRIPTION_TERMINATION_SITE}
 
 
 def test_modify4slice_2nd_half_first():
-    assert False  # todo
+    # because trans-splice occasions can theoretically hit transitions in the 'wrong' order where the 1st half of
+    # the _final_ transcript hasn't been adjusted when the second half is adjusted/sliced. Results should be the same.
+    sess = mk_session()
+    d = TransspliceDemoData(sess)  # setup _d_ata
+    new_coords_0 = annotations_orm.Coordinates(seqid='a', start=1, end=915)
+    new_coords_1 = annotations_orm.Coordinates(seqid='a', start=916, end=2000)
+    d.ti.modify4new_slice(new_coords=new_coords_1, is_plus_strand=True)
+    d.ti.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
+    # we expect 3 new pieces,
+    #    1: TSS-start-DonorTranssplice-TTS via <2x status> to (6 features)
+    #    2: <2x status>-TSS- via <3x status> to (6 features)
+    #    3: <3x status>-AcceptorTranssplice-stop-TTS (6 features)
+    pieces = d.ti.transcript.data.transcribed_pieces
+    assert len(pieces) == 3
+    assert d.pieceA2D not in pieces  # pieces themselves should have been replaced
+    sorted_pieces = d.ti.sort_pieces()
+
+    assert [len(x.features) for x in sorted_pieces] == [6, 6, 6]
+    ftypes_0 = set([x.type.value for x in sorted_pieces[0].features])
+    assert ftypes_0 == {type_enums.TRANSCRIPTION_START_SITE, type_enums.START_CODON, type_enums.DONOR_TRANS_SPLICE_SITE,
+                        type_enums.TRANSCRIPTION_TERMINATION_SITE, type_enums.IN_TRANS_INTRON,
+                        type_enums.IN_TRANSLATED_REGION}
+    ftypes_2 = set([x.type.value for x in sorted_pieces[2].features])
+    assert ftypes_2 == {type_enums.IN_TRANSLATED_REGION, type_enums.IN_RAW_TRANSCRIPT, type_enums.IN_TRANS_INTRON,
+                        type_enums.ACCEPTOR_TRANS_SPLICE_SITE, type_enums.STOP_CODON,
+                        type_enums.TRANSCRIPTION_TERMINATION_SITE}
+
 
 #### type_enumss ####
 def test_enum_non_inheritance():
