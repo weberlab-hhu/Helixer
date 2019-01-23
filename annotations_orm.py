@@ -206,10 +206,12 @@ class Feature(Base):
     }
 
     def __repr__(self):
-        s = '<{py_type}: {givenid} of type: {type} from {start}-{end} on {coor}, is_plus: {plus}, phase: {phase}>'.format(
-            type=self.type, start=self.start, end=self.end, coor=self.coordinates, plus=self.is_plus_strand,
-            phase=self.phase, givenid=self.given_id, py_type=type(self)
-        )
+        s = '<{py_type}, {pk}: {givenid} of type: {type} from {start}-{end} on {coor}, is_plus: {plus}, ' \
+            'phase: {phase}>'.format(
+                pk=self.id,
+                type=self.type, start=self.start, end=self.end, coor=self.coordinates, plus=self.is_plus_strand,
+                phase=self.phase, givenid=self.given_id, py_type=type(self)
+            )
         return s
 
     def cmp_key(self):  # todo, pos_cmp & full_cmp

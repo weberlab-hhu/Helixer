@@ -884,7 +884,7 @@ def test_transcript_get_first():
     assert f0.data.phase is None
     assert not f0.data.is_plus_strand
 
-    # test without UTR (x doesn't have last exon, and therefore will end in CDS)
+    # test without UTR (x doesn't have last exon, and therefore will end in CDS); remember, flipped it to minus strand
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'x'][0]
     t_interp = gff_2_annotations.TranscriptInterpreter(transcript.handler)
     i0 = t_interp.intervals_5to3(plus_strand=False)[0]
@@ -895,7 +895,7 @@ def test_transcript_get_first():
     f_err = features[0]
     f_status_coding = features[1]
     f_status_transcribed = features[2]
-    print(f_err)
+    print(f_err, f_err.data)
     print(status)
     print(i0)
     # should get in_translated_region instead of a start codon
@@ -1579,7 +1579,6 @@ def test_modify4slice_directions():
 
     sess.commit()
     tilong.modify4new_slice(new_coords=half2_coords, is_plus_strand=True)
-    tilong.modify4new_slice(new_coords=half2_coords, is_plus_strand=False)
     tilong.modify4new_slice(new_coords=half1_coords, is_plus_strand=False)
     for f in sess.query(annotations_orm.Feature).all():
         assert len(f.transcribed_pieces) == 1
@@ -1690,7 +1689,9 @@ def test_transition_transsplice():
     # forward pass, same sequence, two pieces
     ti_transitions = list(d.ti.transition_5p_to_3p())
     # from transition gen: 0 -> aligned_Features, 1 -> status copy
-    assert [x[0] for x in ti_transitions] == [[x] for x in [d.fA, d.fB, d.fC, d.fD, d.fE, d.fF, d.fG, d.fH]]
+    assert [set(x[0]) for x in ti_transitions] == [{d.fA}, {d.fB}, {d.fC}, {d.fD, d.fADs1, d.fADs0},
+                                                   {d.fE, d.fEHs0, d.fEHs1}, {d.fF}, {d.fG}, {d.fH}]
+    print([x[1].genic for x in ti_transitions])
     assert [x[1].genic for x in ti_transitions] == list([True] * 3 + [False]) * 2
     assert [x[1].in_translated_region for x in ti_transitions] == [False] + [True] * 5 + [False] * 2
     assert [x[1].in_trans_intron for x in ti_transitions] == [False] * 2 + [True] * 3 + [False] * 3

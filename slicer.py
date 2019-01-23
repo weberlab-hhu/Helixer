@@ -385,7 +385,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 status.trans_splice_close()
             # status features
             elif ftype == type_enums.IN_RAW_TRANSCRIPT:
-                status.saw_tts()
+                status.saw_tss()
             elif ftype == type_enums.IN_TRANSLATED_REGION:
                 status.saw_start(phase=feature.phase)
             elif ftype == type_enums.IN_INTRON:
@@ -456,7 +456,11 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
     @staticmethod
     def swap_piece(feature_handler, new_piece, old_piece):
-        feature_handler.de_link(old_piece.handler)
+        try:
+            feature_handler.de_link(old_piece.handler)
+        except ValueError as e:
+            print('trying to swap feature: {} from: {} to: {}'.format(feature_handler.data, old_piece, new_piece))
+            raise e
         feature_handler.link_to(new_piece.handler)
 
     def set_status_downstream_border(self, new_coords, old_coords, is_plus_strand, template_feature, status, new_piece,
@@ -487,6 +491,8 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                          given_id=None, type=status_type)
         downstream = self.new_handled_data(template_feature, annotations_orm.DownstreamFeature, start=down_at,
                                            end=down_at, given_id=None, type=status_type, coordinates=old_coords)
+        print(downstream.data, '...downstream data, right after creation')
+        print(downstream.data.transcribed_pieces, '...piece (new?) it was assigned to')
         # swap piece back to previous, as downstream is outside of new_coordinates (slice), and will be ran through
         # modify4new_slice once more and get it's final coordinates/piece then
         self.swap_piece(feature_handler=downstream, new_piece=old_piece, old_piece=new_piece)

@@ -464,11 +464,16 @@ class TranscriptStatus(object):
         self.seen_stop = False
         self.phase = None  # todo, proper tracking / handling
 
+    def __repr__(self):
+        return "genic: {}, intronic: {}, translated_region: {}, trans_intronic: {}, phase: {}".format(
+            self.genic, self.in_intron, self.in_translated_region, self.in_trans_intron, self.phase
+        )
+
     def saw_tss(self):
         self.genic = True
 
     def saw_start(self, phase):
-        self.genic = True
+        #self.genic = True  # TODO, disentangle this from at least status markers, better all coding & call saw_tss
         self.seen_start = True
         self.in_translated_region = True
         self.phase = phase
@@ -525,7 +530,6 @@ class TranscriptInterpBase(object):
     @property
     def super_locus(self):
         return self.transcript.data.super_locus.handler
-
 
 
 class TranscriptInterpreter(TranscriptInterpBase):
@@ -878,6 +882,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
             transcribed = self.new_feature(template=cds_feature, type=type_enums.IN_RAW_TRANSCRIPT, start=at, end=at)
             self.clean_features += [coding, transcribed]
             self.status.saw_start(phase=coding.data.phase)
+            self.status.saw_tss()  # coding implies the transcript
             # mask a dummy region up-stream as it's very unclear whether it should be intergenic/intronic/utr
             if plus_strand:
                 # unless we're at the start of the sequence
