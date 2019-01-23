@@ -355,7 +355,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
     def mk_new_piece(self):
         new_piece = annotations_orm.TranscribedPiece(super_locus=self.transcript.data.super_locus,
-                                                     transcribeds=[self.transcript.data])
+                                                     transcribed=self.transcript.data)
         new_handler = TranscribedPieceHandler()
         new_handler.add_data(new_piece)
         self.session.add(new_piece)
@@ -404,6 +404,8 @@ class TranscriptTrimmer(TranscriptInterpBase):
         prev_features = [None]
         for aligned_features, status, piece, new_piece in transition_gen:
             f0 = aligned_features[0]  # take first as all "aligned" features have the same coordinates
+            print('generating. \n---- feature0: {}\n---- status: {}\n---- piece: {}\n---- new: {}'.format(
+                f0, status, piece, new_piece))
             position_interp = PositionInterpreter(f0, prev_features[0], new_coords, is_plus_strand)
             # before or detached coordinates (already handled or good as-is, at least for now)
             if position_interp.is_detached():
@@ -528,7 +530,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         pieces = self.transcript.data.transcribed_pieces
         # start with one piece, extend until both ends are reached
         ordered_pieces = pieces[0:1]
-        print(ordered_pieces, 'start')
+        print(ordered_pieces, 'of', pieces,'start')
         self._extend_to_end(ordered_pieces, downstream=True)
         self._extend_to_end(ordered_pieces, downstream=False)
         assert set(ordered_pieces) == set(pieces), "{} != {}".format(set(ordered_pieces), set(pieces))

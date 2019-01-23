@@ -1481,14 +1481,19 @@ def test_transition_with_right_new_pieces():
     ti = slicer.TranscriptTrimmer(transcript=scribedh, sess=sess)
     tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, sess=sess)
 
-    pieceAB = annotations_orm.TranscribedPiece(super_locus=sl)
-    pieceCD = annotations_orm.TranscribedPiece(super_locus=sl)
-    scribed.transcribed_pieces = [pieceAB]
-    scribedlong.transcribed_pieces = [pieceAB, pieceCD]
+    pieceAB = annotations_orm.TranscribedPiece(super_locus=sl, transcribed=scribed)
+    pieceABp = annotations_orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
+    pieceCD = annotations_orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
+    #scribed.transcribed_pieces = [pieceAB]
+    #scribedlong.transcribed_pieces = [pieceAB, pieceCD]
+    #sess.add(scribedlong)
+    #sess.commit()
+    print(scribed.transcribed_pieces, 'abc')
+    print(scribedlong.transcribed_pieces, '123')
 
-    fA = annotations_orm.Feature(transcribed_pieces=[pieceAB], coordinates=old_coor, start=190, end=190,
+    fA = annotations_orm.Feature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, start=190, end=190,
                                  is_plus_strand=True, super_locus=sl, type=type_enums.ERROR)
-    fB = annotations_orm.UpstreamFeature(transcribed_pieces=[pieceAB], coordinates=old_coor, start=210, end=210,
+    fB = annotations_orm.UpstreamFeature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, start=210, end=210,
                                          is_plus_strand=True, super_locus=sl, type=type_enums.ERROR)
 
     fC = annotations_orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=90, end=90,
@@ -1497,7 +1502,7 @@ def test_transition_with_right_new_pieces():
                                  is_plus_strand=True, super_locus=sl, type=type_enums.ERROR)
 
     pair = annotations_orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
-    sess.add_all([scribed, scribedlong, pieceAB, pieceCD, fA, fB, fC, fD, pair, old_coor, sl])
+    sess.add_all([scribed, scribedlong, pieceAB, pieceABp, pieceCD, fA, fB, fC, fD, pair, old_coor, sl])
     sess.commit()
     short_transition = list(ti.transition_5p_to_3p_with_new_pieces())
     assert len(set([x[3] for x in short_transition])) == 1
@@ -1609,10 +1614,11 @@ class TransspliceDemoData(object):
         self.tiflip = slicer.TranscriptTrimmer(transcript=self.scribedfliph, sess=sess)
 
         self.pieceA2D = annotations_orm.TranscribedPiece(super_locus=self.sl)
+        self.pieceA2Dp = annotations_orm.TranscribedPiece(super_locus=self.sl)
         self.pieceE2H = annotations_orm.TranscribedPiece(super_locus=self.sl)
         self.pieceEp2Hp = annotations_orm.TranscribedPiece(super_locus=self.sl)
         self.scribed.transcribed_pieces = [self.pieceA2D, self.pieceE2H]
-        self.scribedflip.transcribed_pieces = [self.pieceA2D, self.pieceEp2Hp]
+        self.scribedflip.transcribed_pieces = [self.pieceA2Dp, self.pieceEp2Hp]
         # pieceA2D features
         self.fA = annotations_orm.Feature(coordinates=self.old_coor, start=10, end=10, given_id='A',
                                           is_plus_strand=True, super_locus=self.sl,
@@ -1670,6 +1676,7 @@ class TransspliceDemoData(object):
                                            type=type_enums.TRANSCRIPTION_TERMINATION_SITE)
 
         self.pieceA2D.features = [self.fA, self.fB, self.fC, self.fD, self.fADs0, self.fADs1]
+        self.pieceA2Dp.features = [self.fA, self.fB, self.fC, self.fD, self.fADs0, self.fADs1]
         self.pieceE2H.features = [self.fE, self.fF, self.fG, self.fH, self.fEHs0, self.fEHs1]
         self.pieceEp2Hp.features = [self.fEp, self.fFp, self.fGp, self.fHp, self.fEHps0, self.fEHps1]
         self.pairADEH0 = annotations_orm.UpDownPair(upstream=self.fADs0, downstream=self.fEHs0,
