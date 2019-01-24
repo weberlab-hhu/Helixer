@@ -62,7 +62,7 @@ class SliceController(object):
         for seq in self.structured_genome.sequences:
             for slice in seq.slices:
                 yield seq.meta_info.seqid, slice.start, slice.end, slice.slice_id
-            # todo, setup slice as sequence_info in database
+            # todo, setup slice as coordinates w/ seq info in database
             # todo, get features & there by superloci in slice
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
 
@@ -361,13 +361,9 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 self.update_status(status, aligned_features)
                 yield aligned_features, copy.deepcopy(status), piece
 
-        # todo,
-        #  get ordered pieces/features
-        #  setup transcript status @ first feature
-
     def _transition_5p_to_3p_with_new_pieces(self):
         transition_gen = self.transition_5p_to_3p()
-        aligned_features, status, prev_piece = next(transition_gen)  # todo, check and handle things for these!
+        aligned_features, status, prev_piece = next(transition_gen)
         new_piece = self.mk_new_piece()
         yield aligned_features, status, prev_piece, new_piece
 
@@ -434,13 +430,9 @@ class TranscriptTrimmer(TranscriptInterpBase):
             previous_step.set_as_previous_of(current_step)
 
             f0 = current_step.example_feature  # take first as all "aligned" features have the same coordinates
-            #print('generated. \n---- feature0: {}\n---- all: {}\n---- status: {}\n---- piece: {}\n---- new: {}'.format(
-            #    f0, [f.given_id for f in current_step.features], current_step.status, current_step.old_piece,
-            #    current_step.replacement_piece))
             position_interp = PositionInterpreter(f0, previous_step.example_feature, new_coords, is_plus_strand)
             # before or detached coordinates (already handled or good as-is, at least for now)
             if position_interp.is_detached():
-                print('skipping detached feature {}'.format(f0))
                 pass
             elif position_interp.is_upstream():
                 pass
@@ -475,13 +467,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                                  "Current feature: '{}'".format(
                                                      current_step.replacement_piece, previous_step.example_feature, f0,
                                                  ))
-                print('seen one overlap', seen_one_overlap)
-                print('new piece', current_step.replacement_piece)
-                print('old piece', current_step.old_piece)
-                print('f0', f0)
-                print('prev f on piece', previous_step.example_feature)
-                print('prev status', previous_step.status)
-                print('new coords', new_coords)
+
                 self.set_status_downstream_border(new_coords=new_coords, old_coords=f0.coordinates,
                                                   is_plus_strand=is_plus_strand,
                                                   template_feature=previous_step.example_feature,
@@ -656,7 +642,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
     def _links_list2link(self, links, direction, current_piece):
         stacked = self.stack_matches(links)
         collapsed = [x[0] for x in stacked]
-        # todo, modify so that matching links are counted as one
+
         if len(collapsed) == 0:
             return None
         elif len(collapsed) == 1:
