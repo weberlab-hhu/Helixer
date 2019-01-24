@@ -311,6 +311,10 @@ class IndecipherableLinkageError(Exception):
     pass
 
 
+class NoFeaturesInSliceError(Exception):
+    pass
+
+
 class StepHolder(object):
     def __init__(self, features=None, status=None, old_piece=None, replacement_piece=None):
         self.features = features
@@ -430,9 +434,9 @@ class TranscriptTrimmer(TranscriptInterpBase):
             previous_step.set_as_previous_of(current_step)
 
             f0 = current_step.example_feature  # take first as all "aligned" features have the same coordinates
-            print('generated. \n---- feature0: {}\n---- all: {}\n---- status: {}\n---- piece: {}\n---- new: {}'.format(
-                f0, [f.given_id for f in current_step.features], current_step.status, current_step.old_piece,
-                current_step.replacement_piece))
+            #print('generated. \n---- feature0: {}\n---- all: {}\n---- status: {}\n---- piece: {}\n---- new: {}'.format(
+            #    f0, [f.given_id for f in current_step.features], current_step.status, current_step.old_piece,
+            #    current_step.replacement_piece))
             position_interp = PositionInterpreter(f0, previous_step.example_feature, new_coords, is_plus_strand)
             # before or detached coordinates (already handled or good as-is, at least for now)
             if position_interp.is_detached():
@@ -465,10 +469,11 @@ class TranscriptTrimmer(TranscriptInterpBase):
             # handle pass end of coordinates between previous and current feature, [p] | [f]
             elif position_interp.just_passed_downstream():
                 if not seen_one_overlap:
-                    raise ValueError("seen no features overlapping or contained in new piece '{}', can't set downstream"
-                                     " pass.\n  Last feature: '{}'\n  Current feature: '{}'".format(
-                                        current_step.replacement_piece, previous_step.example_feature, f0,
-                                     ))
+                    raise NoFeaturesInSliceError("seen no features overlapping or contained in new piece '{}', can't "
+                                                 "set downstream pass.\n  Last feature: '{}'\n  "
+                                                 "Current feature: '{}'".format(
+                                                     current_step.replacement_piece, previous_step.example_feature, f0,
+                                                 ))
                 print('seen one overlap', seen_one_overlap)
                 print('new piece', current_step.replacement_piece)
                 print('old piece', current_step.old_piece)
@@ -497,6 +502,11 @@ class TranscriptTrimmer(TranscriptInterpBase):
             if piece.features == []:
                 self.session.delete(piece)
         self.session.commit()
+
+        if not seen_one_overlap:
+            raise NoFeaturesInSliceError("Saw no features what-so-ever in new_coords {} for transcript {}".format(
+                new_coords, self.transcript.data
+            ))
 
     def get_rel_feature_position(self, feature, prev_feature, new_coords, is_plus_strand):
         pass

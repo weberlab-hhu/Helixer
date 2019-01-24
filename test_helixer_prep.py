@@ -1736,6 +1736,88 @@ def test_piece_swap_handling_during_multipiece_one_coordinate_transition():
     assert post_slice_swap.example_feature is not None
 
 
+class SimplestDemoData(object):
+    def __init__(self, sess):
+        self.old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=1000)
+        # setup two transitions:
+        # 2) scribedlong - [[D<-,C<-],[->A,->B]] -> ABCD, -> two pieces forward, one backward
+        self.sl, self.slh = setup_data_handler(slicer.SuperLocusHandler, annotations_orm.SuperLocus)
+        self.scribedlong, self.scribedlongh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed,
+                                                                 super_locus=self.sl)
+
+        self.tilong = slicer.TranscriptTrimmer(transcript=self.scribedlongh, sess=sess)
+
+        self.pieceAB = annotations_orm.TranscribedPiece(super_locus=self.sl)
+        self.pieceCD = annotations_orm.TranscribedPiece(super_locus=self.sl)
+        self.scribedlong.transcribed_pieces = [self.pieceAB, self.pieceCD]
+
+        self.fA = annotations_orm.Feature(transcribed_pieces=[self.pieceAB], coordinates=self.old_coor, start=190,
+                                          given_id='A', is_plus_strand=True, super_locus=self.sl, end=190,
+                                          type=type_enums.TRANSCRIPTION_START_SITE)
+        self.fB = annotations_orm.UpstreamFeature(transcribed_pieces=[self.pieceAB], coordinates=self.old_coor,
+                                                  end=210, is_plus_strand=True, super_locus=self.sl, start=210,
+                                                  type=type_enums.IN_RAW_TRANSCRIPT, given_id='B')
+
+        self.fC = annotations_orm.DownstreamFeature(transcribed_pieces=[self.pieceCD], coordinates=self.old_coor,
+                                                    end=110, is_plus_strand=False, super_locus=self.sl, start=110,
+                                                    type=type_enums.IN_RAW_TRANSCRIPT, given_id='C')
+        self.fD = annotations_orm.Feature(transcribed_pieces=[self.pieceCD], coordinates=self.old_coor, start=90,
+                                          is_plus_strand=False, super_locus=self.sl, end=90,
+                                          type=type_enums.TRANSCRIPTION_TERMINATION_SITE, given_id='D')
+
+        self.pair = annotations_orm.UpDownPair(upstream=self.fB, downstream=self.fC, transcribed=self.scribedlong)
+
+        sess.add_all([self.scribedlong, self.pieceAB, self.pieceCD, self.fA, self.fB, self.fC, self.fD, self.pair,
+                      self.old_coor, self.sl])
+        sess.commit()
+        self.slh.make_all_handlers()
+
+
+def test_transition_unused_coordinates_detection():
+    sess = mk_session()
+    d = SimplestDemoData(sess)
+    # modify to coordinates with complete contain, should work fine
+    new_coords = annotations_orm.Coordinates(seqid='a', start=1, end=300)
+    d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
+    d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
+    assert d.pieceCD not in d.sl.transcribed_pieces  # confirm full transition
+    assert d.pieceAB not in d.scribedlong.transcribed_pieces
+    # modify to coordinates across tiny slice, include those w/o original features, should work fine
+    d = SimplestDemoData(sess)
+    new_coords_list = [annotations_orm.Coordinates(seqid='a', start=186, end=195),
+                       annotations_orm.Coordinates(seqid='a', start=196, end=205),
+                       annotations_orm.Coordinates(seqid='a', start=206, end=215)]
+    for new_coords in new_coords_list:
+        d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
+
+    new_coords_list = [annotations_orm.Coordinates(seqid='a', start=106, end=115),
+                       annotations_orm.Coordinates(seqid='a', start=96, end=105),
+                       annotations_orm.Coordinates(seqid='a', start=86, end=95)]
+    for new_coords in new_coords_list:
+        d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
+    assert d.pieceCD not in d.scribedlong.transcribed_pieces  # confirm full transition
+    assert d.pieceAB not in d.sl.transcribed_pieces
+
+    # try and slice before coordinates, should raise error
+    d = SimplestDemoData(sess)
+    new_coords = annotations_orm.Coordinates(seqid='a', start=1, end=10)
+    with pytest.raises(slicer.NoFeaturesInSliceError):
+        d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
+    # try and slice after coordinates, should raise error
+    d = SimplestDemoData(sess)
+    new_coords = annotations_orm.Coordinates(seqid='a', start=400, end=410)
+    with pytest.raises(slicer.NoFeaturesInSliceError):
+        d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
+    # try and slice between slices where there are no coordinates, should raise error
+    d = SimplestDemoData(sess)
+    new_coords = annotations_orm.Coordinates(seqid='a', start=150, end=160)
+    with pytest.raises(slicer.NoFeaturesInSliceError):
+        d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
+    d = SimplestDemoData(sess)
+    with pytest.raises(slicer.NoFeaturesInSliceError):
+        d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
+
+
 def test_modify4slice_transsplice():
     sess = mk_session()
     d = TransspliceDemoData(sess)  # setup _d_ata
