@@ -620,6 +620,11 @@ def test_replacelinks():
     assert len(scribedpiece.features) == 3
 
 
+## slice_dbmods
+def test_add_processing_set():
+    assert False  # todo!
+
+
 ### gff_2_annotations ###
 def test_data_frm_gffentry():
     #sess = mk_session()
@@ -1885,7 +1890,6 @@ def test_modify4slice_transsplice():
     for piece in sorted_pieces:
         for f in piece.features:
             assert f.coordinates in {new_coords_1, new_coords_0}
-
 
 
 def test_modify4slice_2nd_half_first():

@@ -21,12 +21,6 @@ class AnnotatedGenome(Base):
     sequence_infos = relationship("SequenceInfo", back_populates="annotated_genome")
 
 
-class ProcessingSet(enum.Enum):
-    train = 'train'
-    dev = 'dev'
-    test = 'test'
-
-
 class SequenceInfo(Base):
     __tablename__ = "sequence_infos"
 
@@ -34,7 +28,6 @@ class SequenceInfo(Base):
     # relations
     annotated_genome_id = Column(Integer, ForeignKey('annotated_genomes.id'), nullable=False)
     annotated_genome = relationship('AnnotatedGenome', back_populates="sequence_infos")
-    processing_set = Column(Enum(ProcessingSet))
     coordinates = relationship('Coordinates', back_populates="sequence_info")
 
 
