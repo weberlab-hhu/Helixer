@@ -1870,18 +1870,22 @@ def test_modify4slice_transsplice():
     #    1: TSS-start-DonorTranssplice-TTS via <2x status> to (6 features)
     #    2: <2x status>-TSS-AcceptorTranssplice-stop via <1x status> to (6 features)
     #    3: <1x status>-TTS (2 features)
-    pieces = d.ti.transcript.data.transcribed_pieces
+    pieces = d.tiflip.transcript.data.transcribed_pieces
     assert len(pieces) == 3
     assert d.pieceA2D not in pieces  # pieces themselves should have been replaced
-    sorted_pieces = d.ti.sort_pieces()
+    sorted_pieces = d.tiflip.sort_pieces()
 
-    assert [len(x.features) for x in sorted_pieces] == [2, 6, 6]
+    assert [len(x.features) for x in sorted_pieces] == [6, 6, 2]
     ftypes_0 = set([x.type.value for x in sorted_pieces[0].features])
     assert ftypes_0 == {type_enums.TRANSCRIPTION_START_SITE, type_enums.START_CODON, type_enums.DONOR_TRANS_SPLICE_SITE,
                         type_enums.TRANSCRIPTION_TERMINATION_SITE, type_enums.IN_TRANS_INTRON,
                         type_enums.IN_TRANSLATED_REGION}
     ftypes_2 = set([x.type.value for x in sorted_pieces[2].features])
     assert ftypes_2 == {type_enums.IN_RAW_TRANSCRIPT, type_enums.TRANSCRIPTION_TERMINATION_SITE}
+    for piece in sorted_pieces:
+        for f in piece.features:
+            assert f.coordinates in {new_coords_1, new_coords_0}
+
 
 
 def test_modify4slice_2nd_half_first():
@@ -1891,26 +1895,28 @@ def test_modify4slice_2nd_half_first():
     d = TransspliceDemoData(sess)  # setup _d_ata
     new_coords_0 = annotations_orm.Coordinates(seqid='a', start=1, end=915)
     new_coords_1 = annotations_orm.Coordinates(seqid='a', start=916, end=2000)
-    d.ti.modify4new_slice(new_coords=new_coords_1, is_plus_strand=True)
-    d.ti.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
+    d.tiflip.modify4new_slice(new_coords=new_coords_1, is_plus_strand=False)
+    d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=False)
+    d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
     # we expect 3 new pieces,
     #    1: TSS-start-DonorTranssplice-TTS via <2x status> to (6 features)
-    #    2: <2x status>-TSS- via <3x status> to (6 features)
-    #    3: <3x status>-AcceptorTranssplice-stop-TTS (6 features)
-    pieces = d.ti.transcript.data.transcribed_pieces
+    #    2: <2x status>-TSS-AcceptorTranssplice-stop via <1x status> to (6 features)
+    #    3: <1x status>-TTS (2 features)
+    pieces = d.tiflip.transcript.data.transcribed_pieces
     assert len(pieces) == 3
     assert d.pieceA2D not in pieces  # pieces themselves should have been replaced
-    sorted_pieces = d.ti.sort_pieces()
+    sorted_pieces = d.tiflip.sort_pieces()
 
-    assert [len(x.features) for x in sorted_pieces] == [6, 6, 6]
+    assert [len(x.features) for x in sorted_pieces] == [6, 6, 2]
     ftypes_0 = set([x.type.value for x in sorted_pieces[0].features])
     assert ftypes_0 == {type_enums.TRANSCRIPTION_START_SITE, type_enums.START_CODON, type_enums.DONOR_TRANS_SPLICE_SITE,
                         type_enums.TRANSCRIPTION_TERMINATION_SITE, type_enums.IN_TRANS_INTRON,
                         type_enums.IN_TRANSLATED_REGION}
     ftypes_2 = set([x.type.value for x in sorted_pieces[2].features])
-    assert ftypes_2 == {type_enums.IN_TRANSLATED_REGION, type_enums.IN_RAW_TRANSCRIPT, type_enums.IN_TRANS_INTRON,
-                        type_enums.ACCEPTOR_TRANS_SPLICE_SITE, type_enums.STOP_CODON,
-                        type_enums.TRANSCRIPTION_TERMINATION_SITE}
+    assert ftypes_2 == {type_enums.IN_RAW_TRANSCRIPT, type_enums.TRANSCRIPTION_TERMINATION_SITE}
+    for piece in sorted_pieces:
+        for f in piece.features:
+            assert f.coordinates in {new_coords_1, new_coords_0}
 
 
 #### type_enumss ####
