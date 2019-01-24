@@ -1715,12 +1715,25 @@ def test_transition_transsplice():
     assert [x[1].in_trans_intron for x in ti_transitions] == [False] * 2 + [True] * 3 + [False] * 3
 
 
-def test_transition_multipieces_within_coordinates():
+def test_piece_swap_handling_during_multipiece_one_coordinate_transition():
     sess = mk_session()
     d = TransspliceDemoData(sess)  # setup _d_ata
     # forward pass, same sequence, two pieces
-    ti_transitions = list(d.ti.transition_5p_to_3p())
-    assert False
+    ti_transitions = list(d.ti.transition_5p_to_3p_with_new_pieces())
+    pre_slice_swap = ti_transitions[3]
+    assert pre_slice_swap.example_feature is not None
+    post_slice_swap = ti_transitions[4]
+    pre_slice_swap.set_as_previous_of(post_slice_swap)
+    assert pre_slice_swap.example_feature is None
+    assert post_slice_swap.example_feature is not None
+    # two way pass, same sequence, two (one +, one -) piece
+    tiflip_transitions = list(d.tiflip.transition_5p_to_3p_with_new_pieces())
+    pre_slice_swap = tiflip_transitions[3]
+    assert pre_slice_swap.example_feature is not None
+    post_slice_swap = tiflip_transitions[4]
+    pre_slice_swap.set_as_previous_of(post_slice_swap)
+    assert pre_slice_swap.example_feature is None
+    assert post_slice_swap.example_feature is not None
 
 
 def test_modify4slice_transsplice():

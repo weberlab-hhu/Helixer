@@ -426,8 +426,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         transition_gen = self.transition_5p_to_3p_with_new_pieces()
         previous_step = StepHolder()
         for current_step in transition_gen:
-            # if we've switched pieces in transcript, reset the previous features seen on piece
-            # todo, more robust handling instead of overuse of None
+            # if we've switched pieces in transcript, reset the previous features seen on piece to None
             previous_step.set_as_previous_of(current_step)
 
             f0 = current_step.example_feature  # take first as all "aligned" features have the same coordinates
