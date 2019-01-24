@@ -1818,6 +1818,23 @@ def test_transition_unused_coordinates_detection():
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
 
 
+def test_features_on_opposite_strand_are_not_modified():
+    sess = mk_session()
+    d = SimplestDemoData(sess)
+    # forward pass only, back pass should be untouched
+    new_coords = annotations_orm.Coordinates(seqid='a', start=1, end=300)
+    d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
+    assert d.pieceAB not in d.sl.transcribed_pieces
+    assert d.pieceCD in d.sl.transcribed_pieces  # minus piece should not change on 'plus' pass
+
+    d = SimplestDemoData(sess)
+    # backward pass only, plus pass should be untouched
+    new_coords = annotations_orm.Coordinates(seqid='a', start=1, end=300)
+    d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
+    assert d.pieceAB in d.sl.transcribed_pieces  # plus piece should not change on 'minus' pass
+    assert d.pieceCD not in d.sl.transcribed_pieces
+
+
 def test_modify4slice_transsplice():
     sess = mk_session()
     d = TransspliceDemoData(sess)  # setup _d_ata
@@ -1846,6 +1863,7 @@ def test_modify4slice_transsplice():
     # and now where second original piece is flipped and slice is thus between STOP and TTS
     print('moving on to flipped...')
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
+    assert len(d.tiflip.transcript.data.transcribed_pieces) == 2
     d.tiflip.modify4new_slice(new_coords=new_coords_1, is_plus_strand=False)
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=False)
     # we expect 3 new pieces,

@@ -440,8 +440,9 @@ class TranscriptTrimmer(TranscriptInterpBase):
             position_interp = PositionInterpreter(f0, previous_step.example_feature, new_coords, is_plus_strand)
             # before or detached coordinates (already handled or good as-is, at least for now)
             if position_interp.is_detached():
+                print('skipping detached feature {}'.format(f0))
                 pass
-            if position_interp.is_upstream():
+            elif position_interp.is_upstream():
                 pass
             # it should never overlap start (because this should have been handled and split already)
             elif position_interp.overlaps_upstream():
