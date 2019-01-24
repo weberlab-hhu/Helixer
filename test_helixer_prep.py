@@ -2,6 +2,7 @@ import sequences
 import structure
 import annotations
 import annotations_orm
+import slice_dbmods
 import helpers
 import type_enums
 import pytest
@@ -13,7 +14,6 @@ from sqlalchemy.orm import sessionmaker
 import sqlalchemy
 import gff_2_annotations
 import slicer
-import random
 
 
 ### structure ###
@@ -202,29 +202,40 @@ def test_annogenome2sequence_infos_relation():
 def test_processing_set_enum():
     sess = mk_session()
     # valid numbers can be setup
-    ps = annotations_orm.ProcessingSet(annotations_orm.ProcessingSet.train)
-    ps2 = annotations_orm.ProcessingSet('train')
+    ps = slice_dbmods.ProcessingSet(slice_dbmods.ProcessingSet.train)
+    ps2 = slice_dbmods.ProcessingSet('train')
     assert ps == ps2
     # other numbers can't
     with pytest.raises(ValueError):
-        annotations_orm.ProcessingSet('training')
+        slice_dbmods.ProcessingSet('training')
     with pytest.raises(ValueError):
-        annotations_orm.ProcessingSet(1.3)
+        slice_dbmods.ProcessingSet(1.3)
     with pytest.raises(ValueError):
-        annotations_orm.ProcessingSet('Dev')
+        slice_dbmods.ProcessingSet('Dev')
     ag = annotations_orm.AnnotatedGenome()
-    sequence_info = annotations_orm.SequenceInfo(processing_set=ps, annotated_genome=ag)
-    sequence_info2 = annotations_orm.SequenceInfo(processing_set=ps2, annotated_genome=ag)
-    assert sequence_info.processing_set.value == 'train'
-    assert sequence_info2.processing_set.value == 'train'
+    sequence_info = annotations_orm.SequenceInfo(annotated_genome=ag)
+    sequence_info_s = slice_dbmods.SequenceInfoSets(processing_set=ps, sequence_info=sequence_info)
+    sequence_info2 = annotations_orm.SequenceInfo(annotated_genome=ag)
+    sequence_info2_s = slice_dbmods.SequenceInfoSets(processing_set=ps2, sequence_info=sequence_info2)
+    assert sequence_info_s.processing_set.value == 'train'
+    assert sequence_info2_s.processing_set.value == 'train'
 
-    sess.add_all([sequence_info, sequence_info2])
+    sess.add_all([sequence_info, sequence_info2, sequence_info2_s, sequence_info_s])
     sess.commit()
     # make sure we get the exact same handling when we come back out of the database
+    # todo, test this query
+    maybe_join = sess.query(annotations_orm.SequenceInfo, slice_dbmods.SequenceInfoSets).filter(annotations_orm.SequenceInfo.id == slice_dbmods.SequenceInfoSets.id)
+    print(maybe_join)
+    #print(maybe_join.all())
+    for item in maybe_join.all():
+        print(item)
+        print('-----')
+    # todo, remove test for changed api
     for s in ag.sequence_infos:
         assert s.processing_set.value == 'train'
     # null value works
     sequence_info3 = annotations_orm.SequenceInfo(annotated_genome=ag)
+    sequence_info3_s = slice_dbmods.SequenceInfoSets(sequence_info=sequence_info3)
     assert sequence_info3.processing_set is None
 
 

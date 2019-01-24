@@ -30,6 +30,9 @@ class SequenceInfo(Base):
     annotated_genome = relationship('AnnotatedGenome', back_populates="sequence_infos")
     coordinates = relationship('Coordinates', back_populates="sequence_info")
 
+    def __repr__(self):
+        return '<{}: {}, in {}, with {}>'.format(type(self), self.id, self.annotated_genome, self.coordinates)
+
 
 class Coordinates(Base):
     __tablename__ = 'coordinates'
