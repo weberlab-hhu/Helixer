@@ -311,6 +311,26 @@ class IndecipherableLinkageError(Exception):
     pass
 
 
+class StepHolder(object):
+    def __init__(self, features=None, status=None, old_piece=None, replacement_piece=None):
+        self.features = features
+        self.status = status
+        self.old_piece = old_piece
+        self.replacement_piece = replacement_piece
+
+    @property
+    def example_feature(self):
+        if self.features is None:
+            return None
+        else:
+            return self.features[0]
+
+    def set_as_previous_of(self, new_step_holder):
+        # because we only want to use previous features from the _same_ piece
+        if self.old_piece is not new_step_holder.old_piece:
+            self.features = None
+
+
 class TranscriptTrimmer(TranscriptInterpBase):
     """takes pre-cleaned/explicit transcripts and crops to what fits in a slice"""
     def __init__(self, transcript, sess):
@@ -341,7 +361,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         #  get ordered pieces/features
         #  setup transcript status @ first feature
 
-    def transition_5p_to_3p_with_new_pieces(self):
+    def _transition_5p_to_3p_with_new_pieces(self):
         transition_gen = self.transition_5p_to_3p()
         aligned_features, status, prev_piece = next(transition_gen)  # todo, check and handle things for these!
         new_piece = self.mk_new_piece()
@@ -352,6 +372,10 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 new_piece = self.mk_new_piece()
             yield aligned_features, status, piece, new_piece
             prev_piece = piece
+
+    def transition_5p_to_3p_with_new_pieces(self):
+        for features, status, old_piece, replacement_piece in self._transition_5p_to_3p_with_new_pieces():
+            yield StepHolder(features=features, status=status, old_piece=old_piece, replacement_piece=replacement_piece)
 
     def mk_new_piece(self):
         new_piece = annotations_orm.TranscribedPiece(super_locus=self.transcript.data.super_locus,
@@ -398,15 +422,19 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 raise ValueError('no implementation for updating status with feature of type {}'.format(ftype))
 
     def modify4new_slice(self, new_coords, is_plus_strand=True):
-
+        seen_one_overlap = False
         transition_gen = self.transition_5p_to_3p_with_new_pieces()
-        prev_status = None
-        prev_features = [None]
-        for aligned_features, status, piece, new_piece in transition_gen:
-            f0 = aligned_features[0]  # take first as all "aligned" features have the same coordinates
-            print('generating. \n---- feature0: {}\n---- status: {}\n---- piece: {}\n---- new: {}'.format(
-                f0, status, piece, new_piece))
-            position_interp = PositionInterpreter(f0, prev_features[0], new_coords, is_plus_strand)
+        previous_step = StepHolder()
+        for current_step in transition_gen:
+            # if we've switched pieces in transcript, reset the previous features seen on piece
+            # todo, more robust handling instead of overuse of None
+            previous_step.set_as_previous_of(current_step)
+
+            f0 = current_step.example_feature  # take first as all "aligned" features have the same coordinates
+            print('generated. \n---- feature0: {}\n---- all: {}\n---- status: {}\n---- piece: {}\n---- new: {}'.format(
+                f0, [f.given_id for f in current_step.features], current_step.status, current_step.old_piece,
+                current_step.replacement_piece))
+            position_interp = PositionInterpreter(f0, previous_step.example_feature, new_coords, is_plus_strand)
             # before or detached coordinates (already handled or good as-is, at least for now)
             if position_interp.is_detached():
                 pass
@@ -414,38 +442,56 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 pass
             # it should never overlap start (because this should have been handled and split already)
             elif position_interp.overlaps_upstream():
+                seen_one_overlap = True
                 raise ValueError('unhandled straddling of upstream boarder')
             # within new_coords -> swap coordinates
             elif position_interp.is_contained():
-                for f in aligned_features:
+                seen_one_overlap = True
+                for f in current_step.features:
                     f.coordinates = new_coords
-                    self.swap_piece(feature_handler=f.handler, new_piece=new_piece, old_piece=piece)
+                    self.swap_piece(feature_handler=f.handler, new_piece=current_step.replacement_piece,
+                                    old_piece=current_step.old_piece)
             # handle feature [  |  ] straddling end of coordinates
             elif position_interp.overlaps_downstream():
+                seen_one_overlap = True
                 # make new UpDownLink and status features to handle split
-                self.set_status_downstream_border(new_coords=new_coords, new_piece=new_piece, old_coords=f0.coordinates,
-                                                  old_piece=piece, is_plus_strand=is_plus_strand, template_feature=f0,
-                                                  status=status)
-                self.split_feature_downstream_border(new_coords=new_coords, new_piece=new_piece, old_piece=piece,
+                self.set_status_downstream_border(new_coords=new_coords, new_piece=current_step.replacement_piece,
+                                                  old_coords=f0.coordinates, template_feature=f0,
+                                                  old_piece=current_step.old_piece, is_plus_strand=is_plus_strand,
+                                                  status=current_step.status)
+                self.split_feature_downstream_border(new_coords=new_coords, new_piece=current_step.replacement_piece,
+                                                     old_piece=current_step.old_piece,
                                                      is_plus_strand=is_plus_strand, feature=f0)
 
             # handle pass end of coordinates between previous and current feature, [p] | [f]
             elif position_interp.just_passed_downstream():
+                if not seen_one_overlap:
+                    raise ValueError("seen no features overlapping or contained in new piece '{}', can't set downstream"
+                                     " pass.\n  Last feature: '{}'\n  Current feature: '{}'".format(
+                                        current_step.replacement_piece, previous_step.example_feature, f0,
+                                     ))
+                print('seen one overlap', seen_one_overlap)
+                print('new piece', current_step.replacement_piece)
+                print('old piece', current_step.old_piece)
+                print('f0', f0)
+                print('prev f on piece', previous_step.example_feature)
+                print('prev status', previous_step.status)
+                print('new coords', new_coords)
                 self.set_status_downstream_border(new_coords=new_coords, old_coords=f0.coordinates,
-                                                  is_plus_strand=is_plus_strand, template_feature=prev_features[0],
-                                                  status=prev_status, old_piece=piece, new_piece=new_piece)
-                #self.swap_piece(f0.handler, new_piece, old_piece=piece)
+                                                  is_plus_strand=is_plus_strand,
+                                                  template_feature=previous_step.example_feature,
+                                                  status=previous_step.status, old_piece=current_step.old_piece,
+                                                  new_piece=current_step.replacement_piece)
+
             elif position_interp.is_downstream():
                 pass  # will get to this at next slice
-                #self.swap_piece(f0.handler, new_piece, old_piece=piece)
+
             else:
                 print('ooops', f0)
                 raise AssertionError('this code should be unreachable...? Check what is up!')
-            # todo, what about transsplicing links, on strand after e.g. large gap?
+
             # and step
-            prev_features = aligned_features
-            prev_status = status
-            prev_piece = piece
+            previous_step = copy.copy(current_step)
 
         # clean up any unused or abandoned pieces
         for piece in self.transcript.data.transcribed_pieces:

@@ -1505,11 +1505,12 @@ def test_transition_with_right_new_pieces():
     sess.add_all([scribed, scribedlong, pieceAB, pieceABp, pieceCD, fA, fB, fC, fD, pair, old_coor, sl])
     sess.commit()
     short_transition = list(ti.transition_5p_to_3p_with_new_pieces())
-    assert len(set([x[3] for x in short_transition])) == 1
+    assert len(set([x.replacement_piece for x in short_transition])) == 1
     long_transition = list(tilong.transition_5p_to_3p_with_new_pieces())
     assert len(long_transition) == 4
-    assert len(set([x[3] for x in long_transition])) == 2
-    assert long_transition[1][3] is not long_transition[2][3]  # make sure piece swap is between B(1) & C(2) as expected
+    assert len(set([x.replacement_piece for x in long_transition])) == 2
+    # make sure piece swap is between B(1) & C(2) as expected
+    assert long_transition[1].replacement_piece is not long_transition[2].replacement_piece
 
 
 def test_modify4slice():
@@ -1712,6 +1713,14 @@ def test_transition_transsplice():
     assert [x[1].genic for x in ti_transitions] == list([True] * 3 + [False]) * 2
     assert [x[1].in_translated_region for x in ti_transitions] == [False] + [True] * 5 + [False] * 2
     assert [x[1].in_trans_intron for x in ti_transitions] == [False] * 2 + [True] * 3 + [False] * 3
+
+
+def test_transition_multipieces_within_coordinates():
+    sess = mk_session()
+    d = TransspliceDemoData(sess)  # setup _d_ata
+    # forward pass, same sequence, two pieces
+    ti_transitions = list(d.ti.transition_5p_to_3p())
+    assert False
 
 
 def test_modify4slice_transsplice():
