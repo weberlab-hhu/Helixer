@@ -59,10 +59,24 @@ class SliceController(object):
         for sl in self.super_loci:
             sl.load_to_intervaltree(self.interval_trees)
 
-    def slice_annotations(self):
+    def gen_slices(self):
         for seq in self.structured_genome.sequences:
             for slice in seq.slices:
                 yield seq.meta_info.seqid, slice.start, slice.end, slice.slice_id
+
+    def slice_annotations(self, annotated_genome, session):
+        slices = list(self.gen_slices())  # todo, double check whether I can assume sorted
+        self._slice_annotations_1way(slices, annotated_genome, session, is_plus_strand=True)
+        slices.reverse()
+        self._slice_annotations_1way(slices, annotated_genome, session, is_plus_strand=False)
+
+    def _slice_annotations_1way(self, slices, annotated_genome, session, is_plus_strand):
+        for seqid, start, end, slice_id in slices:
+            seq_info = annotations_orm.SequenceInfo(annotated_genome=annotated_genome)
+            coordinates = annotations_orm.Coordinates(seqid=seqid, start=start, end=end, sequence_info=seq_info)
+            overlapping_super_loci = self.get_super_loci_frm_slice(seqid, start, end)
+            for super_locus in overlapping_super_loci:
+                super_locus.handler.modify4slice(new_coords=coordinates, is_plus_strand=is_plus_strand, session=session)
             # todo, setup slice as coordinates w/ seq info in database
             # todo, get features & there by superloci in slice
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
@@ -162,8 +176,6 @@ class SequenceInfoHandler(annotations.SequenceInfoHandler):
         sess.commit()
 
 
-
-
 class SuperLocusHandler(annotations.SuperLocusHandler):
     def __init__(self):
         super().__init__()
@@ -178,6 +190,11 @@ class SuperLocusHandler(annotations.SuperLocusHandler):
             feature = FeatureHandler()  # recreate feature handler post load (todo, mv elsewhere so it's always done?)
             feature.add_data(f)
             feature.load_to_intervaltree(trees)
+
+    def modify4slice(self, new_coords, is_plus_strand, session):
+        for transcript in self.data.transcripts:
+            trimmer = TranscriptTrimmer(transcript=transcript.handler, sess=session)
+            trimmer.modify4new_slice(new_coords=new_coords, is_plus_strand=is_plus_strand)
 
 
 class TranscribedHandler(annotations.TranscribedHandler):
