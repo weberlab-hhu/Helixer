@@ -24,7 +24,9 @@ def slice_sqlite(db_path, db_sliced_path, sliced_seq_path):
     print('loaded annos')
     controller.load_sliced_seqs()
     print('loaded slices')
-    controller.slice_annotations()
+    annotated_genome = controller.get_one_annotated_genome()
+    controller.slice_annotations(annotated_genome=annotated_genome)
+
 
 # todo, maybe this should be a method on the StructuredGenome...? or just in main
 def fasta_to_json(fasta, json, smallest_mer=2, largest_mer=2):

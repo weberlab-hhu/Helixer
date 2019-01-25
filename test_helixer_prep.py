@@ -164,6 +164,17 @@ def test_fa_matches_sequences_json():
     assert sd_fa.to_jsonable() == sd_json.to_jsonable()
 
 
+def test_sequence_slicing():
+    # todo, check for reasonable output / make sure results can be easily transfered to slicing anno vers. of dummyloci
+    json_path = 'testdata/dummyloci.sequence.json'
+    sd_fa = sequences.StructuredGenome()
+    sd_fa.from_json(json_path)
+    sd_fa.divvy_each_sequence(user_seed='', max_len=100)
+    print(sd_fa.to_jsonable())
+    sd_fa.to_json('deleteme.json')
+    assert False
+
+
 ### annotations_orm ###
 def mk_session():
     engine = create_engine('sqlite:///:memory:', echo=False)
@@ -197,8 +208,6 @@ def test_annogenome2sequence_infos_relation():
     sess.commit()
     with pytest.raises(sqlalchemy.exc.InvalidRequestError):
         sess.add(sequence_info)
-
-
 
 
 def test_coordinate_constraints():
@@ -1120,41 +1129,6 @@ def test_erroneous_splice():
     assert clean_datas[2].start == 11
     assert clean_datas[2].end == 120
 
-
-#
-#def test_anno2json_and_back():
-#    # setup the sequence file
-#    json_path = 'testdata/testerSl.sequence.json'
-#    # can uncomment the following 4 lines if one intentionally changed the format, but check
-#    # fa_path = 'testdata/testerSl.fa'
-#    # sd_fa = sequences.StructuredGenome()
-#    # sd_fa.add_fasta(fa_path)
-#    # sd_fa.to_json(json_path)
-#    sd_fa = sequences.StructuredGenome()
-#    sd_fa.from_json(json_path)
-#
-#    gfffile = 'testdata/testerSl.gff3'
-#    json_anno = 'testdata/testerSl.annotation.json'
-#    ag = annotations.AnnotatedGenome()
-#    ag.add_gff(gfffile, sd_fa, 'testdata/deletable')
-#    ag.to_json(json_anno)
-#    ag_json = annotations.AnnotatedGenome()
-#    print('i do not get it')
-#    ag_json.from_json(json_anno)
-#    print('is it the call back to jsonable')
-#    assert ag.to_jsonable() == ag_json.to_jsonable()
-#    # check recursive load has worked out
-#    print(ag_json.super_loci_slices[0].super_loci[0].slice, 'slice')
-#    assert ag_json.super_loci_slices[0].super_loci[0].slice is ag_json.super_loci_slices[0]
-#    assert ag_json.super_loci_slices[0].super_loci[0].genome is ag_json
-#    # and same for super_loci
-#    sl = ag_json.super_loci_slices[0].super_loci[0]
-#    fkey = sorted(sl.features.keys())[0]
-#    feature = sl.features[fkey]
-#    assert feature.super_locus is sl
-#    assert sl.slice.seq_info[feature.seqid].end == 16000
-#
-#
 #def test_to_intervaltree():
 #    sl = setup_loci_with_utr()
 #    print(sl.slice.seq_info, 'seq_info')
@@ -1525,12 +1499,6 @@ def test_transition_with_right_new_pieces():
     pieceAB = annotations_orm.TranscribedPiece(super_locus=sl, transcribed=scribed)
     pieceABp = annotations_orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
     pieceCD = annotations_orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
-    #scribed.transcribed_pieces = [pieceAB]
-    #scribedlong.transcribed_pieces = [pieceAB, pieceCD]
-    #sess.add(scribedlong)
-    #sess.commit()
-    print(scribed.transcribed_pieces, 'abc')
-    print(scribedlong.transcribed_pieces, '123')
 
     fA = annotations_orm.Feature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, start=190, end=190,
                                  is_plus_strand=True, super_locus=sl, type=type_enums.ERROR)
@@ -1957,6 +1925,29 @@ def test_modify4slice_2nd_half_first():
     for piece in sorted_pieces:
         for f in piece.features:
             assert f.coordinates in {new_coords_1, new_coords_0}
+
+
+def test_slicing_multi_sl():
+    # import standard testers
+    destination = 'testdata/tmp.db'
+    if os.path.exists(destination):
+        os.remove(destination)
+    source = 'testdata/dummyloci_annotations.sqlitedb'
+    # TODO, add sliced sequences path
+    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
+    controller.mk_session()
+    controller.load_annotations()
+    controller.load_sliced_seqs()
+    slh = controller.super_loci[0]
+    transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
+    slh.make_all_handlers()
+    # setup more
+    more = SimplestDemoData(controller.session)
+    controller.super_loci.append(more.slh)
+    more.old_coor.seqid = '1'  # so it matches std dummyloci
+    controller.session.commit()
+    # and try and slice
+    controller.slice_annotations(controller.get_one_annotated_genome())
 
 
 #### type_enumss ####

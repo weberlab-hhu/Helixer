@@ -27,9 +27,9 @@ class StructuredGenome(GenericData):
             self.meta_info.add_sequence_meta_info(seq_holder.meta_info)
             self.sequences.append(seq_holder)
 
-    def divvy_each_sequence(self, user_seed):
+    def divvy_each_sequence(self, user_seed, max_len=2000000):
         for seq in self.sequences:
-            seq.divvy_up_sequence(user_seed)
+            seq.divvy_up_sequence(user_seed, max_len=max_len)
 
 
 class StructuredSequence(GenericData):
@@ -58,15 +58,15 @@ class StructuredSequence(GenericData):
         md5 = hashlib.md5(self.full_sequence().encode('utf-8'))
         return md5.hexdigest()
 
-    def divvy_up_coords(self, user_seed):
+    def divvy_up_coords(self, user_seed, max_len=2000000):
         seed = self.seq_hash() + user_seed
-        cg = CoordinateGenerator(seed, max_len=2000000)
+        cg = CoordinateGenerator(seed, max_len=max_len)
         for coords in cg.divvy_coordinates(seed, self.meta_info.total_bp):
             yield coords
 
-    def divvy_up_sequence(self, user_seed):
+    def divvy_up_sequence(self, user_seed, max_len=2000000):
         sequence = self.full_sequence()
-        coords = self.divvy_up_coords(user_seed)
+        coords = self.divvy_up_coords(user_seed, max_len=max_len)
         idmaker = helpers.IDMaker(prefix=self.meta_info.seqid + '_')
         slices = []
         for begin, end, pset in coords:

@@ -29,6 +29,11 @@ class SliceController(object):
         self.super_loci = []
         self.interval_trees = {}
 
+    def get_one_annotated_genome(self):
+        ags = self.session.query(annotations_orm.AnnotatedGenome).all()
+        assert len(ags) == 1
+        return ags[0]
+
     def copy_db(self):
         copyfile(self.db_path_in, self.db_path_sliced)
 
@@ -64,19 +69,20 @@ class SliceController(object):
             for slice in seq.slices:
                 yield seq.meta_info.seqid, slice.start, slice.end, slice.slice_id
 
-    def slice_annotations(self, annotated_genome, session):
+    def slice_annotations(self, annotated_genome):
         slices = list(self.gen_slices())  # todo, double check whether I can assume sorted
-        self._slice_annotations_1way(slices, annotated_genome, session, is_plus_strand=True)
+        self._slice_annotations_1way(slices, annotated_genome, is_plus_strand=True)
         slices.reverse()
-        self._slice_annotations_1way(slices, annotated_genome, session, is_plus_strand=False)
+        self._slice_annotations_1way(slices, annotated_genome, is_plus_strand=False)
 
-    def _slice_annotations_1way(self, slices, annotated_genome, session, is_plus_strand):
+    def _slice_annotations_1way(self, slices, annotated_genome, is_plus_strand):
         for seqid, start, end, slice_id in slices:
             seq_info = annotations_orm.SequenceInfo(annotated_genome=annotated_genome)
             coordinates = annotations_orm.Coordinates(seqid=seqid, start=start, end=end, sequence_info=seq_info)
             overlapping_super_loci = self.get_super_loci_frm_slice(seqid, start, end)
             for super_locus in overlapping_super_loci:
-                super_locus.handler.modify4slice(new_coords=coordinates, is_plus_strand=is_plus_strand, session=session)
+                super_locus.handler.modify4slice(new_coords=coordinates, is_plus_strand=is_plus_strand,
+                                                 session=self.session)
             # todo, setup slice as coordinates w/ seq info in database
             # todo, get features & there by superloci in slice
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
