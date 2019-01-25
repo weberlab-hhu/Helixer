@@ -199,44 +199,6 @@ def test_annogenome2sequence_infos_relation():
         sess.add(sequence_info)
 
 
-def test_processing_set_enum():
-    sess = mk_session()
-    # valid numbers can be setup
-    ps = slice_dbmods.ProcessingSet(slice_dbmods.ProcessingSet.train)
-    ps2 = slice_dbmods.ProcessingSet('train')
-    assert ps == ps2
-    # other numbers can't
-    with pytest.raises(ValueError):
-        slice_dbmods.ProcessingSet('training')
-    with pytest.raises(ValueError):
-        slice_dbmods.ProcessingSet(1.3)
-    with pytest.raises(ValueError):
-        slice_dbmods.ProcessingSet('Dev')
-    ag = annotations_orm.AnnotatedGenome()
-    sequence_info = annotations_orm.SequenceInfo(annotated_genome=ag)
-    sequence_info_s = slice_dbmods.SequenceInfoSets(processing_set=ps, sequence_info=sequence_info)
-    sequence_info2 = annotations_orm.SequenceInfo(annotated_genome=ag)
-    sequence_info2_s = slice_dbmods.SequenceInfoSets(processing_set=ps2, sequence_info=sequence_info2)
-    assert sequence_info_s.processing_set.value == 'train'
-    assert sequence_info2_s.processing_set.value == 'train'
-
-    sess.add_all([sequence_info, sequence_info2, sequence_info2_s, sequence_info_s])
-    sess.commit()
-    # make sure we get the exact same handling when we come back out of the database
-    # todo, test this query
-    maybe_join = sess.query(annotations_orm.SequenceInfo, slice_dbmods.SequenceInfoSets).filter(annotations_orm.SequenceInfo.id == slice_dbmods.SequenceInfoSets.id)
-    print(maybe_join)
-    #print(maybe_join.all())
-    for item in maybe_join.all():
-        print(item)
-        print('-----')
-    # todo, remove test for changed api
-    for s in ag.sequence_infos:
-        assert s.processing_set.value == 'train'
-    # null value works
-    sequence_info3 = annotations_orm.SequenceInfo(annotated_genome=ag)
-    sequence_info3_s = slice_dbmods.SequenceInfoSets(sequence_info=sequence_info3)
-    assert sequence_info3.processing_set is None
 
 
 def test_coordinate_constraints():
@@ -632,8 +594,71 @@ def test_replacelinks():
 
 
 ## slice_dbmods
+def test_processing_set_enum():
+    # valid numbers can be setup
+    ps = slice_dbmods.ProcessingSet(slice_dbmods.ProcessingSet.train)
+    ps2 = slice_dbmods.ProcessingSet('train')
+    assert ps == ps2
+    # other numbers can't
+    with pytest.raises(ValueError):
+        slice_dbmods.ProcessingSet('training')
+    with pytest.raises(ValueError):
+        slice_dbmods.ProcessingSet(1.3)
+    with pytest.raises(ValueError):
+        slice_dbmods.ProcessingSet('Dev')
+
+
 def test_add_processing_set():
-    assert False  # todo!
+    sess = mk_session()
+    ag = annotations_orm.AnnotatedGenome()
+    sequence_info, sequence_infoh = setup_data_handler(slicer.SequenceInfoHandler, annotations_orm.SequenceInfo,
+                                                       annotated_genome=ag)
+    sequence_info_s = slice_dbmods.SequenceInfoSets(processing_set='train', sequence_info=sequence_info)
+    sequence_info2 = annotations_orm.SequenceInfo(annotated_genome=ag)
+    sequence_info2_s = slice_dbmods.SequenceInfoSets(processing_set='train', sequence_info=sequence_info2)
+    sess.add_all([ag, sequence_info_s, sequence_info2_s])
+    sess.commit()
+    assert sequence_info_s.processing_set.value == 'train'
+    assert sequence_info2_s.processing_set.value == 'train'
+
+    sess.add_all([sequence_info, sequence_info2, sequence_info2_s, sequence_info_s])
+    sess.commit()
+    # make sure we can get the right info together back from the db
+    maybe_join = sess.query(annotations_orm.SequenceInfo, slice_dbmods.SequenceInfoSets).filter(
+        annotations_orm.SequenceInfo.id == slice_dbmods.SequenceInfoSets.id)
+    for si, sis in maybe_join.all():
+        assert si.id == sis.id
+        assert sis.processing_set.value == 'train'
+
+    # and make sure we can get the processing_set from the sequence_info
+    sis = sess.query(slice_dbmods.SequenceInfoSets).filter(slice_dbmods.SequenceInfoSets.id == sequence_info.id).all()
+    assert len(sis) == 1
+    assert sis[0] == sequence_info_s
+
+    # and over api
+    sis = sequence_infoh.processing_set(sess)
+    assert sis is sequence_info_s
+    assert sequence_infoh.processing_set_val(sess) == 'train'
+    # set over api
+    sequence_infoh.set_processing_set(sess, 'test')
+    assert sequence_infoh.processing_set_val(sess) == 'test'
+
+    # confirm we can't have two processing sets per sequence_info
+    with pytest.raises(sqlalchemy.orm.exc.FlushError):
+        extra_set = slice_dbmods.SequenceInfoSets(processing_set='dev', sequence_info=sequence_info)
+        sess.add(extra_set)
+        sess.commit()
+    sess.rollback()
+    assert sequence_infoh.processing_set_val(sess) == 'test'
+
+    # check that absence of entry, is handles with None
+    sequence_info3, sequence_info3h = setup_data_handler(slicer.SequenceInfoHandler, annotations_orm.SequenceInfo,
+                                                         annotated_genome=ag)
+    assert sequence_info3h.processing_set(sess) is None
+    assert sequence_info3h.processing_set_val(sess) is None
+    # finally setup complete new set via api
+    sequence_info3h.set_processing_set(sess, 'dev')
+    assert sequence_info3h.processing_set_val(sess) == 'dev'
 
 
 ### gff_2_annotations ###

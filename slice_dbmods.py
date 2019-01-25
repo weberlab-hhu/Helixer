@@ -15,7 +15,9 @@ class SequenceInfoSets(annotations_orm.Base):
 
     id = Column(Integer, ForeignKey('sequence_infos.id'), primary_key=True)
     sequence_info = relationship('annotations_orm.SequenceInfo')
-    processing_set = Column(Enum(ProcessingSet))
+    processing_set = Column(Enum(ProcessingSet), nullable=False)
 
     def __repr__(self):
         return '{}: matching {} in set {}'.format(type(self), self.sequence_info, self.processing_set)
+
+

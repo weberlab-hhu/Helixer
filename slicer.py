@@ -5,6 +5,7 @@ import copy
 
 import annotations
 import annotations_orm
+import slice_dbmods
 import type_enums
 
 from sqlalchemy import create_engine
@@ -134,6 +135,33 @@ class HandleMaker(object):
                (UpDownPairHandler, annotations_orm.UpDownPair)]
 
         return self._get_paired_item(type(old_data), search_col=1, return_col=0, nested_list=key)
+
+
+class SequenceInfoHandler(annotations.SequenceInfoHandler):
+    def processing_set(self, sess):
+        return sess.query(
+            slice_dbmods.SequenceInfoSets
+        ).filter(
+            slice_dbmods.SequenceInfoSets.id == self.data.id
+        ).first()
+
+    def processing_set_val(self, sess):
+        si_set_obj = self.processing_set(sess)
+        if si_set_obj is None:
+            return None
+        else:
+            return si_set_obj.processing_set.value
+
+    def set_processing_set(self, sess, processing_set):
+        current = self.processing_set(sess)
+        if current is None:
+            current = slice_dbmods.SequenceInfoSets(sequence_info=self.data, processing_set=processing_set)
+        else:
+            current.processing_set = processing_set
+        sess.add(current)
+        sess.commit()
+
+
 
 
 class SuperLocusHandler(annotations.SuperLocusHandler):
