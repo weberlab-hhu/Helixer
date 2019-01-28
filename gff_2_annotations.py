@@ -566,9 +566,51 @@ class TranscriptInterpBase(object):
     def super_locus(self):
         return self.transcript.data.super_locus.handler
 
+    @staticmethod
+    def update_status(status, aligned_features):
+        for feature in aligned_features:
+            ftype = feature.type.value
+            # standard features
+            if ftype == type_enums.TRANSCRIPTION_START_SITE:
+                status.saw_tss()
+            elif ftype == type_enums.START_CODON:
+                status.saw_start(phase=0)
+            elif ftype == type_enums.STOP_CODON:
+                status.saw_stop()
+            elif ftype == type_enums.TRANSCRIPTION_TERMINATION_SITE:
+                status.saw_tts()
+            elif ftype == type_enums.DONOR_SPLICE_SITE:
+                status.splice_open()
+            elif ftype == type_enums.ACCEPTOR_SPLICE_SITE:
+                status.splice_close()
+            elif ftype == type_enums.DONOR_TRANS_SPLICE_SITE:
+                status.trans_splice_open()
+            elif ftype == type_enums.ACCEPTOR_TRANS_SPLICE_SITE:
+                status.trans_splice_close()
+            # status features
+            elif ftype == type_enums.IN_RAW_TRANSCRIPT:
+                status.saw_tss()
+            elif ftype == type_enums.IN_TRANSLATED_REGION:
+                status.saw_start(phase=feature.phase)
+            elif ftype == type_enums.IN_INTRON:
+                status.splice_open()
+            elif ftype == type_enums.IN_TRANS_INTRON:
+                status.trans_splice_open()
+            # error (and error status)
+            elif ftype == type_enums.ERROR_OPEN:
+                status.error_open()
+            elif ftype == type_enums.ERROR_CLOSE:
+                status.error_close()
+            elif ftype == type_enums.IN_ERROR:
+                status.error_open()
+            else:
+                raise ValueError('no implementation for updating status with feature of type {}'.format(ftype))
+
 
 class TranscriptInterpreter(TranscriptInterpBase):
     """takes raw/from-gff transcript, and makes totally explicit"""
+    HANDLED = 'handled'
+
     def __init__(self, transcript):
         super().__init__(transcript)
         self.clean_features = []  # will hold all the 'fixed' feature handlers (convenience? or can remove?)
@@ -906,7 +948,9 @@ class TranscriptInterpreter(TranscriptInterpBase):
         at = i0.data.upstream_from_interval(i0)
         # todo, allow for handles errors to already exist at this point (type= error_open/error_close) WAS HERE
         possible_types = self.possible_types(intervals)
-        if type_enums.FIVE_PRIME_UTR in possible_types:
+        if possible_types == [TranscriptInterpreter.HANDLED]:
+            self.update_status(self.status, aligned_features=[x.data.data for x in intervals])
+        elif type_enums.FIVE_PRIME_UTR in possible_types:
             # this should indicate we're good to go and have a transcription start site
             tss = self.new_feature(template=i0.data, type=type_enums.TRANSCRIPTION_START_SITE, start=at, end=at,
                                    phase=None)
@@ -946,7 +990,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
                     self.clean_features.insert(0, feature_err_open)
         else:
             raise ValueError("why's this gene not start with 5' utr nor cds? types: {}, interpretations: {}".format(
-                [x.data.type for x in intervals], possible_types))
+                [x.data.data.type for x in intervals], possible_types))
 
     def interpret_last_pos(self, intervals, plus_strand=True, error_buffer=2000):
         i0 = self.pick_one_interval(intervals)
@@ -991,6 +1035,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
         return interval_sets
 
     def decode_raw_features(self):
+        # todo, detect completely handled (prolly error-error) transcript here and pass WAS HERE, TUESDAY
         plus_strand = self.is_plus_strand()
         interval_sets = self.intervals_5to3(plus_strand)
         print([len(ivs) for ivs in interval_sets], 'ivs lengths')
@@ -1018,8 +1063,10 @@ class TranscriptInterpreter(TranscriptInterpBase):
             raise IntervalCountError('check interpretation by hand for transcript start with {}, {}'.format(
                 '\n'.join([str(ival.data.data) for ival in intervals]), observed_types
             ))
+        if set_o_types.issubset(set([x.value for x in type_enums.KeepOnSequence])):
+            out = [TranscriptInterpreter.HANDLED]
         # interpret type combination
-        if set_o_types == {exon, five_prime} or set_o_types == {five_prime}:
+        elif set_o_types == {exon, five_prime} or set_o_types == {five_prime}:
             out = [five_prime]
         elif set_o_types == {exon, three_prime} or set_o_types == {three_prime}:
             out = [three_prime]

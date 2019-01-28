@@ -444,45 +444,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
         self.handlers.append(new_handler)
         return new_piece
 
-    def update_status(self, status, aligned_features):
-        for feature in aligned_features:
-            ftype = feature.type.value
-            # standard features
-            if ftype == type_enums.TRANSCRIPTION_START_SITE:
-                status.saw_tss()
-            elif ftype == type_enums.START_CODON:
-                status.saw_start(phase=0)
-            elif ftype == type_enums.STOP_CODON:
-                status.saw_stop()
-            elif ftype == type_enums.TRANSCRIPTION_TERMINATION_SITE:
-                status.saw_tts()
-            elif ftype == type_enums.DONOR_SPLICE_SITE:
-                status.splice_open()
-            elif ftype == type_enums.ACCEPTOR_SPLICE_SITE:
-                status.splice_close()
-            elif ftype == type_enums.DONOR_TRANS_SPLICE_SITE:
-                status.trans_splice_open()
-            elif ftype == type_enums.ACCEPTOR_TRANS_SPLICE_SITE:
-                status.trans_splice_close()
-            # status features
-            elif ftype == type_enums.IN_RAW_TRANSCRIPT:
-                status.saw_tss()
-            elif ftype == type_enums.IN_TRANSLATED_REGION:
-                status.saw_start(phase=feature.phase)
-            elif ftype == type_enums.IN_INTRON:
-                status.splice_open()
-            elif ftype == type_enums.IN_TRANS_INTRON:
-                status.trans_splice_open()
-            # error (and error status)
-            elif ftype == type_enums.ERROR_OPEN:
-                status.error_open()
-            elif ftype == type_enums.ERROR_CLOSE:
-                status.error_close()
-            elif ftype == type_enums.IN_ERROR:
-                status.error_open()
-            else:
-                raise ValueError('no implementation for updating status with feature of type {}'.format(ftype))
-
     def modify4new_slice(self, new_coords, is_plus_strand=True):
         print('mod4slice, transcribed: {}, {}'.format(self.transcript.data.id, self.transcript.data.given_id))
         seen_one_overlap = False

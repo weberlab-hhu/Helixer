@@ -120,6 +120,9 @@ ErrorFeature = make_enum('ErrorFeature', IN_ERROR, ERROR_OPEN, ERROR_CLOSE)
 # ignorable known
 IgnorableFeatures = make_enum('IgnorableFeatures', REGION, CHROMOSOME, SUPERCONTIG, MATCH, CDNA_MATCH)
 
+# On sequence final features
+KeepOnSequence = join_to_enum('KeepOnSequence', TranscribedNice, TranslatedNice, ErrorFeature)
+
 # All known features (else error on import)
 OnSequence = join_to_enum('OnSequence', TranscribedAll, TranslatedAll, ErrorFeature)
 AllKnown = join_to_enum('AllKnown', SuperLocusAll, TranscriptLevelAll, TranslatedAll, TranscribedAll, ErrorFeature,
