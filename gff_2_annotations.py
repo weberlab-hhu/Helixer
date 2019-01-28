@@ -432,6 +432,7 @@ class TranscribedPieceHandler(annotations.TranscribedPieceHandler, GFFDerived):
         else:
             raise NotImplementedError  # todo handle multi inheritance, etc...
 
+
 class TranslatedHandler(annotations.TranslatedHandler):
     pass
 
@@ -460,6 +461,7 @@ class TranscriptStatus(object):
         self.in_translated_region = False
         self.seen_start = False  # todo, move EUK specific stuff to subclass?
         self.seen_stop = False
+        self.erroneous = False
         self.phase = None  # todo, proper tracking / handling
 
     def __repr__(self):
@@ -495,6 +497,12 @@ class TranscriptStatus(object):
 
     def trans_splice_close(self):
         self.in_trans_intron = False
+
+    def error_open(self):
+        self.erroneous = True
+
+    def error_close(self):
+        self.erroneous = False
 
     def is_5p_utr(self):
         return self.is_utr() and not any([self.seen_start, self.seen_stop])
@@ -798,16 +806,19 @@ class TranscriptInterpreter(TranscriptInterpBase):
                 self.status.saw_start(phase=0)
                 self.clean_features.append(start_codon)
             else:
-                upstream_buffered = before0.data.upstream_from_interval(before0) - sign * error_buffer
-                err_start, err_end = min_max(at - 1 * sign, upstream_buffered)
-                feature_e = self.new_feature(template=template, type=type_enums.ERROR,
-                                             start=err_start, end=err_end, phase=None)
+                err_start = before0.data.upstream_from_interval(before0) - sign * error_buffer  # mask prev feat. too
+                err_end = at - 1 * sign  # 1bp upstream of erroneous "start"
+
+                feature_err_open = self.new_feature(template=template, type=type_enums.ERROR_OPEN, start=err_start,
+                                                    end=err_start, phase=None)
+                feature_err_close = self.new_feature(template=template, type=type_enums.ERROR_CLOSE, start=err_end,
+                                                     end=err_end, phase=None)
                 coding_status = self.new_feature(template=template, type=type_enums.IN_TRANSLATED_REGION, start=at,
                                                  end=at)
                 transcribed_status = self.new_feature(template=template, type=type_enums.IN_RAW_TRANSCRIPT, start=at,
                                                       end=at, phase=None)
                 self.status.saw_start(template.phase)
-                self.clean_features += [feature_e, coding_status, transcribed_status]
+                self.clean_features += [feature_err_open, feature_err_close, coding_status, transcribed_status]
         else:
             # todo, confirm phase for stop codon
             template = before0.data
@@ -851,7 +862,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
             print('error')
             #feature_e = before0.data.clone()
             all_coords = sorted([before0.data.data.start, before0.data.data.end, after0.data.data.start,
-                                 after0.data.data.end])
+                                 after0.data.data.end])  # todo, coordinates as upstream/downstream of error, WAS HERE
             feature_e = self.new_feature(template=before0.data, start=all_coords[0], end=all_coords[-1],
                                          type=type_enums.ERROR)
             #feature_e.start = sorted(all_coords)[0]
