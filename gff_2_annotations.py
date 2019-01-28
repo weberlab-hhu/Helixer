@@ -304,11 +304,29 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
                 src=entry.source, species="todo", seqid=entry.seqid, start=entry.start,
                 end=entry.end, gene_id=self.data.given_id, msg=msg
             ))
-        sf = FeatureHandler()
-        sf.process_gffentry(entry, super_locus=self.data)
+        # reset start and stop so
+        if entry.strand == '+':
+            err_start = entry.start
+            err_end = entry.end
+        else:
+            assert entry.strand == '-'
+            err_start = entry.end
+            err_end = entry.start
+        # dummy transcript
+        transcribed_e = TranscribedHandler()
+        transcribed_e.process_gffentry(entry, super_locus=self.data)
+        piece = transcribed_e.data.transcribed_pieces[0]
+        # open error
+        feature_err_open = FeatureHandler()
+        feature_err_open.process_gffentry(entry, super_locus=self.data, transcribed_pieces=[piece],
+                                          type=type_enums.ERROR_OPEN, start=err_start, end=err_start)
+        # close error
+        feature_err_close = FeatureHandler()
+        feature_err_close.process_gffentry(entry, super_locus=self.data, transcribed_pieces=[piece],
+                                           type=type_enums.ERROR_CLOSE, start=err_end, end=err_end)
+
         # sf.gen_data_from_gffentry(entry, super_locus=self.data)
-        sf.set_data_attribute('type', type_enums.ErrorFeature.error.name)
-        self.feature_handlers.append(sf)
+        self.feature_handlers += [feature_err_open, feature_err_close]
 
     def check_and_fix_structure(self, sess):
         # if it's empty (no bottom level features at all) mark as erroneous
