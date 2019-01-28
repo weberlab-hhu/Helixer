@@ -1207,7 +1207,7 @@ def test_copy_n_import():
         print('{}: {}'.format(transcribed.given_id, [x.type.value for x in piece.features]))
     for translated in sl.translateds:
         print('{}: {}'.format(translated.given_id, [x.type.value for x in translated.features]))
-    assert len(sl.features) == 17  # if I ever get to collapsing redundant features this will change
+    assert len(sl.features) == 20 # if I ever get to collapsing redundant features this will change
 
 
 def test_intervaltree():
@@ -1222,11 +1222,11 @@ def test_intervaltree():
     controller.fill_intervaltrees()
     print(controller.interval_trees.keys())
     print(controller.interval_trees['1'])
-    # check that one known point has two errors, and one transcription termination site as expected
-    intervals = controller.interval_trees['1'][400]
-    print(intervals)
+    # check that one known area has two errors, and one transcription termination site as expected
+    intervals = controller.interval_trees['1'][400:406]
+    print(intervals, '...intervals')
     print([x.data.data.type.value for x in intervals])
-    errors = [x for x in intervals if x.data.data.type.value == type_enums.ERROR]
+    errors = [x for x in intervals if x.data.data.type.value == type_enums.ERROR_CLOSE]
     assert len(errors) == 2
     tts = [x for x in intervals if x.data.data.type.value == type_enums.TRANSCRIPTION_TERMINATION_SITE]
     assert len(tts) == 0
@@ -1239,7 +1239,7 @@ def test_intervaltree():
     assert len(features) == 3
     starts = [x for x in features if x.data.type.value == type_enums.TRANSCRIPTION_START_SITE]
     assert len(starts) == 2
-    errors = [x for x in features if x.data.type.value == type_enums.ERROR]
+    errors = [x for x in features if x.data.type.value == type_enums.ERROR_OPEN]
     assert len(errors) == 1
 
 
