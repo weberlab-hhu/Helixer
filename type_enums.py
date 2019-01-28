@@ -105,7 +105,7 @@ TranslatedNice = join_to_enum('TranslatedNice', TranslatedStatus, TranslatedGene
 
 # Anything else
 # errror features
-ERROR = 'error'  # deprecated, todo, rm
+IN_ERROR = 'in_error'
 ERROR_OPEN = 'error_open'
 ERROR_CLOSE = 'error_close'
 
@@ -115,7 +115,7 @@ SUPERCONTIG = 'supercontig'
 MATCH = 'match'
 CDNA_MATCH = 'cDNA_match'
 
-ErrorFeature = make_enum('ErrorFeature', ERROR, ERROR_OPEN, ERROR_CLOSE)
+ErrorFeature = make_enum('ErrorFeature', IN_ERROR, ERROR_OPEN, ERROR_CLOSE)
 
 # ignorable known
 IgnorableFeatures = make_enum('IgnorableFeatures', REGION, CHROMOSOME, SUPERCONTIG, MATCH, CDNA_MATCH)

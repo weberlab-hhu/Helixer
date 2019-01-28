@@ -5,6 +5,7 @@ import annotations_orm
 import slice_dbmods
 import helpers
 import type_enums
+
 import pytest
 import partitions
 import os
@@ -1037,16 +1038,29 @@ def test_non_coding_transitions():
 
 def test_errors_not_lost():
     sl, controller = setup_testable_super_loci()
-    feature_e, feature_eh = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, start=40, end=80,
-                                               super_locus=sl.data, type=type_enums.ERROR)
+    s = "1\tGnomon\tgene\t20\t405\t0.\t-\t0\tID=eg_missing_children"
+    gene_entry = gffhelper.GFFObject(s)
+
+    print(controller.sequence_info.data.coordinates)
+    coordinates = controller.sequence_info.data.coordinates[0]
+    sl._mark_erroneous(gene_entry, coordinates=coordinates)
+    print(sl.data.transcribeds, len(sl.data.transcribeds), '...sl transcribeds')
+    feature_eh, feature_e2h = sl.feature_handlers[-2:]
+
+    #feature_e, feature_eh = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, start=40, end=80,
+    #                                           super_locus=sl.data, type=type_enums.ERROR)
     print('what features did we start with::?')
     for feature in sl.data.features:
         print(feature)
-    sl.check_and_fix_structure(sess=controller.session)
+        controller.session.add(feature)
+    controller.session.commit()
+
+    sl.check_and_fix_structure(sess=controller.session, coordinates=coordinates)
     print('---and what features did we leave?---')
     for feature in sl.data.features:
         print(feature)
-    assert feature_e in sl.data.features
+    assert feature_eh.data in sl.data.features
+    assert feature_e2h.data in sl.data.features
 
 
 def test_setup_proteins():
@@ -1082,7 +1096,8 @@ def test_check_and_fix_structure():
     else:
         db_path = 'sqlite:///{}'.format(rel_path)
     sl, controller = setup_testable_super_loci(db_path)
-    sl.check_and_fix_structure(controller.session)
+    coordinates = controller.sequence_info.data.coordinates[0]
+    sl.check_and_fix_structure(controller.session, coordinates=coordinates)
     # check handling of nice transcript
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
     protein = [x for x in sl.data.translateds if x.given_id == 'y.p'][0]
@@ -1207,7 +1222,7 @@ def test_copy_n_import():
         print('{}: {}'.format(transcribed.given_id, [x.type.value for x in piece.features]))
     for translated in sl.translateds:
         print('{}: {}'.format(translated.given_id, [x.type.value for x in translated.features]))
-    assert len(sl.features) == 20 # if I ever get to collapsing redundant features this will change
+    assert len(sl.features) == 20  # if I ever get to collapsing redundant features this will change
 
 
 def test_intervaltree():
@@ -1437,65 +1452,6 @@ def test_set_updown_features_downstream_border():
     assert translated_down_status.start == 99
 
 
-def test_split_feature_downstream_border():
-    # TODO, make sure any non-transcript level errors (super locus linked only) also go through this
-    sess = mk_session()
-    old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=1000)
-    new_coord = annotations_orm.Coordinates(seqid='a', start=101, end=200)
-    sl, slh = setup_data_handler(slicer.SuperLocusHandler, annotations_orm.SuperLocus)
-    scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed, super_locus=sl)
-    ti = slicer.TranscriptTrimmer(transcript=scribedh, sess=sess)
-    piece0 = annotations_orm.TranscribedPiece(super_locus=sl)
-    piece1 = annotations_orm.TranscribedPiece(super_locus=sl)
-    scribed.transcribed_pieces = [piece0, piece1]
-    f_feature = annotations_orm.Feature(transcribed_pieces=[piece0], coordinates=old_coor, start=110, end=230,
-                                        is_plus_strand=True, super_locus=sl, type=type_enums.ERROR)
-
-    sess.add_all([scribed, piece0, piece1, old_coor, new_coord, sl])
-    sess.commit()
-    slh.make_all_handlers()
-    print(slh.handler_holder)
-    ti.split_feature_downstream_border(new_coords=new_coord, is_plus_strand=True, feature=f_feature, new_piece=piece1,
-                                       old_piece=piece0)
-    assert len(piece0.features) == 1
-    assert len(piece1.features) == 1
-    upstream_half = piece1.features[0]
-    downstream_half = piece0.features[0]
-    assert upstream_half.start == 110
-    assert upstream_half.end == 200
-    assert upstream_half.coordinates is new_coord
-    assert downstream_half is f_feature
-    assert downstream_half.start == 201
-    assert downstream_half.end == 230
-    assert downstream_half.coordinates is old_coor
-
-    sess.delete(upstream_half)
-    sess.delete(downstream_half)
-    sess.commit()
-    f_feature = annotations_orm.Feature(transcribed_pieces=[piece0], coordinates=old_coor, start=10, end=130,
-                                        is_plus_strand=False, super_locus=sl, type=type_enums.ERROR)
-
-    sess.add_all([f_feature])
-    sess.commit()
-    slh.make_all_handlers()
-    assert len(sl.features) == 1  # just make sure cleanup worked
-    ti.split_feature_downstream_border(new_coords=new_coord, is_plus_strand=False, feature=f_feature, new_piece=piece1,
-                                       old_piece=piece0)
-    sess.commit()  # double new feature before commit?
-
-    assert len(piece0.features) == 1
-    assert len(piece1.features) == 1
-    upstream_half = piece1.features[0]
-    downstream_half = piece0.features[0]
-    assert upstream_half.start == 101
-    assert upstream_half.end == 130
-    assert upstream_half.coordinates is new_coord
-    assert downstream_half is f_feature
-    assert downstream_half.start == 10
-    assert downstream_half.end == 100
-    assert downstream_half.coordinates is old_coor
-
-
 def test_transition_with_right_new_pieces():
     sess = mk_session()
     old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=1000)
@@ -1515,14 +1471,14 @@ def test_transition_with_right_new_pieces():
     pieceCD = annotations_orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
 
     fA = annotations_orm.Feature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, start=190, end=190,
-                                 is_plus_strand=True, super_locus=sl, type=type_enums.ERROR)
+                                 is_plus_strand=True, super_locus=sl, type=type_enums.ERROR_OPEN)
     fB = annotations_orm.UpstreamFeature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, start=210, end=210,
-                                         is_plus_strand=True, super_locus=sl, type=type_enums.ERROR)
+                                         is_plus_strand=True, super_locus=sl, type=type_enums.IN_ERROR)
 
     fC = annotations_orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=90, end=90,
-                                           is_plus_strand=True, super_locus=sl, type=type_enums.ERROR)
+                                           is_plus_strand=True, super_locus=sl, type=type_enums.IN_ERROR)
     fD = annotations_orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=110, end=110,
-                                 is_plus_strand=True, super_locus=sl, type=type_enums.ERROR)
+                                 is_plus_strand=True, super_locus=sl, type=type_enums.ERROR_CLOSE)
 
     pair = annotations_orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
     sess.add_all([scribed, scribedlong, pieceAB, pieceABp, pieceCD, fA, fB, fC, fD, pair, old_coor, sl])
@@ -1971,7 +1927,7 @@ def test_enum_non_inheritance():
     allknown = [x.name for x in list(type_enums.AllKnown)]
     allnice = [x.name for x in list(type_enums.AllKeepable)]
     # check that some random bits made it in to all
-    assert 'error' in allknown
+    assert 'in_error' in allknown
     assert 'region' in allknown
 
     # check that some annoying bits are not in nice set

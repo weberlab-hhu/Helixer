@@ -125,7 +125,8 @@ class ImportControl(object):
 
     def clean_super_loci(self):
         for sl in self.super_loci:
-            sl.check_and_fix_structure(self.session)
+            coordinates =  self.sequence_info.handler.gffid_to_coords[sl.gff_entry.seqid]
+            sl.check_and_fix_structure(self.session, coordinates)
 #    def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
 #        err_handle = open(err_file, 'w')
 #        self._add_sequences(genome)
@@ -284,11 +285,13 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
             self._add_gff_entry_group(entries, sequence_info)
             #self.check_and_fix_structure(entries)
         except TransSplicingError as e:
-            self._mark_erroneous(entries[0], 'trans-splicing')
+            coordinates = sequence_info.handler.gffid_to_coords[entries[0].seqid]
+            self._mark_erroneous(entries[0], coordinates, 'trans-splicing')
             logging.warning('skipping but noting trans-splicing: {}'.format(str(e)))
             ts_err_handle.writelines([x.to_json() for x in entries])
         except AssertionError as e:
-            self._mark_erroneous(entries[0], str(e))
+            coordinates = sequence_info.handler.gffid_to_coords[entries[0].seqid]
+            self._mark_erroneous(entries[0], coordinates, str(e))
             # todo, log to file
 
 #    @staticmethod
@@ -297,7 +300,7 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
 #        assert len(parents) == 1
 #        return parents[0]
 #
-    def _mark_erroneous(self, entry, msg=''):
+    def _mark_erroneous(self, entry, coordinates, msg=''):
         assert entry.type in [x.value for x in type_enums.SuperLocusAll]
         logging.warning(
             '{species}:{seqid}, {start}-{end}:{gene_id} by {src}, {msg} - marking erroneous'.format(
@@ -313,25 +316,33 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
             err_start = entry.end
             err_end = entry.start
         # dummy transcript
-        transcribed_e = TranscribedHandler()
-        transcribed_e.process_gffentry(entry, super_locus=self.data)
-        piece = transcribed_e.data.transcribed_pieces[0]
+        transcribed_e_handler = TranscribedHandler()
+        transcribed_e = annotations_orm.Transcribed(super_locus=self.data)
+        transcribed_e_handler.add_data(transcribed_e)
+        piece_handler = TranscribedPieceHandler()
+        piece = annotations_orm.TranscribedPiece(super_locus=self.data, transcribed=transcribed_e)
+        piece_handler.add_data(piece)
         # open error
         feature_err_open = FeatureHandler()
-        feature_err_open.process_gffentry(entry, super_locus=self.data, transcribed_pieces=[piece],
-                                          type=type_enums.ERROR_OPEN, start=err_start, end=err_start)
+        feature_err_open.process_gffentry(entry, super_locus=self.data, coordinates=coordinates)
+        for key, val in [('type', type_enums.ERROR_OPEN), ('start', err_start), ('end', err_start),
+                         ('transcribed_pieces', [piece])]:
+            feature_err_open.set_data_attribute(key, val)
         # close error
         feature_err_close = FeatureHandler()
-        feature_err_close.process_gffentry(entry, super_locus=self.data, transcribed_pieces=[piece],
-                                           type=type_enums.ERROR_CLOSE, start=err_end, end=err_end)
-
+        feature_err_close.process_gffentry(entry, super_locus=self.data, coordinates=coordinates)
+        for key, val in [('type', type_enums.ERROR_CLOSE), ('start', err_end), ('end', err_end),
+                         ('transcribed_pieces', [piece])]:
+            feature_err_close.set_data_attribute(key, val)
         # sf.gen_data_from_gffentry(entry, super_locus=self.data)
         self.feature_handlers += [feature_err_open, feature_err_close]
+        self.transcribed_handlers.append(transcribed_e_handler)
+        self.transcribed_piece_handlers.append(piece_handler)
 
-    def check_and_fix_structure(self, sess):
+    def check_and_fix_structure(self, sess, coordinates):
         # if it's empty (no bottom level features at all) mark as erroneous
         if not self.data.features:
-            self._mark_erroneous(self.gffentry)
+            self._mark_erroneous(self.gffentry, coordinates=coordinates)
 
         for transcript in self.data.transcribeds:
             piece = transcript.handler.one_piece().data
@@ -893,6 +904,7 @@ class TranscriptInterpreter(TranscriptInterpBase):
 
         i0 = self.pick_one_interval(intervals)
         at = i0.data.upstream_from_interval(i0)
+        # todo, allow for handles errors to already exist at this point (type= error_open/error_close) WAS HERE
         possible_types = self.possible_types(intervals)
         if type_enums.FIVE_PRIME_UTR in possible_types:
             # this should indicate we're good to go and have a transcription start site

@@ -473,8 +473,13 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 status.splice_open()
             elif ftype == type_enums.IN_TRANS_INTRON:
                 status.trans_splice_open()
-            elif ftype == type_enums.ERROR:
-                pass
+            # error (and error status)
+            elif ftype == type_enums.ERROR_OPEN:
+                status.error_open()
+            elif ftype == type_enums.ERROR_CLOSE:
+                status.error_close()
+            elif ftype == type_enums.IN_ERROR:
+                status.error_open()
             else:
                 raise ValueError('no implementation for updating status with feature of type {}'.format(ftype))
 
@@ -578,18 +583,30 @@ class TranscriptTrimmer(TranscriptInterpBase):
             up_at = new_coords.start
             down_at = new_coords.start - 1
 
+        at_least_one_link = False
         if status.genic:
             self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_RAW_TRANSCRIPT, up_at, down_at,
                                            new_piece, old_piece)
+            at_least_one_link = True
         if status.in_intron:
             self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_INTRON, up_at, down_at,
                                            new_piece, old_piece)
+            at_least_one_link = True
         if status.seen_start and not status.seen_stop:
             self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_TRANSLATED_REGION, up_at,
                                            down_at, new_piece, old_piece)
+            at_least_one_link = True
         if status.in_trans_intron:
             self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_TRANS_INTRON, up_at, down_at,
                                            new_piece, old_piece)
+            at_least_one_link = True
+
+        if status.erroneous:
+            self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_ERROR, up_at, down_at, new_piece,
+                                           old_piece)
+            at_least_one_link = True
+        if not at_least_one_link:
+            raise ValueError('Expected some sort of know status to set the status at border')
 
     def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
                                   old_piece):
