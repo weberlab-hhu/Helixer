@@ -56,6 +56,8 @@ class SliceController(object):
             self.super_loci.append(super_locus)
 
     def load_sliced_seqs(self):
+        if self.sequences_path is None:
+            raise ValueError('Cannot load sequences from undefined (None) path')
         sg = sequences.StructuredGenome()
         sg.from_json(self.sequences_path)
         self.structured_genome = sg
@@ -81,8 +83,8 @@ class SliceController(object):
             coordinates = annotations_orm.Coordinates(seqid=seqid, start=start, end=end, sequence_info=seq_info)
             overlapping_super_loci = self.get_super_loci_frm_slice(seqid, start, end)
             for super_locus in overlapping_super_loci:
-                super_locus.handler.modify4slice(new_coords=coordinates, is_plus_strand=is_plus_strand,
-                                                 session=self.session)
+                super_locus.modify4slice(new_coords=coordinates, is_plus_strand=is_plus_strand,
+                                         session=self.session)
             # todo, setup slice as coordinates w/ seq info in database
             # todo, get features & there by superloci in slice
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
@@ -93,6 +95,8 @@ class SliceController(object):
         return super_loci
 
     def get_features_from_slice(self, seqid, start, end):
+        if self.interval_trees == {}:
+            raise ValueError('No, interval trees defined. The method .fill_intervaltrees must be called first')
         tree = self.interval_trees[seqid]
         intervals = tree[as_py_start(start):as_py_end(end)]
         features = [x.data for x in intervals]
@@ -198,8 +202,10 @@ class SuperLocusHandler(annotations.SuperLocusHandler):
             feature.load_to_intervaltree(trees)
 
     def modify4slice(self, new_coords, is_plus_strand, session):
-        for transcript in self.data.transcripts:
-            trimmer = TranscriptTrimmer(transcript=transcript.handler, sess=session)
+        print('modifying sl {} for new slice {}:{}-{},  is plus: {}'.format(
+            self.data.id, new_coords.seqid, new_coords.start, new_coords.end, is_plus_strand))
+        for transcribed in self.data.transcribeds:
+            trimmer = TranscriptTrimmer(transcript=transcribed.handler, sess=session)
             trimmer.modify4new_slice(new_coords=new_coords, is_plus_strand=is_plus_strand)
 
 
@@ -473,6 +479,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 raise ValueError('no implementation for updating status with feature of type {}'.format(ftype))
 
     def modify4new_slice(self, new_coords, is_plus_strand=True):
+        print('mod4slice, transcribed: {}, {}'.format(self.transcript.data.id, self.transcript.data.given_id))
         seen_one_overlap = False
         transition_gen = self.transition_5p_to_3p_with_new_pieces()
         previous_step = StepHolder()
@@ -502,13 +509,14 @@ class TranscriptTrimmer(TranscriptInterpBase):
             elif position_interp.overlaps_downstream():
                 seen_one_overlap = True
                 # make new UpDownLink and status features to handle split
+                upstream_half = self.split_feature_downstream_border(
+                    new_coords=new_coords, new_piece=current_step.replacement_piece,
+                    old_piece=current_step.old_piece, is_plus_strand=is_plus_strand, feature=f0)
                 self.set_status_downstream_border(new_coords=new_coords, new_piece=current_step.replacement_piece,
-                                                  old_coords=f0.coordinates, template_feature=f0,
+                                                  old_coords=f0.coordinates, template_feature=upstream_half.data,
                                                   old_piece=current_step.old_piece, is_plus_strand=is_plus_strand,
                                                   status=current_step.status)
-                self.split_feature_downstream_border(new_coords=new_coords, new_piece=current_step.replacement_piece,
-                                                     old_piece=current_step.old_piece,
-                                                     is_plus_strand=is_plus_strand, feature=f0)
+
 
             # handle pass end of coordinates between previous and current feature, [p] | [f]
             elif position_interp.just_passed_downstream():
@@ -554,7 +562,10 @@ class TranscriptTrimmer(TranscriptInterpBase):
         try:
             feature_handler.de_link(old_piece.handler)
         except ValueError as e:
-            print('trying to swap feature: {} from: {} to: {}'.format(feature_handler.data, old_piece, new_piece))
+            coords_old = [x.coordinates for x in old_piece.features]
+            coords_new = [x.coordinates for x in new_piece.features]
+            print('trying to swap feature: {}\n  from: {} (coords: {})\n  to: {} (coords: {})'.format(
+                feature_handler.data, old_piece, set(coords_old), new_piece, set(coords_new)))
             raise e
         feature_handler.link_to(new_piece.handler)
 
@@ -582,6 +593,8 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
     def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
                                   old_piece):
+        print('template feature {}, pieces {}'.format(template_feature, template_feature.transcribed_pieces))
+        assert new_piece in template_feature.transcribed_pieces
         upstream = self.new_handled_data(template_feature, annotations_orm.UpstreamFeature, start=up_at, end=up_at,
                                          given_id=None, type=status_type)
         downstream = self.new_handled_data(template_feature, annotations_orm.DownstreamFeature, start=down_at,
@@ -607,6 +620,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
             feature.end = new_coords.start - 1
         self.session.add(before_border.data)
         self.session.commit()
+        return before_border
 
     @staticmethod
     def sorted_features(piece):

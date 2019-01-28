@@ -165,14 +165,23 @@ def test_fa_matches_sequences_json():
 
 
 def test_sequence_slicing():
-    # todo, check for reasonable output / make sure results can be easily transfered to slicing anno vers. of dummyloci
     json_path = 'testdata/dummyloci.sequence.json'
     sd_fa = sequences.StructuredGenome()
     sd_fa.from_json(json_path)
     sd_fa.divvy_each_sequence(user_seed='', max_len=100)
     print(sd_fa.to_jsonable())
-    sd_fa.to_json('deleteme.json')
-    assert False
+    sd_fa.to_json('testdata/dummyloci.sequence.sliced.json')  # used later, todo, cleanup this sorta of stuff
+    for sequence in sd_fa.sequences:
+        # all but the last two should be of max_len
+        for slice in sequence.slices[:-2]:
+            assert len(''.join(slice.sequence)) == 100
+            assert slice.end - slice.start == 99
+        # the last two should split the remainder in half, therefore have a length difference of 0 or 1
+        penultimate = sequence.slices[-2]
+        ultimate = sequence.slices[-1]
+        delta_len = abs((penultimate.end - penultimate.start) - (ultimate.end - ultimate.start))
+        assert delta_len == 1 or delta_len == 0
+
 
 
 ### annotations_orm ###
@@ -1934,10 +1943,12 @@ def test_slicing_multi_sl():
         os.remove(destination)
     source = 'testdata/dummyloci_annotations.sqlitedb'
     # TODO, add sliced sequences path
-    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
+    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination,
+                                        sequences_path='testdata/dummyloci.sequence.sliced.json')
     controller.mk_session()
     controller.load_annotations()
     controller.load_sliced_seqs()
+    controller.fill_intervaltrees()
     slh = controller.super_loci[0]
     transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
     slh.make_all_handlers()
