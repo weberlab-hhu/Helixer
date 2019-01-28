@@ -860,20 +860,18 @@ class TranscriptInterpreter(TranscriptInterpBase):
         # everything else is invalid
         else:
             print('error')
-            #feature_e = before0.data.clone()
-            all_coords = sorted([before0.data.data.start, before0.data.data.end, after0.data.data.start,
-                                 after0.data.data.end])  # todo, coordinates as upstream/downstream of error, WAS HERE
-            feature_e = self.new_feature(template=before0.data, start=all_coords[0], end=all_coords[-1],
-                                         type=type_enums.ERROR)
-            #feature_e.start = sorted(all_coords)[0]
-            #feature_e.end = sorted(all_coords)[-1]
-            #feature_e.type = type_enums.ERROR
-            self.clean_features.append(feature_e)
+            err_start = before0.data.upstream()
+            err_end = after0.data.downstream()
+            feature_err_open = self.new_feature(template=before0.data, start=err_start, end=err_start,
+                                                type=type_enums.ERROR_OPEN)
+            feature_err_close = self.new_feature(template=before0.data, start=err_end, end=err_end,
+                                                 type=type_enums.ERROR_CLOSE)
+
+            self.clean_features += [feature_err_open, feature_err_close]
 
     def interpret_first_pos(self, intervals, plus_strand=True, error_buffer=2000):
         # shortcuts
         cds = type_enums.CDS
-        error = type_enums.ERROR
 
         i0 = self.pick_one_interval(intervals)
         at = i0.data.upstream_from_interval(i0)
@@ -897,17 +895,25 @@ class TranscriptInterpreter(TranscriptInterpBase):
                 # unless we're at the start of the sequence
                 start_of_sequence = cds_feature.data.coordinates.start
                 if at != start_of_sequence:
-                    feature_e = self.new_feature(template=cds_feature, type=error,
-                                                 start=max(start_of_sequence, at - error_buffer - 1),
-                                                 end=at - 1, phase=None)
-                    self.clean_features.insert(0, feature_e)
+                    err_start = max(start_of_sequence, at - error_buffer - 1)
+                    err_end = at - 1
+                    feature_err_open = self.new_feature(template=cds_feature, type=type_enums.ERROR_OPEN,
+                                                        start=err_start, end=err_start, phase=None)
+                    feature_err_close = self.new_feature(template=cds_feature, type=type_enums.ERROR_CLOSE,
+                                                         start=err_end, end=err_end, phase=None)
+                    self.clean_features.insert(0, feature_err_close)
+                    self.clean_features.insert(0, feature_err_open)
             else:
                 end_of_sequence = cds_feature.data.coordinates.end
                 if at != end_of_sequence:
-                    feature_e = self.new_feature(template=cds_feature, type=error, start=at + 1,
-                                                 end=min(end_of_sequence, at + error_buffer + 1),
-                                                 phase=None)
-                    self.clean_features.insert(0, feature_e)
+                    err_start = min(end_of_sequence, at + error_buffer + 1)
+                    err_end = at + 1
+                    feature_err_open = self.new_feature(template=cds_feature, type=type_enums.ERROR_OPEN,
+                                                        start=err_start, end=err_start, phase=None)
+                    feature_err_close = self.new_feature(template=cds_feature, type=type_enums.ERROR_CLOSE,
+                                                         start=err_end, end=err_end, phase=None)
+                    self.clean_features.insert(0, feature_err_close)
+                    self.clean_features.insert(0, feature_err_open)
         else:
             raise ValueError("why's this gene not start with 5' utr nor cds? types: {}, interpretations: {}".format(
                 [x.data.type for x in intervals], possible_types))
@@ -927,14 +933,22 @@ class TranscriptInterpreter(TranscriptInterpBase):
             end_of_sequence = i0.data.data.coordinates.end
             if plus_strand:
                 if at != end_of_sequence:
-                    feature_e = self.new_feature(template=i0.data, type=type_enums.ERROR, start=at + 1, phase=None,
-                                                 end=min(at + 1 + error_buffer, end_of_sequence))
-                    self.clean_features.append(feature_e)
+                    err_start = at + 1
+                    err_end = min(at + 1 + error_buffer, end_of_sequence)
+                    feature_err_open = self.new_feature(template=i0.data, type=type_enums.ERROR_OPEN, start=err_start,
+                                                        phase=None, end=err_start)
+                    feature_err_close = self.new_feature(template=i0.data, type=type_enums.ERROR_CLOSE, start=err_end,
+                                                         phase=None, end=err_end)
+                    self.clean_features += [feature_err_open, feature_err_close]
             else:
                 if at != start_of_sequence:
-                    feature_e = self.new_feature(template=i0.data, type=type_enums.ERROR, end=at - 1, phase=None,
-                                                 start=max(start_of_sequence, at - error_buffer - 1))
-                    self.clean_features.append(feature_e)
+                    err_start = at - 1
+                    err_end = max(start_of_sequence, at - error_buffer - 1)
+                    feature_err_open = self.new_feature(template=i0.data, type=type_enums.ERROR_OPEN, end=err_start,
+                                                        phase=None, start=err_start)
+                    feature_err_close = self.new_feature(template=i0.data, type=type_enums.ERROR_CLOSE, end=err_end,
+                                                         phase=None, start=err_end)
+                    self.clean_features += [feature_err_open, feature_err_close]
         else:
             raise ValueError("why's this gene not end with 3' utr/exon nor cds? types: {}, interpretations: {}".format(
                 [x.data.type for x in intervals], possible_types)

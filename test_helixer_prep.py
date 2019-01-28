@@ -954,11 +954,12 @@ def test_transcript_get_first():
     t_interp.interpret_first_pos(i0, plus_strand=False)
     features = t_interp.clean_features
     status = t_interp.status
-    assert len(features) == 3
-    f_err = features[0]
-    f_status_coding = features[1]
-    f_status_transcribed = features[2]
-    print(f_err, f_err.data)
+    assert len(features) == 4
+    f_err_open = features[0]
+    f_err_close = features[1]
+    f_status_coding = features[2]
+    f_status_transcribed = features[3]
+    print(f_err_open, f_err_open.data)
     print(status)
     print(i0)
     # should get in_translated_region instead of a start codon
@@ -968,9 +969,11 @@ def test_transcript_get_first():
     # and should get accompanying in raw transcript
     assert f_status_transcribed.data.type == type_enums.IN_RAW_TRANSCRIPT
     # region beyond exon should be marked erroneous
-    assert f_err.data.start == 121
-    assert f_err.data.end == 405
-    assert f_err.data.type == type_enums.ERROR
+    assert not f_err_close.data.is_plus_strand and not f_err_open.data.is_plus_strand
+    assert f_err_close.data.start == 121
+    assert f_err_open.data.start == 405
+    assert f_err_open.data.type == type_enums.ERROR_OPEN
+    assert f_err_close.data.type == type_enums.ERROR_CLOSE
     assert status.is_coding()
     assert status.seen_start
     assert status.genic
@@ -1103,11 +1106,12 @@ def test_check_and_fix_structure():
     assert len(protein.features) == 1
     assert set([x.type.value for x in protein.features]) == {type_enums.START_CODON}
 
-    assert len(piece.features) == 5
+    assert len(piece.features) == 6
     assert set([x.type.value for x in piece.features]) == {type_enums.TRANSCRIPTION_START_SITE,
                                                            type_enums.ACCEPTOR_SPLICE_SITE,
                                                            type_enums.DONOR_SPLICE_SITE,
-                                                           type_enums.ERROR,
+                                                           type_enums.ERROR_OPEN,
+                                                           type_enums.ERROR_CLOSE,
                                                            type_enums.START_CODON}
 
 
@@ -1130,13 +1134,14 @@ def test_erroneous_splice():
     ti = gff_2_annotations.TranscriptInterpreter(transcript.handler)
     ti.decode_raw_features()
     clean_datas = [x.data for x in ti.clean_features]
-    # TSS, start codon, error splice, error splice, error no stop
-    assert len(clean_datas) == 5
-    assert len([x for x in clean_datas if x.type == type_enums.ERROR]) == 3
+    # TSS, start codon, 2x error splice, 2x error splice, 2x error no stop
+    assert len(clean_datas) == 8
+    assert len([x for x in clean_datas if x.type == type_enums.ERROR_OPEN]) == 3
     # make sure splice error covers whole exon-intron-exon region
-    assert clean_datas[2].type == type_enums.ERROR
+    assert clean_datas[2].type == type_enums.ERROR_OPEN
     assert clean_datas[2].start == 11
-    assert clean_datas[2].end == 120
+    assert clean_datas[3].type == type_enums.ERROR_CLOSE
+    assert clean_datas[3].start == 120
 
 #def test_to_intervaltree():
 #    sl = setup_loci_with_utr()
