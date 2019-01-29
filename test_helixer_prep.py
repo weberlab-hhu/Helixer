@@ -1942,6 +1942,44 @@ def test_slicing_featureless_slice_inside_locus():
                                                        type_enums.IN_ERROR}
 
 
+def rm_transcript_and_children(transcript, sess):
+    for piece in transcript.transcribed_pieces:
+        for feature in piece.features:
+            sess.delete(feature)
+        sess.delete(piece)
+    sess.delete(transcript)
+    sess.commit()
+
+
+def test_reslice_at_same_spot():
+    destination = 'testdata/tmp.db'
+    if os.path.exists(destination):
+        os.remove(destination)
+    source = 'testdata/dummyloci_annotations.sqlitedb'
+
+    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination,
+                                        sequences_path='testdata/dummyloci.sequence.sliced.json')
+    controller.mk_session()
+    controller.load_annotations()
+    controller.load_sliced_seqs()
+
+    slh = controller.super_loci[0]
+    # simplify
+    transcripty = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
+    transcriptz = [x for x in slh.data.transcribeds if x.given_id == 'z'][0]
+    rm_transcript_and_children(transcripty, controller.session)
+    rm_transcript_and_children(transcriptz, controller.session)
+    # slice
+    controller.fill_intervaltrees()
+    slices = (('1', 1, 100, 'x01'), )
+    controller._slice_annotations_1way(iter(slices), controller.get_one_annotated_genome(), is_plus_strand=True)
+    controller.session.commit()
+    old_len = len(controller.session.query(annotations_orm.UpDownPair).all())
+    print('used to be {} linkages'.format(old_len))
+    controller._slice_annotations_1way(iter(slices), controller.get_one_annotated_genome(), is_plus_strand=True)
+    controller.session.commit()
+    assert old_len == len(controller.session.query(annotations_orm.UpDownPair).all())
+
 #### type_enumss ####
 def test_enum_non_inheritance():
     allknown = [x.name for x in list(type_enums.AllKnown)]
