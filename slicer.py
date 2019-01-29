@@ -2,6 +2,7 @@
 from shutil import copyfile
 import intervaltree
 import copy
+import logging
 
 import annotations
 import annotations_orm
@@ -206,7 +207,7 @@ class SuperLocusHandler(annotations.SuperLocusHandler):
             feature.load_to_intervaltree(trees)
 
     def modify4slice(self, new_coords, is_plus_strand, session, trees=None):  # todo, can trees then be None?
-        print('modifying sl {} for new slice {}:{}-{},  is plus: {}'.format(
+        logging.debug('modifying sl {} for new slice {}:{}-{},  is plus: {}'.format(
             self.data.id, new_coords.seqid, new_coords.start, new_coords.end, is_plus_strand))
         for transcribed in self.data.transcribeds:
             trimmer = TranscriptTrimmer(transcript=transcribed.handler, sess=session)
@@ -458,7 +459,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
     def modify4new_slice(self, new_coords, is_plus_strand=True, trees=None):
         if trees is None:
             trees = {}
-        print('mod4slice, transcribed: {}, {}'.format(self.transcript.data.id, self.transcript.data.given_id))
+        logging.debug('mod4slice, transcribed: {}, {}'.format(self.transcript.data.id, self.transcript.data.given_id))
         seen_one_overlap = False
         transition_gen = self.transition_5p_to_3p_with_new_pieces()
         previous_step = StepHolder()
@@ -576,7 +577,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
     def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
                                   old_piece, trees):
-        print('template feature {}, pieces {}'.format(template_feature, template_feature.transcribed_pieces))
         assert new_piece in template_feature.transcribed_pieces
         upstream = self.new_handled_data(template_feature, annotations_orm.UpstreamFeature, start=up_at, end=up_at,
                                          given_id=None, type=status_type)
@@ -607,7 +607,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
         pieces = self.transcript.data.transcribed_pieces
         # start with one piece, extend until both ends are reached
         ordered_pieces = pieces[0:1]
-        print(ordered_pieces, 'of', pieces,'start')
         self._extend_to_end(ordered_pieces, downstream=True)
         self._extend_to_end(ordered_pieces, downstream=False)
         assert set(ordered_pieces) == set(pieces), "{} != {}".format(set(ordered_pieces), set(pieces))
@@ -628,8 +627,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
             if nextlink is None:
                 break
             nextstream = nextlink.__getattribute__(attr)
-            print(nextstream, 'nextstream')
-            print(nextstream.transcribed_pieces)
 
             nextpiece = self._get_one_piece_from_stream(nextstream)
             if nextpiece in ordered_pieces:

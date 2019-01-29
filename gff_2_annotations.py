@@ -907,7 +907,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
                 self.handle_splice(ivals_before, ivals_after, sign)
 
     def handle_splice(self, ivals_before, ivals_after, sign):
-        print('handling splice')
         target_type = None
         if self.status.is_coding():
             target_type = type_enums.CDS
@@ -922,7 +921,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
         between_splice_sites = (acceptor_at - donor_at) * sign
         min_intron_len = 3  # todo, maybe get something small but not entirely impossible?
         if between_splice_sites > min_intron_len - 1:  # -1 because the splice sites are _within_ the intron
-            print('positive intron')
             donor = self.new_feature(template=donor_tmplt, start=donor_at, end=donor_at, phase=None,
                                      type=type_enums.DONOR_SPLICE_SITE)
             # todo, check position of DSS/ASS to be consistent with Augustus, hopefully
@@ -931,11 +929,9 @@ class TranscriptInterpreter(TranscriptInterpBase):
             self.clean_features += [donor, acceptor]
         # do nothing if there is just no gap between exons for a techinical / reporting error
         elif between_splice_sites == -1:
-            print('null intron')
             pass
         # everything else is invalid
         else:
-            print('error')
             err_start = before0.data.upstream()
             err_end = after0.data.downstream()
             feature_err_open = self.new_feature(template=before0.data, start=err_start, end=err_start,
@@ -1040,7 +1036,6 @@ class TranscriptInterpreter(TranscriptInterpBase):
         # todo, detect completely handled (prolly error-error) transcript here and pass WAS HERE, TUESDAY
         plus_strand = self.is_plus_strand()
         interval_sets = self.intervals_5to3(plus_strand)
-        print([len(ivs) for ivs in interval_sets], 'ivs lengths')
         self.interpret_first_pos(interval_sets[0], plus_strand)
         for i in range(len(interval_sets) - 1):
             ivals_before = interval_sets[i]
