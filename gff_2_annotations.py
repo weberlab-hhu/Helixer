@@ -125,7 +125,7 @@ class ImportControl(object):
 
     def clean_super_loci(self):
         for sl in self.super_loci:
-            coordinates =  self.sequence_info.handler.gffid_to_coords[sl.gff_entry.seqid]
+            coordinates = self.sequence_info.gffid_to_coords[sl.gffentry.seqid]
             sl.check_and_fix_structure(self.session, coordinates)
 #    def add_gff(self, gff_file, genome, err_file='trans_splicing.txt'):
 #        err_handle = open(err_file, 'w')
@@ -608,7 +608,8 @@ class TranscriptInterpBase(object):
             elif ftype == type_enums.IN_ERROR:
                 status.error_open()
             else:
-                raise ValueError('no implementation for updating status with feature of type {}'.format(ftype))
+                raise ValueError('no implementation for updating status with feature of type {}\n full info{}'.format(
+                    ftype, feature))
 
 
 class TranscriptInterpreter(TranscriptInterpBase):

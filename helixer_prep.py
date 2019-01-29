@@ -24,6 +24,8 @@ def slice_sqlite(db_path, db_sliced_path, sliced_seq_path):
     print('loaded annos')
     controller.load_sliced_seqs()
     print('loaded slices')
+    controller.fill_intervaltrees()
+    print('filled interval trees')
     annotated_genome = controller.get_one_annotated_genome()
     controller.slice_annotations(annotated_genome=annotated_genome)
 

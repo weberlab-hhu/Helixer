@@ -83,6 +83,7 @@ class SliceController(object):
             coordinates = annotations_orm.Coordinates(seqid=seqid, start=start, end=end, sequence_info=seq_info)
             overlapping_super_loci = self.get_super_loci_frm_slice(seqid, start, end, is_plus_strand=is_plus_strand)
             for super_locus in overlapping_super_loci:
+                super_locus.make_all_handlers()
                 super_locus.modify4slice(new_coords=coordinates, is_plus_strand=is_plus_strand,
                                          session=self.session)
             # todo, setup slice as coordinates w/ seq info in database
@@ -126,7 +127,10 @@ class HandleMaker(object):
     def make_all_handlers(self):
         self.handles = []
         sl = self.super_locus_handler.data
-        datas = sl.transcribed_pieces + sl.translateds + sl.features
+        datas = list()
+        datas += sl.transcribed_pieces
+        datas += sl.translateds
+        datas += sl.features
         for transcribed in sl.transcribeds:
             datas.append(transcribed)
             datas += transcribed.pairs
