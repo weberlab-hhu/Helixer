@@ -1041,14 +1041,12 @@ def test_errors_not_lost():
     s = "1\tGnomon\tgene\t20\t405\t0.\t-\t0\tID=eg_missing_children"
     gene_entry = gffhelper.GFFObject(s)
 
-    print(controller.sequence_info.data.coordinates)
     coordinates = controller.sequence_info.data.coordinates[0]
+    controller.session.add(coordinates)
     sl._mark_erroneous(gene_entry, coordinates=coordinates)
     print(sl.data.transcribeds, len(sl.data.transcribeds), '...sl transcribeds')
     feature_eh, feature_e2h = sl.feature_handlers[-2:]
 
-    #feature_e, feature_eh = setup_data_handler(annotations.FeatureHandler, annotations_orm.Feature, start=40, end=80,
-    #                                           super_locus=sl.data, type=type_enums.ERROR)
     print('what features did we start with::?')
     for feature in sl.data.features:
         print(feature)
@@ -1056,9 +1054,15 @@ def test_errors_not_lost():
     controller.session.commit()
 
     sl.check_and_fix_structure(sess=controller.session, coordinates=coordinates)
+    for feature in sl.data.features:
+        controller.session.add(feature)
+    controller.session.commit()
     print('---and what features did we leave?---')
     for feature in sl.data.features:
         print(feature)
+    print(feature_eh.delete_me)
+    print(str(feature_eh.data), 'hello...')
+    # note, you probably get sqlalchemy.orm.exc.DetachedInstanceError before failing on AssertionError below
     assert feature_eh.data in sl.data.features
     assert feature_e2h.data in sl.data.features
 

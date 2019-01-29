@@ -346,14 +346,18 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
 
         for transcript in self.data.transcribeds:
             piece = transcript.handler.one_piece().data
-            # mark old features
-            for feature in piece.features:
-                feature.handler.mark_for_deletion()
-            # make new features
             t_interpreter = TranscriptInterpreter(transcript.handler)
-            t_interpreter.decode_raw_features()
-            # make sure the new features link to protein if appropriate
-            t_interpreter.mv_coding_features_to_proteins()
+            # skip any transcript consisting of only processed features (in context, should just be pre-interp errors)
+            if t_interpreter.has_processed_features_only():
+                pass
+            else:
+                # mark old features
+                for feature in piece.features:
+                    feature.handler.mark_for_deletion()
+                # make new features
+                t_interpreter.decode_raw_features()
+                # make sure the new features link to protein if appropriate
+                t_interpreter.mv_coding_features_to_proteins()
         # remove old features
         self.delete_marked_underlings(sess)
 
@@ -946,11 +950,8 @@ class TranscriptInterpreter(TranscriptInterpBase):
 
         i0 = self.pick_one_interval(intervals)
         at = i0.data.upstream_from_interval(i0)
-        # todo, allow for handles errors to already exist at this point (type= error_open/error_close) WAS HERE
         possible_types = self.possible_types(intervals)
-        if possible_types == [TranscriptInterpreter.HANDLED]:
-            self.update_status(self.status, aligned_features=[x.data.data for x in intervals])
-        elif type_enums.FIVE_PRIME_UTR in possible_types:
+        if type_enums.FIVE_PRIME_UTR in possible_types:
             # this should indicate we're good to go and have a transcription start site
             tss = self.new_feature(template=i0.data, type=type_enums.TRANSCRIPTION_START_SITE, start=at, end=at,
                                    phase=None)
@@ -1084,9 +1085,8 @@ class TranscriptInterpreter(TranscriptInterpBase):
         # todo, handle non-single seqid loci
         tree = intervaltree.IntervalTree()
         features = set()
-        for piece in self.transcript.data.transcribed_pieces:
-            for feature in piece.features:
-                features.add(feature)
+        for feature in self._all_features():
+            features.add(feature)
         features = [f.handler for f in features]
         for f in features:
             tree[f.py_start:f.py_end] = f
@@ -1101,6 +1101,18 @@ class TranscriptInterpreter(TranscriptInterpBase):
                 yield out
                 out = [interval]
         yield out
+
+    def _all_features(self):
+        for piece in self.transcript.data.transcribed_pieces:
+            for feature in piece.features:
+                yield feature
+
+    def has_processed_features_only(self):
+        out = True
+        for feature in self._all_features():
+            if feature.type.value not in [x.value for x in type_enums.KeepOnSequence]:
+                out = False
+        return out
 
 
 class IntervalCountError(Exception):
