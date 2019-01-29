@@ -1394,7 +1394,7 @@ def test_set_updown_features_downstream_border():
     status.saw_start(0)
 
     ti.set_status_downstream_border(new_coords=new_coord, is_plus_strand=True, template_feature=feature, status=status,
-                                    old_piece=piece0, new_piece=piece1, old_coords=old_coor)
+                                    old_piece=piece0, new_piece=piece1, old_coords=old_coor, trees={})
 
     sess.commit()
     assert len(piece1.features) == 3  # feature, 2x upstream
@@ -1422,7 +1422,7 @@ def test_set_updown_features_downstream_border():
     sess.commit()
     slh.make_all_handlers()
     ti.set_status_downstream_border(new_coords=new_coord, is_plus_strand=False, template_feature=feature, status=status,
-                                    old_piece=piece0, new_piece=piece1, old_coords=old_coor)
+                                    old_piece=piece0, new_piece=piece1, old_coords=old_coor, trees={})
     sess.commit()
 
     assert len(piece1.features) == 3  # feature, 2x upstream
@@ -1915,12 +1915,32 @@ def test_slicing_featureless_slice_inside_locus():
     source = 'testdata/dummyloci_annotations.sqlitedb'
 
     controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
+    controller.mk_session()
+    controller.load_annotations()
+    controller.fill_intervaltrees()
+    ag = controller.get_one_annotated_genome()
     slh = controller.super_loci[0]
     transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
-    slices = (('a', 1, 40, '1-40'),
-              ('a', 41, 80, '41-80'),
-              ('a', 81, 120, '81-120'))
-    #HERE
+    slices = (('1', 1, 40, '1-40'),
+              ('1', 41, 80, '41-80'),
+              ('1', 81, 120, '81-120'))
+    slices = iter(slices)
+    controller._slice_annotations_1way(slices, annotated_genome=ag, is_plus_strand=True)
+    for piece in transcript.transcribed_pieces:
+        print('got piece: {}\n-----------\n'.format(piece))
+        for feature in piece.features:
+            print('    {}'.format(feature))
+    coordinate40 = controller.session.query(annotations_orm.Coordinates).filter(
+        annotations_orm.Coordinates.start == 41
+    ).first()
+    features40 = coordinate40.features
+    print(features40)
+    # x & y -> 2 translated, 2 transcribed each, z -> 2 error
+    assert len([x for x in features40 if x.type.value == type_enums.IN_TRANSLATED_REGION]) == 4
+    assert len(features40) == 10
+    assert set([x.type.value for x in features40]) == {type_enums.IN_TRANSLATED_REGION, type_enums.IN_RAW_TRANSCRIPT,
+                                                       type_enums.IN_ERROR}
+
 
 #### type_enumss ####
 def test_enum_non_inheritance():

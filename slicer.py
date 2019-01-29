@@ -85,7 +85,7 @@ class SliceController(object):
             for super_locus in overlapping_super_loci:
                 super_locus.make_all_handlers()
                 super_locus.modify4slice(new_coords=coordinates, is_plus_strand=is_plus_strand,
-                                         session=self.session)
+                                         session=self.session, trees=self.interval_trees)
             # todo, setup slice as coordinates w/ seq info in database
             # todo, get features & there by superloci in slice
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
@@ -199,18 +199,18 @@ class SuperLocusHandler(annotations.SuperLocusHandler):
         self.handler_holder.make_all_handlers()
 
     def load_to_intervaltree(self, trees):
+        self.make_all_handlers()
         features = self.data.features
         for f in features:
-            feature = FeatureHandler()  # recreate feature handler post load (todo, mv elsewhere so it's always done?)
-            feature.add_data(f)
+            feature = f.handler
             feature.load_to_intervaltree(trees)
 
-    def modify4slice(self, new_coords, is_plus_strand, session):
+    def modify4slice(self, new_coords, is_plus_strand, session, trees=None):  # todo, can trees then be None?
         print('modifying sl {} for new slice {}:{}-{},  is plus: {}'.format(
             self.data.id, new_coords.seqid, new_coords.start, new_coords.end, is_plus_strand))
         for transcribed in self.data.transcribeds:
             trimmer = TranscriptTrimmer(transcript=transcribed.handler, sess=session)
-            trimmer.modify4new_slice(new_coords=new_coords, is_plus_strand=is_plus_strand)
+            trimmer.modify4new_slice(new_coords=new_coords, is_plus_strand=is_plus_strand, trees=trees)
 
 
 class TranscribedHandler(annotations.TranscribedHandler):
@@ -227,21 +227,28 @@ class TranscribedPieceHandler(annotations.TranscribedPieceHandler):
     pass
 
 
+# todo, there is probably a nicer way to accomplish the following with multi inheritance...
+def load_to_intervaltree(obj, trees):
+    seqid = obj.data.coordinates.seqid
+    if seqid not in trees:
+        trees[seqid] = intervaltree.IntervalTree()
+    tree = trees[seqid]
+    tree[obj.py_start:obj.py_end] = obj
+
+
 class FeatureHandler(annotations.FeatureHandler):
     def load_to_intervaltree(self, trees):
-        seqid = self.data.coordinates.seqid
-        if seqid not in trees:
-            trees[seqid] = intervaltree.IntervalTree()
-        tree = trees[seqid]
-        tree[self.py_start:self.py_end] = self
+        load_to_intervaltree(self, trees)
 
 
 class UpstreamFeatureHandler(annotations.UpstreamFeatureHandler):
-    pass
+    def load_to_intervaltree(self, trees):
+        load_to_intervaltree(self, trees)
 
 
 class DownstreamFeatureHandler(annotations.DownstreamFeatureHandler):
-    pass
+    def load_to_intervaltree(self, trees):
+        load_to_intervaltree(self, trees)
 
 
 class UpDownPairHandler(annotations.UpDownPairHandler):
@@ -448,7 +455,9 @@ class TranscriptTrimmer(TranscriptInterpBase):
         self.handlers.append(new_handler)
         return new_piece
 
-    def modify4new_slice(self, new_coords, is_plus_strand=True):
+    def modify4new_slice(self, new_coords, is_plus_strand=True, trees=None):
+        if trees is None:
+            trees = {}
         print('mod4slice, transcribed: {}, {}'.format(self.transcript.data.id, self.transcript.data.given_id))
         seen_one_overlap = False
         transition_gen = self.transition_5p_to_3p_with_new_pieces()
@@ -493,7 +502,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                                   is_plus_strand=is_plus_strand,
                                                   template_feature=previous_step.example_feature,
                                                   status=previous_step.status, old_piece=current_step.old_piece,
-                                                  new_piece=current_step.replacement_piece)
+                                                  new_piece=current_step.replacement_piece, trees=trees)
 
             elif position_interp.is_downstream():
                 pass  # will get to this at next slice
@@ -532,7 +541,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         feature_handler.link_to(new_piece.handler)
 
     def set_status_downstream_border(self, new_coords, old_coords, is_plus_strand, template_feature, status, new_piece,
-                                     old_piece):
+                                     old_piece, trees):
         if is_plus_strand:
             up_at = new_coords.end
             down_at = new_coords.end + 1
@@ -543,36 +552,38 @@ class TranscriptTrimmer(TranscriptInterpBase):
         at_least_one_link = False
         if status.genic:
             self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_RAW_TRANSCRIPT, up_at, down_at,
-                                           new_piece, old_piece)
+                                           new_piece, old_piece, trees)
             at_least_one_link = True
         if status.in_intron:
             self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_INTRON, up_at, down_at,
-                                           new_piece, old_piece)
+                                           new_piece, old_piece, trees)
             at_least_one_link = True
         if status.seen_start and not status.seen_stop:
             self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_TRANSLATED_REGION, up_at,
-                                           down_at, new_piece, old_piece)
+                                           down_at, new_piece, old_piece, trees)
             at_least_one_link = True
         if status.in_trans_intron:
             self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_TRANS_INTRON, up_at, down_at,
-                                           new_piece, old_piece)
+                                           new_piece, old_piece, trees)
             at_least_one_link = True
 
         if status.erroneous:
             self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_ERROR, up_at, down_at, new_piece,
-                                           old_piece)
+                                           old_piece, trees)
             at_least_one_link = True
         if not at_least_one_link:
             raise ValueError('Expected some sort of know status to set the status at border')
 
     def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
-                                  old_piece):
+                                  old_piece, trees):
         print('template feature {}, pieces {}'.format(template_feature, template_feature.transcribed_pieces))
         assert new_piece in template_feature.transcribed_pieces
         upstream = self.new_handled_data(template_feature, annotations_orm.UpstreamFeature, start=up_at, end=up_at,
                                          given_id=None, type=status_type)
+        upstream.load_to_intervaltree(trees)
         downstream = self.new_handled_data(template_feature, annotations_orm.DownstreamFeature, start=down_at,
                                            end=down_at, given_id=None, type=status_type, coordinates=old_coords)
+        downstream.load_to_intervaltree(trees)
         # swap piece back to previous, as downstream is outside of new_coordinates (slice), and will be ran through
         # modify4new_slice once more and get it's final coordinates/piece then
         self.swap_piece(feature_handler=downstream, new_piece=old_piece, old_piece=new_piece)
