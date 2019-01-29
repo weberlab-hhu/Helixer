@@ -1897,7 +1897,6 @@ def test_slicing_multi_sl():
     controller.load_sliced_seqs()
     controller.fill_intervaltrees()
     slh = controller.super_loci[0]
-    transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
     slh.make_all_handlers()
     # setup more
     more = SimplestDemoData(controller.session)
@@ -1906,7 +1905,22 @@ def test_slicing_multi_sl():
     controller.session.commit()
     # and try and slice
     controller.slice_annotations(controller.get_one_annotated_genome())
+    # todo, test if valid pass of final res.
 
+
+def test_slicing_featureless_slice_inside_locus():
+    destination = 'testdata/tmp.db'
+    if os.path.exists(destination):
+        os.remove(destination)
+    source = 'testdata/dummyloci_annotations.sqlitedb'
+
+    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
+    slh = controller.super_loci[0]
+    transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
+    slices = (('a', 1, 40, '1-40'),
+              ('a', 41, 80, '41-80'),
+              ('a', 81, 120, '81-120'))
+    #HERE
 
 #### type_enumss ####
 def test_enum_non_inheritance():
