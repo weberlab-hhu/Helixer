@@ -81,7 +81,7 @@ class SliceController(object):
         for seqid, start, end, slice_id in slices:
             seq_info = annotations_orm.SequenceInfo(annotated_genome=annotated_genome)
             coordinates = annotations_orm.Coordinates(seqid=seqid, start=start, end=end, sequence_info=seq_info)
-            overlapping_super_loci = self.get_super_loci_frm_slice(seqid, start, end)
+            overlapping_super_loci = self.get_super_loci_frm_slice(seqid, start, end, is_plus_strand=is_plus_strand)
             for super_locus in overlapping_super_loci:
                 super_locus.modify4slice(new_coords=coordinates, is_plus_strand=is_plus_strand,
                                          session=self.session)
@@ -89,17 +89,17 @@ class SliceController(object):
             # todo, get features & there by superloci in slice
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
 
-    def get_super_loci_frm_slice(self, seqid, start, end):
-        features = self.get_features_from_slice(seqid, start, end)
+    def get_super_loci_frm_slice(self, seqid, start, end, is_plus_strand):
+        features = self.get_features_from_slice(seqid, start, end, is_plus_strand)
         super_loci = self.get_super_loci_frm_features(features)
         return super_loci
 
-    def get_features_from_slice(self, seqid, start, end):
+    def get_features_from_slice(self, seqid, start, end, is_plus_strand):
         if self.interval_trees == {}:
             raise ValueError('No, interval trees defined. The method .fill_intervaltrees must be called first')
         tree = self.interval_trees[seqid]
         intervals = tree[as_py_start(start):as_py_end(end)]
-        features = [x.data for x in intervals]
+        features = [x.data for x in intervals if x.data.data.is_plus_strand == is_plus_strand]
         return features
 
     def get_super_loci_frm_features(self, features):
@@ -474,15 +474,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
             # handle feature [  |  ] straddling end of coordinates
             elif position_interp.overlaps_downstream():
                 seen_one_overlap = True
-                # make new UpDownLink and status features to handle split
-                upstream_half = self.split_feature_downstream_border(
-                    new_coords=new_coords, new_piece=current_step.replacement_piece,
-                    old_piece=current_step.old_piece, is_plus_strand=is_plus_strand, feature=f0)
-                self.set_status_downstream_border(new_coords=new_coords, new_piece=current_step.replacement_piece,
-                                                  old_coords=f0.coordinates, template_feature=upstream_half.data,
-                                                  old_piece=current_step.old_piece, is_plus_strand=is_plus_strand,
-                                                  status=current_step.status)
-
+                raise ValueError('pre-checked features should not straddle downstream border')
 
             # handle pass end of coordinates between previous and current feature, [p] | [f]
             elif position_interp.just_passed_downstream():
@@ -584,21 +576,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
                               downstream=downstream.data, transcribed=self.transcript.data)
         self.session.add_all([upstream.data, downstream.data])
         self.session.commit()  # todo, figure out what the real rules are for committing, bc slower, but less buggy?
-
-    def split_feature_downstream_border(self, new_coords, new_piece, old_piece, is_plus_strand, feature):
-        if is_plus_strand:
-            before_border = self.new_handled_data(template=feature, new_type=annotations_orm.Feature,
-                                                  end=new_coords.end, coordinates=new_coords)
-            self.swap_piece(feature_handler=before_border, new_piece=new_piece, old_piece=old_piece)
-            feature.start = new_coords.end + 1
-        else:
-            before_border = self.new_handled_data(template=feature, new_type=annotations_orm.Feature,
-                                                  start=new_coords.start, coordinates=new_coords)
-            self.swap_piece(feature_handler=before_border, new_piece=new_piece, old_piece=old_piece)
-            feature.end = new_coords.start - 1
-        self.session.add(before_border.data)
-        self.session.commit()
-        return before_border
 
     @staticmethod
     def sorted_features(piece):

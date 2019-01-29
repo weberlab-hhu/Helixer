@@ -1162,24 +1162,6 @@ def test_erroneous_splice():
     assert clean_datas[3].type == type_enums.ERROR_CLOSE
     assert clean_datas[3].start == 120
 
-#def test_to_intervaltree():
-#    sl = setup_loci_with_utr()
-#    print(sl.slice.seq_info, 'seq_info')
-#    print(sl.slice._seq_info, '_seq_info')
-#    print(sl.slice.coordinates, 'coords')
-#    trees = sl.slice.load_to_interval_tree()
-#    print(sl.slice.super_loci, 'loci')
-#    # get a single tree
-#    assert len(trees.keys()) == 1
-#    tree = trees['1']
-#    for itvl in tree:
-#        print(itvl)
-#    assert len(tree) == len(sl.features)
-#    minf = min([sl.features[f].py_start for f in sl.features])
-#    maxf = max([sl.features[f].py_end for f in sl.features])
-#    assert minf == min(tree).begin
-#    assert maxf == max(tree).end
-#
 
 def test_gff_gen():
     controller = gff_2_annotations.ImportControl(database_path='sqlite:///:memory:')
@@ -1250,11 +1232,11 @@ def test_intervaltree():
     tts = [x for x in intervals if x.data.data.type.value == type_enums.TRANSCRIPTION_TERMINATION_SITE]
     assert len(tts) == 0
     # check that the major filter functions work
-    sls = controller.get_super_loci_frm_slice(seqid='1', start=305, end=405)
+    sls = controller.get_super_loci_frm_slice(seqid='1', start=305, end=405, is_plus_strand=True)
     assert len(sls) == 1
     assert isinstance(list(sls)[0], slicer.SuperLocusHandler)
 
-    features = controller.get_features_from_slice(seqid='1', start=1, end=1)
+    features = controller.get_features_from_slice(seqid='1', start=1, end=1, is_plus_strand=True)
     assert len(features) == 3
     starts = [x for x in features if x.data.type.value == type_enums.TRANSCRIPTION_START_SITE]
     assert len(starts) == 2
