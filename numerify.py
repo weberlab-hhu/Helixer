@@ -6,6 +6,7 @@ import copy
 import annotations_orm
 import gff_2_annotations
 import slicer
+import helpers
 
 
 # for now collapse everything to one vector (with or without pre-selection of primary transcript)
@@ -82,6 +83,28 @@ class BasePairAnnotationNumerifier(Numerifier, AnnotationFoo):
         #   transition setting numbers into matrix
 
 
+class StepHolder(object):
+    def __init__(self, features=None, status=None, at=None):
+        # todo, check not everything is none
+        self._at = at
+        self.features = features
+        self.status = status
+
+    @property
+    def a_feature(self):
+        return self.features[0]
+
+    @property
+    def at(self):
+        if self._at is not None:
+            return self._at
+        else:
+            return self.a_feature.start
+
+    def py_range(self, previous):
+        start, end = gff_2_annotations.min_max(previous.at, self.at)
+        return helpers.as_py_start(start), helpers.as_py_end(end)
+
 class TranscriptLocalReader(gff_2_annotations.TranscriptInterpBase):
     def sort_features(self, coords, is_plus_strand):
         features = [x for x in coords.features if x.coordinates is coords and x.is_plus_strand == is_plus_strand]
@@ -95,6 +118,12 @@ class TranscriptLocalReader(gff_2_annotations.TranscriptInterpBase):
             self.update_status(status, aligned_features)
             yield aligned_features, copy.deepcopy(status)
 
-    def transition_5p_to_3p_with_ranges(self):
+    def transition_5p_to_3p_with_ranges(self, coords, is_plus_strand):
+        if is_plus_strand:
+            prev_at = coords.start
+            for aligned_features, status in self.transition_5p_to_3p(coords, is_plus_strand):
+                at = aligned_features[0].start
+                for
+
         pass
         # todo, track previous position to laydown range to change
