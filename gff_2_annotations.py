@@ -340,6 +340,7 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
         self.transcribed_piece_handlers.append(piece_handler)
 
     def check_and_fix_structure(self, sess, coordinates):
+        # todo, add against sequence check to see if start/stop and splice sites are possible or not, e.g. is start ATG?
         # if it's empty (no bottom level features at all) mark as erroneous
         if not self.data.features:
             self._mark_erroneous(self.gffentry, coordinates=coordinates)
@@ -611,6 +612,23 @@ class TranscriptInterpBase(object):
                 raise ValueError('no implementation for updating status with feature of type {}\n full info{}'.format(
                     ftype, feature))
 
+    @staticmethod
+    def stack_matches(features):
+        ifeatures = iter(features)
+        try:
+            prev = next(ifeatures)
+        except StopIteration:
+            return
+        current = [prev]
+        for feature in ifeatures:
+            if feature.pos_cmp_key() == prev.pos_cmp_key():
+                current.append(feature)
+            else:
+                yield current
+                current = [feature]
+            prev = feature
+        yield current
+        return
 
 class TranscriptInterpreter(TranscriptInterpBase):
     """takes raw/from-gff transcript, and makes totally explicit"""

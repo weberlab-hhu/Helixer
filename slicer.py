@@ -690,20 +690,3 @@ class TranscriptTrimmer(TranscriptInterpBase):
             out.append(self.sorted_features(piece))
         return out
 
-    @staticmethod
-    def stack_matches(features):
-        ifeatures = iter(features)
-        try:
-            prev = next(ifeatures)
-        except StopIteration:
-            return
-        current = [prev]
-        for feature in ifeatures:
-            if feature.pos_cmp_key() == prev.pos_cmp_key():
-                current.append(feature)
-            else:
-                yield current
-                current = [feature]
-            prev = feature
-        yield current
-        return
