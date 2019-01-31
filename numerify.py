@@ -40,7 +40,7 @@ class Numerifier(object):
         return self.matrix.flatten()
 
     def deflatten_matrix(self, flattened):
-        return np.reshape(flattened, self.shape)
+        return np.reshape(flattened, [-1] + self.shape)
 
     def _zeros(self, length):
         return np.zeros([length] + self.shape, self.dtype)
@@ -74,8 +74,8 @@ class AnnotationFoo(object):
 
 class AnnotationNumerifier(Numerifier, AnnotationFoo):
     def __init__(self, data_slice, shape, *args, **kwargs):
-        super(Numerifier).__init__(shape)
-        super(AnnotationFoo).__init__(data_slice)
+        Numerifier.__init__(self, shape)
+        AnnotationFoo.__init__(self, data_slice)
 
     def slice_to_matrix(self, data_slice, is_plus_strand=None, *args, **kwargs):
         assert is_plus_strand is not None
@@ -85,6 +85,7 @@ class AnnotationNumerifier(Numerifier, AnnotationFoo):
             t_interp = TranscriptLocalReader(transcript)
             for prev_step, step in t_interp.transition_5p_to_3p_paired_steps(self.coordinates, is_plus_strand):
                 self.update_matrix(matrix, prev_step, step)
+        return matrix
         # todo, setup transcript local reader for each transcript.
         #   maybe grab primary transcript only
         #   transition setting numbers into matrix
@@ -104,6 +105,11 @@ class AnnotationNumerifier(Numerifier, AnnotationFoo):
         raise NotImplementedError
 
 
+class DataInterpretationError(Exception):
+    pass
+
+
+# TODO, break or mask on errors
 class BasePairAnnotationNumerifier(AnnotationNumerifier):
     @staticmethod
     def class_labels(status):
@@ -111,8 +117,15 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
         return [float(x) for x in labs]
 
     def update_matrix(self, matrix, prev_step, step):
-        py_start, py_end = step.py_range(prev_step)
-        matrix[py_start:py_end, :] = self.class_labels(prev_step.status)
+        if prev_step.features is None:
+            pass
+        else:
+            if step.any_erroneous_features():
+                raise DataInterpretationError
+            py_start, py_end = step.py_range(prev_step)
+            labels = self.class_labels(prev_step.status)
+            matrix[py_start:py_end, :] = np.logical_or(matrix[py_start:py_end, :], labels)
+            print('labelling {}-{} as {}'.format(py_start, py_end, labels))
 
 
 class TransitionAnnotationNumerifier(AnnotationNumerifier):
@@ -140,7 +153,7 @@ class TransitionAnnotationNumerifier(AnnotationNumerifier):
 
     def update_matrix(self, matrix, prev_step, step):
         matrix[helpers.as_py_start(step.a_feature.start), :] = self.class_labels(step.aligned_features)
-        
+
 
 class StepHolder(object):
     def __init__(self, features=None, status=None, at=None):
@@ -157,11 +170,13 @@ class StepHolder(object):
     def at(self):
         if self._at is not None:
             return self._at
-        else:
+        elif self.features is not None:
             return self.a_feature.start
+        else:
+            raise ValueError
 
     def _range(self, previous):
-        if previous is not None:
+        if previous.features is not None:
             previous_at = previous.at
         else:
             if self.a_feature.is_plus_strand:
@@ -175,13 +190,25 @@ class StepHolder(object):
         start, end = self._range(previous)
         return helpers.as_py_start(start), helpers.as_py_end(end)
 
+    def any_erroneous_features(self):
+        errors = [x.value for x in type_enums.ErrorFeature]
+        return any([x.type.value in errors for x in self.features])
+
 
 class TranscriptLocalReader(gff_2_annotations.TranscriptInterpBase):
     def sort_features(self, coords, is_plus_strand):
-        features = [x for x in coords.features if x.coordinates is coords and x.is_plus_strand == is_plus_strand]
+        # features from transcript
+        features = []
+        for piece in self.transcript.data.transcribed_pieces:
+            for feature in piece.features:
+                if feature.coordinates is coords and feature.is_plus_strand == is_plus_strand:
+                    features.append(feature)
+        # sort
         features = sorted(features, key=lambda x: x.pos_cmp_key())
         if not features[0].is_plus_strand:
             features.reverse()
+        return features
+
 
     def transition_5p_to_3p(self, coords, is_plus_strand):
         status = gff_2_annotations.TranscriptStatus()

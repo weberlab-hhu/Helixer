@@ -9,12 +9,14 @@ import type_enums
 import pytest
 import partitions
 import os
+import numpy as np
 from dustdas import gffhelper
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import sqlalchemy
 import gff_2_annotations
 import slicer
+import numerify
 
 
 ### structure ###
@@ -184,10 +186,9 @@ def test_sequence_slicing():
         assert delta_len == 1 or delta_len == 0
 
 
-
 ### annotations_orm ###
-def mk_session():
-    engine = create_engine('sqlite:///:memory:', echo=False)
+def mk_session(db_path='sqlite:///:memory:'):
+    engine = create_engine(db_path, echo=False)
     annotations_orm.Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     return Session()
@@ -1979,6 +1980,37 @@ def test_reslice_at_same_spot():
     controller._slice_annotations_1way(iter(slices), controller.get_one_annotated_genome(), is_plus_strand=True)
     controller.session.commit()
     assert old_len == len(controller.session.query(annotations_orm.UpDownPair).all())
+
+
+#### numerify ####
+def test_base_level_annotation_numerify():
+    # no need to modify, so can just load briefly
+    sess = mk_session('sqlite:///testdata/dummyloci_annotations.sqlitedb')
+    # simplify
+    transcriptx = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'x').first()
+    transcriptz = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'z').first()
+    rm_transcript_and_children(transcriptx, sess)
+    rm_transcript_and_children(transcriptz, sess)
+
+    sinfo = sess.query(annotations_orm.SequenceInfo).first()
+    sinfo_h = slicer.SequenceInfoHandler()
+    sinfo_h.add_data(sinfo)
+
+    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h, shape=[3])
+    nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
+    expect = np.zeros([405, 3], dtype=float)
+    expect[0:400, 0] = 1.  # set genic/in raw transcript
+    expect[10:300, 1] = 1.  # set in transcribed
+    expect[100:110, 2] = 1.  # both introns
+    expect[120:200, 2] = 1.
+    #for i in range(405):
+    #    print(i)
+    #    print(np.allclose(nums[i, :], expect[i, :]), nums[i, :], expect[i, :])
+    assert np.allclose(nums, expect)
+    print(nums)
+    print(nums.shape)
+    # todo, better error on empty / False
+    assert False
 
 #### type_enumss ####
 def test_enum_non_inheritance():
