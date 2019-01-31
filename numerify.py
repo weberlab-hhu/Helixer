@@ -152,7 +152,11 @@ class TransitionAnnotationNumerifier(AnnotationNumerifier):
         return labs
 
     def update_matrix(self, matrix, prev_step, step):
-        matrix[helpers.as_py_start(step.a_feature.start), :] = self.class_labels(step.aligned_features)
+        if step.any_erroneous_features():
+            raise DataInterpretationError
+        matrix[helpers.as_py_start(step.a_feature.start), :] = np.logical_or(
+            matrix[helpers.as_py_start(step.a_feature.start), :],
+            self.class_labels(step.features))
 
 
 class StepHolder(object):

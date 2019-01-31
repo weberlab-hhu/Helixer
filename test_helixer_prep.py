@@ -2014,7 +2014,7 @@ def test_base_level_annotation_numerify():
     sinfo_h = slicer.SequenceInfoHandler()
     sinfo_h.add_data(sinfo)
 
-    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h, shape=[3])
+    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h, shape=[3])  # todo, dynamic shape!
     nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
     expect = np.zeros([405, 3], dtype=float)
     expect[0:400, 0] = 1.  # set genic/in raw transcript
@@ -2023,6 +2023,48 @@ def test_base_level_annotation_numerify():
     expect[120:200, 2] = 1.
     assert np.allclose(nums, expect)
 
+
+def test_transition_annotation_numerify():
+    destination = 'testdata/tmp.db'
+    if os.path.exists(destination):
+        os.remove(destination)
+    source = 'testdata/dummyloci_annotations.sqlitedb'
+
+    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination,
+                                        sequences_path='testdata/dummyloci.sequence.sliced.json')
+    controller.mk_session()
+    controller.load_annotations()
+    # no need to modify, so can just load briefly
+    sess = controller.session
+
+    sinfo = sess.query(annotations_orm.SequenceInfo).first()
+    sinfo_h = slicer.SequenceInfoHandler()
+    sinfo_h.add_data(sinfo)
+
+    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h, shape=[9])
+    with pytest.raises(numerify.DataInterpretationError):
+        numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
+
+    # simplify
+    transcriptx = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'x').first()
+    transcriptz = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'z').first()
+    rm_transcript_and_children(transcriptx, sess)
+    rm_transcript_and_children(transcriptz, sess)
+
+    sinfo = sess.query(annotations_orm.SequenceInfo).first()
+    sinfo_h = slicer.SequenceInfoHandler()
+    sinfo_h.add_data(sinfo)
+
+    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h, shape=[9])
+    nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
+    expect = np.zeros([405, 9], dtype=float)
+    expect[0, 0] = 1.  # TSS
+    expect[399, 1] = 1.  # TTS
+    expect[10, 3] = 1.  # start codon
+    expect[299, 4] = 1.  # stop codon
+    expect[(100, 120), 6] = 1.  # Don-splice
+    expect[(109, 199), 7] = 1.  # Acc-splice
+    assert np.allclose(nums, expect)
 
 #### type_enumss ####
 def test_enum_non_inheritance():
