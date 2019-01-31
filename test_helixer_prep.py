@@ -1984,8 +1984,26 @@ def test_reslice_at_same_spot():
 
 #### numerify ####
 def test_base_level_annotation_numerify():
+    destination = 'testdata/tmp.db'
+    if os.path.exists(destination):
+        os.remove(destination)
+    source = 'testdata/dummyloci_annotations.sqlitedb'
+
+    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination,
+                                        sequences_path='testdata/dummyloci.sequence.sliced.json')
+    controller.mk_session()
+    controller.load_annotations()
     # no need to modify, so can just load briefly
-    sess = mk_session('sqlite:///testdata/dummyloci_annotations.sqlitedb')
+    sess = controller.session
+
+    sinfo = sess.query(annotations_orm.SequenceInfo).first()
+    sinfo_h = slicer.SequenceInfoHandler()
+    sinfo_h.add_data(sinfo)
+
+    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h, shape=[3])
+    with pytest.raises(numerify.DataInterpretationError):
+        numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
+
     # simplify
     transcriptx = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'x').first()
     transcriptz = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'z').first()
@@ -2003,14 +2021,8 @@ def test_base_level_annotation_numerify():
     expect[10:300, 1] = 1.  # set in transcribed
     expect[100:110, 2] = 1.  # both introns
     expect[120:200, 2] = 1.
-    #for i in range(405):
-    #    print(i)
-    #    print(np.allclose(nums[i, :], expect[i, :]), nums[i, :], expect[i, :])
     assert np.allclose(nums, expect)
-    print(nums)
-    print(nums.shape)
-    # todo, better error on empty / False
-    assert False
+
 
 #### type_enumss ####
 def test_enum_non_inheritance():
