@@ -4,6 +4,7 @@ import numpy as np
 import copy
 
 import annotations_orm
+import type_enums
 import gff_2_annotations
 import slicer
 import helpers
@@ -41,8 +42,8 @@ class Numerifier(object):
     def deflatten_matrix(self, flattened):
         return np.reshape(flattened, self.shape)
 
-    def _zeros(self):
-        return np.zeros(self.shape, self.dtype)
+    def _zeros(self, length):
+        return np.zeros([length] + self.shape, self.dtype)
 
 
 class AnnotationFoo(object):
@@ -71,17 +72,75 @@ class AnnotationFoo(object):
         return out
 
 
-class BasePairAnnotationNumerifier(Numerifier, AnnotationFoo):
-    def __init__(self, shape, data_slice, *args, **kwargs):
+class AnnotationNumerifier(Numerifier, AnnotationFoo):
+    def __init__(self, data_slice, shape, *args, **kwargs):
         super(Numerifier).__init__(shape)
         super(AnnotationFoo).__init__(data_slice)
 
-    def slice_to_matrix(self, data_slice, *args, **kwargs):
-        matrix = self._zeros()
+    def slice_to_matrix(self, data_slice, is_plus_strand=None, *args, **kwargs):
+        assert is_plus_strand is not None
+        length = self.coordinates.end - self.coordinates.start + 1
+        matrix = self._zeros(length)
+        for transcript in self.transcribeds_to_use():
+            t_interp = TranscriptLocalReader(transcript)
+            for prev_step, step in t_interp.transition_5p_to_3p_paired_steps(self.coordinates, is_plus_strand):
+                self.update_matrix(matrix, prev_step, step)
         # todo, setup transcript local reader for each transcript.
         #   maybe grab primary transcript only
         #   transition setting numbers into matrix
 
+    def transcribeds_to_use(self):
+        for super_locus in self.super_loci:
+            super_locus.make_all_handlers()
+            for transcript in self.select_transcripts(super_locus):
+                yield transcript.handler
+
+    @staticmethod
+    def select_transcripts(super_locus):
+        for transcribed in super_locus.data.transcribeds:
+            yield transcribed
+
+    def update_matrix(self, matrix, prev_step, step):
+        raise NotImplementedError
+
+
+class BasePairAnnotationNumerifier(AnnotationNumerifier):
+    @staticmethod
+    def class_labels(status):
+        labs = (status.genic, status.in_translated_region, status.in_intron or status.in_trans_intron)
+        return [float(x) for x in labs]
+
+    def update_matrix(self, matrix, prev_step, step):
+        py_start, py_end = step.py_range(prev_step)
+        matrix[py_start:py_end, :] = self.class_labels(prev_step.status)
+
+
+class TransitionAnnotationNumerifier(AnnotationNumerifier):
+    types = {type_enums.TRANSCRIPTION_START_SITE: 0,
+             type_enums.TRANSCRIPTION_TERMINATION_SITE: 1,
+             type_enums.IN_RAW_TRANSCRIPT: 2,
+             type_enums.START_CODON: 3,
+             type_enums.STOP_CODON: 4,
+             type_enums.IN_TRANSLATED_REGION: 5,
+             type_enums.DONOR_SPLICE_SITE: 6,
+             type_enums.DONOR_TRANS_SPLICE_SITE: 6,
+             type_enums.ACCEPTOR_SPLICE_SITE: 7,
+             type_enums.ACCEPTOR_TRANS_SPLICE_SITE: 7,
+             type_enums.IN_INTRON: 8,
+             type_enums.IN_TRANS_INTRON: 8}
+
+    @staticmethod
+    def class_labels(aligned_features):
+        # ordered [start, end, status for types in transcribed, translated, any_intron]
+        labs = [False] * 9
+        for feature in aligned_features:
+            i = TransitionAnnotationNumerifier.types[feature.type.value]
+            labs[i] = True
+        return labs
+
+    def update_matrix(self, matrix, prev_step, step):
+        matrix[helpers.as_py_start(step.a_feature.start), :] = self.class_labels(step.aligned_features)
+        
 
 class StepHolder(object):
     def __init__(self, features=None, status=None, at=None):
@@ -101,9 +160,21 @@ class StepHolder(object):
         else:
             return self.a_feature.start
 
+    def _range(self, previous):
+        if previous is not None:
+            previous_at = previous.at
+        else:
+            if self.a_feature.is_plus_strand:
+                previous_at = self.a_feature.coordinates.start
+            else:
+                previous_at = self.a_feature.coordinates.end
+
+        return gff_2_annotations.min_max(previous_at, self.at)
+
     def py_range(self, previous):
-        start, end = gff_2_annotations.min_max(previous.at, self.at)
+        start, end = self._range(previous)
         return helpers.as_py_start(start), helpers.as_py_end(end)
+
 
 class TranscriptLocalReader(gff_2_annotations.TranscriptInterpBase):
     def sort_features(self, coords, is_plus_strand):
@@ -118,12 +189,10 @@ class TranscriptLocalReader(gff_2_annotations.TranscriptInterpBase):
             self.update_status(status, aligned_features)
             yield aligned_features, copy.deepcopy(status)
 
-    def transition_5p_to_3p_with_ranges(self, coords, is_plus_strand):
-        if is_plus_strand:
-            prev_at = coords.start
-            for aligned_features, status in self.transition_5p_to_3p(coords, is_plus_strand):
-                at = aligned_features[0].start
-                for
+    def transition_5p_to_3p_paired_steps(self, coords, is_plus_strand):
+        prev_step = StepHolder()
+        for aligned_features, status in self.transition_5p_to_3p(coords, is_plus_strand):
+            step = StepHolder(aligned_features, status)
+            yield prev_step, step
+            prev_step = step
 
-        pass
-        # todo, track previous position to laydown range to change
