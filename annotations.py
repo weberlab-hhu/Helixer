@@ -2,7 +2,7 @@ import copy
 from types import GeneratorType
 import annotations_orm
 from helpers import as_py_end, as_py_start
-from functools import total_ordering
+import type_enums
 
 
 def convert2list(obj):
@@ -649,3 +649,256 @@ class UpDownPairHandler(Handler):
 
     def pos_cmp_key(self):
         return self.data.pos_cmp_key()
+
+
+#### section TranscriptInterpreter, might end up in a separate file later
+class TranscriptStatus(object):
+    """can hold and manipulate all the info on current status of a transcript"""
+
+    def __init__(self):
+        # initializes to intergenic
+        self.genic = False
+        self.in_intron = False
+        self.in_trans_intron = False
+        self.in_translated_region = False
+        self.seen_start = False  # todo, move EUK specific stuff to subclass?
+        self.seen_stop = False
+        self.erroneous = False
+        self.phase = None  # todo, proper tracking / handling
+
+    def __repr__(self):
+        return "genic: {}, intronic: {}, translated_region: {}, trans_intronic: {}, phase: {}".format(
+            self.genic, self.in_intron, self.in_translated_region, self.in_trans_intron, self.phase
+        )
+
+    def saw_tss(self):
+        self.genic = True
+
+    def saw_start(self, phase):
+        #self.genic = True  # TODO, disentangle this from at least status markers, better all coding & call saw_tss
+        self.seen_start = True
+        self.in_translated_region = True
+        self.phase = phase
+
+    def saw_stop(self):
+        self.seen_stop = True
+        self.in_translated_region = False
+        self.phase = None
+
+    def saw_tts(self):
+        self.genic = False
+
+    def splice_open(self):
+        self.in_intron = True
+
+    def splice_close(self):
+        self.in_intron = False
+
+    def trans_splice_open(self):
+        self.in_trans_intron = True
+
+    def trans_splice_close(self):
+        self.in_trans_intron = False
+
+    def error_open(self):
+        self.erroneous = True
+
+    def error_close(self):
+        self.erroneous = False
+
+    def is_5p_utr(self):
+        return self.is_utr() and not any([self.seen_start, self.seen_stop])
+
+    def is_3p_utr(self):
+        return self.is_utr() and self.seen_stop and self.seen_start
+
+    def is_utr(self):
+        return self.genic and not any([self.in_intron, self.in_translated_region, self.in_trans_intron])
+
+    def is_coding(self):
+        return self.genic and self.in_translated_region and not any([self.in_intron, self.in_trans_intron])
+
+    def is_intronic(self):
+        return self.in_intron and self.genic
+
+    def is_trans_intronic(self):
+        return self.in_trans_intron and self.genic
+
+    def is_intergenic(self):
+        return not self.genic
+
+
+class TranscriptInterpBase(object):
+    # todo, move this to generic location and/or skip entirely
+    def __init__(self, transcript, session=None):
+        assert isinstance(transcript, TranscribedHandler)
+        self.status = TranscriptStatus()
+        self.transcript = transcript
+        self.session = session
+
+    def transition_5p_to_3p(self):
+        status = TranscriptStatus()
+        for piece in self.sort_pieces():
+            piece_features = self.sorted_features(piece)
+            for aligned_features in self.stack_matches(piece_features):
+                self.update_status(status, aligned_features)
+                yield aligned_features, copy.deepcopy(status), piece
+
+    @staticmethod
+    def sorted_features(piece):
+        features = piece.features
+        # confirm strand & seqid
+        assert all([f.coordinates == features[0].coordinates for f in features])
+        assert all([f.is_plus_strand == features[0].is_plus_strand for f in features])
+        features = sorted(features, key=lambda x: x.pos_cmp_key())
+        if not features[0].is_plus_strand:
+            features.reverse()
+        return features
+
+    def sort_pieces(self):
+        pieces = self.transcript.data.transcribed_pieces
+        # start with one piece, extend until both ends are reached
+        ordered_pieces = pieces[0:1]
+        self._extend_to_end(ordered_pieces, downstream=True)
+        self._extend_to_end(ordered_pieces, downstream=False)
+        assert set(ordered_pieces) == set(pieces), "{} != {}".format(set(ordered_pieces), set(pieces))
+        return ordered_pieces
+
+    def _extend_to_end(self, ordered_pieces, downstream=True, filter_fn=None):
+        if downstream:
+            next_fn = self.get_downstream_link
+            latest_i = -1
+            attr = 'downstream'
+        else:
+            next_fn = self.get_upstream_link
+            latest_i = 0
+            attr = 'upstream'
+
+        while True:
+            nextlink = next_fn(current_piece=ordered_pieces[latest_i])
+            if nextlink is None:
+                break
+            nextstream = nextlink.__getattribute__(attr)
+
+            nextpiece = self._get_one_piece_from_stream(nextstream)
+            if nextpiece in ordered_pieces:
+                raise IndecipherableLinkageError('Circular linkage inserting {} into {}'.format(nextpiece,
+                                                                                                ordered_pieces))
+            else:
+                self._extend_by_one(ordered_pieces, nextpiece, downstream)
+
+    @staticmethod
+    def _extend_by_one(ordered_pieces, new, downstream=True):
+        if downstream:
+            ordered_pieces.append(new)
+        else:
+            ordered_pieces.insert(0, new)
+
+    def _get_one_piece_from_stream(self, stream):
+        pieces = self.transcript.data.transcribed_pieces
+        matches = [x for x in stream.transcribed_pieces if x in pieces]
+        assert len(matches) == 1, 'len(matches) != 1, matches: {}'.format(matches)  # todo; can we guarantee this?
+        return matches[0]
+
+    def get_upstream_link(self, current_piece):
+        downstreams = self.session.query(annotations_orm.DownstreamFeature).all()
+        # DownstreamFeature s of this pice
+        downstreams_current = [x for x in downstreams if current_piece in x.transcribed_pieces]
+        links = self._find_matching_links(updown_candidates=downstreams_current, get_upstreams=True)
+        return self._links_list2link(links, direction='upstream', current_piece=current_piece)
+
+    def get_downstream_link(self, current_piece):
+        upstreams = self.session.query(annotations_orm.UpstreamFeature).all()
+        upstreams_current = [x for x in upstreams if current_piece in x.transcribed_pieces]
+        links = self._find_matching_links(updown_candidates=upstreams_current, get_upstreams=False)
+        return self._links_list2link(links, direction='downstream', current_piece=current_piece)
+
+    def _find_matching_links(self, updown_candidates, get_upstreams=True):
+        links = []
+        pairs = self.transcript.data.pairs
+        for cand in updown_candidates:
+            if get_upstreams:
+                links += [x for x in pairs if x.downstream == cand]
+            else:
+                links += [x for x in pairs if x.upstream == cand]
+        return links
+
+    def _links_list2link(self, links, direction, current_piece):
+        stacked = self.stack_matches(links)
+        collapsed = [x[0] for x in stacked]
+
+        if len(collapsed) == 0:
+            return None
+        elif len(collapsed) == 1:
+            return collapsed[0]
+        else:
+            raise IndecipherableLinkageError("Multiple possible within-transcript {} links found from {}, ({})".format(
+                direction, current_piece, collapsed
+            ))
+
+    @property
+    def super_locus(self):
+        return self.transcript.data.super_locus.handler
+
+    @staticmethod
+    def update_status(status, aligned_features):
+        for feature in aligned_features:
+            ftype = feature.type.value
+            # standard features
+            if ftype == type_enums.TRANSCRIPTION_START_SITE:
+                status.saw_tss()
+            elif ftype == type_enums.START_CODON:
+                status.saw_start(phase=0)
+            elif ftype == type_enums.STOP_CODON:
+                status.saw_stop()
+            elif ftype == type_enums.TRANSCRIPTION_TERMINATION_SITE:
+                status.saw_tts()
+            elif ftype == type_enums.DONOR_SPLICE_SITE:
+                status.splice_open()
+            elif ftype == type_enums.ACCEPTOR_SPLICE_SITE:
+                status.splice_close()
+            elif ftype == type_enums.DONOR_TRANS_SPLICE_SITE:
+                status.trans_splice_open()
+            elif ftype == type_enums.ACCEPTOR_TRANS_SPLICE_SITE:
+                status.trans_splice_close()
+            # status features
+            elif ftype == type_enums.IN_RAW_TRANSCRIPT:
+                status.saw_tss()
+            elif ftype == type_enums.IN_TRANSLATED_REGION:
+                status.saw_start(phase=feature.phase)
+            elif ftype == type_enums.IN_INTRON:
+                status.splice_open()
+            elif ftype == type_enums.IN_TRANS_INTRON:
+                status.trans_splice_open()
+            # error (and error status)
+            elif ftype == type_enums.ERROR_OPEN:
+                status.error_open()
+            elif ftype == type_enums.ERROR_CLOSE:
+                status.error_close()
+            elif ftype == type_enums.IN_ERROR:
+                status.error_open()
+            else:
+                raise ValueError('no implementation for updating status with feature of type {}\n full info{}'.format(
+                    ftype, feature))
+
+    @staticmethod
+    def stack_matches(features):
+        ifeatures = iter(features)
+        try:
+            prev = next(ifeatures)
+        except StopIteration:
+            return
+        current = [prev]
+        for feature in ifeatures:
+            if feature.pos_cmp_key() == prev.pos_cmp_key():
+                current.append(feature)
+            else:
+                yield current
+                current = [feature]
+            prev = feature
+        yield current
+        return
+
+
+class IndecipherableLinkageError(Exception):
+    pass

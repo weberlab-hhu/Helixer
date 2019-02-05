@@ -15,7 +15,7 @@ from sqlalchemy.orm import sessionmaker
 import os
 import sequences
 from helpers import as_py_start, as_py_end
-from gff_2_annotations import TranscriptStatus, TranscriptInterpBase  # todo, move to helpers?
+from annotations import TranscriptStatus, TranscriptInterpBase
 
 
 class SliceController(object):
@@ -376,8 +376,6 @@ class PositionInterpreter(object):
         return out
 
 
-class IndecipherableLinkageError(Exception):
-    pass
 
 
 class NoFeaturesInSliceError(Exception):
@@ -407,8 +405,8 @@ class StepHolder(object):
 class TranscriptTrimmer(TranscriptInterpBase):
     """takes pre-cleaned/explicit transcripts and crops to what fits in a slice"""
     def __init__(self, transcript, sess):
-        super().__init__(transcript)
-        self.session = sess
+        super().__init__(transcript, sess)
+        #self.session = sess
         self.handlers = []
 
     def new_handled_data(self, template=None, new_type=annotations_orm.Feature, **kwargs):
@@ -421,14 +419,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
         for key in kwargs:
             handler.set_data_attribute(key, kwargs[key])
         return handler
-
-    def transition_5p_to_3p(self):
-        status = TranscriptStatus()
-        for piece in self.sort_pieces():
-            piece_features = self.sorted_features(piece)
-            for aligned_features in self.stack_matches(piece_features):
-                self.update_status(status, aligned_features)
-                yield aligned_features, copy.deepcopy(status), piece
 
     def _transition_5p_to_3p_with_new_pieces(self):
         transition_gen = self.transition_5p_to_3p()
@@ -592,97 +582,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
         self.session.add_all([upstream.data, downstream.data])
         self.session.commit()  # todo, figure out what the real rules are for committing, bc slower, but less buggy?
 
-    @staticmethod
-    def sorted_features(piece):
-        features = piece.features
-        # confirm strand & seqid
-        assert all([f.coordinates == features[0].coordinates for f in features])
-        assert all([f.is_plus_strand == features[0].is_plus_strand for f in features])
-        features = sorted(features, key=lambda x: x.pos_cmp_key())
-        if not features[0].is_plus_strand:
-            features.reverse()
-        return features
-
-    def sort_pieces(self):
-        pieces = self.transcript.data.transcribed_pieces
-        # start with one piece, extend until both ends are reached
-        ordered_pieces = pieces[0:1]
-        self._extend_to_end(ordered_pieces, downstream=True)
-        self._extend_to_end(ordered_pieces, downstream=False)
-        assert set(ordered_pieces) == set(pieces), "{} != {}".format(set(ordered_pieces), set(pieces))
-        return ordered_pieces
-
-    def _extend_to_end(self, ordered_pieces, downstream=True, filter_fn=None):
-        if downstream:
-            next_fn = self.get_downstream_link
-            latest_i = -1
-            attr = 'downstream'
-        else:
-            next_fn = self.get_upstream_link
-            latest_i = 0
-            attr = 'upstream'
-
-        while True:
-            nextlink = next_fn(current_piece=ordered_pieces[latest_i])
-            if nextlink is None:
-                break
-            nextstream = nextlink.__getattribute__(attr)
-
-            nextpiece = self._get_one_piece_from_stream(nextstream)
-            if nextpiece in ordered_pieces:
-                raise IndecipherableLinkageError('Circular linkage inserting {} into {}'.format(nextpiece,
-                                                                                                ordered_pieces))
-            else:
-                self._extend_by_one(ordered_pieces, nextpiece, downstream)
-
-    @staticmethod
-    def _extend_by_one(ordered_pieces, new, downstream=True):
-        if downstream:
-            ordered_pieces.append(new)
-        else:
-            ordered_pieces.insert(0, new)
-
-    def _get_one_piece_from_stream(self, stream):
-        pieces = self.transcript.data.transcribed_pieces
-        matches = [x for x in stream.transcribed_pieces if x in pieces]
-        assert len(matches) == 1, 'len(matches) != 1, matches: {}'.format(matches)  # todo; can we guarantee this?
-        return matches[0]
-
-    def get_upstream_link(self, current_piece):
-        downstreams = self.session.query(annotations_orm.DownstreamFeature).all()
-        # DownstreamFeature s of this pice
-        downstreams_current = [x for x in downstreams if current_piece in x.transcribed_pieces]
-        links = self._find_matching_links(updown_candidates=downstreams_current, get_upstreams=True)
-        return self._links_list2link(links, direction='upstream', current_piece=current_piece)
-
-    def get_downstream_link(self, current_piece):
-        upstreams = self.session.query(annotations_orm.UpstreamFeature).all()
-        upstreams_current = [x for x in upstreams if current_piece in x.transcribed_pieces]
-        links = self._find_matching_links(updown_candidates=upstreams_current, get_upstreams=False)
-        return self._links_list2link(links, direction='downstream', current_piece=current_piece)
-
-    def _find_matching_links(self, updown_candidates, get_upstreams=True):
-        links = []
-        pairs = self.transcript.data.pairs
-        for cand in updown_candidates:
-            if get_upstreams:
-                links += [x for x in pairs if x.downstream == cand]
-            else:
-                links += [x for x in pairs if x.upstream == cand]
-        return links
-
-    def _links_list2link(self, links, direction, current_piece):
-        stacked = self.stack_matches(links)
-        collapsed = [x[0] for x in stacked]
-
-        if len(collapsed) == 0:
-            return None
-        elif len(collapsed) == 1:
-            return collapsed[0]
-        else:
-            raise IndecipherableLinkageError("Multiple possible within-transcript {} links found from {}, ({})".format(
-                direction, current_piece, collapsed
-            ))
 
     def sort_all(self):
         out = []

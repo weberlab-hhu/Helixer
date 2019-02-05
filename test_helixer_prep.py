@@ -1338,7 +1338,7 @@ def test_order_pieces():
     pair20 = annotations_orm.UpDownPair(upstream=feature2u, downstream=feature0d, transcribed=scribed)
     sess.add(pair20)
     sess.commit()
-    with pytest.raises(slicer.IndecipherableLinkageError):
+    with pytest.raises(annotations.IndecipherableLinkageError):
         ti.sort_pieces()
 
 

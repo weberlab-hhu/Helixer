@@ -3,7 +3,7 @@
 import numpy as np
 import copy
 
-import annotations_orm
+import annotations
 import type_enums
 import gff_2_annotations
 import slicer
@@ -199,7 +199,7 @@ class StepHolder(object):
         return any([x.type.value in errors for x in self.features])
 
 
-class TranscriptLocalReader(gff_2_annotations.TranscriptInterpBase):
+class TranscriptLocalReader(annotations.TranscriptInterpBase):
     def sort_features(self, coords, is_plus_strand):
         # features from transcript
         features = []
@@ -215,7 +215,7 @@ class TranscriptLocalReader(gff_2_annotations.TranscriptInterpBase):
 
 
     def transition_5p_to_3p(self, coords, is_plus_strand):
-        status = gff_2_annotations.TranscriptStatus()
+        status = annotations.TranscriptStatus()
         for aligned_features in self.stack_matches(self.sort_features(coords, is_plus_strand)):
             self.update_status(status, aligned_features)
             yield aligned_features, copy.deepcopy(status)
