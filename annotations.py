@@ -728,6 +728,33 @@ class TranscriptStatus(object):
         return not self.genic
 
 
+class TransitionStep(object):
+    def __init__(self, features=None, status=None, piece=None):
+        self.features = features
+        self.status = status
+        self.piece = piece
+        self.previous_range = None
+
+    def make_range(self, previous_step):
+        # todo, and this is where I realize exclusive closing elements really really are needed...
+        pass
+
+    @property
+    def a_feature(self):
+        if self.features is None:
+            return None
+        else:
+            return self.features[0]
+
+
+class Range(object):
+    def __init__(self, seqid, start, end, status):
+        self.seqid = seqid
+        self.start = start
+        self.end = end
+        self.status = status
+
+
 class TranscriptInterpBase(object):
     # todo, move this to generic location and/or skip entirely
     def __init__(self, transcript, session=None):
@@ -743,6 +770,10 @@ class TranscriptInterpBase(object):
             for aligned_features in self.stack_matches(piece_features):
                 self.update_status(status, aligned_features)
                 yield aligned_features, copy.deepcopy(status), piece
+
+    def transition_with_ranges(self):
+        """organize [prev. range]-> feature pairs along transcript"""
+        pass  # todo
 
     @staticmethod
     def sorted_features(piece):
