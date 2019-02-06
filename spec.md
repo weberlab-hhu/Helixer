@@ -1,5 +1,43 @@
 ### features
 
+#### types
+Feature types will now be broken down into two pieces, namely
+type (transcribed, coding, intron, trans_intron, error) and
+bearing (start, end, open_status, close_status, point).
+
+##### new types:
+* transcribed: primarily transcription start & termination sites
+* coding: primarily start and stop codon
+* intron / trans intron: primarily donor site, acceptor site
+* error: mark start/end of region when the provided annotation is
+in question.
+
+##### bearing:
+* start: start of a region, inclusive
+  * transcription start site (1st transcribed bp)
+  * start codon, the A of the ATG
+  * donor splice site, first bp of intron
+* end: end of a region, exclusive (i.e. start of one there after)
+  * transcription termination site (1st non-transcribed bp)
+  * stop codon, first non-coding bp, e.g. the N in TGAN
+  * acceptor splice site (1st bp that is part of final transcript)
+* open/close status:
+  
+  for defining a _region_ these will work the same as start/end.
+  So every bp between intron: open_status and intron: close_status
+  defines an intron. However, these can be used when there is incomplete
+  information (e.g. the assembled sequence started in an intron, so the donor 
+  splice site is missing). If however, the status is set in the middle of a
+  sequence, this should generally be accompanied by an 'error mask' that 
+  indicates the approximate region with an unclear identity / where the missing
+  start/end feature may occur.
+* point:
+  
+  anything occurring at a single point / not defining a region.
+  OK, this has no current usage, but could be used, e.g. to mark
+  an expected small mistake (SNP/deletion) in the assembly as erroneous.  
+
+
 #### feature start/end/at numbering
 
 Features, in the final format (import still needs work...),
@@ -36,7 +74,6 @@ and get the sequence; the same is not going to work on the minus strand.
 Instead: 
 
 ```
-plus strand start 1, end 4
  0  1  2  3  4  5
 .N [A .T .G )N .N
  |  |  |  |  |  |
@@ -49,7 +86,6 @@ one from the python coordinates
 
 
 ```
-plus strand start 1, end 4
  0  1  2  3  4  5
 .N [A .T .G )N .N
  |  |  |  |  |  |
