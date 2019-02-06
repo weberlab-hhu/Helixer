@@ -159,6 +159,7 @@ class Feature(Base):
     given_id = Column(String)
 
     type = Column(Enum(type_enums.OnSequence))
+    bearing = Column(Enum(type_enums.Bearings))
     #seqid = Column(String)
     coordinate_id = Column(Integer, ForeignKey('coordinates.id'))  # any piece of coordinates always has just one seqid
     coordinates = relationship('Coordinates', back_populates='features')

@@ -63,7 +63,7 @@ DONOR_SPLICE_SITE = 'DSS'  # donor_splice_site
 ACCEPTOR_SPLICE_SITE = 'ASS'  # acceptor_splice_site
 # TranscribedInput
 EXON = 'exon'
-INTRON = 'intron'
+#INTRON = 'intron'
 FIVE_PRIME_UTR = 'five_prime_UTR'
 THREE_PRIME_UTR = 'three_prime_UTR'
 # TranscribedStatus
@@ -77,7 +77,7 @@ ACCEPTOR_TRANS_SPLICE_SITE = 'acceptor_trans_splice_site'
 # transcription related features
 TranscribedGeneral = make_enum('TranscribedGeneral', TRANSCRIPTION_START_SITE, TRANSCRIPTION_TERMINATION_SITE,
                                DONOR_SPLICE_SITE, ACCEPTOR_SPLICE_SITE)
-TranscribedInput = make_enum('TranscribedInput', EXON, INTRON, FIVE_PRIME_UTR, THREE_PRIME_UTR)
+TranscribedInput = make_enum('TranscribedInput', EXON, FIVE_PRIME_UTR, THREE_PRIME_UTR)
 TranscribedStatus = make_enum('TranscribedStatus', IN_RAW_TRANSCRIPT, IN_INTRON, IN_TRANS_INTRON)
 TranscribedTransSplice = make_enum('TranscribedTransSplice', DONOR_TRANS_SPLICE_SITE, ACCEPTOR_TRANS_SPLICE_SITE)
 # joining transcription related
@@ -116,6 +116,23 @@ MATCH = 'match'
 CDNA_MATCH = 'cDNA_match'
 
 ErrorFeature = make_enum('ErrorFeature', IN_ERROR, ERROR_OPEN, ERROR_CLOSE)
+# final feature types
+TRANSCRIBED = 'transcribed'
+CODING = 'coding'
+INTRON = 'intron'  # defined above
+TRANS_INTRON = 'trans_intron'
+ERROR = 'error'
+
+FinalFeatures = make_enum('FinalFeatures', TRANSCRIBED, CODING, INTRON, TRANS_INTRON)
+
+# bearings
+START = 'start'
+END = 'end'
+OPEN_STATUS = 'open_status'
+CLOSE_STATUS = 'close_status'
+POINT = 'point'
+
+Bearings = make_enum('Bearings', START, END, OPEN_STATUS, CLOSE_STATUS, POINT)
 
 # ignorable known
 IgnorableFeatures = make_enum('IgnorableFeatures', REGION, CHROMOSOME, SUPERCONTIG, MATCH, CDNA_MATCH)
@@ -124,7 +141,7 @@ IgnorableFeatures = make_enum('IgnorableFeatures', REGION, CHROMOSOME, SUPERCONT
 KeepOnSequence = join_to_enum('KeepOnSequence', TranscribedNice, TranslatedNice, ErrorFeature)
 
 # All known features (else error on import)
-OnSequence = join_to_enum('OnSequence', TranscribedAll, TranslatedAll, ErrorFeature)
+OnSequence = join_to_enum('OnSequence', TranscribedAll, TranslatedAll, ErrorFeature, FinalFeatures)
 AllKnown = join_to_enum('AllKnown', SuperLocusAll, TranscriptLevelAll, TranslatedAll, TranscribedAll, ErrorFeature,
                         IgnorableFeatures)
 AllKeepable = join_to_enum('AllKeepable', SuperLocusAll, TranscriptLevelNice, TranslatedNice, TranscribedNice,
