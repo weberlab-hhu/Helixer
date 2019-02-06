@@ -195,8 +195,8 @@ class StepHolder(object):
         return helpers.as_py_start(start), helpers.as_py_end(end)
 
     def any_erroneous_features(self):
-        errors = [x.value for x in type_enums.ErrorFeature]
-        return any([x.type.value in errors for x in self.features])
+        #errors = [x.value for x in type_enums.ErrorFeature]
+        return any([x.type.value == type_enums.ERROR for x in self.features])
 
 
 class TranscriptLocalReader(annotations.TranscriptInterpBase):

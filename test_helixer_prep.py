@@ -896,12 +896,11 @@ def test_transcript_interpreter():
     controller.session.commit()
     # has all standard features
     types_out = set([x.data.type.value for x in t_interp.clean_features])
-    assert types_out == {type_enums.START_CODON,
-                         type_enums.STOP_CODON,
-                         type_enums.TRANSCRIPTION_START_SITE,
-                         type_enums.TRANSCRIPTION_TERMINATION_SITE,
-                         type_enums.DONOR_SPLICE_SITE,
-                         type_enums.ACCEPTOR_SPLICE_SITE}
+    assert types_out == {type_enums.CODING,
+                         type_enums.TRANSCRIBED,
+                         type_enums.INTRON}
+    bearings_out = set([x.data.bearing.value for x in t_interp.clean_features])
+    assert bearings_out == {type_enums.START, type_enums.END}
 
     assert t_interp.clean_features[-1].data.end == 400
     assert t_interp.clean_features[0].data.start == 1
@@ -966,16 +965,20 @@ def test_transcript_get_first():
     print(i0)
     # should get in_translated_region instead of a start codon
     assert f_status_coding.data.start == 120
-    assert f_status_coding.data.type == type_enums.IN_TRANSLATED_REGION
+    assert f_status_coding.data.type == type_enums.CODING
+    assert f_status_coding.data.bearing == type_enums.OPEN_STATUS
     assert not f_status_coding.data.is_plus_strand
     # and should get accompanying in raw transcript
-    assert f_status_transcribed.data.type == type_enums.IN_RAW_TRANSCRIPT
+    assert f_status_transcribed.data.type == type_enums.TRANSCRIBED
+    assert f_status_coding.data.bearing == type_enums.OPEN_STATUS
     # region beyond exon should be marked erroneous
     assert not f_err_close.data.is_plus_strand and not f_err_open.data.is_plus_strand
     assert f_err_close.data.start == 121
     assert f_err_open.data.start == 405
-    assert f_err_open.data.type == type_enums.ERROR_OPEN
-    assert f_err_close.data.type == type_enums.ERROR_CLOSE
+    assert f_err_open.data.type == type_enums.ERROR
+    assert f_err_open.data.bearing == type_enums.START
+    assert f_err_close.data.type == type_enums.ERROR
+    assert f_err_close.data.bearing == type_enums.END
     assert status.is_coding()
     assert status.seen_start
     assert status.genic
@@ -990,29 +993,36 @@ def test_transcript_transition_from_5p_to_end():
     # hit start codon
     t_interp.interpret_transition(ivals_before=ivals_sets[0], ivals_after=ivals_sets[1], plus_strand=True)
     features = t_interp.clean_features
-    assert features[-1].data.type == type_enums.START_CODON
+    assert features[-1].data.type == type_enums.CODING
+    assert features[-1].data.bearing == type_enums.START
     assert features[-1].data.start == 11
     assert features[-1].data.end == 11
     # hit splice site
     t_interp.interpret_transition(ivals_before=ivals_sets[1], ivals_after=ivals_sets[2], plus_strand=True)
-    assert features[-1].data.type == type_enums.ACCEPTOR_SPLICE_SITE
-    assert features[-2].data.type == type_enums.DONOR_SPLICE_SITE
+    assert features[-1].data.type == type_enums.INTRON
+    assert features[-1].data.bearing == type_enums.END
+    assert features[-2].data.type == type_enums.INTRON
+    assert features[-2].data.bearing == type_enums.START
     assert features[-2].data.start == 101  # splice from
     assert features[-1].data.start == 110  # splice to
     assert t_interp.status.is_coding()
     # hit splice site
     t_interp.interpret_transition(ivals_before=ivals_sets[2], ivals_after=ivals_sets[3], plus_strand=True)
-    assert features[-1].data.type == type_enums.ACCEPTOR_SPLICE_SITE
-    assert features[-2].data.type == type_enums.DONOR_SPLICE_SITE
+    assert features[-1].data.type == type_enums.INTRON
+    assert features[-1].data.bearing == type_enums.END
+    assert features[-2].data.type == type_enums.INTRON
+    assert features[-2].data.bearing == type_enums.START
     assert features[-2].data.start == 121  # splice from
     assert features[-1].data.start == 200  # splice to
     # hit stop codon
     t_interp.interpret_transition(ivals_before=ivals_sets[3], ivals_after=ivals_sets[4], plus_strand=True)
-    assert features[-1].data.type == type_enums.STOP_CODON
+    assert features[-1].data.type == type_enums.CODING
+    assert features[-1].data.bearing == type_enums.END
     assert features[-1].data.start == 300
     # hit transcription termination site
     t_interp.interpret_last_pos(ivals_sets[4], plus_strand=True)
-    assert features[-1].data.type == type_enums.TRANSCRIPTION_TERMINATION_SITE
+    assert features[-1].data.type == type_enums.TRANSCRIBED
+    assert features[-1].data.bearing == type_enums.END
     assert features[-1].data.start == 400
 
 
@@ -1029,10 +1039,12 @@ def test_non_coding_transitions():
     assert len(ivals_sets) == 1
     t_interp.interpret_first_pos(ivals_sets[0])
     features = t_interp.clean_features
-    assert features[-1].data.type == type_enums.TRANSCRIPTION_START_SITE
+    assert features[-1].data.type == type_enums.TRANSCRIBED
+    assert features[-1].data.bearing == type_enums.START
     assert features[-1].data.start == 111
     t_interp.interpret_last_pos(ivals_sets[0], plus_strand=True)
-    assert features[-1].data.type == type_enums.TRANSCRIPTION_TERMINATION_SITE
+    assert features[-1].data.type == type_enums.TRANSCRIBED
+    assert features[-1].data.bearing == type_enums.END
     assert features[-1].data.start == 120
     assert len(features) == 2
 
@@ -1090,7 +1102,8 @@ def test_mv_features_to_prot():
     t_interp.mv_coding_features_to_proteins()
     controller.session.commit()
     assert len(protein.features) == 2  # start and stop codon
-    assert set([x.type.value for x in protein.features]) == {type_enums.START_CODON, type_enums.STOP_CODON}
+    assert set([x.type.value for x in protein.features]) == {type_enums.CODING}
+    assert set([x.bearing.value for x in protein.features]) == {type_enums.START, type_enums.END}
 
 
 def test_check_and_fix_structure():
@@ -1108,31 +1121,34 @@ def test_check_and_fix_structure():
     protein = [x for x in sl.data.translateds if x.given_id == 'y.p'][0]
     # check we get a protein with start and stop codon for the nice transcript
     assert len(protein.features) == 2  # start and stop codon
-    assert set([x.type.value for x in protein.features]) == {type_enums.START_CODON, type_enums.STOP_CODON}
+    assert set([x.type.value for x in protein.features]) == {type_enums.CODING}
+    assert set([x.bearing.value for x in protein.features]) == {type_enums.START, type_enums.END}
     # check we get a transcript with tss, 2x(dss, ass), and tts (+ start & stop codons)
     piece = transcript.handler.one_piece().data
     assert len(piece.features) == 8
-    assert set([x.type.value for x in piece.features]) == {type_enums.TRANSCRIPTION_START_SITE,
-                                                           type_enums.TRANSCRIPTION_TERMINATION_SITE,
-                                                           type_enums.ACCEPTOR_SPLICE_SITE,
-                                                           type_enums.DONOR_SPLICE_SITE,
-                                                           type_enums.START_CODON,
-                                                           type_enums.STOP_CODON
+    assert set([x.type.value for x in piece.features]) == {type_enums.TRANSCRIBED,
+                                                           type_enums.INTRON,
+                                                           type_enums.CODING,
                                                            }
+    assert set([x.bearing.value for x in piece.features]) == {type_enums.START, type_enums.END}
     # check handling of truncated transcript
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'x'][0]
     piece = transcript.handler.one_piece().data
     protein = [x for x in sl.data.translateds if x.given_id == 'x.p'][0]
     assert len(protein.features) == 1
-    assert set([x.type.value for x in protein.features]) == {type_enums.START_CODON}
+    assert set([x.type.value for x in protein.features]) == {type_enums.CODING}
+    assert set([x.bearing.value for x in protein.features]) == {type_enums.START, type_enums.CLOSE_STATUS}
 
     assert len(piece.features) == 6
-    assert set([x.type.value for x in piece.features]) == {type_enums.TRANSCRIPTION_START_SITE,
-                                                           type_enums.ACCEPTOR_SPLICE_SITE,
-                                                           type_enums.DONOR_SPLICE_SITE,
-                                                           type_enums.ERROR_OPEN,
-                                                           type_enums.ERROR_CLOSE,
-                                                           type_enums.START_CODON}
+    assert set([x.type.value for x in piece.features]) == {type_enums.TRANSCRIBED, type_enums.INTRON,
+                                                           type_enums.ERROR, type_enums.CODING}
+    coding_fs = [x for x in piece.features if x.type.value == type_enums.CODING]
+    assert len(coding_fs) == 2
+    assert set([x.bearing.value for x in coding_fs]) == {type_enums.START, type_enums.CLOSE_STATUS}
+
+    transcribed_fs = [x for x in piece.features if x.type.value == type_enums.TRANSCRIBED]
+    assert len(transcribed_fs) == 2
+    assert set([x.bearing.value for x in transcribed_fs]) == {type_enums.START, type_enums.CLOSE_STATUS}
 
 
 def test_erroneous_splice():
@@ -1156,11 +1172,14 @@ def test_erroneous_splice():
     clean_datas = [x.data for x in ti.clean_features]
     # TSS, start codon, 2x error splice, 2x error splice, 2x error no stop
     assert len(clean_datas) == 8
-    assert len([x for x in clean_datas if x.type == type_enums.ERROR_OPEN]) == 3
+    #assert len([x for x in clean_datas if x.type == type_enums.ERROR_OPEN]) == 3
+    assert len([x for x in clean_datas if x.type == type_enums.ERROR]) == 6
     # make sure splice error covers whole exon-intron-exon region
-    assert clean_datas[2].type == type_enums.ERROR_OPEN
+    assert clean_datas[2].type == type_enums.ERROR
+    assert clean_datas[2].bearing == type_enums.START
     assert clean_datas[2].start == 11
-    assert clean_datas[3].type == type_enums.ERROR_CLOSE
+    assert clean_datas[3].type == type_enums.ERROR
+    assert clean_datas[3].bearing == type_enums.END
     assert clean_datas[3].start == 120
 
 
@@ -1228,9 +1247,9 @@ def test_intervaltree():
     intervals = controller.interval_trees['1'][400:406]
     print(intervals, '...intervals')
     print([x.data.data.type.value for x in intervals])
-    errors = [x for x in intervals if x.data.data.type.value == type_enums.ERROR_CLOSE]
-    assert len(errors) == 2
-    tts = [x for x in intervals if x.data.data.type.value == type_enums.TRANSCRIPTION_TERMINATION_SITE]
+    errors = [x for x in intervals if x.data.data.type.value == type_enums.ERROR]
+    assert len(errors) == 4  # was ERROR_CLOSE and 2, jic
+    tts = [x for x in intervals if x.data.data.type.value == type_enums.TRANSCRIBED and x.data.data.bearing.value == type_enums.END]
     assert len(tts) == 0
     # check that the major filter functions work
     sls = controller.get_super_loci_frm_slice(seqid='1', start=305, end=405, is_plus_strand=True)
@@ -1239,10 +1258,10 @@ def test_intervaltree():
 
     features = controller.get_features_from_slice(seqid='1', start=1, end=1, is_plus_strand=True)
     assert len(features) == 3
-    starts = [x for x in features if x.data.type.value == type_enums.TRANSCRIPTION_START_SITE]
+    starts = [x for x in features if x.data.type.value == type_enums.TRANSCRIBED and x.data.bearing.value == type_enums.START]
     assert len(starts) == 2
-    errors = [x for x in features if x.data.type.value == type_enums.ERROR_OPEN]
-    assert len(errors) == 1
+    errors = [x for x in features if x.data.type.value == type_enums.ERROR]
+    assert len(errors) == 2  # was ERROR_OPEN and 1, jic
 
 
 def test_order_features():
@@ -1384,7 +1403,8 @@ def test_set_updown_features_downstream_border():
     # setup some paired features
     # new coords, is plus, template, status
     feature = annotations_orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, start=110,
-                                      is_plus_strand=True, super_locus=sl, type=type_enums.START_CODON)
+                                      is_plus_strand=True, super_locus=sl, type=type_enums.CODING,
+                                      bearing=type_enums.START)
 
     sess.add_all([scribed, piece0, piece1, old_coor, new_coord, sl])
     sess.commit()
@@ -1400,6 +1420,7 @@ def test_set_updown_features_downstream_border():
     sess.commit()
     assert len(piece1.features) == 3  # feature, 2x upstream
     assert len(piece0.features) == 2  # 2x downstream
+    assert False  # todo, mod below after modding slicing for type/bearing combo
     assert set([x.type.value for x in piece1.features]) == {type_enums.START_CODON, type_enums.IN_TRANSLATED_REGION,
                                                             type_enums.IN_RAW_TRANSCRIPT}
     assert set([x.type.value for x in piece0.features]) == {type_enums.IN_TRANSLATED_REGION,
@@ -1458,14 +1479,17 @@ def test_transition_with_right_new_pieces():
     pieceCD = annotations_orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
 
     fA = annotations_orm.Feature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, start=190, end=190,
-                                 is_plus_strand=True, super_locus=sl, type=type_enums.ERROR_OPEN)
+                                 is_plus_strand=True, super_locus=sl, type=type_enums.ERROR,
+                                 bearing=type_enums.START)
     fB = annotations_orm.UpstreamFeature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, start=210, end=210,
-                                         is_plus_strand=True, super_locus=sl, type=type_enums.IN_ERROR)
+                                         is_plus_strand=True, super_locus=sl, type=type_enums.ERROR,
+                                         bearing=type_enums.CLOSE_STATUS)  # todo, double check for consistency after type/bearing mod to slice...
 
     fC = annotations_orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=90, end=90,
-                                           is_plus_strand=True, super_locus=sl, type=type_enums.IN_ERROR)
-    fD = annotations_orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=110, end=110,
-                                 is_plus_strand=True, super_locus=sl, type=type_enums.ERROR_CLOSE)
+                                           is_plus_strand=True, super_locus=sl, type=type_enums.ERROR,
+                                           bearing=type_enums.OPEN_STATUS)
+    fD = annotations_orm.Feature(transcribed_pieces=[pieceCD], coordinatefs=old_coor, start=110, end=110,
+                                 is_plus_strand=True, super_locus=sl, type=type_enums.ERROR, bearing=type_enums.END)
 
     pair = annotations_orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
     sess.add_all([scribed, scribedlong, pieceAB, pieceABp, pieceCD, fA, fB, fC, fD, pair, old_coor, sl])
@@ -1501,6 +1525,7 @@ def test_modify4slice():
     assert {len(transcript.transcribed_pieces[0].features), len(transcript.transcribed_pieces[1].features)} == {8, 4}
     new_piece = [x for x in transcript.transcribed_pieces if len(x.features) == 4][0]
     ori_piece = [x for x in transcript.transcribed_pieces if len(x.features) == 8][0]
+    assert False # todo, update type/bearing
     assert set([x.type.value for x in new_piece.features]) == {type_enums.TRANSCRIPTION_START_SITE,
                                                                type_enums.START_CODON,
                                                                type_enums.IN_TRANSLATED_REGION,
@@ -1532,7 +1557,7 @@ def test_modify4slice_directions():
     pieceAB = annotations_orm.TranscribedPiece(super_locus=sl)
     pieceCD = annotations_orm.TranscribedPiece(super_locus=sl)
     scribedlong.transcribed_pieces = [pieceAB, pieceCD]
-
+    assert False  # todo update type/bearing
     fA = annotations_orm.Feature(transcribed_pieces=[pieceAB], coordinates=old_coor, start=190, end=190, given_id='A',
                                  is_plus_strand=True, super_locus=sl, type=type_enums.TRANSCRIPTION_START_SITE)
     fB = annotations_orm.UpstreamFeature(transcribed_pieces=[pieceAB], coordinates=old_coor, start=210, end=210,
@@ -1587,6 +1612,7 @@ class TransspliceDemoData(object):
         self.scribed.transcribed_pieces = [self.pieceA2D, self.pieceE2H]
         self.scribedflip.transcribed_pieces = [self.pieceA2Dp, self.pieceEp2Hp]
         # pieceA2D features
+        assert False  # todo update type/bearing
         self.fA = annotations_orm.Feature(coordinates=self.old_coor, start=10, end=10, given_id='A',
                                           is_plus_strand=True, super_locus=self.sl,
                                           type=type_enums.TRANSCRIPTION_START_SITE)
@@ -1717,6 +1743,7 @@ class SimplestDemoData(object):
         self.pieceCD = annotations_orm.TranscribedPiece(super_locus=self.sl)
         self.scribedlong.transcribed_pieces = [self.pieceAB, self.pieceCD]
 
+        assert False  # todo update type/bearing
         self.fA = annotations_orm.Feature(transcribed_pieces=[self.pieceAB], coordinates=self.old_coor, start=190,
                                           given_id='A', is_plus_strand=True, super_locus=self.sl, end=190,
                                           type=type_enums.TRANSCRIPTION_START_SITE)
@@ -1817,6 +1844,7 @@ def test_modify4slice_transsplice():
     assert d.pieceA2D not in pieces  # pieces themselves should have been replaced
     sorted_pieces = d.ti.sort_pieces()
 
+    assert False  # todo update type/bearing
     assert [len(x.features) for x in sorted_pieces] == [6, 6, 6]
     ftypes_0 = set([x.type.value for x in sorted_pieces[0].features])
     assert ftypes_0 == {type_enums.TRANSCRIPTION_START_SITE, type_enums.START_CODON, type_enums.DONOR_TRANS_SPLICE_SITE,
@@ -1874,6 +1902,8 @@ def test_modify4slice_2nd_half_first():
 
     assert [len(x.features) for x in sorted_pieces] == [6, 6, 2]
     ftypes_0 = set([x.type.value for x in sorted_pieces[0].features])
+
+    assert False  # todo update type / bearing
     assert ftypes_0 == {type_enums.TRANSCRIPTION_START_SITE, type_enums.START_CODON, type_enums.DONOR_TRANS_SPLICE_SITE,
                         type_enums.TRANSCRIPTION_TERMINATION_SITE, type_enums.IN_TRANS_INTRON,
                         type_enums.IN_TRANSLATED_REGION}
@@ -1936,6 +1966,7 @@ def test_slicing_featureless_slice_inside_locus():
     ).first()
     features40 = coordinate40.features
     print(features40)
+    assert False  # todo update type/bearing
     # x & y -> 2 translated, 2 transcribed each, z -> 2 error
     assert len([x for x in features40 if x.type.value == type_enums.IN_TRANSLATED_REGION]) == 4
     assert len(features40) == 10
@@ -2136,7 +2167,6 @@ def test_key_matching():
 def test_gff_to_seqids():
     x = helpers.get_seqids_from_gff('testdata/testerSl.gff3')
     assert x == {'NC_015438.2', 'NC_015439.2', 'NC_015440.2'}
-
 
 
 #### partitions

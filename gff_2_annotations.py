@@ -325,13 +325,13 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
         # open error
         feature_err_open = FeatureHandler()
         feature_err_open.process_gffentry(entry, super_locus=self.data, coordinates=coordinates)
-        for key, val in [('type', type_enums.ERROR_OPEN), ('start', err_start), ('end', err_start),
-                         ('transcribed_pieces', [piece])]:
+        for key, val in [('type', type_enums.ERROR), ('bearing', type_enums.START), ('start', err_start),
+                         ('end', err_start), ('transcribed_pieces', [piece])]:
             feature_err_open.set_data_attribute(key, val)
         # close error
         feature_err_close = FeatureHandler()
         feature_err_close.process_gffentry(entry, super_locus=self.data, coordinates=coordinates)
-        for key, val in [('type', type_enums.ERROR_CLOSE), ('start', err_end), ('end', err_end),
+        for key, val in [('type', type_enums.ERROR), ('bearing', type_enums.END), ('start', err_end), ('end', err_end),
                          ('transcribed_pieces', [piece])]:
             feature_err_close.set_data_attribute(key, val)
         # sf.gen_data_from_gffentry(entry, super_locus=self.data)
@@ -753,21 +753,22 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
             at = template.upstream_from_interval(after0)
             if template.data.phase == 0:  # "non-0 phase @ {} in {}".format(template.id, template.super_locus.id)
                 start = end = at
-                start_codon = self.new_feature(template=template, start=start, end=end, type=type_enums.START_CODON)
+                start_codon = self.new_feature(template=template, start=start, end=end, type=type_enums.CODING,
+                                               bearing=type_enums.START)
                 self.status.saw_start(phase=0)
                 self.clean_features.append(start_codon)
             else:
                 err_start = before0.data.upstream_from_interval(before0) - sign * error_buffer  # mask prev feat. too
                 err_end = at - 1 * sign  # 1bp upstream of erroneous "start"
 
-                feature_err_open = self.new_feature(template=template, type=type_enums.ERROR_OPEN, start=err_start,
-                                                    end=err_start, phase=None)
-                feature_err_close = self.new_feature(template=template, type=type_enums.ERROR_CLOSE, start=err_end,
-                                                     end=err_end, phase=None)
-                coding_status = self.new_feature(template=template, type=type_enums.IN_TRANSLATED_REGION, start=at,
-                                                 end=at)
-                transcribed_status = self.new_feature(template=template, type=type_enums.IN_RAW_TRANSCRIPT, start=at,
-                                                      end=at, phase=None)
+                feature_err_open = self.new_feature(template=template, type=type_enums.ERROR, start=err_start,
+                                                    end=err_start, phase=None, bearing=type_enums.START)
+                feature_err_close = self.new_feature(template=template, type=type_enums.ERROR, start=err_end,
+                                                     end=err_end, phase=None, bearing=type_enums.END)
+                coding_status = self.new_feature(template=template, type=type_enums.CODING, start=at,
+                                                 end=at, bearing=type_enums.OPEN_STATUS)
+                transcribed_status = self.new_feature(template=template, type=type_enums.TRANSCRIBED, start=at,
+                                                      end=at, phase=None, bearing=type_enums.OPEN_STATUS)
                 self.status.saw_start(template.phase)
                 self.clean_features += [feature_err_open, feature_err_close, coding_status, transcribed_status]
         else:
@@ -775,7 +776,8 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
             template = before0.data
             at = template.downstream_from_interval(before0)
             start = end = at
-            stop_codon = self.new_feature(template=template, start=start, end=end, type=type_enums.STOP_CODON)
+            stop_codon = self.new_feature(template=template, start=start, end=end, type=type_enums.CODING,
+                                          bearing=type_enums.END)
             self.status.saw_stop()
             self.clean_features.append(stop_codon)
             if is_gap:
@@ -797,12 +799,12 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
         min_intron_len = 3  # todo, maybe get something small but not entirely impossible?
         if between_splice_sites > min_intron_len - 1:  # -1 because the splice sites are _within_ the intron
             donor = self.new_feature(template=donor_tmplt, start=donor_at, end=donor_at, phase=None,
-                                     type=type_enums.DONOR_SPLICE_SITE)
+                                     type=type_enums.INTRON, bearing=type_enums.START)
             # todo, check position of DSS/ASS to be consistent with Augustus, hopefully
             acceptor = self.new_feature(template=acceptor_tmplt, start=acceptor_at, end=acceptor_at,
-                                        type=type_enums.ACCEPTOR_SPLICE_SITE)
+                                        type=type_enums.INTRON, bearing=type_enums.END)
             self.clean_features += [donor, acceptor]
-        # do nothing if there is just no gap between exons for a techinical / reporting error
+        # do nothing if there is just no gap between exons for a technical / reporting error
         elif between_splice_sites == -1:
             pass
         # everything else is invalid
@@ -810,9 +812,9 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
             err_start = before0.data.upstream()
             err_end = after0.data.downstream()
             feature_err_open = self.new_feature(template=before0.data, start=err_start, end=err_start,
-                                                type=type_enums.ERROR_OPEN)
+                                                type=type_enums.ERROR, bearing=type_enums.START)
             feature_err_close = self.new_feature(template=before0.data, start=err_end, end=err_end,
-                                                 type=type_enums.ERROR_CLOSE)
+                                                 type=type_enums.ERROR, bearing=type_enums.END)
 
             self.clean_features += [feature_err_open, feature_err_close]
 
@@ -825,15 +827,17 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
         possible_types = self.possible_types(intervals)
         if type_enums.FIVE_PRIME_UTR in possible_types:
             # this should indicate we're good to go and have a transcription start site
-            tss = self.new_feature(template=i0.data, type=type_enums.TRANSCRIPTION_START_SITE, start=at, end=at,
-                                   phase=None)
+            tss = self.new_feature(template=i0.data, type=type_enums.TRANSCRIBED, start=at, end=at,
+                                   phase=None, bearing=type_enums.START)
             self.clean_features.append(tss)
             self.status.saw_tss()
         elif cds in possible_types:
             # this could be first exon detected or start codon, ultimately, indeterminate
             cds_feature = self.pick_one_interval(intervals, target_type=cds).data
-            coding = self.new_feature(template=cds_feature, type=type_enums.IN_TRANSLATED_REGION, start=at, end=at)
-            transcribed = self.new_feature(template=cds_feature, type=type_enums.IN_RAW_TRANSCRIPT, start=at, end=at)
+            coding = self.new_feature(template=cds_feature, type=type_enums.CODING, start=at, end=at,
+                                      bearing=type_enums.OPEN_STATUS)
+            transcribed = self.new_feature(template=cds_feature, type=type_enums.TRANSCRIBED, start=at, end=at,
+                                           bearing=type_enums.OPEN_STATUS)
             self.clean_features += [coding, transcribed]
             self.status.saw_start(phase=coding.data.phase)
             self.status.saw_tss()  # coding implies the transcript
@@ -844,9 +848,11 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
                 if at != start_of_sequence:
                     err_start = max(start_of_sequence, at - error_buffer - 1)
                     err_end = at - 1
-                    feature_err_open = self.new_feature(template=cds_feature, type=type_enums.ERROR_OPEN,
+                    feature_err_open = self.new_feature(template=cds_feature, type=type_enums.ERROR,
+                                                        bearing=type_enums.START,
                                                         start=err_start, end=err_start, phase=None)
-                    feature_err_close = self.new_feature(template=cds_feature, type=type_enums.ERROR_CLOSE,
+                    feature_err_close = self.new_feature(template=cds_feature, type=type_enums.ERROR,
+                                                         bearing=type_enums.END,
                                                          start=err_end, end=err_end, phase=None)
                     self.clean_features.insert(0, feature_err_close)
                     self.clean_features.insert(0, feature_err_open)
@@ -855,9 +861,11 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
                 if at != end_of_sequence:
                     err_start = min(end_of_sequence, at + error_buffer + 1)
                     err_end = at + 1
-                    feature_err_open = self.new_feature(template=cds_feature, type=type_enums.ERROR_OPEN,
+                    feature_err_open = self.new_feature(template=cds_feature, type=type_enums.ERROR,
+                                                        bearing=type_enums.START,
                                                         start=err_start, end=err_start, phase=None)
-                    feature_err_close = self.new_feature(template=cds_feature, type=type_enums.ERROR_CLOSE,
+                    feature_err_close = self.new_feature(template=cds_feature, type=type_enums.ERROR,
+                                                         bearing=type_enums.END,
                                                          start=err_end, end=err_end, phase=None)
                     self.clean_features.insert(0, feature_err_close)
                     self.clean_features.insert(0, feature_err_open)
@@ -871,10 +879,20 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
         possible_types = self.possible_types(intervals)
         if type_enums.THREE_PRIME_UTR in possible_types:
             # this should be transcription termination site
-            tts = self.new_feature(template=i0.data, type=type_enums.TRANSCRIPTION_TERMINATION_SITE, start=at, end=at, phase=None)
+            tts = self.new_feature(template=i0.data, type=type_enums.TRANSCRIBED, bearing=type_enums.END, start=at,
+                                   end=at, phase=None)
             self.clean_features.append(tts)
             self.status.saw_tts()
         elif type_enums.CDS in possible_types:
+            # may or may not be stop codon, but will just mark as error (unless at edge of sequence)
+            cds_feature = self.pick_one_interval(intervals, target_type=type_enums.CDS).data
+            coding = self.new_feature(template=cds_feature, type=type_enums.CODING, start=at, end=at,
+                                      bearing=type_enums.CLOSE_STATUS)
+            transcribed = self.new_feature(template=cds_feature, type=type_enums.TRANSCRIBED, start=at, end=at,
+                                           bearing=type_enums.CLOSE_STATUS)
+            self.clean_features += [coding, transcribed]
+            self.status.saw_start(phase=coding.data.phase)
+            self.status.saw_tss()  # coding implies the transcript
             # may or may not be stop codon, but will just mark as error (unless at edge of sequence)
             start_of_sequence = i0.data.data.coordinates.start
             end_of_sequence = i0.data.data.coordinates.end
@@ -882,19 +900,19 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
                 if at != end_of_sequence:
                     err_start = at + 1
                     err_end = min(at + 1 + error_buffer, end_of_sequence)
-                    feature_err_open = self.new_feature(template=i0.data, type=type_enums.ERROR_OPEN, start=err_start,
-                                                        phase=None, end=err_start)
-                    feature_err_close = self.new_feature(template=i0.data, type=type_enums.ERROR_CLOSE, start=err_end,
-                                                         phase=None, end=err_end)
+                    feature_err_open = self.new_feature(template=i0.data, type=type_enums.ERROR, start=err_start,
+                                                        phase=None, end=err_start, bearing=type_enums.START)
+                    feature_err_close = self.new_feature(template=i0.data, type=type_enums.ERROR, start=err_end,
+                                                         phase=None, end=err_end, bearing=type_enums.END)
                     self.clean_features += [feature_err_open, feature_err_close]
             else:
                 if at != start_of_sequence:
                     err_start = at - 1
                     err_end = max(start_of_sequence, at - error_buffer - 1)
-                    feature_err_open = self.new_feature(template=i0.data, type=type_enums.ERROR_OPEN, end=err_start,
-                                                        phase=None, start=err_start)
-                    feature_err_close = self.new_feature(template=i0.data, type=type_enums.ERROR_CLOSE, end=err_end,
-                                                         phase=None, start=err_end)
+                    feature_err_open = self.new_feature(template=i0.data, type=type_enums.ERROR, end=err_start,
+                                                        phase=None, start=err_start, bearing=type_enums.START)
+                    feature_err_close = self.new_feature(template=i0.data, type=type_enums.ERROR, end=err_end,
+                                                         phase=None, start=err_end, bearing=type_enums.END)
                     self.clean_features += [feature_err_open, feature_err_close]
         else:
             raise ValueError("why's this gene not end with 3' utr/exon nor cds? types: {}, interpretations: {}".format(
