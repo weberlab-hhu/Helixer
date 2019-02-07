@@ -1135,11 +1135,12 @@ def test_check_and_fix_structure():
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'x'][0]
     piece = transcript.handler.one_piece().data
     protein = [x for x in sl.data.translateds if x.given_id == 'x.p'][0]
-    assert len(protein.features) == 1
+    print(protein.features)
+    assert len(protein.features) == 2
     assert set([x.type.value for x in protein.features]) == {type_enums.CODING}
     assert set([x.bearing.value for x in protein.features]) == {type_enums.START, type_enums.CLOSE_STATUS}
 
-    assert len(piece.features) == 6
+    assert len(piece.features) == 8
     assert set([x.type.value for x in piece.features]) == {type_enums.TRANSCRIBED, type_enums.INTRON,
                                                            type_enums.ERROR, type_enums.CODING}
     coding_fs = [x for x in piece.features if x.type.value == type_enums.CODING]
@@ -1171,8 +1172,8 @@ def test_erroneous_splice():
     ti.decode_raw_features()
     clean_datas = [x.data for x in ti.clean_features]
     # TSS, start codon, 2x error splice, 2x error splice, 2x error no stop
-    assert len(clean_datas) == 8
-    #assert len([x for x in clean_datas if x.type == type_enums.ERROR_OPEN]) == 3
+    assert len(clean_datas) == 10
+
     assert len([x for x in clean_datas if x.type == type_enums.ERROR]) == 6
     # make sure splice error covers whole exon-intron-exon region
     assert clean_datas[2].type == type_enums.ERROR
@@ -1228,7 +1229,8 @@ def test_copy_n_import():
         print('{}: {}'.format(transcribed.given_id, [x.type.value for x in piece.features]))
     for translated in sl.translateds:
         print('{}: {}'.format(translated.given_id, [x.type.value for x in translated.features]))
-    assert len(sl.features) == 20  # if I ever get to collapsing redundant features this will change
+
+    assert len(sl.features) == 24  # if I ever get to collapsing redundant features this will change
 
 
 def test_intervaltree():
@@ -1247,9 +1249,13 @@ def test_intervaltree():
     intervals = controller.interval_trees['1'][400:406]
     print(intervals, '...intervals')
     print([x.data.data.type.value for x in intervals])
-    errors = [x for x in intervals if x.data.data.type.value == type_enums.ERROR]
-    assert len(errors) == 4  # was ERROR_CLOSE and 2, jic
-    tts = [x for x in intervals if x.data.data.type.value == type_enums.TRANSCRIBED and x.data.data.bearing.value == type_enums.END]
+    errors = [x for x in intervals if x.data.data.type.value == type_enums.ERROR and
+              x.data.data.bearing.value == type_enums.END]
+
+    assert len(errors) == 2
+    tts = [x for x in intervals if x.data.data.type.value == type_enums.TRANSCRIBED and
+           x.data.data.bearing.value == type_enums.END]
+
     assert len(tts) == 0
     # check that the major filter functions work
     sls = controller.get_super_loci_frm_slice(seqid='1', start=305, end=405, is_plus_strand=True)
@@ -1258,10 +1264,12 @@ def test_intervaltree():
 
     features = controller.get_features_from_slice(seqid='1', start=1, end=1, is_plus_strand=True)
     assert len(features) == 3
-    starts = [x for x in features if x.data.type.value == type_enums.TRANSCRIBED and x.data.bearing.value == type_enums.START]
+    starts = [x for x in features if x.data.type.value == type_enums.TRANSCRIBED and
+              x.data.bearing.value == type_enums.START]
+    
     assert len(starts) == 2
-    errors = [x for x in features if x.data.type.value == type_enums.ERROR]
-    assert len(errors) == 2  # was ERROR_OPEN and 1, jic
+    errors = [x for x in features if x.data.type.value == type_enums.ERROR and x.data.bearing.value == type_enums.START]
+    assert len(errors) == 1
 
 
 def test_order_features():

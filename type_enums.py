@@ -107,7 +107,7 @@ INTRON = 'intron'  # defined above
 TRANS_INTRON = 'trans_intron'
 ERROR = 'error'
 
-FinalFeatures = make_enum('FinalFeatures', TRANSCRIBED, CODING, INTRON, TRANS_INTRON)
+FinalFeatures = make_enum('FinalFeatures', TRANSCRIBED, CODING, INTRON, TRANS_INTRON, ERROR)
 
 # bearings
 START = 'start'

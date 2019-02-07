@@ -129,18 +129,15 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
 
 
 class TransitionAnnotationNumerifier(AnnotationNumerifier):
-    types = {type_enums.TRANSCRIPTION_START_SITE: 0,
-             type_enums.TRANSCRIPTION_TERMINATION_SITE: 1,
-             type_enums.IN_RAW_TRANSCRIPT: 2,
-             type_enums.START_CODON: 3,
-             type_enums.STOP_CODON: 4,
-             type_enums.IN_TRANSLATED_REGION: 5,
-             type_enums.DONOR_SPLICE_SITE: 6,
-             type_enums.DONOR_TRANS_SPLICE_SITE: 6,
-             type_enums.ACCEPTOR_SPLICE_SITE: 7,
-             type_enums.ACCEPTOR_TRANS_SPLICE_SITE: 7,
-             type_enums.IN_INTRON: 8,
-             type_enums.IN_TRANS_INTRON: 8}
+    types = {type_enums.TRANSCRIBED: 0,
+             type_enums.CODING: 4,
+             type_enums.INTRON: 8,
+             type_enums.TRANS_INTRON: 8}
+
+    bearings = {type_enums.START: 0,
+                type_enums.END: 1,
+                type_enums.OPEN_STATUS: 2,
+                type_enums.CLOSE_STATUS: 3}
 
     @staticmethod
     def class_labels(aligned_features):
@@ -148,6 +145,7 @@ class TransitionAnnotationNumerifier(AnnotationNumerifier):
         labs = [False] * 9
         for feature in aligned_features:
             i = TransitionAnnotationNumerifier.types[feature.type.value]
+            i += TransitionAnnotationNumerifier.types[feature.bearing.value]
             labs[i] = True
         return labs
 
