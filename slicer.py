@@ -488,7 +488,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                                  "Current feature: '{}'".format(
                                                      current_step.replacement_piece, previous_step.example_feature, f0,
                                                  ))
-
+                print(new_coords, previous_step.status)
                 self.set_status_downstream_border(new_coords=new_coords, old_coords=f0.coordinates,
                                                   is_plus_strand=is_plus_strand,
                                                   template_feature=previous_step.example_feature,
@@ -542,24 +542,24 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
         at_least_one_link = False
         if status.genic:
-            self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_RAW_TRANSCRIPT, up_at, down_at,
+            self._set_one_status_at_border(old_coords, template_feature, type_enums.TRANSCRIBED, up_at, down_at,
                                            new_piece, old_piece, trees)
             at_least_one_link = True
         if status.in_intron:
-            self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_INTRON, up_at, down_at,
+            self._set_one_status_at_border(old_coords, template_feature, type_enums.INTRON, up_at, down_at,
                                            new_piece, old_piece, trees)
             at_least_one_link = True
-        if status.seen_start and not status.seen_stop:
-            self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_TRANSLATED_REGION, up_at,
+        if status.in_translated_region:
+            self._set_one_status_at_border(old_coords, template_feature, type_enums.CODING, up_at,
                                            down_at, new_piece, old_piece, trees)
             at_least_one_link = True
         if status.in_trans_intron:
-            self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_TRANS_INTRON, up_at, down_at,
+            self._set_one_status_at_border(old_coords, template_feature, type_enums.TRANS_INTRON, up_at, down_at,
                                            new_piece, old_piece, trees)
             at_least_one_link = True
 
         if status.erroneous:
-            self._set_one_status_at_border(old_coords, template_feature, type_enums.IN_ERROR, up_at, down_at, new_piece,
+            self._set_one_status_at_border(old_coords, template_feature, type_enums.ERROR, up_at, down_at, new_piece,
                                            old_piece, trees)
             at_least_one_link = True
         if not at_least_one_link:
@@ -569,10 +569,11 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                   old_piece, trees):
         assert new_piece in template_feature.transcribed_pieces
         upstream = self.new_handled_data(template_feature, annotations_orm.UpstreamFeature, start=up_at, end=up_at,
-                                         given_id=None, type=status_type)
+                                         given_id=None, type=status_type, bearing=type_enums.CLOSE_STATUS)
         upstream.load_to_intervaltree(trees)
         downstream = self.new_handled_data(template_feature, annotations_orm.DownstreamFeature, start=down_at,
-                                           end=down_at, given_id=None, type=status_type, coordinates=old_coords)
+                                           end=down_at, given_id=None, type=status_type, coordinates=old_coords,
+                                           bearing=type_enums.OPEN_STATUS)
         downstream.load_to_intervaltree(trees)
         # swap piece back to previous, as downstream is outside of new_coordinates (slice), and will be ran through
         # modify4new_slice once more and get it's final coordinates/piece then

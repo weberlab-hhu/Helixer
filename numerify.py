@@ -142,10 +142,10 @@ class TransitionAnnotationNumerifier(AnnotationNumerifier):
     @staticmethod
     def class_labels(aligned_features):
         # ordered [start, end, status for types in transcribed, translated, any_intron]
-        labs = [False] * 9
+        labs = [False] * 12
         for feature in aligned_features:
             i = TransitionAnnotationNumerifier.types[feature.type.value]
-            i += TransitionAnnotationNumerifier.types[feature.bearing.value]
+            i += TransitionAnnotationNumerifier.bearings[feature.bearing.value]
             labs[i] = True
         return labs
 

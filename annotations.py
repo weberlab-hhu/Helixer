@@ -671,17 +671,39 @@ class TranscriptStatus(object):
             self.genic, self.in_intron, self.in_translated_region, self.in_trans_intron, self.phase
         )
 
+    @property
+    def _decoder(self):
+        # todo, parallelize status until this isn't necessary
+        return {
+            type_enums.TRANSCRIBED: ('genic', self.saw_tss, self.saw_tts),
+            type_enums.CODING: ('in_translated_region', self.saw_start, self.exit_coding),
+            type_enums.INTRON: ('in_intron', self.splice_open, self.splice_close),
+            type_enums.TRANS_INTRON: ('in_trans_intron', self.trans_splice_open, self.trans_splice_close),
+            type_enums.ERROR: ('erroneous', self.error_open, self.error_close)
+        }
+
+    def update_for_feature(self, feature, **kwargs):
+        attr, fn_open, fn_close = self._decoder[feature.type.value]
+        if feature.bearing.value in [type_enums.START, type_enums.OPEN_STATUS]:
+            fn_open(**kwargs)
+        elif feature.bearing.value in [type_enums.END, type_enums.CLOSE_STATUS]:
+            fn_close(**kwargs)
+        else:
+            raise ValueError('unhandled bearing {}'.format(feature.bearing))
+
     def saw_tss(self):
         self.genic = True
 
     def saw_start(self, phase):
-        #self.genic = True  # TODO, disentangle this from at least status markers, better all coding & call saw_tss
-        self.seen_start = True
+        self.seen_start = True  # todo, disentangle from annotations core -> Euk specific/parser only
         self.in_translated_region = True
         self.phase = phase
 
+    def exit_coding(self):
+        self.in_translated_region = False
+
     def saw_stop(self):
-        self.seen_stop = True
+        self.seen_stop = True  # todo, disentangle
         self.in_translated_region = False
         self.phase = None
 
@@ -875,42 +897,17 @@ class TranscriptInterpBase(object):
     def update_status(status, aligned_features):
         for feature in aligned_features:
             ftype = feature.type.value
+            fbearing = feature.bearing.value
             # standard features
-            if ftype == type_enums.TRANSCRIPTION_START_SITE:
-                status.saw_tss()
-            elif ftype == type_enums.START_CODON:
-                status.saw_start(phase=0)
-            elif ftype == type_enums.STOP_CODON:
-                status.saw_stop()
-            elif ftype == type_enums.TRANSCRIPTION_TERMINATION_SITE:
-                status.saw_tts()
-            elif ftype == type_enums.DONOR_SPLICE_SITE:
-                status.splice_open()
-            elif ftype == type_enums.ACCEPTOR_SPLICE_SITE:
-                status.splice_close()
-            elif ftype == type_enums.DONOR_TRANS_SPLICE_SITE:
-                status.trans_splice_open()
-            elif ftype == type_enums.ACCEPTOR_TRANS_SPLICE_SITE:
-                status.trans_splice_close()
-            # status features
-            elif ftype == type_enums.IN_RAW_TRANSCRIPT:
-                status.saw_tss()
-            elif ftype == type_enums.IN_TRANSLATED_REGION:
-                status.saw_start(phase=feature.phase)
-            elif ftype == type_enums.IN_INTRON:
-                status.splice_open()
-            elif ftype == type_enums.IN_TRANS_INTRON:
-                status.trans_splice_open()
-            # error (and error status)
-            elif ftype == type_enums.ERROR_OPEN:
-                status.error_open()
-            elif ftype == type_enums.ERROR_CLOSE:
-                status.error_close()
-            elif ftype == type_enums.IN_ERROR:
-                status.error_open()
+            if ftype == type_enums.CODING and fbearing == type_enums.START:
+                status.update_for_feature(feature, phase=0)
+            elif ftype == type_enums.CODING and fbearing == type_enums.OPEN_STATUS:
+                status.update_for_feature(feature, phase=feature.phase)
+            elif ftype == type_enums.CODING and fbearing == type_enums.END:
+                status.update_for_feature(feature)
+                status.saw_stop()  # todo, disentangle / to-parser not general section
             else:
-                raise ValueError('no implementation for updating status with feature of type {}\n full info{}'.format(
-                    ftype, feature))
+                status.update_for_feature(feature)
 
     @staticmethod
     def stack_matches(features):

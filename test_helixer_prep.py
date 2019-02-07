@@ -1266,7 +1266,7 @@ def test_intervaltree():
     assert len(features) == 3
     starts = [x for x in features if x.data.type.value == type_enums.TRANSCRIBED and
               x.data.bearing.value == type_enums.START]
-    
+
     assert len(starts) == 2
     errors = [x for x in features if x.data.type.value == type_enums.ERROR and x.data.bearing.value == type_enums.START]
     assert len(errors) == 1
@@ -1393,6 +1393,7 @@ def test_slicer_transition():
     expected_intronic = [False, False, True, False, True, False, False, False]
     assert [x.in_intron for x in statusses] == expected_intronic
     expected_genic = [True] * 7 + [False]
+    print('statuses', [x.genic for x in statusses])
     assert [x.genic for x in statusses] == expected_genic
     expected_seen_startstop = [(False, False)] + [(True, False)] * 5 + [(True, True)] * 2
     assert [(x.seen_start, x.seen_stop) for x in statusses] == expected_seen_startstop
@@ -1428,14 +1429,17 @@ def test_set_updown_features_downstream_border():
     sess.commit()
     assert len(piece1.features) == 3  # feature, 2x upstream
     assert len(piece0.features) == 2  # 2x downstream
-    assert False  # todo, mod below after modding slicing for type/bearing combo
-    assert set([x.type.value for x in piece1.features]) == {type_enums.START_CODON, type_enums.IN_TRANSLATED_REGION,
-                                                            type_enums.IN_RAW_TRANSCRIPT}
-    assert set([x.type.value for x in piece0.features]) == {type_enums.IN_TRANSLATED_REGION,
-                                                            type_enums.IN_RAW_TRANSCRIPT}
 
-    translated_up_status = [x for x in piece1.features if x.type.value == type_enums.IN_TRANSLATED_REGION][0]
-    translated_down_status = [x for x in piece0.features if x.type.value == type_enums.IN_TRANSLATED_REGION][0]
+    assert set([x.type.value for x in piece1.features]) == {type_enums.CODING, type_enums.TRANSCRIBED}
+    assert set([x.bearing.value for x in piece1.features]) == {type_enums.START, type_enums.CLOSE_STATUS}
+
+    assert set([x.type.value for x in piece0.features]) == {type_enums.CODING, type_enums.TRANSCRIBED}
+    assert set([x.bearing.value for x in piece0.features]) == {type_enums.OPEN_STATUS}
+
+    translated_up_status = [x for x in piece1.features if x.type.value == type_enums.CODING and
+                            x.bearing.value == type_enums.CLOSE_STATUS][0]
+
+    translated_down_status = [x for x in piece0.features if x.type.value == type_enums.TRANSCRIBED][0]
     assert translated_up_status.start == 200
     assert translated_down_status.start == 201
     # cleanup to try similar again
@@ -1447,7 +1451,8 @@ def test_set_updown_features_downstream_border():
 
     # and now try backwards pass
     feature = annotations_orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, start=110,
-                                      is_plus_strand=False, super_locus=sl, type=type_enums.START_CODON)
+                                      is_plus_strand=False, super_locus=sl, type=type_enums.CODING,
+                                      bearing=type_enums.START)
     sess.add(feature)
     sess.commit()
     slh.make_all_handlers()
@@ -1457,13 +1462,17 @@ def test_set_updown_features_downstream_border():
 
     assert len(piece1.features) == 3  # feature, 2x upstream
     assert len(piece0.features) == 2  # 2x downstream
-    assert set([x.type.value for x in piece1.features]) == {type_enums.START_CODON, type_enums.IN_TRANSLATED_REGION,
-                                                            type_enums.IN_RAW_TRANSCRIPT}
-    assert set([x.type.value for x in piece0.features]) == {type_enums.IN_TRANSLATED_REGION,
-                                                            type_enums.IN_RAW_TRANSCRIPT}
+    assert set([x.type.value for x in piece1.features]) == {type_enums.CODING, type_enums.TRANSCRIBED}
+    assert set([x.bearing.value for x in piece1.features]) == {type_enums.START, type_enums.CLOSE_STATUS}
 
-    translated_up_status = [x for x in piece1.features if x.type.value == type_enums.IN_TRANSLATED_REGION][0]
-    translated_down_status = [x for x in piece0.features if x.type.value == type_enums.IN_TRANSLATED_REGION][0]
+    assert set([x.type.value for x in piece0.features]) == {type_enums.CODING, type_enums.TRANSCRIBED}
+    assert set([x.bearing.value for x in piece0.features]) == {type_enums.OPEN_STATUS}
+
+    translated_up_status = [x for x in piece1.features if x.type.value == type_enums.CODING and
+                            x.bearing.value == type_enums.CLOSE_STATUS][0]
+
+    translated_down_status = [x for x in piece0.features if x.type.value == type_enums.TRANSCRIBED][0]
+
     assert translated_up_status.start == 100
     assert translated_down_status.start == 99
 
@@ -1496,7 +1505,7 @@ def test_transition_with_right_new_pieces():
     fC = annotations_orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=90, end=90,
                                            is_plus_strand=True, super_locus=sl, type=type_enums.ERROR,
                                            bearing=type_enums.OPEN_STATUS)
-    fD = annotations_orm.Feature(transcribed_pieces=[pieceCD], coordinatefs=old_coor, start=110, end=110,
+    fD = annotations_orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=110, end=110,
                                  is_plus_strand=True, super_locus=sl, type=type_enums.ERROR, bearing=type_enums.END)
 
     pair = annotations_orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
@@ -1533,22 +1542,23 @@ def test_modify4slice():
     assert {len(transcript.transcribed_pieces[0].features), len(transcript.transcribed_pieces[1].features)} == {8, 4}
     new_piece = [x for x in transcript.transcribed_pieces if len(x.features) == 4][0]
     ori_piece = [x for x in transcript.transcribed_pieces if len(x.features) == 8][0]
-    assert False # todo, update type/bearing
-    assert set([x.type.value for x in new_piece.features]) == {type_enums.TRANSCRIPTION_START_SITE,
-                                                               type_enums.START_CODON,
-                                                               type_enums.IN_TRANSLATED_REGION,
-                                                               type_enums.IN_RAW_TRANSCRIPT}
+
+    assert set([x.type.value for x in new_piece.features]) == {type_enums.TRANSCRIBED,
+                                                               type_enums.CODING}
+
+    assert set([x.bearing.value for x in new_piece.features]) == {type_enums.START, type_enums.CLOSE_STATUS}
+
     print('starting second modify...')
     ti.modify4new_slice(new_coords=newer_coords, is_plus_strand=True)
     for piece in transcript.transcribed_pieces:
         print(piece)
         for f in piece.features:
-            print('::::', f)
+            print('::::', (f.type.value, f.bearing.value, f.start))
     assert sorted([len(x.features) for x in transcript.transcribed_pieces]) == [4, 4, 8]  # todo, why does this occasionally fail??
-    assert set([x.type.value for x in ori_piece.features]) == {type_enums.IN_RAW_TRANSCRIPT,
-                                                               type_enums.IN_TRANSLATED_REGION,
-                                                               type_enums.STOP_CODON,
-                                                               type_enums.TRANSCRIPTION_TERMINATION_SITE}
+    assert set([x.type.value for x in ori_piece.features]) == {type_enums.TRANSCRIBED,
+                                                               type_enums.CODING}
+    assert set([x.bearing.value for x in ori_piece.features]) == {type_enums.END,
+                                                                  type_enums.OPEN_STATUS}
 
 
 def test_modify4slice_directions():
@@ -1565,16 +1575,20 @@ def test_modify4slice_directions():
     pieceAB = annotations_orm.TranscribedPiece(super_locus=sl)
     pieceCD = annotations_orm.TranscribedPiece(super_locus=sl)
     scribedlong.transcribed_pieces = [pieceAB, pieceCD]
-    assert False  # todo update type/bearing
+
     fA = annotations_orm.Feature(transcribed_pieces=[pieceAB], coordinates=old_coor, start=190, end=190, given_id='A',
-                                 is_plus_strand=True, super_locus=sl, type=type_enums.TRANSCRIPTION_START_SITE)
+                                 is_plus_strand=True, super_locus=sl, type=type_enums.TRANSCRIBED,
+                                 bearing=type_enums.START)
     fB = annotations_orm.UpstreamFeature(transcribed_pieces=[pieceAB], coordinates=old_coor, start=210, end=210,
-                                         is_plus_strand=True, super_locus=sl, type=type_enums.IN_RAW_TRANSCRIPT, given_id='B')
+                                         is_plus_strand=True, super_locus=sl, type=type_enums.TRANSCRIBED,
+                                         bearing=type_enums.CLOSE_STATUS, given_id='B')
 
     fC = annotations_orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=110, end=110,
-                                           is_plus_strand=False, super_locus=sl, type=type_enums.IN_RAW_TRANSCRIPT, given_id='C')
+                                           is_plus_strand=False, super_locus=sl, type=type_enums.TRANSCRIBED,
+                                           bearing=type_enums.OPEN_STATUS, given_id='C')
     fD = annotations_orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=90, end=90,
-                                 is_plus_strand=False, super_locus=sl, type=type_enums.TRANSCRIPTION_TERMINATION_SITE, given_id='D')
+                                 is_plus_strand=False, super_locus=sl, type=type_enums.TRANSCRIBED,
+                                 bearing=type_enums.END, given_id='D')
 
     pair = annotations_orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
 
@@ -1620,61 +1634,64 @@ class TransspliceDemoData(object):
         self.scribed.transcribed_pieces = [self.pieceA2D, self.pieceE2H]
         self.scribedflip.transcribed_pieces = [self.pieceA2Dp, self.pieceEp2Hp]
         # pieceA2D features
-        assert False  # todo update type/bearing
+
         self.fA = annotations_orm.Feature(coordinates=self.old_coor, start=10, end=10, given_id='A',
                                           is_plus_strand=True, super_locus=self.sl,
-                                          type=type_enums.TRANSCRIPTION_START_SITE)
+                                          type=type_enums.TRANSCRIBED, bearing=type_enums.START)
         self.fB = annotations_orm.Feature(coordinates=self.old_coor, start=20, end=20, given_id='B',
-                                          is_plus_strand=True, super_locus=self.sl, type=type_enums.START_CODON)
+                                          is_plus_strand=True, super_locus=self.sl, type=type_enums.CODING,
+                                          bearing=type_enums.START)
 
         self.fC = annotations_orm.Feature(coordinates=self.old_coor, start=30, end=30, given_id='C',
                                           is_plus_strand=True, super_locus=self.sl,
-                                          type=type_enums.DONOR_TRANS_SPLICE_SITE)
+                                          type=type_enums.TRANS_INTRON, bearing=type_enums.START)
         self.fD = annotations_orm.Feature(coordinates=self.old_coor, start=40, end=40, given_id='D',
                                           is_plus_strand=True, super_locus=self.sl,
-                                          type=type_enums.TRANSCRIPTION_TERMINATION_SITE)
+                                          type=type_enums.TRANSCRIBED, bearing=type_enums.END)
         self.fADs0 = annotations_orm.UpstreamFeature(coordinates=self.old_coor, start=40, end=40, given_id='ADs0',
                                                      is_plus_strand=True, super_locus=self.sl,
-                                                     type=type_enums.IN_TRANS_INTRON)
+                                                     type=type_enums.TRANS_INTRON, bearing=type_enums.CLOSE_STATUS)
         self.fADs1 = annotations_orm.UpstreamFeature(coordinates=self.old_coor, start=40, end=40, given_id='ADs1',
                                                      is_plus_strand=True, super_locus=self.sl,
-                                                     type=type_enums.IN_TRANSLATED_REGION)
+                                                     type=type_enums.CODING, bearing=type_enums.CLOSE_STATUS)
         # pieceE2H features
         self.fEHs0 = annotations_orm.DownstreamFeature(coordinates=self.old_coor, start=910, end=910, given_id='EHs0',
                                                        is_plus_strand=True, super_locus=self.sl,
-                                                       type=type_enums.IN_TRANS_INTRON)
+                                                       type=type_enums.TRANS_INTRON, bearing=type_enums.OPEN_STATUS)
         self.fEHs1 = annotations_orm.DownstreamFeature(coordinates=self.old_coor, start=910, end=910, given_id='EHs1',
                                                        is_plus_strand=True, super_locus=self.sl,
-                                                       type=type_enums.IN_TRANSLATED_REGION)
+                                                       type=type_enums.CODING, bearing=type_enums.OPEN_STATUS)
         self.fE = annotations_orm.Feature(coordinates=self.old_coor, start=910, end=910, given_id='E',
                                           is_plus_strand=True, super_locus=self.sl,
-                                          type=type_enums.TRANSCRIPTION_START_SITE)
+                                          type=type_enums.TRANSCRIBED, bearing=type_enums.START)
         self.fF = annotations_orm.Feature(coordinates=self.old_coor, start=920, end=920, given_id='F',
                                           super_locus=self.sl, is_plus_strand=True,
-                                          type=type_enums.ACCEPTOR_TRANS_SPLICE_SITE)
+                                          type=type_enums.TRANS_INTRON, bearing=type_enums.END)
         self.fG = annotations_orm.Feature(coordinates=self.old_coor, start=930, end=930, given_id='G',
-                                          is_plus_strand=True, super_locus=self.sl, type=type_enums.STOP_CODON)
+                                          is_plus_strand=True, super_locus=self.sl, type=type_enums.CODING,
+                                          bearing=type_enums.END)
         self.fH = annotations_orm.Feature(coordinates=self.old_coor, start=940, end=940, given_id='H',
                                           is_plus_strand=True, super_locus=self.sl,
-                                          type=type_enums.TRANSCRIPTION_TERMINATION_SITE)
+                                          type=type_enums.TRANSCRIBED, bearing=type_enums.END)
         # pieceEp2Hp features
         self.fEHps0 = annotations_orm.DownstreamFeature(coordinates=self.old_coor, start=940, end=940, given_id='EHsp0',
                                                         is_plus_strand=False, super_locus=self.sl,
-                                                        type=type_enums.IN_TRANS_INTRON)
+                                                        type=type_enums.TRANS_INTRON, bearing=type_enums.OPEN_STATUS)
         self.fEHps1 = annotations_orm.DownstreamFeature(coordinates=self.old_coor, start=940, end=940, given_id='EHsp1',
                                                         is_plus_strand=False, super_locus=self.sl,
-                                                        type=type_enums.IN_TRANSLATED_REGION)
+                                                        type=type_enums.CODING, bearing=type_enums.OPEN_STATUS)
         self.fEp = annotations_orm.Feature(coordinates=self.old_coor, start=940, end=940, given_id='Ep',
                                            is_plus_strand=False, super_locus=self.sl,
-                                           type=type_enums.TRANSCRIPTION_START_SITE)
+                                           type=type_enums.TRANSCRIBED, bearing=type_enums.START)
         self.fFp = annotations_orm.Feature(coordinates=self.old_coor, start=930, end=930, given_id='Fp',
-                                           super_locus=self.sl,
-                                           is_plus_strand=False, type=type_enums.ACCEPTOR_TRANS_SPLICE_SITE)
+                                           super_locus=self.sl, bearing=type_enums.END,
+                                           is_plus_strand=False, type=type_enums.TRANS_INTRON)
         self.fGp = annotations_orm.Feature(coordinates=self.old_coor, start=920, end=920, given_id='Gp',
-                                           is_plus_strand=False, super_locus=self.sl, type=type_enums.STOP_CODON)
+                                           is_plus_strand=False, super_locus=self.sl, type=type_enums.CODING,
+                                           bearing=type_enums.END)
         self.fHp = annotations_orm.Feature(coordinates=self.old_coor, start=910, end=910, given_id='Hp',
                                            is_plus_strand=False, super_locus=self.sl,
-                                           type=type_enums.TRANSCRIPTION_TERMINATION_SITE)
+                                           type=type_enums.TRANSCRIBED, bearing=type_enums.END)
 
         self.pieceA2D.features = [self.fA, self.fB, self.fC, self.fD, self.fADs0, self.fADs1]
         self.pieceA2Dp.features = [self.fA, self.fB, self.fC, self.fD, self.fADs0, self.fADs1]
@@ -1704,15 +1721,15 @@ def test_transition_transsplice():
                                                    {d.fE, d.fEHs0, d.fEHs1}, {d.fF}, {d.fG}, {d.fH}]
     print([x[1].genic for x in ti_transitions])
     assert [x[1].genic for x in ti_transitions] == list([True] * 3 + [False]) * 2
-    assert [x[1].in_translated_region for x in ti_transitions] == [False] + [True] * 5 + [False] * 2
-    assert [x[1].in_trans_intron for x in ti_transitions] == [False] * 2 + [True] * 3 + [False] * 3
+    assert [x[1].in_translated_region for x in ti_transitions] == [bool(x) for x in [0, 1, 1, 0, 1, 1, 0, 0]]
+    assert [x[1].in_trans_intron for x in ti_transitions] == [bool(x) for x in [0, 0, 1, 0, 1, 0, 0, 0]]
     # forward, then backward pass, same sequence, two pieces
     ti_transitions = list(d.tiflip.transition_5p_to_3p())
     assert [set(x[0]) for x in ti_transitions] == [{d.fA}, {d.fB}, {d.fC}, {d.fD, d.fADs0, d.fADs1},
                                                    {d.fEp, d.fEHps0, d.fEHps1}, {d.fFp}, {d.fGp}, {d.fHp}]
     assert [x[1].genic for x in ti_transitions] == list([True] * 3 + [False]) * 2
-    assert [x[1].in_translated_region for x in ti_transitions] == [False] + [True] * 5 + [False] * 2
-    assert [x[1].in_trans_intron for x in ti_transitions] == [False] * 2 + [True] * 3 + [False] * 3
+    assert [x[1].in_translated_region for x in ti_transitions] == [bool(x) for x in [0, 1, 1, 0, 1, 1, 0, 0]]
+    assert [x[1].in_trans_intron for x in ti_transitions] == [bool(x) for x in [0, 0, 1, 0, 1, 0, 0, 0]]
 
 
 def test_piece_swap_handling_during_multipiece_one_coordinate_transition():
@@ -1751,20 +1768,21 @@ class SimplestDemoData(object):
         self.pieceCD = annotations_orm.TranscribedPiece(super_locus=self.sl)
         self.scribedlong.transcribed_pieces = [self.pieceAB, self.pieceCD]
 
-        assert False  # todo update type/bearing
         self.fA = annotations_orm.Feature(transcribed_pieces=[self.pieceAB], coordinates=self.old_coor, start=190,
                                           given_id='A', is_plus_strand=True, super_locus=self.sl, end=190,
-                                          type=type_enums.TRANSCRIPTION_START_SITE)
+                                          type=type_enums.TRANSCRIBED, bearing=type_enums.START)
         self.fB = annotations_orm.UpstreamFeature(transcribed_pieces=[self.pieceAB], coordinates=self.old_coor,
                                                   end=210, is_plus_strand=True, super_locus=self.sl, start=210,
-                                                  type=type_enums.IN_RAW_TRANSCRIPT, given_id='B')
+                                                  type=type_enums.TRANSCRIBED, bearing=type_enums.CLOSE_STATUS,
+                                                  given_id='B')
 
         self.fC = annotations_orm.DownstreamFeature(transcribed_pieces=[self.pieceCD], coordinates=self.old_coor,
                                                     end=110, is_plus_strand=False, super_locus=self.sl, start=110,
-                                                    type=type_enums.IN_RAW_TRANSCRIPT, given_id='C')
+                                                    type=type_enums.TRANSCRIBED, bearing=type_enums.OPEN_STATUS,
+                                                    given_id='C')
         self.fD = annotations_orm.Feature(transcribed_pieces=[self.pieceCD], coordinates=self.old_coor, start=90,
                                           is_plus_strand=False, super_locus=self.sl, end=90,
-                                          type=type_enums.TRANSCRIPTION_TERMINATION_SITE, given_id='D')
+                                          type=type_enums.TRANSCRIBED, bearing=type_enums.END, given_id='D')
 
         self.pair = annotations_orm.UpDownPair(upstream=self.fB, downstream=self.fC, transcribed=self.scribedlong)
 
@@ -1852,16 +1870,22 @@ def test_modify4slice_transsplice():
     assert d.pieceA2D not in pieces  # pieces themselves should have been replaced
     sorted_pieces = d.ti.sort_pieces()
 
-    assert False  # todo update type/bearing
     assert [len(x.features) for x in sorted_pieces] == [6, 6, 6]
-    ftypes_0 = set([x.type.value for x in sorted_pieces[0].features])
-    assert ftypes_0 == {type_enums.TRANSCRIPTION_START_SITE, type_enums.START_CODON, type_enums.DONOR_TRANS_SPLICE_SITE,
-                        type_enums.TRANSCRIPTION_TERMINATION_SITE, type_enums.IN_TRANS_INTRON,
-                        type_enums.IN_TRANSLATED_REGION}
-    ftypes_2 = set([x.type.value for x in sorted_pieces[2].features])
-    assert ftypes_2 == {type_enums.IN_TRANSLATED_REGION, type_enums.IN_RAW_TRANSCRIPT, type_enums.IN_TRANS_INTRON,
-                        type_enums.ACCEPTOR_TRANS_SPLICE_SITE, type_enums.STOP_CODON,
-                        type_enums.TRANSCRIPTION_TERMINATION_SITE}
+    ftypes_0 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[0].features])
+    assert ftypes_0 == {(type_enums.TRANSCRIBED, type_enums.START),
+                        (type_enums.CODING, type_enums.START),
+                        (type_enums.TRANS_INTRON, type_enums.START),
+                        (type_enums.TRANSCRIBED, type_enums.END),
+                        (type_enums.CODING, type_enums.CLOSE_STATUS),
+                        (type_enums.TRANS_INTRON, type_enums.CLOSE_STATUS)}
+
+    ftypes_2 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[2].features])
+    assert ftypes_2 == {(type_enums.CODING, type_enums.OPEN_STATUS),
+                        (type_enums.TRANSCRIBED, type_enums.OPEN_STATUS),
+                        (type_enums.TRANS_INTRON, type_enums.OPEN_STATUS),
+                        (type_enums.CODING, type_enums.END),
+                        (type_enums.TRANSCRIBED, type_enums.END),
+                        (type_enums.TRANS_INTRON, type_enums.END)}
     # and now where second original piece is flipped and slice is thus between STOP and TTS
     print('moving on to flipped...')
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
@@ -1878,12 +1902,16 @@ def test_modify4slice_transsplice():
     sorted_pieces = d.tiflip.sort_pieces()
 
     assert [len(x.features) for x in sorted_pieces] == [6, 6, 2]
-    ftypes_0 = set([x.type.value for x in sorted_pieces[0].features])
-    assert ftypes_0 == {type_enums.TRANSCRIPTION_START_SITE, type_enums.START_CODON, type_enums.DONOR_TRANS_SPLICE_SITE,
-                        type_enums.TRANSCRIPTION_TERMINATION_SITE, type_enums.IN_TRANS_INTRON,
-                        type_enums.IN_TRANSLATED_REGION}
-    ftypes_2 = set([x.type.value for x in sorted_pieces[2].features])
-    assert ftypes_2 == {type_enums.IN_RAW_TRANSCRIPT, type_enums.TRANSCRIPTION_TERMINATION_SITE}
+    ftypes_0 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[0].features])
+    assert ftypes_0 == {(type_enums.TRANSCRIBED, type_enums.START),
+                        (type_enums.CODING, type_enums.START),
+                        (type_enums.TRANS_INTRON, type_enums.START),
+                        (type_enums.TRANSCRIBED, type_enums.END),
+                        (type_enums.TRANS_INTRON, type_enums.CLOSE_STATUS),
+                        (type_enums.CODING, type_enums.CLOSE_STATUS)}
+    ftypes_2 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[2].features])
+    assert ftypes_2 == {(type_enums.TRANSCRIBED, type_enums.OPEN_STATUS),
+                        (type_enums.TRANSCRIBED, type_enums.END)}
     for piece in sorted_pieces:
         for f in piece.features:
             assert f.coordinates in {new_coords_1, new_coords_0}
@@ -1909,14 +1937,17 @@ def test_modify4slice_2nd_half_first():
     sorted_pieces = d.tiflip.sort_pieces()
 
     assert [len(x.features) for x in sorted_pieces] == [6, 6, 2]
-    ftypes_0 = set([x.type.value for x in sorted_pieces[0].features])
+    ftypes_0 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[0].features])
+    assert ftypes_0 == {(type_enums.TRANSCRIBED, type_enums.START),
+                        (type_enums.CODING, type_enums.START),
+                        (type_enums.TRANS_INTRON, type_enums.START),
+                        (type_enums.TRANSCRIBED, type_enums.END),
+                        (type_enums.TRANS_INTRON, type_enums.CLOSE_STATUS),
+                        (type_enums.CODING, type_enums.CLOSE_STATUS)}
+    ftypes_2 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[2].features])
+    assert ftypes_2 == {(type_enums.TRANSCRIBED, type_enums.OPEN_STATUS),
+                        (type_enums.TRANSCRIBED, type_enums.END)}
 
-    assert False  # todo update type / bearing
-    assert ftypes_0 == {type_enums.TRANSCRIPTION_START_SITE, type_enums.START_CODON, type_enums.DONOR_TRANS_SPLICE_SITE,
-                        type_enums.TRANSCRIPTION_TERMINATION_SITE, type_enums.IN_TRANS_INTRON,
-                        type_enums.IN_TRANSLATED_REGION}
-    ftypes_2 = set([x.type.value for x in sorted_pieces[2].features])
-    assert ftypes_2 == {type_enums.IN_RAW_TRANSCRIPT, type_enums.TRANSCRIPTION_TERMINATION_SITE}
     for piece in sorted_pieces:
         for f in piece.features:
             assert f.coordinates in {new_coords_1, new_coords_0}
@@ -2080,7 +2111,7 @@ def test_transition_annotation_numerify():
     sinfo_h = slicer.SequenceInfoHandler()
     sinfo_h.add_data(sinfo)
 
-    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h, shape=[9])
+    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h, shape=[12])
     with pytest.raises(numerify.DataInterpretationError):
         numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
 
@@ -2094,15 +2125,15 @@ def test_transition_annotation_numerify():
     sinfo_h = slicer.SequenceInfoHandler()
     sinfo_h.add_data(sinfo)
 
-    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h, shape=[9])
+    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h, shape=[12])
     nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
-    expect = np.zeros([405, 9], dtype=float)
+    expect = np.zeros([405, 12], dtype=float)
     expect[0, 0] = 1.  # TSS
     expect[399, 1] = 1.  # TTS
-    expect[10, 3] = 1.  # start codon
-    expect[299, 4] = 1.  # stop codon
-    expect[(100, 120), 6] = 1.  # Don-splice
-    expect[(109, 199), 7] = 1.  # Acc-splice
+    expect[10, 4] = 1.  # start codon
+    expect[299, 5] = 1.  # stop codon
+    expect[(100, 120), 8] = 1.  # Don-splice
+    expect[(109, 199), 9] = 1.  # Acc-splice
     assert np.allclose(nums, expect)
 
 #### type_enumss ####
