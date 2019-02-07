@@ -563,6 +563,14 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                            old_piece, trees)
             at_least_one_link = True
         if not at_least_one_link:
+            print('dying here.....')
+            print('old piece: {}'.format(old_piece))
+            print('old coords: {}'.format(old_coords))
+            print(':::: {}\n'.format(old_piece.features))
+
+            print('new piece: {}'.format(new_piece))
+            print('new coords: {}'.format(new_coords))
+            print(':::: {}'.format(new_piece.features))
             raise ValueError('Expected some sort of know status to set the status at border')
 
     def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,

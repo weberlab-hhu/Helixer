@@ -1996,6 +1996,9 @@ def test_slicing_featureless_slice_inside_locus():
               ('1', 81, 120, '81-120'))
     slices = iter(slices)
     controller._slice_annotations_1way(slices, annotated_genome=ag, is_plus_strand=True)
+    # todo, this is failing due coordinates issues. The status is closed for coding,transcribed prior to the
+    #   end of exon/cds at same time error, and then we hit the slice, and then we open the error. AKA, no status
+    #   at end of slice. Fix coordinates, get back to this.
     for piece in transcript.transcribed_pieces:
         print('got piece: {}\n-----------\n'.format(piece))
         for feature in piece.features:
@@ -2141,7 +2144,7 @@ def test_enum_non_inheritance():
     allknown = [x.name for x in list(type_enums.AllKnown)]
     allnice = [x.name for x in list(type_enums.AllKeepable)]
     # check that some random bits made it in to all
-    assert 'in_error' in allknown
+    assert 'error' in allknown
     assert 'region' in allknown
 
     # check that some annoying bits are not in nice set
