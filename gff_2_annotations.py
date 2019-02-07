@@ -268,6 +268,7 @@ class SuperLocusHandler(annotations.SuperLocusHandler, GFFDerived):
             feature = FeatureHandler()
             coordinates = sequence_info.handler.gffid_to_coords[entry.seqid]
             assert len(self.transcribed_handlers) > 0, "no transcribeds found before feature"
+            # MOD_READIN, will need to set up features with temporary linkage, but without entering them into final db
             feature.process_gffentry(entry, super_locus=self.data,
                                      transcribed_pieces=[self.transcribed_handlers[-1].one_piece().data],
                                      coordinates=coordinates)
@@ -504,6 +505,7 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
         handler = FeatureHandler()
         data = annotations_orm.Feature()
         handler.add_data(data)
+        # MOD_READIN, this, or something like it will need to be able to make the new piece from a gff entry
         template.fax_all_attrs_to_another(another=handler)
         handler.gffentry = copy.deepcopy(template.gffentry)
 
@@ -992,6 +994,7 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
         yield out
 
     def _all_features(self):
+        # MOD_READIN, this will need to call features without them being in db
         for piece in self.transcript.data.transcribed_pieces:
             for feature in piece.features:
                 yield feature
