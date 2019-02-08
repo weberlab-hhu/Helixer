@@ -234,7 +234,8 @@ def load_to_intervaltree(obj, trees):
     if seqid not in trees:
         trees[seqid] = intervaltree.IntervalTree()
     tree = trees[seqid]
-    tree[obj.py_start:obj.py_end] = obj
+    py_start = as_py_start(obj.data.start)  # MOD_READIN, need to remove conversion to py_start here
+    tree[py_start:(py_start + 1)] = obj
 
 
 class FeatureHandler(annotations.FeatureHandler):

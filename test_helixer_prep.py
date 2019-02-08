@@ -1151,14 +1151,13 @@ def test_check_and_fix_structure():
     assert len(transcribed_fs) == 2
     assert set([x.bearing.value for x in transcribed_fs]) == {type_enums.START, type_enums.CLOSE_STATUS}
 
+    assert len(sl.data.translateds) == 3
+    controller.session.commit()
+
 
 def test_erroneous_splice():
-    rel_path = 'testdata/dummyloci_annotations.sqlitedb'  # so we save a copy of the cleaned up loci once
-    if os.path.exists(rel_path):
-        #os.remove(rel_path)
-        db_path = 'sqlite:///:memory:'
-    else:
-        db_path = 'sqlite:///{}'.format(rel_path)
+    db_path = 'sqlite:///:memory:'
+
     sl, controller = setup_testable_super_loci(db_path)
     sess = controller.session
     # get target transcript
@@ -1166,12 +1165,13 @@ def test_erroneous_splice():
     # fish out "first exon" features and extend so intron is of -length
     f0 = sess.query(annotations_orm.Feature).filter(annotations_orm.Feature.given_id == 'ftr000000').first()
     f1 = sess.query(annotations_orm.Feature).filter(annotations_orm.Feature.given_id == 'ftr000001').first()
-    f0.end = f1.end = 115
+    f0.handler.gffentry.end = f1.handler.gffentry.end = 115
 
     ti = gff_2_annotations.TranscriptInterpreter(transcript.handler)
     ti.decode_raw_features()
     clean_datas = [x.data for x in ti.clean_features]
     # TSS, start codon, 2x error splice, 2x error splice, 2x error no stop
+    print('---\n'.join([str(x) for x in clean_datas]))
     assert len(clean_datas) == 10
 
     assert len([x for x in clean_datas if x.type == type_enums.ERROR]) == 6
