@@ -389,8 +389,8 @@ class FeatureHandler(annotations.FeatureHandler, GFFDerived):
             type=gffentry.type,
             coordinates=coordinates, #super_locus.sequence_info.handler.gffid_to_coords[gffentry.seqid],
             #seqid=gffentry.seqid,
-            start=gffentry.start,
-            end=gffentry.end,
+            #start=gffentry.start,
+            #end=gffentry.end,
             is_plus_strand=is_plus_strand,
             score=gffentry.score,
             source=gffentry.source,
@@ -402,6 +402,7 @@ class FeatureHandler(annotations.FeatureHandler, GFFDerived):
         self.add_data(data)
 
     # inclusive and from 1 coordinates
+    # TODO, MOD_READIN, -> [) from 0 coordinates
     def upstream_from_interval(self, interval):
         if self.data.is_plus_strand:
             return helpers.as_bio_start(interval.begin)
@@ -416,15 +417,23 @@ class FeatureHandler(annotations.FeatureHandler, GFFDerived):
 
     def upstream(self):
         if self.data.is_plus_strand:
-            return self.data.start
+            return self.gffentry.start
         else:
-            return self.data.end
+            return self.gffentry.end
 
     def downstream(self):
         if self.data.is_plus_strand:
-            return self.data.end
+            return self.gffentry.end
         else:
-            return self.data.start
+            return self.gffentry.start
+
+    @property
+    def py_start(self):
+        return helpers.as_py_start(self.gffentry.start)
+
+    @property
+    def py_end(self):
+        return helpers.as_py_end(self.gffentry.end)
 
 
 class TranscribedHandler(annotations.TranscribedHandler, GFFDerived):
@@ -484,10 +493,6 @@ class NoGFFEntryError(Exception):
     pass
 
 
-
-
-
-
 class TranscriptInterpreter(annotations.TranscriptInterpBase):
     """takes raw/from-gff transcript, and makes totally explicit"""
     HANDLED = 'handled'
@@ -505,7 +510,6 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
         handler = FeatureHandler()
         data = annotations_orm.Feature()
         handler.add_data(data)
-        # MOD_READIN, this, or something like it will need to be able to make the new piece from a gff entry
         template.fax_all_attrs_to_another(another=handler)
         handler.gffentry = copy.deepcopy(template.gffentry)
 
@@ -980,7 +984,7 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
             features.add(feature)
         features = [f.handler for f in features]
         for f in features:
-            tree[f.py_start:f.py_end] = f
+            tree[helpers.as_py_start(f.gffentry.start):helpers.as_py_end(f.gffentry.end)] = f
         tree.split_overlaps()
         # todo, minus strand
         intervals = iter(sorted(tree))
@@ -994,7 +998,6 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
         yield out
 
     def _all_features(self):
-        # MOD_READIN, this will need to call features without them being in db
         for piece in self.transcript.data.transcribed_pieces:
             for feature in piece.features:
                 yield feature

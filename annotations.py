@@ -437,14 +437,6 @@ class FeatureHandler(Handler):
         else:
             raise self._link_value_error(other)
 
-    @property
-    def py_start(self):
-        return as_py_start(self.data.start)
-
-    @property
-    def py_end(self):
-        return as_py_end(self.data.end)
-
     def cmp_key(self):
         return self.data.cmp_key()
 

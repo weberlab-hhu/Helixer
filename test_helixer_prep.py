@@ -723,8 +723,8 @@ def test_data_frm_gffentry():
     exon_entry = gffhelper.GFFObject(exon_string)
     controller.clean_entry(exon_entry)
     exon_handler = gff_2_annotations.FeatureHandler()
-    exon_handler.gen_data_from_gffentry(exon_entry, super_locus=handler.data, transcribed_pieces=[piece_handler.data],
-                                        coordinates=coors)
+    exon_handler.process_gffentry(exon_entry, super_locus=handler.data, transcribed_pieces=[piece_handler.data],
+                                  coordinates=coors)
 
     d = exon_handler.data
     s = """
@@ -747,7 +747,7 @@ def test_data_frm_gffentry():
     sess.add(exon_handler.data)
     sess.commit()
 
-    assert exon_handler.data.start == 4343
+    assert exon_handler.gffentry.start == 4343
     assert exon_handler.data.is_plus_strand
     assert exon_handler.data.score is None
     assert exon_handler.data.coordinates.seqid == 'NC_015438.2'
