@@ -2132,11 +2132,11 @@ def test_transition_annotation_numerify():
     nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
     expect = np.zeros([405, 12], dtype=float)
     expect[0, 0] = 1.  # TSS
-    expect[399, 1] = 1.  # TTS
+    expect[400, 1] = 1.  # TTS
     expect[10, 4] = 1.  # start codon
-    expect[299, 5] = 1.  # stop codon
+    expect[300, 5] = 1.  # stop codon
     expect[(100, 120), 8] = 1.  # Don-splice
-    expect[(109, 199), 9] = 1.  # Acc-splice
+    expect[(110, 200), 9] = 1.  # Acc-splice
     assert np.allclose(nums, expect)
 
 #### type_enumss ####
