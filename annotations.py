@@ -212,7 +212,7 @@ class SequenceInfoHandler(Handler):
     def add_sequences(self, genome):
         for seq in genome.sequences:
             # todo, parallelize sequence & annotation format, then import directly from sequence_info (~Slice)
-            annotations_orm.Coordinates(seqid=seq.meta_info.seqid, start=1,
+            annotations_orm.Coordinates(seqid=seq.meta_info.seqid, start=0,
                                         end=seq.meta_info.total_bp, sequence_info=self.data)
 
 
