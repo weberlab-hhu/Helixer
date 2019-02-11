@@ -861,7 +861,7 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
                     self.clean_features.insert(0, feature_err_close)
                     self.clean_features.insert(0, feature_err_open)
             else:
-                end_of_sequence = cds_feature.data.coordinates.end
+                end_of_sequence = cds_feature.data.coordinates.end - 1   # bc we need last valid index for coordinates
                 if at != end_of_sequence:
                     err_start = min(end_of_sequence, at + error_buffer)
                     err_end = at

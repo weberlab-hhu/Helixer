@@ -902,8 +902,8 @@ def test_transcript_interpreter():
     bearings_out = set([x.data.bearing.value for x in t_interp.clean_features])
     assert bearings_out == {type_enums.START, type_enums.END}
 
-    assert t_interp.clean_features[-1].data.end == 400
-    assert t_interp.clean_features[0].data.start == 1
+    assert t_interp.clean_features[-1].data.start == 400
+    assert t_interp.clean_features[0].data.start == 0
 
 
 def test_transcript_get_first():
@@ -920,7 +920,7 @@ def test_transcript_get_first():
     print(f0)
     print(status.__dict__)
     print(i0[0].data.data.is_plus_strand)
-    assert f0.data.start == 1
+    assert f0.data.start == 0
     assert status.is_5p_utr()
     assert f0.data.phase is None
     assert f0.data.is_plus_strand
@@ -943,7 +943,7 @@ def test_transcript_get_first():
     print(status)
     print(i0[0].data.data.is_plus_strand)
     print(f0.data.type)
-    assert f0.data.start == 400
+    assert f0.data.start == 399
     assert status.is_5p_utr()
     assert f0.data.phase is None
     assert not f0.data.is_plus_strand
@@ -964,7 +964,7 @@ def test_transcript_get_first():
     print(status)
     print(i0)
     # should get in_translated_region instead of a start codon
-    assert f_status_coding.data.start == 120
+    assert f_status_coding.data.start == 119
     assert f_status_coding.data.type == type_enums.CODING
     assert f_status_coding.data.bearing == type_enums.OPEN_STATUS
     assert not f_status_coding.data.is_plus_strand
@@ -973,8 +973,8 @@ def test_transcript_get_first():
     assert f_status_coding.data.bearing == type_enums.OPEN_STATUS
     # region beyond exon should be marked erroneous
     assert not f_err_close.data.is_plus_strand and not f_err_open.data.is_plus_strand
-    assert f_err_close.data.start == 121
-    assert f_err_open.data.start == 405
+    assert f_err_close.data.start == 119
+    assert f_err_open.data.start == 404
     assert f_err_open.data.type == type_enums.ERROR
     assert f_err_open.data.bearing == type_enums.START
     assert f_err_close.data.type == type_enums.ERROR
