@@ -47,8 +47,8 @@ class Coordinates(Base):
     features = relationship('Feature', back_populates='coordinates')
 
     __table_args__ = (
-        CheckConstraint(start >= 1, name='check_start_1plus'),
-        CheckConstraint(end >= start, name='check_end_gr_start'),
+        CheckConstraint(start >= 0, name='check_start_1plus'),
+        CheckConstraint(end > start, name='check_end_gr_start'),
         {})
 
     def __repr__(self):
@@ -183,7 +183,7 @@ class Feature(Base):
                                back_populates='features')
 
     __table_args__ = (
-        CheckConstraint(start >= 1, name='check_start_1plus'),
+        CheckConstraint(start >= 0, name='check_start_1plus'),
         CheckConstraint(end >= start, name='check_end_gr_start'),
         CheckConstraint(phase >= 0, name='check_phase_not_negative'),
         CheckConstraint(phase < 3, name='check_phase_less_three'),

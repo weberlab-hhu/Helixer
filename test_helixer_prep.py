@@ -223,9 +223,9 @@ def test_annogenome2sequence_infos_relation():
 
 def test_coordinate_constraints():
     sess = mk_session()
-    coors = annotations_orm.Coordinates(start=1, end=30, seqid='abc')
-    coors2 = annotations_orm.Coordinates(start=1, end=1, seqid='abc')
-    coors_bad1 = annotations_orm.Coordinates(start=0, end=30, seqid='abc')
+    coors = annotations_orm.Coordinates(start=0, end=30, seqid='abc')
+    coors2 = annotations_orm.Coordinates(start=0, end=1, seqid='abc')
+    coors_bad1 = annotations_orm.Coordinates(start=-12, end=30, seqid='abc')
     coors_bad2 = annotations_orm.Coordinates(start=100, end=30, seqid='abc')
     coors_bad3 = annotations_orm.Coordinates(start=1, end=30)
     # should be ok
@@ -837,7 +837,7 @@ def test_import_seqinfo():
     coors = controller.sequence_info.data.coordinates
     assert len(coors) == 1
     assert coors[0].seqid == '1'
-    assert coors[0].start == 1
+    assert coors[0].start == 0
     assert coors[0].end == 405
 
 
