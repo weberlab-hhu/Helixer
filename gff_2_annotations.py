@@ -898,7 +898,7 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
             self.status.saw_start(phase=coding.data.phase)
             self.status.saw_tss()  # coding implies the transcript
             # may or may not be stop codon, but will just mark as error (unless at edge of sequence)
-            start_of_sequence = i0.data.data.coordinates.start
+            start_of_sequence = i0.data.data.coordinates.start - 1  # because we need to be able to
             end_of_sequence = i0.data.data.coordinates.end
             if plus_strand:
                 if at != end_of_sequence:

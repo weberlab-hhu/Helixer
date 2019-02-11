@@ -995,15 +995,14 @@ def test_transcript_transition_from_5p_to_end():
     features = t_interp.clean_features
     assert features[-1].data.type == type_enums.CODING
     assert features[-1].data.bearing == type_enums.START
-    assert features[-1].data.start == 11
-    assert features[-1].data.end == 11
+    assert features[-1].data.start == 10
     # hit splice site
     t_interp.interpret_transition(ivals_before=ivals_sets[1], ivals_after=ivals_sets[2], plus_strand=True)
     assert features[-1].data.type == type_enums.INTRON
     assert features[-1].data.bearing == type_enums.END
     assert features[-2].data.type == type_enums.INTRON
     assert features[-2].data.bearing == type_enums.START
-    assert features[-2].data.start == 101  # splice from
+    assert features[-2].data.start == 100  # splice from
     assert features[-1].data.start == 110  # splice to
     assert t_interp.status.is_coding()
     # hit splice site
@@ -1012,7 +1011,7 @@ def test_transcript_transition_from_5p_to_end():
     assert features[-1].data.bearing == type_enums.END
     assert features[-2].data.type == type_enums.INTRON
     assert features[-2].data.bearing == type_enums.START
-    assert features[-2].data.start == 121  # splice from
+    assert features[-2].data.start == 120  # splice from
     assert features[-1].data.start == 200  # splice to
     # hit stop codon
     t_interp.interpret_transition(ivals_before=ivals_sets[3], ivals_after=ivals_sets[4], plus_strand=True)
@@ -1041,7 +1040,7 @@ def test_non_coding_transitions():
     features = t_interp.clean_features
     assert features[-1].data.type == type_enums.TRANSCRIBED
     assert features[-1].data.bearing == type_enums.START
-    assert features[-1].data.start == 111
+    assert features[-1].data.start == 110
     t_interp.interpret_last_pos(ivals_sets[0], plus_strand=True)
     assert features[-1].data.type == type_enums.TRANSCRIBED
     assert features[-1].data.bearing == type_enums.END
@@ -1247,6 +1246,7 @@ def test_intervaltree():
     print(controller.interval_trees['1'])
     # check that one known area has two errors, and one transcription termination site as expected
     intervals = controller.interval_trees['1'][400:406]
+    assert len(intervals) == 3
     print(intervals, '...intervals')
     print([x.data.data.type.value for x in intervals])
     errors = [x for x in intervals if x.data.data.type.value == type_enums.ERROR and
@@ -1256,13 +1256,13 @@ def test_intervaltree():
     tts = [x for x in intervals if x.data.data.type.value == type_enums.TRANSCRIBED and
            x.data.data.bearing.value == type_enums.END]
 
-    assert len(tts) == 0
+    assert len(tts) == 1
     # check that the major filter functions work
-    sls = controller.get_super_loci_frm_slice(seqid='1', start=305, end=405, is_plus_strand=True)
+    sls = controller.get_super_loci_frm_slice(seqid='1', start=300, end=405, is_plus_strand=True)
     assert len(sls) == 1
     assert isinstance(list(sls)[0], slicer.SuperLocusHandler)
 
-    features = controller.get_features_from_slice(seqid='1', start=1, end=1, is_plus_strand=True)
+    features = controller.get_features_from_slice(seqid='1', start=0, end=1, is_plus_strand=True)
     assert len(features) == 3
     starts = [x for x in features if x.data.type.value == type_enums.TRANSCRIBED and
               x.data.bearing.value == type_enums.START]
@@ -1289,7 +1289,7 @@ def test_order_features():
     assert len(transcript.transcribed_pieces) == 1
     piece = transcript.transcribed_pieces[0]
     # features expected to be ordered by increasing position (note: as they are in db)
-    ordered_starts = [1, 11, 101, 110, 121, 200, 300, 400]
+    ordered_starts = [0, 10, 100, 110, 120, 200, 300, 400]
     features = ti.sorted_features(piece)
     for f in features:
         print(f)
@@ -1388,7 +1388,7 @@ def test_slicer_transition():
     assert len(transitions) == 8
     statusses = [x[1] for x in transitions]
     features = [x[0][0] for x in transitions]
-    ordered_starts = [1, 11, 101, 110, 121, 200, 300, 400]
+    ordered_starts = [0, 10, 100, 110, 120, 200, 300, 400]
     assert [x.start for x in features] == ordered_starts
     expected_intronic = [False, False, True, False, True, False, False, False]
     assert [x.in_intron for x in statusses] == expected_intronic

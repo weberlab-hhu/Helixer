@@ -100,7 +100,8 @@ class SliceController(object):
         if self.interval_trees == {}:
             raise ValueError('No, interval trees defined. The method .fill_intervaltrees must be called first')
         tree = self.interval_trees[seqid]
-        intervals = tree[as_py_start(start):as_py_end(end)]
+        intervals = tree[start:end]
+        print('start, end', start, end)
         features = [x.data for x in intervals if x.data.data.is_plus_strand == is_plus_strand]
         return features
 
@@ -234,7 +235,7 @@ def load_to_intervaltree(obj, trees):
     if seqid not in trees:
         trees[seqid] = intervaltree.IntervalTree()
     tree = trees[seqid]
-    py_start = as_py_start(obj.data.start)  # MOD_READIN, need to remove conversion to py_start here
+    py_start = obj.data.start
     tree[py_start:(py_start + 1)] = obj
 
 

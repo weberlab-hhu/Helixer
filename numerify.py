@@ -79,7 +79,7 @@ class AnnotationNumerifier(Numerifier, AnnotationFoo):
 
     def slice_to_matrix(self, data_slice, is_plus_strand=None, *args, **kwargs):
         assert is_plus_strand is not None
-        length = self.coordinates.end - self.coordinates.start + 1
+        length = self.coordinates.end - self.coordinates.start
         matrix = self._zeros(length)
         for transcript in self.transcribeds_to_use():
             t_interp = TranscriptLocalReader(transcript)
@@ -189,8 +189,7 @@ class StepHolder(object):
         return gff_2_annotations.min_max(previous_at, self.at)
 
     def py_range(self, previous):
-        start, end = self._range(previous)
-        return helpers.as_py_start(start), helpers.as_py_end(end)
+        return self._range(previous)
 
     def any_erroneous_features(self):
         #errors = [x.value for x in type_enums.ErrorFeature]
