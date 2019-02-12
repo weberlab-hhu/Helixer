@@ -204,10 +204,10 @@ class Feature(Base):
         return s
 
     def cmp_key(self):  # todo, pos_cmp & full_cmp
-        return self.coordinates.seqid, self.is_plus_strand, self.start, self.end, self.type
+        return self.coordinates.seqid, self.is_plus_strand, self.start, self.type
 
     def pos_cmp_key(self):
-        return self.coordinates.seqid, self.is_plus_strand, self.start, self.end
+        return self.coordinates.seqid, self.is_plus_strand, self.start
 
 
 class DownstreamFeature(Feature):

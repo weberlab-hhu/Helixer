@@ -769,6 +769,14 @@ class Range(object):
         self.status = status
 
 
+def positional_match(feature, previous):
+    return feature.pos_cmp_key() == previous.pos_cmp_key()
+
+
+def bearing_match(feature, previous):
+    return feature.bearing.value == previous.bearing.value
+
+
 class TranscriptInterpBase(object):
     # todo, move this to generic location and/or skip entirely
     def __init__(self, transcript, session=None):
@@ -781,7 +789,7 @@ class TranscriptInterpBase(object):
         status = TranscriptStatus()
         for piece in self.sort_pieces():
             piece_features = self.sorted_features(piece)
-            for aligned_features in self.stack_matches(piece_features):
+            for aligned_features in self.full_stack_matches(piece_features):
                 self.update_status(status, aligned_features)
                 yield aligned_features, copy.deepcopy(status), piece
 
@@ -902,7 +910,7 @@ class TranscriptInterpBase(object):
                 status.update_for_feature(feature)
 
     @staticmethod
-    def stack_matches(features):
+    def stack_matches(features, match_fn=positional_match):
         ifeatures = iter(features)
         try:
             prev = next(ifeatures)
@@ -910,7 +918,7 @@ class TranscriptInterpBase(object):
             return
         current = [prev]
         for feature in ifeatures:
-            if feature.pos_cmp_key() == prev.pos_cmp_key():
+            if match_fn(feature, prev):
                 current.append(feature)
             else:
                 yield current
@@ -918,6 +926,31 @@ class TranscriptInterpBase(object):
             prev = feature
         yield current
         return
+
+    @staticmethod
+    def sort_by_bearing(matches):
+        key = {type_enums.START: 3,
+               type_enums.OPEN_STATUS: 2,
+               type_enums.CLOSE_STATUS: 1,
+               type_enums.END: 0,
+               type_enums.POINT: 4}
+
+        return sorted(matches, key=lambda x: key[x.bearing.value])
+
+    def full_stack_matches(self, features):
+        for matches in self.stack_matches(features, match_fn=positional_match):
+            sorted_matches = self.sort_by_bearing(matches)
+            for by_bearing in self.stack_matches(sorted_matches, match_fn=bearing_match):
+                yield by_bearing
+
+
+
+
+
+
+
+
+
 
 
 class IndecipherableLinkageError(Exception):

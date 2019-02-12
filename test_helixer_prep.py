@@ -1717,19 +1717,20 @@ def test_transition_transsplice():
     # forward pass, same sequence, two pieces
     ti_transitions = list(d.ti.transition_5p_to_3p())
     # from transition gen: 0 -> aligned_Features, 1 -> status copy
-    assert [set(x[0]) for x in ti_transitions] == [{d.fA}, {d.fB}, {d.fC}, {d.fD, d.fADs1, d.fADs0},
-                                                   {d.fE, d.fEHs0, d.fEHs1}, {d.fF}, {d.fG}, {d.fH}]
+    assert [set(x[0]) for x in ti_transitions] == [{d.fA}, {d.fB}, {d.fC}, {d.fD}, {d.fADs1, d.fADs0},
+                                                   {d.fEHs0, d.fEHs1}, {d.fE}, {d.fF}, {d.fG}, {d.fH}]
     print([x[1].genic for x in ti_transitions])
-    assert [x[1].genic for x in ti_transitions] == list([True] * 3 + [False]) * 2
-    assert [x[1].in_translated_region for x in ti_transitions] == [bool(x) for x in [0, 1, 1, 0, 1, 1, 0, 0]]
-    assert [x[1].in_trans_intron for x in ti_transitions] == [bool(x) for x in [0, 0, 1, 0, 1, 0, 0, 0]]
+    assert [x[1].genic for x in ti_transitions] == [bool(x) for x in [1, 1, 1, 0, 0, 0, 1, 1, 1, 0]]
+    assert [x[1].in_translated_region for x in ti_transitions] == [bool(x) for x in [0, 1, 1, 1, 0, 1, 1, 1, 0, 0]]
+    assert [x[1].in_trans_intron for x in ti_transitions] == [bool(x) for x in [0, 0, 1, 1, 0, 1, 1, 0, 0, 0]]
     # forward, then backward pass, same sequence, two pieces
     ti_transitions = list(d.tiflip.transition_5p_to_3p())
-    assert [set(x[0]) for x in ti_transitions] == [{d.fA}, {d.fB}, {d.fC}, {d.fD, d.fADs0, d.fADs1},
-                                                   {d.fEp, d.fEHps0, d.fEHps1}, {d.fFp}, {d.fGp}, {d.fHp}]
-    assert [x[1].genic for x in ti_transitions] == list([True] * 3 + [False]) * 2
-    assert [x[1].in_translated_region for x in ti_transitions] == [bool(x) for x in [0, 1, 1, 0, 1, 1, 0, 0]]
-    assert [x[1].in_trans_intron for x in ti_transitions] == [bool(x) for x in [0, 0, 1, 0, 1, 0, 0, 0]]
+    assert [set(x[0]) for x in ti_transitions] == [{d.fA}, {d.fB}, {d.fC}, {d.fD}, {d.fADs1, d.fADs0},
+                                                   {d.fEHps0, d.fEHps1}, {d.fEp}, {d.fFp}, {d.fGp}, {d.fHp}]
+    print([x[1].genic for x in ti_transitions])
+    assert [x[1].genic for x in ti_transitions] == [bool(x) for x in [1, 1, 1, 0, 0, 0, 1, 1, 1, 0]]
+    assert [x[1].in_translated_region for x in ti_transitions] == [bool(x) for x in [0, 1, 1, 1, 0, 1, 1, 1, 0, 0]]
+    assert [x[1].in_trans_intron for x in ti_transitions] == [bool(x) for x in [0, 0, 1, 1, 0, 1, 1, 0, 0, 0]]
 
 
 def test_piece_swap_handling_during_multipiece_one_coordinate_transition():
