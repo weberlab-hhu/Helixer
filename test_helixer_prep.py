@@ -1533,12 +1533,16 @@ def test_modify4slice():
     transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
     slh.make_all_handlers()
     ti = slicer.TranscriptTrimmer(transcript=transcript.handler, sess=controller.session)
-    new_coords = annotations_orm.Coordinates(seqid='1', start=1, end=100)
-    newer_coords = annotations_orm.Coordinates(seqid='1', start=101, end=200)
+    new_coords = annotations_orm.Coordinates(seqid='1', start=0, end=100)
+    newer_coords = annotations_orm.Coordinates(seqid='1', start=100, end=200)
     ti.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     assert len(transcript.transcribed_pieces) == 2
     controller.session.add_all([new_coords, newer_coords])
     controller.session.commit()
+    print(transcript.transcribed_pieces[0])
+    for feature in transcript.transcribed_pieces[1].features:
+        print('-- {} --\n'.format(feature))
+    print(transcript.transcribed_pieces[1])
     assert {len(transcript.transcribed_pieces[0].features), len(transcript.transcribed_pieces[1].features)} == {8, 4}
     new_piece = [x for x in transcript.transcribed_pieces if len(x.features) == 4][0]
     ori_piece = [x for x in transcript.transcribed_pieces if len(x.features) == 8][0]
@@ -1738,17 +1742,17 @@ def test_piece_swap_handling_during_multipiece_one_coordinate_transition():
     d = TransspliceDemoData(sess)  # setup _d_ata
     # forward pass, same sequence, two pieces
     ti_transitions = list(d.ti.transition_5p_to_3p_with_new_pieces())
-    pre_slice_swap = ti_transitions[3]
+    pre_slice_swap = ti_transitions[4]
     assert pre_slice_swap.example_feature is not None
-    post_slice_swap = ti_transitions[4]
+    post_slice_swap = ti_transitions[5]
     pre_slice_swap.set_as_previous_of(post_slice_swap)
     assert pre_slice_swap.example_feature is None
     assert post_slice_swap.example_feature is not None
     # two way pass, same sequence, two (one +, one -) piece
     tiflip_transitions = list(d.tiflip.transition_5p_to_3p_with_new_pieces())
-    pre_slice_swap = tiflip_transitions[3]
+    pre_slice_swap = tiflip_transitions[4]
     assert pre_slice_swap.example_feature is not None
-    post_slice_swap = tiflip_transitions[4]
+    post_slice_swap = tiflip_transitions[5]
     pre_slice_swap.set_as_previous_of(post_slice_swap)
     assert pre_slice_swap.example_feature is None
     assert post_slice_swap.example_feature is not None

@@ -311,26 +311,32 @@ class OverlapStatus(object):
         self.status = out
 
 
-class PositionInterpreter(object):
+class FeatureVsCoords(object):
 
-    def __init__(self, feature, prev_feature, slice_coordinates, is_plus_strand):
+    def __init__(self, feature, slice_coordinates, is_plus_strand):
         self.feature = feature
-        self.prev_feature = prev_feature
         self.slice_coordinates = slice_coordinates
         self.is_plus_strand = is_plus_strand
         # precalculate shared data
         if is_plus_strand:
             self.sign = 1
-            self.f_upstream = feature.start
-            self.f_downstream = feature.end
-            self.c_upstream = slice_coordinates.start
-            self.c_downstream = slice_coordinates.end
         else:
             self.sign = -1
-            self.f_upstream = feature.end
-            self.f_downstream = feature.start
-            self.c_upstream = slice_coordinates.end
-            self.c_downstream = slice_coordinates.start
+
+        # inclusive coordinates (classic python in for slice)
+        if feature.bearing.value in [type_enums.START, type_enums.OPEN_STATUS, type_enums.POINT]:
+            self.c_py_start = slice_coordinates.start
+            self.c_py_end = slice_coordinates.end
+        else:  # exclusive coordinates for a closing feature (not 1st upstream bp, one after downstream)
+            self.c_py_start = slice_coordinates.start + self.sign
+            self.c_py_end = slice_coordinates.end + self.sign
+
+        if is_plus_strand:
+            self.c_py_upstream = self.c_py_start
+            self.c_py_downstream = self.c_py_end
+        else:
+            self.c_py_upstream = self.c_py_end
+            self.c_py_downstream = self.c_py_start
 
     def is_detached(self):
         out = False
@@ -340,44 +346,54 @@ class PositionInterpreter(object):
             out = True
         return out
 
+    def _is_lower(self):
+        return self.c_py_start - self.feature.start > 0
+
+    def _is_higher(self):
+        return self.feature.start - self.c_py_end >= 0
+
     def is_upstream(self):
-        return self.sign * (self.c_upstream - self.f_downstream) > 0
+        if self.is_plus_strand:
+            return self._is_lower()
+        else:
+            return self._is_higher()
 
     def is_downstream(self):
-        return self.sign * (self.f_upstream - self.c_downstream) > 0
-
-    def overlaps_downstream(self):
-        f_upstream_contained = self.slice_coordinates.start <= self.f_upstream <= self.slice_coordinates.end
-        f_downstream_is_downstream = self.sign * (self.f_downstream - self.c_downstream) > 0
-        return f_upstream_contained and f_downstream_is_downstream
-
-    def overlaps_upstream(self):
-        f_downstream_contained = self.slice_coordinates.start <= self.f_downstream <= self.slice_coordinates.end
-        f_upstream_is_upstream = self.sign * (self.c_upstream - self.f_upstream) > 0
-        return f_downstream_contained and f_upstream_is_upstream
+        if self.is_plus_strand:
+            return self._is_higher()
+        else:
+            return self._is_lower()
 
     def is_contained(self):
-        start_contained = self.slice_coordinates.start <= self.feature.start <= self.slice_coordinates.end
-        end_contained = self.slice_coordinates.start <= self.feature.end <= self.slice_coordinates.end
-        return start_contained and end_contained
+        start_contained = self.c_py_start <= self.feature.start < self.c_py_end
+        return start_contained
+
+
+class PositionInterpreter(object):
+    def __init__(self, feature, prev_feature, slice_coordinates, is_plus_strand):
+        self.feature_vs_coord = FeatureVsCoords(feature, slice_coordinates, is_plus_strand)
+        if prev_feature is not None:  # this marks a disjointed (diff piece) previous feature, todo cleanup/mk explicit
+            self.previous_vs_coord = FeatureVsCoords(prev_feature, slice_coordinates, is_plus_strand)
+        self.slice_coordinates = slice_coordinates
+        self.is_plus_strand = is_plus_strand
+
+    def is_detached(self):
+        return self.feature_vs_coord.is_detached()
+
+    def is_upstream(self):
+        return self.feature_vs_coord.is_upstream()
+
+    def is_downstream(self):
+        return self.feature_vs_coord.is_downstream()
+
+    def is_contained(self):
+        return self.feature_vs_coord.is_contained()
 
     def just_passed_downstream(self):
-        if self.prev_feature is None:
-            out = False
+        if self.previous_vs_coord is None:
+            return False
         else:
-            if self.is_plus_strand:
-                if self.prev_feature.end <= self.c_downstream <= self.feature.start:
-                    out = True
-                else:
-                    out = False
-            else:
-                if self.feature.end <= self.c_downstream <= self.prev_feature.start:
-                    out = True
-                else:
-                    out = False
-        return out
-
-
+            return self.feature_vs_coord.is_downstream() and self.previous_vs_coord.is_contained()
 
 
 class NoFeaturesInSliceError(Exception):
@@ -466,10 +482,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 pass
             elif position_interp.is_upstream():
                 pass
-            # it should never overlap start (because this should have been handled and split already)
-            elif position_interp.overlaps_upstream():
-                seen_one_overlap = True
-                raise ValueError('unhandled straddling of upstream boarder')
             # within new_coords -> swap coordinates
             elif position_interp.is_contained():
                 seen_one_overlap = True
@@ -477,11 +489,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
                     f.coordinates = new_coords
                     self.swap_piece(feature_handler=f.handler, new_piece=current_step.replacement_piece,
                                     old_piece=current_step.old_piece)
-            # handle feature [  |  ] straddling end of coordinates
-            elif position_interp.overlaps_downstream():
-                seen_one_overlap = True
-                raise ValueError('pre-checked features should not straddle downstream border')
-
             # handle pass end of coordinates between previous and current feature, [p] | [f]
             elif position_interp.just_passed_downstream():
                 if not seen_one_overlap:
