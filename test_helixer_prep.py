@@ -1177,7 +1177,7 @@ def test_erroneous_splice():
     # make sure splice error covers whole exon-intron-exon region
     assert clean_datas[2].type == type_enums.ERROR
     assert clean_datas[2].bearing == type_enums.START
-    assert clean_datas[2].start == 11
+    assert clean_datas[2].start == 10
     assert clean_datas[3].type == type_enums.ERROR
     assert clean_datas[3].bearing == type_enums.END
     assert clean_datas[3].start == 120
@@ -1801,22 +1801,22 @@ def test_transition_unused_coordinates_detection():
     sess = mk_session()
     d = SimplestDemoData(sess)
     # modify to coordinates with complete contain, should work fine
-    new_coords = annotations_orm.Coordinates(seqid='a', start=1, end=300)
+    new_coords = annotations_orm.Coordinates(seqid='a', start=0, end=300)
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
     assert d.pieceCD not in d.sl.transcribed_pieces  # confirm full transition
     assert d.pieceAB not in d.scribedlong.transcribed_pieces
     # modify to coordinates across tiny slice, include those w/o original features, should work fine
     d = SimplestDemoData(sess)
-    new_coords_list = [annotations_orm.Coordinates(seqid='a', start=186, end=195),
-                       annotations_orm.Coordinates(seqid='a', start=196, end=205),
-                       annotations_orm.Coordinates(seqid='a', start=206, end=215)]
+    new_coords_list = [annotations_orm.Coordinates(seqid='a', start=185, end=195),
+                       annotations_orm.Coordinates(seqid='a', start=195, end=205),
+                       annotations_orm.Coordinates(seqid='a', start=205, end=215)]
     for new_coords in new_coords_list:
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
 
-    new_coords_list = [annotations_orm.Coordinates(seqid='a', start=106, end=115),
-                       annotations_orm.Coordinates(seqid='a', start=96, end=105),
-                       annotations_orm.Coordinates(seqid='a', start=86, end=95)]
+    new_coords_list = [annotations_orm.Coordinates(seqid='a', start=105, end=115),
+                       annotations_orm.Coordinates(seqid='a', start=95, end=105),
+                       annotations_orm.Coordinates(seqid='a', start=85, end=95)]
     for new_coords in new_coords_list:
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
     assert d.pieceCD not in d.scribedlong.transcribed_pieces  # confirm full transition
@@ -1824,17 +1824,17 @@ def test_transition_unused_coordinates_detection():
 
     # try and slice before coordinates, should raise error
     d = SimplestDemoData(sess)
-    new_coords = annotations_orm.Coordinates(seqid='a', start=1, end=10)
+    new_coords = annotations_orm.Coordinates(seqid='a', start=0, end=10)
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     # try and slice after coordinates, should raise error
     d = SimplestDemoData(sess)
-    new_coords = annotations_orm.Coordinates(seqid='a', start=400, end=410)
+    new_coords = annotations_orm.Coordinates(seqid='a', start=399, end=410)
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     # try and slice between slices where there are no coordinates, should raise error
     d = SimplestDemoData(sess)
-    new_coords = annotations_orm.Coordinates(seqid='a', start=150, end=160)
+    new_coords = annotations_orm.Coordinates(seqid='a', start=149, end=160)
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     d = SimplestDemoData(sess)
@@ -1862,8 +1862,8 @@ def test_features_on_opposite_strand_are_not_modified():
 def test_modify4slice_transsplice():
     sess = mk_session()
     d = TransspliceDemoData(sess)  # setup _d_ata
-    new_coords_0 = annotations_orm.Coordinates(seqid='a', start=1, end=915)
-    new_coords_1 = annotations_orm.Coordinates(seqid='a', start=916, end=2000)
+    new_coords_0 = annotations_orm.Coordinates(seqid='a', start=0, end=915)
+    new_coords_1 = annotations_orm.Coordinates(seqid='a', start=915, end=2000)
     d.ti.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
     d.ti.modify4new_slice(new_coords=new_coords_1, is_plus_strand=True)
     # we expect 3 new pieces,
@@ -1927,8 +1927,8 @@ def test_modify4slice_2nd_half_first():
     # the _final_ transcript hasn't been adjusted when the second half is adjusted/sliced. Results should be the same.
     sess = mk_session()
     d = TransspliceDemoData(sess)  # setup _d_ata
-    new_coords_0 = annotations_orm.Coordinates(seqid='a', start=1, end=915)
-    new_coords_1 = annotations_orm.Coordinates(seqid='a', start=916, end=2000)
+    new_coords_0 = annotations_orm.Coordinates(seqid='a', start=0, end=915)
+    new_coords_1 = annotations_orm.Coordinates(seqid='a', start=915, end=2000)
     d.tiflip.modify4new_slice(new_coords=new_coords_1, is_plus_strand=False)
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=False)
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
@@ -1996,9 +1996,9 @@ def test_slicing_featureless_slice_inside_locus():
     ag = controller.get_one_annotated_genome()
     slh = controller.super_loci[0]
     transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
-    slices = (('1', 1, 40, '1-40'),
-              ('1', 41, 80, '41-80'),
-              ('1', 81, 120, '81-120'))
+    slices = (('1', 0, 40, '1-40'),
+              ('1', 40, 80, '41-80'),
+              ('1', 80, 120, '81-120'))
     slices = iter(slices)
     controller._slice_annotations_1way(slices, annotated_genome=ag, is_plus_strand=True)
     # todo, this is failing due coordinates issues. The status is closed for coding,transcribed prior to the

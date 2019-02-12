@@ -374,6 +374,8 @@ class PositionInterpreter(object):
         self.feature_vs_coord = FeatureVsCoords(feature, slice_coordinates, is_plus_strand)
         if prev_feature is not None:  # this marks a disjointed (diff piece) previous feature, todo cleanup/mk explicit
             self.previous_vs_coord = FeatureVsCoords(prev_feature, slice_coordinates, is_plus_strand)
+        else:
+            self.previous_vs_coord = None
         self.slice_coordinates = slice_coordinates
         self.is_plus_strand = is_plus_strand
 

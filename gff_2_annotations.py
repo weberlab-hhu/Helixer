@@ -796,8 +796,13 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
         after0 = self.pick_one_interval(ivals_after, target_type)
         donor_tmplt = before0.data
         acceptor_tmplt = after0.data
-        donor_at = donor_tmplt.downstream_from_interval(before0)
-        acceptor_at = acceptor_tmplt.upstream_from_interval(after0)
+        if sign > 0:
+            # use original coords so that overlaps can be detected...
+            donor_at = donor_tmplt.downstream()  # -1 (to from 0) + 1 (intron start, not incl. exon end) = 0
+            acceptor_at = acceptor_tmplt.upstream() - 1  # -1 (to from 0), that's it as incl start is already excl end
+        else:
+            donor_at = donor_tmplt.downstream() - 2  # -1 (fr 0), -1 (intron start (-), not incl. exon end) = -2
+            acceptor_at = acceptor_tmplt.upstream() - 1  # -1 (fr 0), that's it as incl start is already excl end
         # add splice sites if there's a gap
         between_splice_sites = (acceptor_at - donor_at) * sign
         min_intron_len = 3  # todo, maybe get something small but not entirely impossible?
@@ -813,8 +818,13 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
         # everything else is invalid
         else:
             # mask both exons and the intron
-            err_start = before0.data.upstream_from_interval(before0)
-            err_end = after0.data.downstream_from_interval(after0)
+            if sign > 0:
+                err_start = donor_tmplt.upstream() - 1  # -1 to fr 0
+                err_end = acceptor_tmplt.downstream()  # -1 to fr 0, +1 to excl = 0
+            else:
+                err_start = donor_tmplt.upstream() - 1  # to fr 0
+                err_end = acceptor_tmplt.downstream() - 2  # -1 to fr 0, -1 to excl = -2
+
             feature_err_open = self.new_feature(template=before0.data, start=err_start,
                                                 type=type_enums.ERROR, bearing=type_enums.START)
             feature_err_close = self.new_feature(template=before0.data, start=err_end,
