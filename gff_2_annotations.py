@@ -763,7 +763,7 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
                 self.clean_features.append(start_codon)
             else:
                 err_start = before0.data.upstream_from_interval(before0) - sign * error_buffer  # mask prev feat. too
-                err_end = at
+                err_end = at + sign  # so that the error masks the coordinate with the close status
 
                 feature_err_open = self.new_feature(template=template, type=type_enums.ERROR, start=err_start,
                                                     phase=None, bearing=type_enums.START)
@@ -861,7 +861,7 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
                 start_of_sequence = cds_feature.data.coordinates.start
                 if at != start_of_sequence:
                     err_start = max(start_of_sequence, at - error_buffer)
-                    err_end = at
+                    err_end = at + 1  # so that the error masks the coordinate with the close status
                     feature_err_open = self.new_feature(template=cds_feature, type=type_enums.ERROR,
                                                         bearing=type_enums.START,
                                                         start=err_start, phase=None)
@@ -874,7 +874,7 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
                 end_of_sequence = cds_feature.data.coordinates.end - 1   # bc we need last valid index for coordinates
                 if at != end_of_sequence:
                     err_start = min(end_of_sequence, at + error_buffer)
-                    err_end = at
+                    err_end = at - 1  # so that the error masks the coordinate with the close status
                     feature_err_open = self.new_feature(template=cds_feature, type=type_enums.ERROR,
                                                         bearing=type_enums.START,
                                                         start=err_start, phase=None)
@@ -912,16 +912,17 @@ class TranscriptInterpreter(annotations.TranscriptInterpBase):
             end_of_sequence = i0.data.data.coordinates.end
             if plus_strand:
                 if at != end_of_sequence:
-                    err_start = at
+                    err_start = at - 1  # so that the error masks the coordinate with the open status
                     err_end = min(at + error_buffer, end_of_sequence)
                     feature_err_open = self.new_feature(template=i0.data, type=type_enums.ERROR, start=err_start,
                                                         phase=None, bearing=type_enums.START)
+                    print('just set err_start at {}'.format(err_start))
                     feature_err_close = self.new_feature(template=i0.data, type=type_enums.ERROR, start=err_end,
                                                          phase=None, bearing=type_enums.END)
                     self.clean_features += [feature_err_open, feature_err_close]
             else:
                 if at != start_of_sequence:
-                    err_start = at
+                    err_start = at + 1  # so that the error masks the coordinate with the open status
                     err_end = max(start_of_sequence, at - error_buffer)
                     feature_err_open = self.new_feature(template=i0.data, type=type_enums.ERROR,
                                                         phase=None, start=err_start, bearing=type_enums.START)

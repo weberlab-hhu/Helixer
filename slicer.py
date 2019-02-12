@@ -499,7 +499,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                                  "Current feature: '{}'".format(
                                                      current_step.replacement_piece, previous_step.example_feature, f0,
                                                  ))
-                print(new_coords, previous_step.status)
+                print(new_coords, self.transcript.data.given_id, previous_step.status)
                 self.set_status_downstream_border(new_coords=new_coords, old_coords=f0.coordinates,
                                                   is_plus_strand=is_plus_strand,
                                                   template_feature=previous_step.example_feature,
@@ -582,7 +582,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
             print('new piece: {}'.format(new_piece))
             print('new coords: {}'.format(new_coords))
             print(':::: {}'.format(new_piece.features))
-            raise ValueError('Expected some sort of know status to set the status at border')
+            raise ValueError('Expected some sort of known status to set the status at border')
 
     def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
                                   old_piece, trees):

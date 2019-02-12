@@ -1996,9 +1996,9 @@ def test_slicing_featureless_slice_inside_locus():
     ag = controller.get_one_annotated_genome()
     slh = controller.super_loci[0]
     transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
-    slices = (('1', 0, 40, '1-40'),
-              ('1', 40, 80, '41-80'),
-              ('1', 80, 120, '81-120'))
+    slices = (('1', 0, 40, '0-40'),
+              ('1', 40, 80, '40-80'),
+              ('1', 80, 120, '80-120'))
     slices = iter(slices)
     controller._slice_annotations_1way(slices, annotated_genome=ag, is_plus_strand=True)
     # todo, this is failing due coordinates issues. The status is closed for coding,transcribed prior to the
