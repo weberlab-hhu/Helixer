@@ -71,7 +71,7 @@ class StructuredSequence(GenericData):
         slices = []
         for begin, end, pset in coords:
             s = SequenceSlice()
-            s.add_slice(sequence[begin:end], idmaker.next_unique_id(), begin + 1, end, pset)
+            s.add_slice(sequence[begin:end], idmaker.next_unique_id(), begin, end, pset)
             slices.append(s)
         self.slices = slices
         # todo, actually split up sequence

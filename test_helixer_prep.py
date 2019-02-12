@@ -178,7 +178,7 @@ def test_sequence_slicing():
         # all but the last two should be of max_len
         for slice in sequence.slices[:-2]:
             assert len(''.join(slice.sequence)) == 100
-            assert slice.end - slice.start == 99
+            assert slice.end - slice.start == 100
         # the last two should split the remainder in half, therefore have a length difference of 0 or 1
         penultimate = sequence.slices[-2]
         ultimate = sequence.slices[-1]
