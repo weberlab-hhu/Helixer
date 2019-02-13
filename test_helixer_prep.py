@@ -1441,7 +1441,7 @@ def test_set_updown_features_downstream_border():
 
     translated_down_status = [x for x in piece0.features if x.type.value == type_enums.TRANSCRIBED][0]
     assert translated_up_status.start == 200
-    assert translated_down_status.start == 201
+    assert translated_down_status.start == 200
     # cleanup to try similar again
     for f in piece0.features:
         sess.delete(f)
@@ -1474,7 +1474,7 @@ def test_set_updown_features_downstream_border():
     translated_down_status = [x for x in piece0.features if x.type.value == type_enums.TRANSCRIBED][0]
 
     assert translated_up_status.start == 100
-    assert translated_down_status.start == 99
+    assert translated_down_status.start == 100
 
 
 def test_transition_with_right_new_pieces():
@@ -1597,7 +1597,7 @@ def test_modify4slice_directions():
     pair = annotations_orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
 
     half1_coords = annotations_orm.Coordinates(seqid='a', start=1, end=200)
-    half2_coords = annotations_orm.Coordinates(seqid='a', start=201, end=400)
+    half2_coords = annotations_orm.Coordinates(seqid='a', start=200, end=400)
     sess.add_all([scribedlong, pieceAB, pieceCD, fA, fB, fC, fD, pair, old_coor, sl, half1_coords, half2_coords])
     sess.commit()
     slh.make_all_handlers()
@@ -2020,6 +2020,46 @@ def test_slicing_featureless_slice_inside_locus():
     assert len(features40) == 10
     assert set([x.type.value for x in features40]) == {type_enums.CODING, type_enums.TRANSCRIBED,
                                                        type_enums.ERROR}
+
+
+def test_re_slicing():
+    destination = 'testdata/tmp.db'
+    if os.path.exists(destination):
+        os.remove(destination)
+    source = 'testdata/dummyloci_annotations.sqlitedb'
+
+    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
+    controller.mk_session()
+    controller.load_annotations()
+    controller.fill_intervaltrees()
+    ag = controller.get_one_annotated_genome()
+    slh = controller.super_loci[0]
+    transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
+    slices = (('1', 0, 130, '0-130'),
+              ('1', 130, 405, '130-405'))
+    slices = iter(slices)
+    controller._slice_annotations_1way(slices, annotated_genome=ag, is_plus_strand=True)
+    slices = (('1', 0, 100, '0-100'),
+              ('1', 100, 130, '100-130'),
+              ('1', 130, 200, '130-200'),
+              ('1', 200, 405, '200-405'))
+    controller._slice_annotations_1way(slices, annotated_genome=ag, is_plus_strand=True)
+    coordinate100 = controller.session.query(annotations_orm.Coordinates).filter(
+        annotations_orm.Coordinates.start == 100
+    ).first()
+    for p in transcript.transcribed_pieces:
+        print('\npiece: ', p.id, p.features[0].coordinates)
+        for f in p.features:
+            #if f.coordinates is coordinate100:
+            print('{} @ {}, {} ({})'.format(type(f), f.start, f.type, f.bearing))
+    print(coordinate100.features)
+    for coordinate in controller.session.query(annotations_orm.Coordinates).all():
+        print(coordinate, len(coordinate.features))
+    assert False
+
+
+def test_position_updown_features():
+    pass  # todo
 
 
 def rm_transcript_and_children(transcript, sess):

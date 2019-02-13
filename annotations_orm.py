@@ -133,7 +133,7 @@ class TranscribedPiece(Base):
                             back_populates='transcribed_pieces')
 
     def __repr__(self):
-        return "<TranscribedPiece, {}: with features {}>".format(self.id, [(x.id, x.given_id) for x in self.features])
+        return "<TranscribedPiece, {}: with features {}>".format(self.id, [(x.id, x.start, x.given_id) for x in self.features])
 
 
 class Translated(Base):

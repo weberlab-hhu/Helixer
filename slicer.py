@@ -545,11 +545,9 @@ class TranscriptTrimmer(TranscriptInterpBase):
     def set_status_downstream_border(self, new_coords, old_coords, is_plus_strand, template_feature, status, new_piece,
                                      old_piece, trees):
         if is_plus_strand:
-            up_at = new_coords.end
-            down_at = new_coords.end + 1
+            up_at = down_at = new_coords.end
         else:
-            up_at = new_coords.start
-            down_at = new_coords.start - 1
+            up_at = down_at = new_coords.start
 
         at_least_one_link = False
         if status.genic:
