@@ -1760,7 +1760,7 @@ def test_piece_swap_handling_during_multipiece_one_coordinate_transition():
 
 class SimplestDemoData(object):
     def __init__(self, sess):
-        self.old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=1000)
+        self.old_coor = annotations_orm.Coordinates(seqid='a', start=0, end=1000)
         # setup two transitions:
         # 2) scribedlong - [[D<-,C<-],[->A,->B]] -> ABCD, -> two pieces forward, one backward
         self.sl, self.slh = setup_data_handler(slicer.SuperLocusHandler, annotations_orm.SuperLocus)
@@ -1818,7 +1818,10 @@ def test_transition_unused_coordinates_detection():
                        annotations_orm.Coordinates(seqid='a', start=95, end=105),
                        annotations_orm.Coordinates(seqid='a', start=85, end=95)]
     for new_coords in new_coords_list:
+        print('\nstart mod for coords', new_coords)
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
+        for piece in d.tilong.transcript.data.transcribed_pieces:
+            print(piece, [(f.start, f.type, f.bearing) for f in piece.features])
     assert d.pieceCD not in d.scribedlong.transcribed_pieces  # confirm full transition
     assert d.pieceAB not in d.sl.transcribed_pieces
 
