@@ -973,7 +973,7 @@ def test_transcript_get_first():
     assert f_status_coding.data.bearing == type_enums.OPEN_STATUS
     # region beyond exon should be marked erroneous
     assert not f_err_close.data.is_plus_strand and not f_err_open.data.is_plus_strand
-    assert f_err_close.data.start == 119
+    assert f_err_close.data.start == 118  # so that err overlaps 1bp with the coding status checked above
     assert f_err_open.data.start == 404
     assert f_err_open.data.type == type_enums.ERROR
     assert f_err_open.data.bearing == type_enums.START
@@ -2009,16 +2009,17 @@ def test_slicing_featureless_slice_inside_locus():
         for feature in piece.features:
             print('    {}'.format(feature))
     coordinate40 = controller.session.query(annotations_orm.Coordinates).filter(
-        annotations_orm.Coordinates.start == 41
+        annotations_orm.Coordinates.start == 40
     ).first()
     features40 = coordinate40.features
     print(features40)
-    assert False  # todo update type/bearing
+
     # x & y -> 2 translated, 2 transcribed each, z -> 2 error
-    assert len([x for x in features40 if x.type.value == type_enums.IN_TRANSLATED_REGION]) == 4
+    assert len([x for x in features40 if x.type.value == type_enums.CODING]) == 4
+    assert len([x for x in features40 if x.type.value == type_enums.TRANSCRIBED]) == 4
     assert len(features40) == 10
-    assert set([x.type.value for x in features40]) == {type_enums.IN_TRANSLATED_REGION, type_enums.IN_RAW_TRANSCRIPT,
-                                                       type_enums.IN_ERROR}
+    assert set([x.type.value for x in features40]) == {type_enums.CODING, type_enums.TRANSCRIBED,
+                                                       type_enums.ERROR}
 
 
 def rm_transcript_and_children(transcript, sess):
