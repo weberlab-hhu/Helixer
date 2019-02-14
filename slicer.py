@@ -14,8 +14,7 @@ from sqlalchemy.orm import sessionmaker
 
 import os
 import sequences
-from helpers import as_py_start, as_py_end
-from annotations import TranscriptStatus, TranscriptInterpBase
+from annotations import TranscriptInterpBase
 
 
 class SliceController(object):
@@ -73,6 +72,7 @@ class SliceController(object):
                 yield seq.meta_info.seqid, slice.start, slice.end, slice.slice_id
 
     def slice_annotations(self, annotated_genome):
+        """artificially slices annotated genome to match sequence slices and adjusts transcripts as appropriate"""
         slices = list(self.gen_slices())  # todo, double check whether I can assume sorted
         self._slice_annotations_1way(slices, annotated_genome, is_plus_strand=True)
         slices.reverse()
@@ -312,6 +312,7 @@ class OverlapStatus(object):
 
 
 class FeatureVsCoords(object):
+    """positions a feature (upstream, downstream, contained, or detached) relative to some coordinates"""
 
     def __init__(self, feature, slice_coordinates, is_plus_strand):
         self.feature = feature
@@ -467,6 +468,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         return new_piece
 
     def modify4new_slice(self, new_coords, is_plus_strand=True, trees=None):
+        """adjusts features and pieces of transcript to be artificially split across a new sub-coordinate"""
         if trees is None:
             trees = {}
         logging.debug('mod4slice, transcribed: {}, {}'.format(self.transcript.data.id, self.transcript.data.given_id))
