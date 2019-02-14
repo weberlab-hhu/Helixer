@@ -2021,46 +2021,6 @@ def test_slicing_featureless_slice_inside_locus():
                                                        type_enums.ERROR}
 
 
-def test_re_slicing():
-    destination = 'testdata/tmp.db'
-    if os.path.exists(destination):
-        os.remove(destination)
-    source = 'testdata/dummyloci_annotations.sqlitedb'
-
-    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
-    controller.mk_session()
-    controller.load_annotations()
-    controller.fill_intervaltrees()
-    ag = controller.get_one_annotated_genome()
-    slh = controller.super_loci[0]
-    transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
-    slices = (('1', 0, 130, '0-130'),
-              ('1', 130, 405, '130-405'))
-    slices = iter(slices)
-    controller._slice_annotations_1way(slices, annotated_genome=ag, is_plus_strand=True)
-    slices = (('1', 0, 100, '0-100'),
-              ('1', 100, 130, '100-130'),
-              ('1', 130, 200, '130-200'),
-              ('1', 200, 405, '200-405'))
-    controller._slice_annotations_1way(slices, annotated_genome=ag, is_plus_strand=True)
-    coordinate100 = controller.session.query(annotations_orm.Coordinates).filter(
-        annotations_orm.Coordinates.start == 100
-    ).first()
-    for p in transcript.transcribed_pieces:
-        print('\npiece: ', p.id, p.features[0].coordinates)
-        for f in p.features:
-            #if f.coordinates is coordinate100:
-            print('{} @ {}, {} ({})'.format(type(f), f.start, f.type, f.bearing))
-    print(coordinate100.features)
-    for coordinate in controller.session.query(annotations_orm.Coordinates).all():
-        print(coordinate, len(coordinate.features))
-    assert False
-
-
-def test_position_updown_features():
-    pass  # todo
-
-
 def rm_transcript_and_children(transcript, sess):
     for piece in transcript.transcribed_pieces:
         for feature in piece.features:
