@@ -1473,8 +1473,8 @@ def test_set_updown_features_downstream_border():
 
     translated_down_status = [x for x in piece0.features if x.type.value == type_enums.TRANSCRIBED][0]
 
-    assert translated_up_status.start == 100
-    assert translated_down_status.start == 100
+    assert translated_up_status.start == 99
+    assert translated_down_status.start == 99
 
 
 def test_transition_with_right_new_pieces():
@@ -1774,19 +1774,19 @@ class SimplestDemoData(object):
         self.scribedlong.transcribed_pieces = [self.pieceAB, self.pieceCD]
 
         self.fA = annotations_orm.Feature(transcribed_pieces=[self.pieceAB], coordinates=self.old_coor, start=190,
-                                          given_id='A', is_plus_strand=True, super_locus=self.sl, end=190,
+                                          given_id='A', is_plus_strand=True, super_locus=self.sl,
                                           type=type_enums.TRANSCRIBED, bearing=type_enums.START)
         self.fB = annotations_orm.UpstreamFeature(transcribed_pieces=[self.pieceAB], coordinates=self.old_coor,
-                                                  end=210, is_plus_strand=True, super_locus=self.sl, start=210,
+                                                  is_plus_strand=True, super_locus=self.sl, start=210,
                                                   type=type_enums.TRANSCRIBED, bearing=type_enums.CLOSE_STATUS,
                                                   given_id='B')
 
         self.fC = annotations_orm.DownstreamFeature(transcribed_pieces=[self.pieceCD], coordinates=self.old_coor,
-                                                    end=110, is_plus_strand=False, super_locus=self.sl, start=110,
+                                                    is_plus_strand=False, super_locus=self.sl, start=110,
                                                     type=type_enums.TRANSCRIBED, bearing=type_enums.OPEN_STATUS,
                                                     given_id='C')
         self.fD = annotations_orm.Feature(transcribed_pieces=[self.pieceCD], coordinates=self.old_coor, start=90,
-                                          is_plus_strand=False, super_locus=self.sl, end=90,
+                                          is_plus_strand=False, super_locus=self.sl,
                                           type=type_enums.TRANSCRIBED, bearing=type_enums.END, given_id='D')
 
         self.pair = annotations_orm.UpDownPair(upstream=self.fB, downstream=self.fC, transcribed=self.scribedlong)
@@ -1811,14 +1811,17 @@ def test_transition_unused_coordinates_detection():
     new_coords_list = [annotations_orm.Coordinates(seqid='a', start=185, end=195),
                        annotations_orm.Coordinates(seqid='a', start=195, end=205),
                        annotations_orm.Coordinates(seqid='a', start=205, end=215)]
+    print([x.id for x in d.tilong.transcript.data.transcribed_pieces])
     for new_coords in new_coords_list:
+        print('fw {}, {}'.format(new_coords.id, new_coords))
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
+        print([x.id for x in d.tilong.transcript.data.transcribed_pieces])
 
     new_coords_list = [annotations_orm.Coordinates(seqid='a', start=105, end=115),
                        annotations_orm.Coordinates(seqid='a', start=95, end=105),
                        annotations_orm.Coordinates(seqid='a', start=85, end=95)]
     for new_coords in new_coords_list:
-        print('\nstart mod for coords', new_coords)
+        print('\nstart mod for coords, - strand', new_coords)
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
         for piece in d.tilong.transcript.data.transcribed_pieces:
             print(piece, [(f.start, f.type, f.bearing) for f in piece.features])

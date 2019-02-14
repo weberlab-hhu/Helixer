@@ -547,7 +547,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         if is_plus_strand:
             up_at = down_at = new_coords.end
         else:
-            up_at = down_at = new_coords.start
+            up_at = down_at = new_coords.start - 1  # -1 so it's exclusive close (incl next open), in reverse direction
 
         at_least_one_link = False
         if status.genic:
