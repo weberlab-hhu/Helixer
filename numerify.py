@@ -73,7 +73,7 @@ class AnnotationFoo(object):
 
 
 class AnnotationNumerifier(Numerifier, AnnotationFoo):
-    def __init__(self, data_slice, shape, *args, **kwargs):
+    def __init__(self, data_slice, shape, **kwargs):
         Numerifier.__init__(self, shape)
         AnnotationFoo.__init__(self, data_slice)
 
@@ -111,6 +111,9 @@ class DataInterpretationError(Exception):
 
 # TODO, break or mask on errors
 class BasePairAnnotationNumerifier(AnnotationNumerifier):
+    def __init__(self, data_slice):
+        super().__init__(data_slice, [3])
+
     @staticmethod
     def class_labels(status):
         labs = (status.genic, status.in_translated_region, status.in_intron or status.in_trans_intron)
@@ -129,6 +132,9 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
 
 
 class TransitionAnnotationNumerifier(AnnotationNumerifier):
+    def __init__(self, data_slice):
+        super().__init__(data_slice, [12])
+
     types = {type_enums.TRANSCRIBED: 0,
              type_enums.CODING: 4,
              type_enums.INTRON: 8,
@@ -180,7 +186,7 @@ class StepHolder(object):
         else:
             raise ValueError
 
-    def _range(self, previous):
+    def py_range(self, previous):
         if previous.features is not None:
             previous_at = previous.at
         else:
@@ -190,9 +196,6 @@ class StepHolder(object):
                 previous_at = self.a_feature.coordinates.end
 
         return gff_2_annotations.min_max(previous_at, self.at)
-
-    def py_range(self, previous):
-        return self._range(previous)
 
     def any_erroneous_features(self):
         #errors = [x.value for x in type_enums.ErrorFeature]
@@ -213,8 +216,7 @@ class TranscriptLocalReader(annotations.TranscriptInterpBase):
             features.reverse()
         return features
 
-
-    def transition_5p_to_3p(self, coords, is_plus_strand):
+    def local_transition_5p_to_3p(self, coords, is_plus_strand):
         status = annotations.TranscriptStatus()
         for aligned_features in self.stack_matches(self.sort_features(coords, is_plus_strand)):
             self.update_status(status, aligned_features)
@@ -222,7 +224,7 @@ class TranscriptLocalReader(annotations.TranscriptInterpBase):
 
     def transition_5p_to_3p_paired_steps(self, coords, is_plus_strand):
         prev_step = StepHolder()
-        for aligned_features, status in self.transition_5p_to_3p(coords, is_plus_strand):
+        for aligned_features, status in self.local_transition_5p_to_3p(coords, is_plus_strand):
             step = StepHolder(aligned_features, status)
             yield prev_step, step
             prev_step = step

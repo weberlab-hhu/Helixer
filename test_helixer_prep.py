@@ -2078,7 +2078,7 @@ def test_base_level_annotation_numerify():
     sinfo_h = slicer.SequenceInfoHandler()
     sinfo_h.add_data(sinfo)
 
-    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h, shape=[3])
+    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h)
     with pytest.raises(numerify.DataInterpretationError):
         numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
 
@@ -2092,7 +2092,7 @@ def test_base_level_annotation_numerify():
     sinfo_h = slicer.SequenceInfoHandler()
     sinfo_h.add_data(sinfo)
 
-    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h, shape=[3])  # todo, dynamic shape!
+    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h)
     nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
     expect = np.zeros([405, 3], dtype=float)
     expect[0:400, 0] = 1.  # set genic/in raw transcript
@@ -2119,7 +2119,7 @@ def test_transition_annotation_numerify():
     sinfo_h = slicer.SequenceInfoHandler()
     sinfo_h.add_data(sinfo)
 
-    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h, shape=[12])
+    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h)
     with pytest.raises(numerify.DataInterpretationError):
         numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
 
@@ -2133,7 +2133,7 @@ def test_transition_annotation_numerify():
     sinfo_h = slicer.SequenceInfoHandler()
     sinfo_h.add_data(sinfo)
 
-    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h, shape=[12])
+    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h)
     nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
     expect = np.zeros([405, 12], dtype=float)
     expect[0, 0] = 1.  # TSS
@@ -2143,6 +2143,11 @@ def test_transition_annotation_numerify():
     expect[(100, 120), 8] = 1.  # Don-splice
     expect[(110, 200), 9] = 1.  # Acc-splice
     assert np.allclose(nums, expect)
+
+
+def test_numerify_from_gr0():
+    pass  # todo
+
 
 #### type_enumss ####
 def test_enum_non_inheritance():
