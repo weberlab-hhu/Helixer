@@ -91,3 +91,34 @@ one from the python coordinates
  |  |  |  |  |  |
  N( T. A. C] N. N.
 ```
+
+##### differences vs gff
+Cheat sheet for how the Features compare to the gff (in particular any discrepancy
+between the closest coordinate in the gff, and the now standardized, consistent coordinate).
+
+First and last for gff are reported as they are typically in gff (coordinate sorted),
+so reverse to the interpretation when on the - strand. 
+
+Plus strand (+)
+
+| Common Name  | GFF | GFF start | GFF end |type| bearing| position |
+| -------------|:----| ---------:|--------:|:---|:-------|--------:|
+| TSS, Transcription start site      | start 1st exon  |x| |transcribed|start|x - 1|
+| TTS, Transcription termination site| end last exon   | |x|transcribed|end  |x    |
+| 1st bp of start codon              | start 1st CDS   |x| |coding     |start|x - 1|
+| last bp of stop codon              | end last CDS    | |x|coding     |end  |x    |
+| donor splice site (5' of intron)   |end non-last exon| |x|intron     |start|x    |
+| acceptor splice site (3' of intron)|start 2nd+ exon  |x| |intron     |end  |x - 1|
+
+
+Minus strand (-)
+
+| Common Name  | GFF | GFF start | GFF end |type| bearing| position|
+| -------------|:----| ---------:|--------:|:---|:-------|--------:|
+| TSS, Transcription start site      | end last exon   | |x|transcribed|start|x - 1|
+| TTS, Transcription termination site| start 1st exon  |x| |transcribed|end  |x - 2|
+| 1st bp of start codon              | end last CDS    | |x|coding     |start|x - 1|
+| last bp of stop codon              | start 1st CDS   |x| |coding     |end  |x - 2|
+| donor splice site (5' of intron)   |start 2nd+ exon  |x| |intron     |start|x - 2|
+| acceptor splice site (3' of intron)|end non-last exon| |x|intron     |end  |x - 1|
+
