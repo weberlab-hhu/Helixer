@@ -1412,7 +1412,7 @@ def test_set_updown_features_downstream_border():
     sess.commit()
     slh.make_all_handlers()
     # set to genic, non intron area
-    status = slicer.TranscriptStatus()
+    status = annotations.TranscriptStatus()
     status.saw_tss()
     status.saw_start(0)
 

@@ -216,13 +216,11 @@ class SuperLocusHandler(annotations.SuperLocusHandler):
 
 
 class TranscribedHandler(annotations.TranscribedHandler):
-    def reconcile_with_slice(self, seqid, start, end):
-        pass
+    pass
 
 
 class TranslatedHandler(annotations.TranslatedHandler):
-    def reconcile_translated_with_slice(self, seqid, start, end):
-        pass
+    pass
 
 
 class TranscribedPieceHandler(annotations.TranscribedPieceHandler):
@@ -256,59 +254,6 @@ class DownstreamFeatureHandler(annotations.DownstreamFeatureHandler):
 
 class UpDownPairHandler(annotations.UpDownPairHandler):
     pass
-
-
-class OverlapStatus(object):
-    contained = 'contained'
-    contains = 'contains'
-    no_overlap = 'no_overlap'
-    overlaps_upstream = 'overlaps_upstream'
-    overlaps_downstream = 'overlaps_downstream'
-    accepted_stati = (contained, no_overlap, overlaps_upstream, overlaps_downstream)
-
-    def __init__(self):
-        self._status = None
-
-    @property
-    def status(self):
-        return self._status
-
-    @status.setter
-    def status(self, status):
-        assert status in OverlapStatus.accepted_stati
-        self._status = status
-
-    def set_status(self, feature, seqid, start, end):
-        err_str = 'Non handled overlap feature({}, {}, {}) vs slice({}, {}, {})'.format(
-                feature.seqid, feature.start, feature.end,
-                seqid, start, end
-            )
-        overlaps_at_start = False
-        overlaps_at_end = False
-        if feature.seqid != seqid:
-            out = OverlapStatus.no_overlap
-        elif feature.start >= start and feature.end <= end:
-            out = OverlapStatus.contained
-        elif feature.start < start and feature.end > end:
-            out = OverlapStatus.contains
-        elif feature.end < start or feature.start > end:
-            out = OverlapStatus.no_overlap
-        elif feature.start < start and feature.end >= start:
-            overlaps_at_start = True
-        elif feature.end > end and feature.start <= end:
-            overlaps_at_end = True
-        else:
-            raise ValueError(err_str)
-
-        plus_strand = feature.is_plus_strand()
-        if overlaps_at_start and overlaps_at_end:
-            raise ValueError(err_str + ' Overlaps both ends???')  # todo, test this properly and remove run time check
-
-        if (overlaps_at_start and plus_strand) or (overlaps_at_end and not plus_strand):
-            out = OverlapStatus.overlaps_upstream
-        if (overlaps_at_end and plus_strand) or (overlaps_at_start and not plus_strand):
-            out = OverlapStatus.overlaps_downstream
-        self.status = out
 
 
 class FeatureVsCoords(object):
@@ -601,7 +546,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
                               downstream=downstream.data, transcribed=self.transcript.data)
         self.session.add_all([upstream.data, downstream.data])
         self.session.commit()  # todo, figure out what the real rules are for committing, bc slower, but less buggy?
-
 
     def sort_all(self):
         out = []
