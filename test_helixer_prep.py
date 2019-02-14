@@ -327,19 +327,12 @@ def test_feature_has_its_things():
     assert f.coordinates is None
     assert f.score is None
     # test feature with
-    f1 = annotations_orm.Feature(super_locus=sl, is_plus_strand=False, start=3, end=6)
+    f1 = annotations_orm.Feature(super_locus=sl, is_plus_strand=False, start=3)
     assert not f1.is_plus_strand
     assert f1.start == 3
-    assert f1.end == 6
     # test bad input
     with pytest.raises(KeyError):
         f2 = annotations_orm.Feature(super_locus=f)
-
-    f2 = annotations_orm.Feature(start=3, end=1)
-    sess.add(f2)
-    with pytest.raises(sqlalchemy.exc.IntegrityError):
-        sess.commit()
-    sess.rollback()
 
     f2 = annotations_orm.Feature(is_plus_strand=-1)  # note that 0, and 1 are accepted
     sess.add(f2)
