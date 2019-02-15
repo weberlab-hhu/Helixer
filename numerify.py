@@ -289,3 +289,18 @@ class TranscriptLocalReader(annotations.TranscriptInterpBase):
             yield prev_step, step
             prev_step = step
 
+
+#### and now on to actual example gen
+class ExampleMakerSeqMetaBP(object):
+    def examples_from_slice(self, anno_slice, seq_slice, structured_genome, is_plus_strand, max_len):
+        assert isinstance(seq_slice, sequences.SequenceSlice)
+        assert isinstance(structured_genome, sequences.StructuredGenome)
+        anno_nummerifier = BasePairAnnotationNumerifier(anno_slice)
+        anno_gen = anno_nummerifier.slice_to_matrices(anno_slice, is_plus_strand=is_plus_strand, max_len=max_len)
+        seq_nummerifier = SequenceNumerifier()
+        seq_gen = seq_nummerifier.slice_to_matrices(seq_slice, is_plus_strand=is_plus_strand, max_len=max_len)
+        total_Gbp = structured_genome.meta_info.total_bp / 10**9
+        gc = structured_genome.meta_info.gc_content
+        for anno in anno_gen:
+            seq = next(seq_gen)
+            yield {'labels': anno.flatten(), 'input': seq.flatten(), 'meta_Gbp': [total_Gbp], 'meta_gc': [gc]}
