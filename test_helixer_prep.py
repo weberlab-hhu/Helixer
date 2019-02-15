@@ -2182,8 +2182,7 @@ def test_numerify_from_gr0():
     assert np.allclose(nums, expect)
 
 
-def test_minus_strand_numerify():
-    # setup a very basic -strand locus
+def setup_simpler_numerifier():
     sess = mk_session()
     ag = annotations_orm.AnnotatedGenome()
     sinfo, sinfo_h = setup_data_handler(slicer.SequenceInfoHandler, annotations_orm.SequenceInfo, annotated_genome=ag)
@@ -2199,7 +2198,12 @@ def test_minus_strand_numerify():
 
     sess.add_all([ag, sinfo, coord, sl, transcript, piece, tss, tts])
     sess.commit()
+    return sess, sinfo_h
 
+
+def test_minus_strand_numerify():
+    # setup a very basic -strand locus
+    sess, sinfo_h = setup_simpler_numerifier()
     numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h)
     nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
     # first, we should make sure the opposite strand is unmarked when empty
@@ -2210,6 +2214,18 @@ def test_minus_strand_numerify():
     nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=False)
     expect[10:41, 0] = 1.
     assert np.allclose(nums, expect)
+
+
+def test_live_slicing():
+    sess, sinfo_h = setup_simpler_numerifier()
+    numerifier = numerify.LiveSliceBasePairAnnotationNumerifier(data_slice=sinfo_h)
+    num_list = list(numerifier.slice_to_matrices(data_slice=sinfo_h, is_plus_strand=False, max_len=50))
+
+    expect = np.zeros([100, 3], dtype=float)
+    expect[10:41, 0] = 1.
+
+    assert np.allclose(num_list[0], expect[0:50])
+    assert np.allclose(num_list[1], expect[50:100])
 
 
 #### type_enumss ####

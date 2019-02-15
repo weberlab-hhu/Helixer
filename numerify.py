@@ -7,7 +7,7 @@ import annotations
 import type_enums
 import gff_2_annotations
 import slicer
-import helpers
+import partitions
 
 
 # for now collapse everything to one vector (with or without pre-selection of primary transcript)
@@ -112,7 +112,11 @@ class DataInterpretationError(Exception):
 # TODO, break or mask on errors
 class BasePairAnnotationNumerifier(AnnotationNumerifier):
     def __init__(self, data_slice):
-        super().__init__(data_slice, [3])
+        super().__init__(data_slice, self._shape)
+
+    @property
+    def _shape(self):
+        return [3]
 
     @staticmethod
     def class_labels(status):
@@ -131,6 +135,14 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
             labels = self.class_labels(prev_step.status)
             matrix[py_start:py_end, :] = np.logical_or(matrix[py_start:py_end, :], labels)
             print('labelling {}-{} as {}'.format(py_start, py_end, labels))
+
+
+class LiveSliceBasePairAnnotationNumerifier(BasePairAnnotationNumerifier):
+    def slice_to_matrices(self, data_slice, is_plus_strand, max_len, *args, **kwargs):
+        matrix = self.slice_to_matrix(data_slice, is_plus_strand)
+        partitioner = partitions.Stepper(end=matrix.shape[0], by=max_len)
+        for prev, current in partitioner.step_to_end():
+            yield matrix[prev:current]
 
 
 class TransitionAnnotationNumerifier(AnnotationNumerifier):
