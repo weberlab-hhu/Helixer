@@ -94,7 +94,7 @@ class SequenceSlice(GenericData):
     def add_sequence(self, sequence, seqid):
         self.sequence = list(chunk_str(sequence, 100))
         self.slice_id = seqid
-        self.start = 1
+        self.start = 0  # todo, -> 0
         self.end = len(sequence)
 
     def add_slice(self, sequence, slice_id, start, end, processing_set):
@@ -258,3 +258,4 @@ def reverse_complement(seq):
 def chunk_str(string, length):
     for i in range(0, len(string), length):
         yield string[i:(i+length)]
+

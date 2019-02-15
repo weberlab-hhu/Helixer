@@ -2061,6 +2061,21 @@ def test_reslice_at_same_spot():
 
 
 #### numerify ####
+def test_sequence_numerify():
+    sg = sequences.StructuredGenome()
+    sg.from_json('testdata/tester.sequence.json')
+    sequence = sg.sequences[0]
+    slice0 = sequence.slices[0]
+    numerifier = numerify.SequenceNumerifier()
+    matrix = numerifier.slice_to_matrix(slice0, is_plus_strand=True)
+    print(slice0.sequence)
+    # ATATATAT, just btw
+    x = [0., 1, 0, 0,
+         0., 0, 1, 0]
+    expect = np.array(x * 4).reshape([-1, 4])
+    assert np.allclose(expect, matrix)
+
+
 def setup4numerify():
 
     destination = 'testdata/tmp.db'

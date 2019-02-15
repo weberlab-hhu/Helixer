@@ -3,7 +3,7 @@
     {
       "slices": [
         {
-          "start": 1,
+          "start": 0,
           "sequence": [
             "ATATATAT"
           ],
@@ -38,7 +38,7 @@
     {
       "slices": [
         {
-          "start": 1,
+          "start": 0,
           "sequence": [
             "GCGCGCGC"
           ],

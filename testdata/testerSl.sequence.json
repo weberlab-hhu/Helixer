@@ -27,7 +27,7 @@
         {
           "processing_set": null,
           "end": 16000,
-          "start": 1,
+          "start": 0,
           "slice_id": "NC_015438.2:1-16000",
           "sequence": [
             "GGCTTGTCCGACCCATTTGGAAAGGTCAAACGAGCCTCAAAGCGAGCATACCCCTCATTTCGACGATTTTCGTGTGCTATAGCACACCATTTTTTGGGTG",
@@ -221,7 +221,7 @@
         {
           "processing_set": null,
           "end": 160000,
-          "start": 1,
+          "start": 0,
           "slice_id": "NC_015439.2:1-160000",
           "sequence": [
             "CCCATTTGAGGAACAAAATCCCTATGCAAAAATTGGGGGAAACGTAAAATTGAACGCGATAAAAGAGTTTTATCATAAAATTGATTATCTAACATTAAAA",
@@ -1855,7 +1855,7 @@
         {
           "processing_set": null,
           "end": 22000,
-          "start": 1,
+          "start": 0,
           "slice_id": "NC_015440.2:1-22000",
           "sequence": [
             "ATGACAACAAAATTGAAAAAGGAGAGTTTATGGTCGGGGATTTAGTGCTTCTATTCAATTCTAGATTGCGCTTGTTTCCAGGCAAACTCAAGTCCAAATG",

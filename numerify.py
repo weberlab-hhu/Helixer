@@ -8,6 +8,7 @@ import type_enums
 import gff_2_annotations
 import slicer
 import partitions
+import sequences
 
 
 # for now collapse everything to one vector (with or without pre-selection of primary transcript)
@@ -44,6 +45,41 @@ class Numerifier(object):
 
     def _zeros(self, length):
         return np.zeros([length] + self.shape, self.dtype)
+
+
+AMBIGUITY_DECODE = {'c': [1., 0., 0., 0.],
+                    'a': [0., 1., 0., 0.],
+                    't': [0., 0., 1., 0.],
+                    'g': [0., 0., 0., 1.],
+                    'y': [0.5, 0., 0.5, 0.],
+                    'r': [0., 0.5, 0., 0.5],
+                    'w': [0., 0.5, 0.5, 0.],
+                    's': [0.5, 0., 0., 0.5],
+                    'k': [0., 0., 0.5, 0.5],
+                    'm': [0.5, 0.5, 0., 0.],
+                    'd': [0., 0.33, 0.33, 0.33],
+                    'v': [0.33, 0.33, 0., 0.33],
+                    'h': [0.33, 0.33, 0.33, 0.],
+                    'b': [0.33, 0., 0.33, 0.33],
+                    'n': [0.25, 0.25, 0.25, 0.25]}
+
+
+class SequenceNumerifier(Numerifier):
+    def __init__(self):
+        super().__init__([4])
+
+    def slice_to_matrix(self, data_slice, is_plus_strand=None, *args, **kwargs):
+        assert is_plus_strand is not None  # todo, can I make this standard part of sig?
+        assert isinstance(data_slice, sequences.SequenceSlice)
+        length = data_slice.end - data_slice.start
+        matrix = self._zeros(length)
+        i = 0
+        for subseq in data_slice.sequence:
+            for bp in subseq:
+                matrix[i] = AMBIGUITY_DECODE[bp.lower()]
+                i += 1
+        assert i == length, 'sequence length {} does not match expected {}'.format(i, length)
+        return matrix
 
 
 class AnnotationFoo(object):
