@@ -36,6 +36,14 @@ class Numerifier(object):
     def slice_to_matrix(self, data_slice, *args, **kwargs):
         raise NotImplementedError
 
+    # this works only when each bp has it's own annotation; In other cases (e.g. where transitions are encoded)
+    # this method must be overwritten
+    def slice_to_matrices(self, data_slice, is_plus_strand, max_len, *args, **kwargs):
+        matrix = self.slice_to_matrix(data_slice, is_plus_strand)
+        partitioner = partitions.Stepper(end=matrix.shape[0], by=max_len)
+        for prev, current in partitioner.step_to_end():
+            yield matrix[prev:current]
+
     def flatten_matrix(self):
         assert isinstance(self.matrix, np.ndarray)
         return self.matrix.flatten()
@@ -173,13 +181,6 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
             print('labelling {}-{} as {}'.format(py_start, py_end, labels))
 
 
-class LiveSliceBasePairAnnotationNumerifier(BasePairAnnotationNumerifier):
-    def slice_to_matrices(self, data_slice, is_plus_strand, max_len, *args, **kwargs):
-        matrix = self.slice_to_matrix(data_slice, is_plus_strand)
-        partitioner = partitions.Stepper(end=matrix.shape[0], by=max_len)
-        for prev, current in partitioner.step_to_end():
-            yield matrix[prev:current]
-
 
 class TransitionAnnotationNumerifier(AnnotationNumerifier):
     def __init__(self, data_slice):
@@ -214,6 +215,9 @@ class TransitionAnnotationNumerifier(AnnotationNumerifier):
             matrix[py_start, :],
             labels)
         print('labelling {} as {}'.format(py_start, labels))
+
+    def slice_to_matrices(self, data_slice, is_plus_strand, max_len, *args, **kwargs):
+        raise NotImplementedError  # todo!
 
 
 class StepHolder(object):

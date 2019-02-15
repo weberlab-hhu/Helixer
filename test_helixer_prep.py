@@ -2233,7 +2233,8 @@ def test_minus_strand_numerify():
 
 def test_live_slicing():
     sess, sinfo_h = setup_simpler_numerifier()
-    numerifier = numerify.LiveSliceBasePairAnnotationNumerifier(data_slice=sinfo_h)
+    # annotations by bp
+    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h)
     num_list = list(numerifier.slice_to_matrices(data_slice=sinfo_h, is_plus_strand=False, max_len=50))
 
     expect = np.zeros([100, 3], dtype=float)
@@ -2241,6 +2242,20 @@ def test_live_slicing():
 
     assert np.allclose(num_list[0], expect[0:50])
     assert np.allclose(num_list[1], expect[50:100])
+    # sequences by bp
+    sg = sequences.StructuredGenome()
+    sg.from_json('testdata/dummyloci.sequence.json')
+    sequence = sg.sequences[0]
+    slice0 = sequence.slices[0]
+    numerifier = numerify.SequenceNumerifier()
+    num_list = list(numerifier.slice_to_matrices(data_slice=slice0, is_plus_strand=True, max_len=50))
+    print([x.shape for x in num_list])
+    # [(50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (27, 4), (28, 4)]
+    assert len(num_list) == 9
+    for i in range(7):
+        assert np.allclose(num_list[i], np.full([50, 4], 0.25, dtype=float))
+    for i in [7, 8]:  # for the last two, just care that they're about the expected size...
+        assert np.allclose(num_list[i][:27], np.full([27, 4], 0.25, dtype=float))
 
 
 #### type_enumss ####
