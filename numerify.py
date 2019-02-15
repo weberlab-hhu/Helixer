@@ -56,7 +56,7 @@ class AnnotationFoo(object):
 
     def _get_coordinates(self):
         coords = self.data_slice.data.coordinates
-        assert len(coords) == 1
+        assert len(coords) == 1, '{} != {}'.format(len(coords), 1)
         coords = coords[0]
         return coords
 
@@ -189,15 +189,21 @@ class StepHolder(object):
             raise ValueError
 
     def py_range(self, previous):
+        current_at = self.at
         if previous.features is not None:
             previous_at = previous.at
+            if not self.a_feature.is_plus_strand:
+                # + 1 to move from - strand coordinates (,] to pythonic coordinates [,)
+                current_at += 1
+                previous_at += 1
         else:
             if self.a_feature.is_plus_strand:
                 previous_at = self.a_feature.coordinates.start
             else:
                 previous_at = self.a_feature.coordinates.end
+                current_at += 1  # + 1 to move from - strand coordinate ( to pythonic coordinate [
 
-        return gff_2_annotations.min_max(previous_at, self.at)
+        return gff_2_annotations.min_max(previous_at, current_at)
 
     def any_erroneous_features(self):
         #errors = [x.value for x in type_enums.ErrorFeature]
@@ -214,7 +220,7 @@ class TranscriptLocalReader(annotations.TranscriptInterpBase):
                     features.append(feature)
         # sort
         features = sorted(features, key=lambda x: x.pos_cmp_key())
-        if not features[0].is_plus_strand:
+        if not is_plus_strand:
             features.reverse()
         return features
 

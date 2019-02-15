@@ -2180,7 +2180,37 @@ def test_numerify_from_gr0():
     expect[120:200, 2] = 1.
     expect = expect[4:, :]
     assert np.allclose(nums, expect)
-    
+
+
+def test_minus_strand_numerify():
+    # setup a very basic -strand locus
+    sess = mk_session()
+    ag = annotations_orm.AnnotatedGenome()
+    sinfo, sinfo_h = setup_data_handler(slicer.SequenceInfoHandler, annotations_orm.SequenceInfo, annotated_genome=ag)
+    coord = annotations_orm.Coordinates(start=0, end=100, seqid='a', sequence_info=sinfo)
+    sl = annotations_orm.SuperLocus()
+    transcript = annotations_orm.Transcribed(super_locus=sl)
+    piece = annotations_orm.TranscribedPiece(transcribed=transcript)
+    tss = annotations_orm.Feature(start=40, is_plus_strand=False, type=type_enums.TRANSCRIBED, bearing=type_enums.START,
+                                  coordinates=coord, super_locus=sl)
+    tts = annotations_orm.Feature(start=9, is_plus_strand=False, type=type_enums.TRANSCRIBED, bearing=type_enums.END,
+                                  coordinates=coord, super_locus=sl)
+    piece.features = [tss, tts]
+
+    sess.add_all([ag, sinfo, coord, sl, transcript, piece, tss, tts])
+    sess.commit()
+
+    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h)
+    nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
+    # first, we should make sure the opposite strand is unmarked when empty
+    expect = np.zeros([100, 3], dtype=float)
+    assert np.allclose(nums, expect)
+
+    # and now that we get the expect range on the minus strand, keeping in mind the 40 is inclusive, and the 9, not
+    nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=False)
+    expect[10:41, 0] = 1.
+    assert np.allclose(nums, expect)
+
 
 #### type_enumss ####
 def test_enum_non_inheritance():
