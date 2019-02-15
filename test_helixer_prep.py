@@ -2061,7 +2061,8 @@ def test_reslice_at_same_spot():
 
 
 #### numerify ####
-def test_base_level_annotation_numerify():
+def setup4numerify():
+
     destination = 'testdata/tmp.db'
     if os.path.exists(destination):
         os.remove(destination)
@@ -2077,6 +2078,16 @@ def test_base_level_annotation_numerify():
     sinfo = sess.query(annotations_orm.SequenceInfo).first()
     sinfo_h = slicer.SequenceInfoHandler()
     sinfo_h.add_data(sinfo)
+    # simplify
+
+    sinfo = sess.query(annotations_orm.SequenceInfo).first()
+    sinfo_h = slicer.SequenceInfoHandler()
+    sinfo_h.add_data(sinfo)
+    return sess, controller, sinfo_h
+
+
+def test_base_level_annotation_numerify():
+    sess, controller, sinfo_h = setup4numerify()
 
     numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h)
     with pytest.raises(numerify.DataInterpretationError):
@@ -2087,10 +2098,6 @@ def test_base_level_annotation_numerify():
     transcriptz = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
-
-    sinfo = sess.query(annotations_orm.SequenceInfo).first()
-    sinfo_h = slicer.SequenceInfoHandler()
-    sinfo_h.add_data(sinfo)
 
     numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h)
     nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
@@ -2103,35 +2110,16 @@ def test_base_level_annotation_numerify():
 
 
 def test_transition_annotation_numerify():
-    destination = 'testdata/tmp.db'
-    if os.path.exists(destination):
-        os.remove(destination)
-    source = 'testdata/dummyloci_annotations.sqlitedb'
-
-    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination,
-                                        sequences_path='testdata/dummyloci.sequence.sliced.json')
-    controller.mk_session()
-    controller.load_annotations()
-    # no need to modify, so can just load briefly
-    sess = controller.session
-
-    sinfo = sess.query(annotations_orm.SequenceInfo).first()
-    sinfo_h = slicer.SequenceInfoHandler()
-    sinfo_h.add_data(sinfo)
+    sess, controller, sinfo_h = setup4numerify()
 
     numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h)
     with pytest.raises(numerify.DataInterpretationError):
         numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
 
-    # simplify
     transcriptx = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'x').first()
     transcriptz = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
-
-    sinfo = sess.query(annotations_orm.SequenceInfo).first()
-    sinfo_h = slicer.SequenceInfoHandler()
-    sinfo_h.add_data(sinfo)
 
     numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h)
     nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
@@ -2146,8 +2134,53 @@ def test_transition_annotation_numerify():
 
 
 def test_numerify_from_gr0():
-    pass  # todo
+    sess, controller, sinfo_h = setup4numerify()
+    transcriptx = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'x').first()
+    transcriptz = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'z').first()
+    rm_transcript_and_children(transcriptx, sess)
+    rm_transcript_and_children(transcriptz, sess)
 
+    x = type_enums.OnSequence(type_enums.TRANSCRIBED)
+    print(x)
+    tss = sess.query(annotations_orm.Feature).filter(
+        annotations_orm.Feature.type == type_enums.OnSequence(type_enums.TRANSCRIBED)
+    ).filter(
+        annotations_orm.Feature.bearing == type_enums.Bearings(type_enums.START)
+    ).all()
+    assert len(tss) == 1
+    tss = tss[0]
+    coords = sess.query(annotations_orm.Coordinates).all()
+    assert len(coords) == 1
+    coords = coords[0]
+    # move whole region back by 5 (was 0)
+    tss.start = coords.start = 4
+    # and now make sure it really starts form 4
+    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h)
+    nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
+    # setup as above except for the change in position of TSS
+    expect = np.zeros([405, 12], dtype=float)
+    expect[4, 0] = 1.  # TSS
+    expect[400, 1] = 1.  # TTS
+    expect[10, 4] = 1.  # start codon
+    expect[300, 5] = 1.  # stop codon
+    expect[(100, 120), 8] = 1.  # Don-splice
+    expect[(110, 200), 9] = 1.  # Acc-splice
+    # truncate from start
+    expect = expect[4:, :]
+    assert np.allclose(nums, expect)
+
+    # and now once for ranges
+    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h)
+    nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
+    # as above (except TSS), then truncate
+    expect = np.zeros([405, 3], dtype=float)
+    expect[4:400, 0] = 1.  # set genic/in raw transcript
+    expect[10:300, 1] = 1.  # set in transcribed
+    expect[100:110, 2] = 1.  # both introns
+    expect[120:200, 2] = 1.
+    expect = expect[4:, :]
+    assert np.allclose(nums, expect)
+    
 
 #### type_enumss ####
 def test_enum_non_inheritance():

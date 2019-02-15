@@ -126,6 +126,8 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
             if step.any_erroneous_features():
                 raise DataInterpretationError
             py_start, py_end = step.py_range(prev_step)
+            py_start -= step.a_feature.coordinates.start
+            py_end -= step.a_feature.coordinates.start
             labels = self.class_labels(prev_step.status)
             matrix[py_start:py_end, :] = np.logical_or(matrix[py_start:py_end, :], labels)
             print('labelling {}-{} as {}'.format(py_start, py_end, labels))
@@ -158,7 +160,7 @@ class TransitionAnnotationNumerifier(AnnotationNumerifier):
     def update_matrix(self, matrix, prev_step, step):
         if step.any_erroneous_features():
             raise DataInterpretationError
-        py_start = step.a_feature.start
+        py_start = step.a_feature.start - step.a_feature.coordinates.start
         labels = self.class_labels(step.features)
         matrix[py_start, :] = np.logical_or(
             matrix[py_start, :],
