@@ -942,7 +942,11 @@ class TranscriptInterpBase(object):
             for by_bearing in self.stack_matches(sorted_matches, match_fn=bearing_match):
                 yield by_bearing
 
-
+    def sort_all(self):
+        out = []
+        for piece in self.sort_pieces():
+            out.append(self.sorted_features(piece))
+        return out
 
 
 

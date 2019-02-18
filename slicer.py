@@ -547,9 +547,4 @@ class TranscriptTrimmer(TranscriptInterpBase):
         self.session.add_all([upstream.data, downstream.data])
         self.session.commit()  # todo, figure out what the real rules are for committing, bc slower, but less buggy?
 
-    def sort_all(self):
-        out = []
-        for piece in self.sort_pieces():
-            out.append(self.sorted_features(piece))
-        return out
 
