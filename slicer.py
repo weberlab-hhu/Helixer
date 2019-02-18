@@ -115,45 +115,8 @@ class SliceController(object):
         pass
 
 
-class HandleMaker(object):
-    def __init__(self, super_locus_handler):
-        self.super_locus_handler = super_locus_handler
-        self.handles = []
-
-    @staticmethod
-    def _get_paired_item(search4, search_col, return_col, nested_list):
-        matches = [x[return_col] for x in nested_list if x[search_col] == search4]
-        assert len(matches) == 1
-        return matches[0]
-
-    def make_all_handlers(self):
-        self.handles = []
-        sl = self.super_locus_handler.data
-        datas = list()
-        datas += sl.transcribed_pieces
-        datas += sl.translateds
-        datas += sl.features
-        for transcribed in sl.transcribeds:
-            datas.append(transcribed)
-            datas += transcribed.pairs
-
-        for item in datas:
-            self.handles.append(self._get_or_make_one_handler(item))
-
-    def mk_n_append_handler(self, data):
-        handler = self._get_or_make_one_handler(data)
-        self.handles.append(handler)
-        return handler
-
-    def _get_or_make_one_handler(self, data):
-        try:
-            handler = data.hanlder
-        except AttributeError:
-            handler_type = self._get_handler_type(data)
-            handler = handler_type()
-            handler.add_data(data)
-        return handler
-
+class HandleMaker(annotations.HandleMaker):
+    # redefine to get handlers from slicer, here
     def _get_handler_type(self, old_data):
         key = [(SuperLocusHandler, annotations_orm.SuperLocus),
                (TranscribedHandler, annotations_orm.Transcribed),

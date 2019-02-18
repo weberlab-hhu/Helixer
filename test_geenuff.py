@@ -493,6 +493,128 @@ def test_order_pieces():
         ti.sort_pieces()
 
 
+class TransspliceDemoData(object):
+    def __init__(self, sess):
+        # setup two transitions:
+        # 1) scribed - [->[TSS(A),START(B),TDSS(C{->F}),TTS(D)], ->[TSS(E), <<slice>>> TASS(F),STOP(G),TTS(H)]]
+        # 2) scribedflip - [->[TSS(A),START(B),TDSS(C{->F'}),TTS(D)], <-[TTS(H'), <<slice>> STOP(G'),TASS(F'),TSS(E')]]
+        self.old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=2000)
+        self.sl, self.slh = setup_data_handler(annotations.SuperLocusHandler, annotations_orm.SuperLocus)
+        self.scribed, self.scribedh = setup_data_handler(annotations.TranscribedHandler, annotations_orm.Transcribed,
+                                                         super_locus=self.sl)
+        self.scribedflip, self.scribedfliph = setup_data_handler(annotations.TranscribedHandler,
+                                                                 annotations_orm.Transcribed,
+                                                                 super_locus=self.sl)
+
+        self.ti = annotations.TranscriptInterpBase(transcript=self.scribedh, session=sess)
+        self.tiflip = annotations.TranscriptInterpBase(transcript=self.scribedfliph, session=sess)
+
+        self.pieceA2D = annotations_orm.TranscribedPiece(super_locus=self.sl)
+        self.pieceA2Dp = annotations_orm.TranscribedPiece(super_locus=self.sl)
+        self.pieceE2H = annotations_orm.TranscribedPiece(super_locus=self.sl)
+        self.pieceEp2Hp = annotations_orm.TranscribedPiece(super_locus=self.sl)
+        self.scribed.transcribed_pieces = [self.pieceA2D, self.pieceE2H]
+        self.scribedflip.transcribed_pieces = [self.pieceA2Dp, self.pieceEp2Hp]
+        # pieceA2D features
+
+        self.fA = annotations_orm.Feature(coordinates=self.old_coor, start=10, end=10, given_id='A',
+                                          is_plus_strand=True, super_locus=self.sl,
+                                          type=type_enums.TRANSCRIBED, bearing=type_enums.START)
+        self.fB = annotations_orm.Feature(coordinates=self.old_coor, start=20, end=20, given_id='B',
+                                          is_plus_strand=True, super_locus=self.sl, type=type_enums.CODING,
+                                          bearing=type_enums.START)
+
+        self.fC = annotations_orm.Feature(coordinates=self.old_coor, start=30, end=30, given_id='C',
+                                          is_plus_strand=True, super_locus=self.sl,
+                                          type=type_enums.TRANS_INTRON, bearing=type_enums.START)
+        self.fD = annotations_orm.Feature(coordinates=self.old_coor, start=40, end=40, given_id='D',
+                                          is_plus_strand=True, super_locus=self.sl,
+                                          type=type_enums.TRANSCRIBED, bearing=type_enums.END)
+        self.fADs0 = annotations_orm.UpstreamFeature(coordinates=self.old_coor, start=40, end=40, given_id='ADs0',
+                                                     is_plus_strand=True, super_locus=self.sl,
+                                                     type=type_enums.TRANS_INTRON, bearing=type_enums.CLOSE_STATUS)
+        self.fADs1 = annotations_orm.UpstreamFeature(coordinates=self.old_coor, start=40, end=40, given_id='ADs1',
+                                                     is_plus_strand=True, super_locus=self.sl,
+                                                     type=type_enums.CODING, bearing=type_enums.CLOSE_STATUS)
+        # pieceE2H features
+        self.fEHs0 = annotations_orm.DownstreamFeature(coordinates=self.old_coor, start=910, end=910, given_id='EHs0',
+                                                       is_plus_strand=True, super_locus=self.sl,
+                                                       type=type_enums.TRANS_INTRON, bearing=type_enums.OPEN_STATUS)
+        self.fEHs1 = annotations_orm.DownstreamFeature(coordinates=self.old_coor, start=910, end=910, given_id='EHs1',
+                                                       is_plus_strand=True, super_locus=self.sl,
+                                                       type=type_enums.CODING, bearing=type_enums.OPEN_STATUS)
+        self.fE = annotations_orm.Feature(coordinates=self.old_coor, start=910, end=910, given_id='E',
+                                          is_plus_strand=True, super_locus=self.sl,
+                                          type=type_enums.TRANSCRIBED, bearing=type_enums.START)
+        self.fF = annotations_orm.Feature(coordinates=self.old_coor, start=920, end=920, given_id='F',
+                                          super_locus=self.sl, is_plus_strand=True,
+                                          type=type_enums.TRANS_INTRON, bearing=type_enums.END)
+        self.fG = annotations_orm.Feature(coordinates=self.old_coor, start=930, end=930, given_id='G',
+                                          is_plus_strand=True, super_locus=self.sl, type=type_enums.CODING,
+                                          bearing=type_enums.END)
+        self.fH = annotations_orm.Feature(coordinates=self.old_coor, start=940, end=940, given_id='H',
+                                          is_plus_strand=True, super_locus=self.sl,
+                                          type=type_enums.TRANSCRIBED, bearing=type_enums.END)
+        # pieceEp2Hp features
+        self.fEHps0 = annotations_orm.DownstreamFeature(coordinates=self.old_coor, start=940, end=940, given_id='EHsp0',
+                                                        is_plus_strand=False, super_locus=self.sl,
+                                                        type=type_enums.TRANS_INTRON, bearing=type_enums.OPEN_STATUS)
+        self.fEHps1 = annotations_orm.DownstreamFeature(coordinates=self.old_coor, start=940, end=940, given_id='EHsp1',
+                                                        is_plus_strand=False, super_locus=self.sl,
+                                                        type=type_enums.CODING, bearing=type_enums.OPEN_STATUS)
+        self.fEp = annotations_orm.Feature(coordinates=self.old_coor, start=940, end=940, given_id='Ep',
+                                           is_plus_strand=False, super_locus=self.sl,
+                                           type=type_enums.TRANSCRIBED, bearing=type_enums.START)
+        self.fFp = annotations_orm.Feature(coordinates=self.old_coor, start=930, end=930, given_id='Fp',
+                                           super_locus=self.sl, bearing=type_enums.END,
+                                           is_plus_strand=False, type=type_enums.TRANS_INTRON)
+        self.fGp = annotations_orm.Feature(coordinates=self.old_coor, start=920, end=920, given_id='Gp',
+                                           is_plus_strand=False, super_locus=self.sl, type=type_enums.CODING,
+                                           bearing=type_enums.END)
+        self.fHp = annotations_orm.Feature(coordinates=self.old_coor, start=910, end=910, given_id='Hp',
+                                           is_plus_strand=False, super_locus=self.sl,
+                                           type=type_enums.TRANSCRIBED, bearing=type_enums.END)
+
+        self.pieceA2D.features = [self.fA, self.fB, self.fC, self.fD, self.fADs0, self.fADs1]
+        self.pieceA2Dp.features = [self.fA, self.fB, self.fC, self.fD, self.fADs0, self.fADs1]
+        self.pieceE2H.features = [self.fE, self.fF, self.fG, self.fH, self.fEHs0, self.fEHs1]
+        self.pieceEp2Hp.features = [self.fEp, self.fFp, self.fGp, self.fHp, self.fEHps0, self.fEHps1]
+        self.pairADEH0 = annotations_orm.UpDownPair(upstream=self.fADs0, downstream=self.fEHs0,
+                                                    transcribed=self.scribed)
+        self.pairADEH1 = annotations_orm.UpDownPair(upstream=self.fADs1, downstream=self.fEHs1,
+                                                    transcribed=self.scribed)
+        self.pairADEHp0 = annotations_orm.UpDownPair(upstream=self.fADs0, downstream=self.fEHps0,
+                                                     transcribed=self.scribedflip)
+        self.pairADEHp1 = annotations_orm.UpDownPair(upstream=self.fADs1, downstream=self.fEHps1,
+                                                     transcribed=self.scribedflip)
+        sess.add_all([self.sl, self.pairADEH0, self.pairADEH1, self.pairADEHp0, self.pairADEHp1])
+        sess.commit()
+
+    def make_all_handlers(self):
+        self.slh.make_all_handlers()
+
+
+def test_transition_transsplice():
+    sess = mk_session()
+    d = TransspliceDemoData(sess)  # setup _d_ata
+    d.make_all_handlers()
+    # forward pass, same sequence, two pieces
+    ti_transitions = list(d.ti.transition_5p_to_3p())
+    # from transition gen: 0 -> aligned_Features, 1 -> status copy
+    assert [set(x[0]) for x in ti_transitions] == [{d.fA}, {d.fB}, {d.fC}, {d.fD}, {d.fADs1, d.fADs0},
+                                                   {d.fEHs0, d.fEHs1}, {d.fE}, {d.fF}, {d.fG}, {d.fH}]
+    print([x[1].genic for x in ti_transitions])
+    assert [x[1].genic for x in ti_transitions] == [bool(x) for x in [1, 1, 1, 0, 0, 0, 1, 1, 1, 0]]
+    assert [x[1].in_translated_region for x in ti_transitions] == [bool(x) for x in [0, 1, 1, 1, 0, 1, 1, 1, 0, 0]]
+    assert [x[1].in_trans_intron for x in ti_transitions] == [bool(x) for x in [0, 0, 1, 1, 0, 1, 1, 0, 0, 0]]
+    # forward, then backward pass, same sequence, two pieces
+    ti_transitions = list(d.tiflip.transition_5p_to_3p())
+    assert [set(x[0]) for x in ti_transitions] == [{d.fA}, {d.fB}, {d.fC}, {d.fD}, {d.fADs1, d.fADs0},
+                                                   {d.fEHps0, d.fEHps1}, {d.fEp}, {d.fFp}, {d.fGp}, {d.fHp}]
+    print([x[1].genic for x in ti_transitions])
+    assert [x[1].genic for x in ti_transitions] == [bool(x) for x in [1, 1, 1, 0, 0, 0, 1, 1, 1, 0]]
+    assert [x[1].in_translated_region for x in ti_transitions] == [bool(x) for x in [0, 1, 1, 1, 0, 1, 1, 1, 0, 0]]
+    assert [x[1].in_trans_intron for x in ti_transitions] == [bool(x) for x in [0, 0, 1, 1, 0, 1, 1, 0, 0, 0]]
 
 
 # section: gff_2_annotations
