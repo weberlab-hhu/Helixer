@@ -5,10 +5,10 @@ import copy
 
 import annotations
 import type_enums
-import gff_2_annotations
 import slicer
 import partitions
 import sequences
+import helpers
 
 
 # for now collapse everything to one vector (with or without pre-selection of primary transcript)
@@ -255,7 +255,7 @@ class StepHolder(object):
                 previous_at = self.a_feature.coordinates.end
                 current_at += 1  # + 1 to move from - strand coordinate ( to pythonic coordinate [
 
-        return gff_2_annotations.min_max(previous_at, current_at)
+        return helpers.min_max(previous_at, current_at)
 
     def any_erroneous_features(self):
         #errors = [x.value for x in type_enums.ErrorFeature]

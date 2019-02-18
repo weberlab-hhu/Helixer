@@ -134,3 +134,6 @@ def as_bio_start(py_start):
 
 def as_bio_end(py_end):
     return py_end
+
+def min_max(x, y):
+    return min(x, y), max(x, y)

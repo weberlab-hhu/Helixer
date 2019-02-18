@@ -1023,10 +1023,6 @@ class IntervalCountError(Exception):
     pass
 
 
-def min_max(x, y):
-    return min(x, y), max(x, y)
-
-
 def none_to_list(x):
     if x is None:
         return []

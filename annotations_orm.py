@@ -1,4 +1,3 @@
-import enum
 import type_enums
 
 from sqlalchemy.ext.declarative import declarative_base
