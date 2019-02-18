@@ -303,4 +303,5 @@ class ExampleMakerSeqMetaBP(object):
         gc = structured_genome.meta_info.gc_content
         for anno in anno_gen:
             seq = next(seq_gen)
-            yield {'labels': anno.flatten(), 'input': seq.flatten(), 'meta_Gbp': [total_Gbp], 'meta_gc': [gc]}
+            out = {'labels': anno.flatten(), 'input': seq.flatten(), 'meta_Gbp': [total_Gbp], 'meta_gc': [gc]}
+            yield out

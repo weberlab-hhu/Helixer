@@ -2084,7 +2084,7 @@ def setup4numerify():
     source = 'testdata/dummyloci_annotations.sqlitedb'
 
     controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination,
-                                        sequences_path='testdata/dummyloci.sequence.sliced.json')
+                                        sequences_path='testdata/dummyloci.sequence.json')
     controller.mk_session()
     controller.load_annotations()
     # no need to modify, so can just load briefly
@@ -2256,6 +2256,38 @@ def test_live_slicing():
         assert np.allclose(num_list[i], np.full([50, 4], 0.25, dtype=float))
     for i in [7, 8]:  # for the last two, just care that they're about the expected size...
         assert np.allclose(num_list[i][:27], np.full([27, 4], 0.25, dtype=float))
+
+
+def test_example_gen():
+    sess, controller, anno_slice = setup4numerify()
+    transcriptx = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'x').first()
+    transcriptz = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'z').first()
+    rm_transcript_and_children(transcriptx, sess)
+    rm_transcript_and_children(transcriptz, sess)
+
+    controller.load_sliced_seqs()
+    seq_slice = controller.structured_genome.sequences[0].slices[0]
+    example_maker = numerify.ExampleMakerSeqMetaBP()
+    egen = example_maker.examples_from_slice(anno_slice, seq_slice, controller.structured_genome, is_plus_strand=True,
+                                             max_len=400)
+    # prep anno
+    expect = np.zeros([405, 3], dtype=float)
+    expect[0:400, 0] = 1.  # set genic/in raw transcript
+    expect[10:300, 1] = 1.  # set in transcribed
+    expect[100:110, 2] = 1.  # both introns
+    expect[120:200, 2] = 1.
+    # prep seq
+    seqexpect = np.full([405, 4], 0.25)
+
+    step0 = next(egen)
+    assert np.allclose(step0['input'].reshape([202, 4]), seqexpect[:202])
+    assert np.allclose(step0['labels'].reshape([202, 3]), expect[:202])
+    assert step0['meta_Gbp'] == [405 / 10**9]
+
+    step1 = next(egen)
+    assert np.allclose(step1['input'].reshape([203, 4]), seqexpect[202:])
+    assert np.allclose(step1['labels'].reshape([203, 3]), expect[202:])
+    assert step1['meta_Gbp'] == [405 / 10**9]
 
 
 #### type_enumss ####
