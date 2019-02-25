@@ -4,11 +4,8 @@ import intervaltree
 import copy
 import logging
 
-# change to geenuff improved naming
-from geenuff import api as annotations
-from geenuff import orm as annotations_orm
+import geenuff
 import slice_dbmods
-from geenuff import types as type_enums
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -16,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 import os
 import sequences
 #from annotations import TranscriptInterpBase
-TranscriptInterpBase = annotations.TranscriptInterpBase
+TranscriptInterpBase = geenuff.api.TranscriptInterpBase
 
 
 class SliceController(object):
@@ -32,7 +29,7 @@ class SliceController(object):
         self.interval_trees = {}
 
     def get_one_annotated_genome(self):
-        ags = self.session.query(annotations_orm.AnnotatedGenome).all()
+        ags = self.session.query(geenuff.orm.AnnotatedGenome).all()
         assert len(ags) == 1
         return ags[0]
 
@@ -46,12 +43,12 @@ class SliceController(object):
         if not os.path.exists(self.db_path_sliced):
             self.copy_db()
         self.engine = create_engine(self.full_db_path(), echo=False)
-        annotations_orm.Base.metadata.create_all(self.engine)
+        geenuff.orm.Base.metadata.create_all(self.engine)
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
 
     def load_annotations(self):
-        sl_data = self.session.query(annotations_orm.SuperLocus).all()
+        sl_data = self.session.query(geenuff.orm.SuperLocus).all()
         for sl in sl_data:
             super_locus = SuperLocusHandler()
             super_locus.add_data(sl)
@@ -82,8 +79,8 @@ class SliceController(object):
 
     def _slice_annotations_1way(self, slices, annotated_genome, is_plus_strand):
         for seqid, start, end, slice_id in slices:
-            seq_info = annotations_orm.SequenceInfo(annotated_genome=annotated_genome)
-            coordinates = annotations_orm.Coordinates(seqid=seqid, start=start, end=end, sequence_info=seq_info)
+            seq_info = geenuff.orm.SequenceInfo(annotated_genome=annotated_genome)
+            coordinates = geenuff.orm.Coordinates(seqid=seqid, start=start, end=end, sequence_info=seq_info)
             overlapping_super_loci = self.get_super_loci_frm_slice(seqid, start, end, is_plus_strand=is_plus_strand)
             for super_locus in overlapping_super_loci:
                 super_locus.make_all_handlers()
@@ -117,22 +114,22 @@ class SliceController(object):
         pass
 
 
-class HandleMaker(annotations.HandleMaker):
+class HandleMaker(geenuff.api.HandleMaker):
     # redefine to get handlers from slicer, here
     def _get_handler_type(self, old_data):
-        key = [(SuperLocusHandler, annotations_orm.SuperLocus),
-               (TranscribedHandler, annotations_orm.Transcribed),
-               (TranslatedHandler, annotations_orm.Translated),
-               (TranscribedPieceHandler, annotations_orm.TranscribedPiece),
-               (FeatureHandler, annotations_orm.Feature),
-               (UpstreamFeatureHandler, annotations_orm.UpstreamFeature),
-               (DownstreamFeatureHandler, annotations_orm.DownstreamFeature),
-               (UpDownPairHandler, annotations_orm.UpDownPair)]
+        key = [(SuperLocusHandler, geenuff.orm.SuperLocus),
+               (TranscribedHandler, geenuff.orm.Transcribed),
+               (TranslatedHandler, geenuff.orm.Translated),
+               (TranscribedPieceHandler, geenuff.orm.TranscribedPiece),
+               (FeatureHandler, geenuff.orm.Feature),
+               (UpstreamFeatureHandler, geenuff.orm.UpstreamFeature),
+               (DownstreamFeatureHandler, geenuff.orm.DownstreamFeature),
+               (UpDownPairHandler, geenuff.orm.UpDownPair)]
 
         return self._get_paired_item(type(old_data), search_col=1, return_col=0, nested_list=key)
 
 
-class SequenceInfoHandler(annotations.SequenceInfoHandler):
+class SequenceInfoHandler(geenuff.api.SequenceInfoHandler):
     def processing_set(self, sess):
         return sess.query(
             slice_dbmods.SequenceInfoSets
@@ -157,7 +154,7 @@ class SequenceInfoHandler(annotations.SequenceInfoHandler):
         sess.commit()
 
 
-class SuperLocusHandler(annotations.SuperLocusHandler):
+class SuperLocusHandler(geenuff.api.SuperLocusHandler):
     def __init__(self):
         super().__init__()
         self.handler_holder = HandleMaker(self)
@@ -180,15 +177,16 @@ class SuperLocusHandler(annotations.SuperLocusHandler):
             trimmer.modify4new_slice(new_coords=new_coords, is_plus_strand=is_plus_strand, trees=trees)
 
 
-class TranscribedHandler(annotations.TranscribedHandler):
+# todo, switch back to simple import if not changing...
+class TranscribedHandler(geenuff.api.TranscribedHandler):
     pass
 
 
-class TranslatedHandler(annotations.TranslatedHandler):
+class TranslatedHandler(geenuff.api.TranslatedHandler):
     pass
 
 
-class TranscribedPieceHandler(annotations.TranscribedPieceHandler):
+class TranscribedPieceHandler(geenuff.api.TranscribedPieceHandler):
     pass
 
 
@@ -202,22 +200,22 @@ def load_to_intervaltree(obj, trees):
     tree[py_start:(py_start + 1)] = obj
 
 
-class FeatureHandler(annotations.FeatureHandler):
+class FeatureHandler(geenuff.api.FeatureHandler):
     def load_to_intervaltree(self, trees):
         load_to_intervaltree(self, trees)
 
 
-class UpstreamFeatureHandler(annotations.UpstreamFeatureHandler):
+class UpstreamFeatureHandler(geenuff.api.UpstreamFeatureHandler):
     def load_to_intervaltree(self, trees):
         load_to_intervaltree(self, trees)
 
 
-class DownstreamFeatureHandler(annotations.DownstreamFeatureHandler):
+class DownstreamFeatureHandler(geenuff.api.DownstreamFeatureHandler):
     def load_to_intervaltree(self, trees):
         load_to_intervaltree(self, trees)
 
 
-class UpDownPairHandler(annotations.UpDownPairHandler):
+class UpDownPairHandler(geenuff.api.UpDownPairHandler):
     pass
 
 
@@ -235,7 +233,7 @@ class FeatureVsCoords(object):
             self.sign = -1
 
         # inclusive coordinates (classic python in for slice)
-        if feature.bearing.value in [type_enums.START, type_enums.OPEN_STATUS, type_enums.POINT]:
+        if feature.bearing.value in [geenuff.types.START, geenuff.types.OPEN_STATUS, geenuff.types.POINT]:
             self.c_py_start = slice_coordinates.start
             self.c_py_end = slice_coordinates.end
         else:  # exclusive coordinates for a closing feature (not 1st upstream bp, one after downstream)
@@ -340,7 +338,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         #self.session = sess
         self.handlers = []
 
-    def new_handled_data(self, template=None, new_type=annotations_orm.Feature, **kwargs):
+    def new_handled_data(self, template=None, new_type=geenuff.orm.Feature, **kwargs):
         data = new_type()
         # todo, simplify below...
         handler = self.transcript.data.super_locus.handler.handler_holder.mk_n_append_handler(data)
@@ -368,8 +366,8 @@ class TranscriptTrimmer(TranscriptInterpBase):
             yield StepHolder(features=features, status=status, old_piece=old_piece, replacement_piece=replacement_piece)
 
     def mk_new_piece(self):
-        new_piece = annotations_orm.TranscribedPiece(super_locus=self.transcript.data.super_locus,
-                                                     transcribed=self.transcript.data)
+        new_piece = geenuff.orm.TranscribedPiece(super_locus=self.transcript.data.super_locus,
+                                                 transcribed=self.transcript.data)
         new_handler = TranscribedPieceHandler()
         new_handler.add_data(new_piece)
         self.session.add(new_piece)
@@ -463,24 +461,24 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
         at_least_one_link = False
         if status.genic:
-            self._set_one_status_at_border(old_coords, template_feature, type_enums.TRANSCRIBED, up_at, down_at,
+            self._set_one_status_at_border(old_coords, template_feature, geenuff.types.TRANSCRIBED, up_at, down_at,
                                            new_piece, old_piece, trees)
             at_least_one_link = True
         if status.in_intron:
-            self._set_one_status_at_border(old_coords, template_feature, type_enums.INTRON, up_at, down_at,
+            self._set_one_status_at_border(old_coords, template_feature, geenuff.types.INTRON, up_at, down_at,
                                            new_piece, old_piece, trees)
             at_least_one_link = True
         if status.in_translated_region:
-            self._set_one_status_at_border(old_coords, template_feature, type_enums.CODING, up_at,
+            self._set_one_status_at_border(old_coords, template_feature, geenuff.types.CODING, up_at,
                                            down_at, new_piece, old_piece, trees)
             at_least_one_link = True
         if status.in_trans_intron:
-            self._set_one_status_at_border(old_coords, template_feature, type_enums.TRANS_INTRON, up_at, down_at,
+            self._set_one_status_at_border(old_coords, template_feature, geenuff.types.TRANS_INTRON, up_at, down_at,
                                            new_piece, old_piece, trees)
             at_least_one_link = True
 
         if status.erroneous:
-            self._set_one_status_at_border(old_coords, template_feature, type_enums.ERROR, up_at, down_at, new_piece,
+            self._set_one_status_at_border(old_coords, template_feature, geenuff.types.ERROR, up_at, down_at, new_piece,
                                            old_piece, trees)
             at_least_one_link = True
         if not at_least_one_link:
@@ -497,17 +495,17 @@ class TranscriptTrimmer(TranscriptInterpBase):
     def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
                                   old_piece, trees):
         assert new_piece in template_feature.transcribed_pieces
-        upstream = self.new_handled_data(template_feature, annotations_orm.UpstreamFeature, position=up_at,
-                                         given_id=None, type=status_type, bearing=type_enums.CLOSE_STATUS)
+        upstream = self.new_handled_data(template_feature, geenuff.orm.UpstreamFeature, position=up_at,
+                                         given_id=None, type=status_type, bearing=geenuff.types.CLOSE_STATUS)
         upstream.load_to_intervaltree(trees)
-        downstream = self.new_handled_data(template_feature, annotations_orm.DownstreamFeature, position=down_at,
+        downstream = self.new_handled_data(template_feature, geenuff.orm.DownstreamFeature, position=down_at,
                                            given_id=None, type=status_type, coordinates=old_coords,
-                                           bearing=type_enums.OPEN_STATUS)
+                                           bearing=geenuff.types.OPEN_STATUS)
         downstream.load_to_intervaltree(trees)
         # swap piece back to previous, as downstream is outside of new_coordinates (slice), and will be ran through
         # modify4new_slice once more and get it's final coordinates/piece then
         self.swap_piece(feature_handler=downstream, new_piece=old_piece, old_piece=new_piece)
-        self.new_handled_data(new_type=annotations_orm.UpDownPair, upstream=upstream.data,
+        self.new_handled_data(new_type=geenuff.orm.UpDownPair, upstream=upstream.data,
                               downstream=downstream.data, transcribed=self.transcript.data)
         self.session.add_all([upstream.data, downstream.data])
         self.session.commit()  # todo, figure out what the real rules are for committing, bc slower, but less buggy?

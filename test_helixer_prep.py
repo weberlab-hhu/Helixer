@@ -1,10 +1,11 @@
 import sequences
 import structure
-from geenuff import api as annotations
-from geenuff import orm as annotations_orm
+import geenuff
+#from geenuff import api as annotations
+#from geenuff import orm as annotations_orm
 import slice_dbmods
 import helpers
-from geenuff import types as type_enums
+#from geenuff import types as type_enums
 
 import pytest
 import partitions
@@ -204,11 +205,11 @@ def test_processing_set_enum():
 
 def test_add_processing_set():
     sess = mk_session()
-    ag = annotations_orm.AnnotatedGenome()
-    sequence_info, sequence_infoh = setup_data_handler(slicer.SequenceInfoHandler, annotations_orm.SequenceInfo,
+    ag = geenuff.orm.AnnotatedGenome()
+    sequence_info, sequence_infoh = setup_data_handler(slicer.SequenceInfoHandler, geenuff.orm.SequenceInfo,
                                                        annotated_genome=ag)
     sequence_info_s = slice_dbmods.SequenceInfoSets(processing_set='train', sequence_info=sequence_info)
-    sequence_info2 = annotations_orm.SequenceInfo(annotated_genome=ag)
+    sequence_info2 = geenuff.orm.SequenceInfo(annotated_genome=ag)
     sequence_info2_s = slice_dbmods.SequenceInfoSets(processing_set='train', sequence_info=sequence_info2)
     sess.add_all([ag, sequence_info_s, sequence_info2_s])
     sess.commit()
@@ -218,8 +219,8 @@ def test_add_processing_set():
     sess.add_all([sequence_info, sequence_info2, sequence_info2_s, sequence_info_s])
     sess.commit()
     # make sure we can get the right info together back from the db
-    maybe_join = sess.query(annotations_orm.SequenceInfo, slice_dbmods.SequenceInfoSets).filter(
-        annotations_orm.SequenceInfo.id == slice_dbmods.SequenceInfoSets.id)
+    maybe_join = sess.query(geenuff.orm.SequenceInfo, slice_dbmods.SequenceInfoSets).filter(
+        geenuff.orm.SequenceInfo.id == slice_dbmods.SequenceInfoSets.id)
     for si, sis in maybe_join.all():
         assert si.id == sis.id
         assert sis.processing_set.value == 'train'
@@ -246,7 +247,7 @@ def test_add_processing_set():
     assert sequence_infoh.processing_set_val(sess) == 'test'
 
     # check that absence of entry, is handles with None
-    sequence_info3, sequence_info3h = setup_data_handler(slicer.SequenceInfoHandler, annotations_orm.SequenceInfo,
+    sequence_info3, sequence_info3h = setup_data_handler(slicer.SequenceInfoHandler, geenuff.orm.SequenceInfo,
                                                          annotated_genome=ag)
     assert sequence_info3h.processing_set(sess) is None
     assert sequence_info3h.processing_set_val(sess) is None
@@ -297,12 +298,12 @@ def test_intervaltree():
     assert len(intervals) == 3
     print(intervals, '...intervals')
     print([x.data.data.type.value for x in intervals])
-    errors = [x for x in intervals if x.data.data.type.value == type_enums.ERROR and
-              x.data.data.bearing.value == type_enums.END]
+    errors = [x for x in intervals if x.data.data.type.value == geenuff.types.ERROR and
+              x.data.data.bearing.value == geenuff.types.END]
 
     assert len(errors) == 2
-    tts = [x for x in intervals if x.data.data.type.value == type_enums.TRANSCRIBED and
-           x.data.data.bearing.value == type_enums.END]
+    tts = [x for x in intervals if x.data.data.type.value == geenuff.types.TRANSCRIBED and
+           x.data.data.bearing.value == geenuff.types.END]
 
     assert len(tts) == 1
     # check that the major filter functions work
@@ -312,11 +313,11 @@ def test_intervaltree():
 
     features = controller.get_features_from_slice(seqid='1', start=0, end=1, is_plus_strand=True)
     assert len(features) == 3
-    starts = [x for x in features if x.data.type.value == type_enums.TRANSCRIBED and
-              x.data.bearing.value == type_enums.START]
+    starts = [x for x in features if x.data.type.value == geenuff.types.TRANSCRIBED and
+              x.data.bearing.value == geenuff.types.START]
 
     assert len(starts) == 2
-    errors = [x for x in features if x.data.type.value == type_enums.ERROR and x.data.bearing.value == type_enums.START]
+    errors = [x for x in features if x.data.type.value == geenuff.types.ERROR and x.data.bearing.value == geenuff.types.START]
     assert len(errors) == 1
 
 
@@ -388,25 +389,25 @@ def test_slicer_transition():
 
 def test_set_updown_features_downstream_border():
     sess = mk_session()
-    old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=1000)
-    new_coord = annotations_orm.Coordinates(seqid='a', start=100, end=200)
-    sl, slh = setup_data_handler(slicer.SuperLocusHandler, annotations_orm.SuperLocus)
-    scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed, super_locus=sl)
+    old_coor = geenuff.orm.Coordinates(seqid='a', start=1, end=1000)
+    new_coord = geenuff.orm.Coordinates(seqid='a', start=100, end=200)
+    sl, slh = setup_data_handler(slicer.SuperLocusHandler, geenuff.orm.SuperLocus)
+    scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed, super_locus=sl)
     ti = slicer.TranscriptTrimmer(transcript=scribedh, sess=sess)
-    piece0 = annotations_orm.TranscribedPiece(super_locus=sl)
-    piece1 = annotations_orm.TranscribedPiece(super_locus=sl)
+    piece0 = geenuff.orm.TranscribedPiece(super_locus=sl)
+    piece1 = geenuff.orm.TranscribedPiece(super_locus=sl)
     scribed.transcribed_pieces = [piece0]
     # setup some paired features
     # new coords, is plus, template, status
-    feature = annotations_orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, position=110,
-                                      is_plus_strand=True, super_locus=sl, type=type_enums.CODING,
-                                      bearing=type_enums.START)
+    feature = geenuff.orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, position=110,
+                                  is_plus_strand=True, super_locus=sl, type=geenuff.types.CODING,
+                                  bearing=geenuff.types.START)
 
     sess.add_all([scribed, piece0, piece1, old_coor, new_coord, sl])
     sess.commit()
     slh.make_all_handlers()
     # set to genic, non intron area
-    status = annotations.TranscriptStatus()
+    status = geenuff.api.TranscriptStatus()
     status.saw_tss()
     status.saw_start(0)
 
@@ -417,16 +418,16 @@ def test_set_updown_features_downstream_border():
     assert len(piece1.features) == 3  # feature, 2x upstream
     assert len(piece0.features) == 2  # 2x downstream
 
-    assert set([x.type.value for x in piece1.features]) == {type_enums.CODING, type_enums.TRANSCRIBED}
-    assert set([x.bearing.value for x in piece1.features]) == {type_enums.START, type_enums.CLOSE_STATUS}
+    assert set([x.type.value for x in piece1.features]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED}
+    assert set([x.bearing.value for x in piece1.features]) == {geenuff.types.START, geenuff.types.CLOSE_STATUS}
 
-    assert set([x.type.value for x in piece0.features]) == {type_enums.CODING, type_enums.TRANSCRIBED}
-    assert set([x.bearing.value for x in piece0.features]) == {type_enums.OPEN_STATUS}
+    assert set([x.type.value for x in piece0.features]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED}
+    assert set([x.bearing.value for x in piece0.features]) == {geenuff.types.OPEN_STATUS}
 
-    translated_up_status = [x for x in piece1.features if x.type.value == type_enums.CODING and
-                            x.bearing.value == type_enums.CLOSE_STATUS][0]
+    translated_up_status = [x for x in piece1.features if x.type.value == geenuff.types.CODING and
+                            x.bearing.value == geenuff.types.CLOSE_STATUS][0]
 
-    translated_down_status = [x for x in piece0.features if x.type.value == type_enums.TRANSCRIBED][0]
+    translated_down_status = [x for x in piece0.features if x.type.value == geenuff.types.TRANSCRIBED][0]
     assert translated_up_status.position == 200
     assert translated_down_status.position == 200
     # cleanup to try similar again
@@ -437,9 +438,9 @@ def test_set_updown_features_downstream_border():
     sess.commit()
 
     # and now try backwards pass
-    feature = annotations_orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, position=110,
-                                      is_plus_strand=False, super_locus=sl, type=type_enums.CODING,
-                                      bearing=type_enums.START)
+    feature = geenuff.orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, position=110,
+                                  is_plus_strand=False, super_locus=sl, type=geenuff.types.CODING,
+                                  bearing=geenuff.types.START)
     sess.add(feature)
     sess.commit()
     slh.make_all_handlers()
@@ -449,16 +450,16 @@ def test_set_updown_features_downstream_border():
 
     assert len(piece1.features) == 3  # feature, 2x upstream
     assert len(piece0.features) == 2  # 2x downstream
-    assert set([x.type.value for x in piece1.features]) == {type_enums.CODING, type_enums.TRANSCRIBED}
-    assert set([x.bearing.value for x in piece1.features]) == {type_enums.START, type_enums.CLOSE_STATUS}
+    assert set([x.type.value for x in piece1.features]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED}
+    assert set([x.bearing.value for x in piece1.features]) == {geenuff.types.START, geenuff.types.CLOSE_STATUS}
 
-    assert set([x.type.value for x in piece0.features]) == {type_enums.CODING, type_enums.TRANSCRIBED}
-    assert set([x.bearing.value for x in piece0.features]) == {type_enums.OPEN_STATUS}
+    assert set([x.type.value for x in piece0.features]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED}
+    assert set([x.bearing.value for x in piece0.features]) == {geenuff.types.OPEN_STATUS}
 
-    translated_up_status = [x for x in piece1.features if x.type.value == type_enums.CODING and
-                            x.bearing.value == type_enums.CLOSE_STATUS][0]
+    translated_up_status = [x for x in piece1.features if x.type.value == geenuff.types.CODING and
+                            x.bearing.value == geenuff.types.CLOSE_STATUS][0]
 
-    translated_down_status = [x for x in piece0.features if x.type.value == type_enums.TRANSCRIBED][0]
+    translated_down_status = [x for x in piece0.features if x.type.value == geenuff.types.TRANSCRIBED][0]
 
     assert translated_up_status.position == 99
     assert translated_down_status.position == 99
@@ -466,36 +467,36 @@ def test_set_updown_features_downstream_border():
 
 def test_transition_with_right_new_pieces():
     sess = mk_session()
-    old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=1000)
+    old_coor = geenuff.orm.Coordinates(seqid='a', start=1, end=1000)
     # setup two transitions:
     # 1) scribed - [[A,B]] -> AB, -> one expected new piece
     # 2) scribedlong - [[C,D],[A,B]] -> ABCD, -> two expected new pieces
-    sl, slh = setup_data_handler(slicer.SuperLocusHandler, annotations_orm.SuperLocus)
-    scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed, super_locus=sl)
-    scribedlong, scribedlongh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed,
+    sl, slh = setup_data_handler(slicer.SuperLocusHandler, geenuff.orm.SuperLocus)
+    scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed, super_locus=sl)
+    scribedlong, scribedlongh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed,
                                                    super_locus=sl)
 
     ti = slicer.TranscriptTrimmer(transcript=scribedh, sess=sess)
     tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, sess=sess)
 
-    pieceAB = annotations_orm.TranscribedPiece(super_locus=sl, transcribed=scribed)
-    pieceABp = annotations_orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
-    pieceCD = annotations_orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
+    pieceAB = geenuff.orm.TranscribedPiece(super_locus=sl, transcribed=scribed)
+    pieceABp = geenuff.orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
+    pieceCD = geenuff.orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
 
-    fA = annotations_orm.Feature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, position=190,
-                                 is_plus_strand=True, super_locus=sl, type=type_enums.ERROR,
-                                 bearing=type_enums.START)
-    fB = annotations_orm.UpstreamFeature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, position=210,
-                                         is_plus_strand=True, super_locus=sl, type=type_enums.ERROR,
-                                         bearing=type_enums.CLOSE_STATUS)  # todo, double check for consistency after type/bearing mod to slice...
+    fA = geenuff.orm.Feature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, position=190,
+                             is_plus_strand=True, super_locus=sl, type=geenuff.types.ERROR,
+                             bearing=geenuff.types.START)
+    fB = geenuff.orm.UpstreamFeature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, position=210,
+                                     is_plus_strand=True, super_locus=sl, type=geenuff.types.ERROR,
+                                     bearing=geenuff.types.CLOSE_STATUS)  # todo, double check for consistency after type/bearing mod to slice...
 
-    fC = annotations_orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=90,
-                                           is_plus_strand=True, super_locus=sl, type=type_enums.ERROR,
-                                           bearing=type_enums.OPEN_STATUS)
-    fD = annotations_orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=110,
-                                 is_plus_strand=True, super_locus=sl, type=type_enums.ERROR, bearing=type_enums.END)
+    fC = geenuff.orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=90,
+                                       is_plus_strand=True, super_locus=sl, type=geenuff.types.ERROR,
+                                       bearing=geenuff.types.OPEN_STATUS)
+    fD = geenuff.orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=110,
+                             is_plus_strand=True, super_locus=sl, type=geenuff.types.ERROR, bearing=geenuff.types.END)
 
-    pair = annotations_orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
+    pair = geenuff.orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
     sess.add_all([scribed, scribedlong, pieceAB, pieceABp, pieceCD, fA, fB, fC, fD, pair, old_coor, sl])
     sess.commit()
     short_transition = list(ti.transition_5p_to_3p_with_new_pieces())
@@ -520,8 +521,8 @@ def test_modify4slice():
     transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
     slh.make_all_handlers()
     ti = slicer.TranscriptTrimmer(transcript=transcript.handler, sess=controller.session)
-    new_coords = annotations_orm.Coordinates(seqid='1', start=0, end=100)
-    newer_coords = annotations_orm.Coordinates(seqid='1', start=100, end=200)
+    new_coords = geenuff.orm.Coordinates(seqid='1', start=0, end=100)
+    newer_coords = geenuff.orm.Coordinates(seqid='1', start=100, end=200)
     ti.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     assert len(transcript.transcribed_pieces) == 2
     controller.session.add_all([new_coords, newer_coords])
@@ -534,10 +535,10 @@ def test_modify4slice():
     new_piece = [x for x in transcript.transcribed_pieces if len(x.features) == 4][0]
     ori_piece = [x for x in transcript.transcribed_pieces if len(x.features) == 8][0]
 
-    assert set([x.type.value for x in new_piece.features]) == {type_enums.TRANSCRIBED,
-                                                               type_enums.CODING}
+    assert set([x.type.value for x in new_piece.features]) == {geenuff.types.TRANSCRIBED,
+                                                               geenuff.types.CODING}
 
-    assert set([x.bearing.value for x in new_piece.features]) == {type_enums.START, type_enums.CLOSE_STATUS}
+    assert set([x.bearing.value for x in new_piece.features]) == {geenuff.types.START, geenuff.types.CLOSE_STATUS}
 
     print('starting second modify...')
     ti.modify4new_slice(new_coords=newer_coords, is_plus_strand=True)
@@ -546,45 +547,45 @@ def test_modify4slice():
         for f in piece.features:
             print('::::', (f.type.value, f.bearing.value, f.position))
     assert sorted([len(x.features) for x in transcript.transcribed_pieces]) == [4, 4, 8]  # todo, why does this occasionally fail??
-    assert set([x.type.value for x in ori_piece.features]) == {type_enums.TRANSCRIBED,
-                                                               type_enums.CODING}
-    assert set([x.bearing.value for x in ori_piece.features]) == {type_enums.END,
-                                                                  type_enums.OPEN_STATUS}
+    assert set([x.type.value for x in ori_piece.features]) == {geenuff.types.TRANSCRIBED,
+                                                               geenuff.types.CODING}
+    assert set([x.bearing.value for x in ori_piece.features]) == {geenuff.types.END,
+                                                                  geenuff.types.OPEN_STATUS}
 
 
 def test_modify4slice_directions():
     sess = mk_session()
-    old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=1000)
+    old_coor = geenuff.orm.Coordinates(seqid='a', start=1, end=1000)
     # setup two transitions:
     # 2) scribedlong - [[D<-,C<-],[->A,->B]] -> ABCD, -> two pieces forward, one backward
-    sl, slh = setup_data_handler(slicer.SuperLocusHandler, annotations_orm.SuperLocus)
-    scribedlong, scribedlongh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed,
+    sl, slh = setup_data_handler(slicer.SuperLocusHandler, geenuff.orm.SuperLocus)
+    scribedlong, scribedlongh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed,
                                                    super_locus=sl)
 
     tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, sess=sess)
 
-    pieceAB = annotations_orm.TranscribedPiece(super_locus=sl)
-    pieceCD = annotations_orm.TranscribedPiece(super_locus=sl)
+    pieceAB = geenuff.orm.TranscribedPiece(super_locus=sl)
+    pieceCD = geenuff.orm.TranscribedPiece(super_locus=sl)
     scribedlong.transcribed_pieces = [pieceAB, pieceCD]
 
-    fA = annotations_orm.Feature(transcribed_pieces=[pieceAB], coordinates=old_coor, position=190, given_id='A',
-                                 is_plus_strand=True, super_locus=sl, type=type_enums.TRANSCRIBED,
-                                 bearing=type_enums.START)
-    fB = annotations_orm.UpstreamFeature(transcribed_pieces=[pieceAB], coordinates=old_coor, position=210,
-                                         is_plus_strand=True, super_locus=sl, type=type_enums.TRANSCRIBED,
-                                         bearing=type_enums.CLOSE_STATUS, given_id='B')
+    fA = geenuff.orm.Feature(transcribed_pieces=[pieceAB], coordinates=old_coor, position=190, given_id='A',
+                             is_plus_strand=True, super_locus=sl, type=geenuff.types.TRANSCRIBED,
+                             bearing=geenuff.types.START)
+    fB = geenuff.orm.UpstreamFeature(transcribed_pieces=[pieceAB], coordinates=old_coor, position=210,
+                                     is_plus_strand=True, super_locus=sl, type=geenuff.types.TRANSCRIBED,
+                                     bearing=geenuff.types.CLOSE_STATUS, given_id='B')
 
-    fC = annotations_orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=110,
-                                           is_plus_strand=False, super_locus=sl, type=type_enums.TRANSCRIBED,
-                                           bearing=type_enums.OPEN_STATUS, given_id='C')
-    fD = annotations_orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=90,
-                                 is_plus_strand=False, super_locus=sl, type=type_enums.TRANSCRIBED,
-                                 bearing=type_enums.END, given_id='D')
+    fC = geenuff.orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=110,
+                                       is_plus_strand=False, super_locus=sl, type=geenuff.types.TRANSCRIBED,
+                                       bearing=geenuff.types.OPEN_STATUS, given_id='C')
+    fD = geenuff.orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=90,
+                             is_plus_strand=False, super_locus=sl, type=geenuff.types.TRANSCRIBED,
+                             bearing=geenuff.types.END, given_id='D')
 
-    pair = annotations_orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
+    pair = geenuff.orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
 
-    half1_coords = annotations_orm.Coordinates(seqid='a', start=1, end=200)
-    half2_coords = annotations_orm.Coordinates(seqid='a', start=200, end=400)
+    half1_coords = geenuff.orm.Coordinates(seqid='a', start=1, end=200)
+    half2_coords = geenuff.orm.Coordinates(seqid='a', start=200, end=400)
     sess.add_all([scribedlong, pieceAB, pieceCD, fA, fB, fC, fD, pair, old_coor, sl, half1_coords, half2_coords])
     sess.commit()
     slh.make_all_handlers()
@@ -594,7 +595,7 @@ def test_modify4slice_directions():
     sess.commit()
     tilong.modify4new_slice(new_coords=half2_coords, is_plus_strand=True)
     tilong.modify4new_slice(new_coords=half1_coords, is_plus_strand=False)
-    for f in sess.query(annotations_orm.Feature).all():
+    for f in sess.query(geenuff.orm.Feature).all():
         assert len(f.transcribed_pieces) == 1
     slice0 = fA.transcribed_pieces[0]
     slice1 = fB.transcribed_pieces[0]
@@ -606,7 +607,7 @@ def test_modify4slice_directions():
 class TransspliceDemoDataSlice(TransspliceDemoData):
     def __init__(self, sess):
         super().__init__(sess)
-        self.old_coor = annotations_orm.Coordinates(seqid='a', start=1, end=2000)
+        self.old_coor = geenuff.orm.Coordinates(seqid='a', start=1, end=2000)
         # replace handlers with those from slicer
         self.slh = slicer.SuperLocusHandler()
         self.slh.add_data(self.sl)
@@ -645,36 +646,36 @@ def test_piece_swap_handling_during_multipiece_one_coordinate_transition():
 
 class SimplestDemoData(object):
     def __init__(self, sess):
-        self.old_coor = annotations_orm.Coordinates(seqid='a', start=0, end=1000)
+        self.old_coor = geenuff.orm.Coordinates(seqid='a', start=0, end=1000)
         # setup two transitions:
         # 2) scribedlong - [[D<-,C<-],[->A,->B]] -> ABCD, -> two pieces forward, one backward
-        self.sl, self.slh = setup_data_handler(slicer.SuperLocusHandler, annotations_orm.SuperLocus)
-        self.scribedlong, self.scribedlongh = setup_data_handler(slicer.TranscribedHandler, annotations_orm.Transcribed,
+        self.sl, self.slh = setup_data_handler(slicer.SuperLocusHandler, geenuff.orm.SuperLocus)
+        self.scribedlong, self.scribedlongh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed,
                                                                  super_locus=self.sl)
 
         self.tilong = slicer.TranscriptTrimmer(transcript=self.scribedlongh, sess=sess)
 
-        self.pieceAB = annotations_orm.TranscribedPiece(super_locus=self.sl)
-        self.pieceCD = annotations_orm.TranscribedPiece(super_locus=self.sl)
+        self.pieceAB = geenuff.orm.TranscribedPiece(super_locus=self.sl)
+        self.pieceCD = geenuff.orm.TranscribedPiece(super_locus=self.sl)
         self.scribedlong.transcribed_pieces = [self.pieceAB, self.pieceCD]
 
-        self.fA = annotations_orm.Feature(transcribed_pieces=[self.pieceAB], coordinates=self.old_coor, position=190,
-                                          given_id='A', is_plus_strand=True, super_locus=self.sl,
-                                          type=type_enums.TRANSCRIBED, bearing=type_enums.START)
-        self.fB = annotations_orm.UpstreamFeature(transcribed_pieces=[self.pieceAB], coordinates=self.old_coor,
-                                                  is_plus_strand=True, super_locus=self.sl, position=210,
-                                                  type=type_enums.TRANSCRIBED, bearing=type_enums.CLOSE_STATUS,
-                                                  given_id='B')
+        self.fA = geenuff.orm.Feature(transcribed_pieces=[self.pieceAB], coordinates=self.old_coor, position=190,
+                                      given_id='A', is_plus_strand=True, super_locus=self.sl,
+                                      type=geenuff.types.TRANSCRIBED, bearing=geenuff.types.START)
+        self.fB = geenuff.orm.UpstreamFeature(transcribed_pieces=[self.pieceAB], coordinates=self.old_coor,
+                                              is_plus_strand=True, super_locus=self.sl, position=210,
+                                              type=geenuff.types.TRANSCRIBED, bearing=geenuff.types.CLOSE_STATUS,
+                                              given_id='B')
 
-        self.fC = annotations_orm.DownstreamFeature(transcribed_pieces=[self.pieceCD], coordinates=self.old_coor,
-                                                    is_plus_strand=False, super_locus=self.sl, position=110,
-                                                    type=type_enums.TRANSCRIBED, bearing=type_enums.OPEN_STATUS,
-                                                    given_id='C')
-        self.fD = annotations_orm.Feature(transcribed_pieces=[self.pieceCD], coordinates=self.old_coor, position=90,
-                                          is_plus_strand=False, super_locus=self.sl,
-                                          type=type_enums.TRANSCRIBED, bearing=type_enums.END, given_id='D')
+        self.fC = geenuff.orm.DownstreamFeature(transcribed_pieces=[self.pieceCD], coordinates=self.old_coor,
+                                                is_plus_strand=False, super_locus=self.sl, position=110,
+                                                type=geenuff.types.TRANSCRIBED, bearing=geenuff.types.OPEN_STATUS,
+                                                given_id='C')
+        self.fD = geenuff.orm.Feature(transcribed_pieces=[self.pieceCD], coordinates=self.old_coor, position=90,
+                                      is_plus_strand=False, super_locus=self.sl,
+                                      type=geenuff.types.TRANSCRIBED, bearing=geenuff.types.END, given_id='D')
 
-        self.pair = annotations_orm.UpDownPair(upstream=self.fB, downstream=self.fC, transcribed=self.scribedlong)
+        self.pair = geenuff.orm.UpDownPair(upstream=self.fB, downstream=self.fC, transcribed=self.scribedlong)
 
         sess.add_all([self.scribedlong, self.pieceAB, self.pieceCD, self.fA, self.fB, self.fC, self.fD, self.pair,
                       self.old_coor, self.sl])
@@ -686,25 +687,25 @@ def test_transition_unused_coordinates_detection():
     sess = mk_session()
     d = SimplestDemoData(sess)
     # modify to coordinates with complete contain, should work fine
-    new_coords = annotations_orm.Coordinates(seqid='a', start=0, end=300)
+    new_coords = geenuff.orm.Coordinates(seqid='a', start=0, end=300)
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
     assert d.pieceCD not in d.sl.transcribed_pieces  # confirm full transition
     assert d.pieceAB not in d.scribedlong.transcribed_pieces
     # modify to coordinates across tiny slice, include those w/o original features, should work fine
     d = SimplestDemoData(sess)
-    new_coords_list = [annotations_orm.Coordinates(seqid='a', start=185, end=195),
-                       annotations_orm.Coordinates(seqid='a', start=195, end=205),
-                       annotations_orm.Coordinates(seqid='a', start=205, end=215)]
+    new_coords_list = [geenuff.orm.Coordinates(seqid='a', start=185, end=195),
+                       geenuff.orm.Coordinates(seqid='a', start=195, end=205),
+                       geenuff.orm.Coordinates(seqid='a', start=205, end=215)]
     print([x.id for x in d.tilong.transcript.data.transcribed_pieces])
     for new_coords in new_coords_list:
         print('fw {}, {}'.format(new_coords.id, new_coords))
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
         print([x.id for x in d.tilong.transcript.data.transcribed_pieces])
 
-    new_coords_list = [annotations_orm.Coordinates(seqid='a', start=105, end=115),
-                       annotations_orm.Coordinates(seqid='a', start=95, end=105),
-                       annotations_orm.Coordinates(seqid='a', start=85, end=95)]
+    new_coords_list = [geenuff.orm.Coordinates(seqid='a', start=105, end=115),
+                       geenuff.orm.Coordinates(seqid='a', start=95, end=105),
+                       geenuff.orm.Coordinates(seqid='a', start=85, end=95)]
     for new_coords in new_coords_list:
         print('\nstart mod for coords, - strand', new_coords)
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
@@ -715,17 +716,17 @@ def test_transition_unused_coordinates_detection():
 
     # try and slice before coordinates, should raise error
     d = SimplestDemoData(sess)
-    new_coords = annotations_orm.Coordinates(seqid='a', start=0, end=10)
+    new_coords = geenuff.orm.Coordinates(seqid='a', start=0, end=10)
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     # try and slice after coordinates, should raise error
     d = SimplestDemoData(sess)
-    new_coords = annotations_orm.Coordinates(seqid='a', start=399, end=410)
+    new_coords = geenuff.orm.Coordinates(seqid='a', start=399, end=410)
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     # try and slice between slices where there are no coordinates, should raise error
     d = SimplestDemoData(sess)
-    new_coords = annotations_orm.Coordinates(seqid='a', start=149, end=160)
+    new_coords = geenuff.orm.Coordinates(seqid='a', start=149, end=160)
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     d = SimplestDemoData(sess)
@@ -737,14 +738,14 @@ def test_features_on_opposite_strand_are_not_modified():
     sess = mk_session()
     d = SimplestDemoData(sess)
     # forward pass only, back pass should be untouched
-    new_coords = annotations_orm.Coordinates(seqid='a', start=1, end=300)
+    new_coords = geenuff.orm.Coordinates(seqid='a', start=1, end=300)
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     assert d.pieceAB not in d.sl.transcribed_pieces
     assert d.pieceCD in d.sl.transcribed_pieces  # minus piece should not change on 'plus' pass
 
     d = SimplestDemoData(sess)
     # backward pass only, plus pass should be untouched
-    new_coords = annotations_orm.Coordinates(seqid='a', start=1, end=300)
+    new_coords = geenuff.orm.Coordinates(seqid='a', start=1, end=300)
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
     assert d.pieceAB in d.sl.transcribed_pieces  # plus piece should not change on 'minus' pass
     assert d.pieceCD not in d.sl.transcribed_pieces
@@ -754,8 +755,8 @@ def test_modify4slice_transsplice():
     sess = mk_session()
     d = TransspliceDemoDataSlice(sess)  # setup _d_ata
     d.make_all_handlers()
-    new_coords_0 = annotations_orm.Coordinates(seqid='a', start=0, end=915)
-    new_coords_1 = annotations_orm.Coordinates(seqid='a', start=915, end=2000)
+    new_coords_0 = geenuff.orm.Coordinates(seqid='a', start=0, end=915)
+    new_coords_1 = geenuff.orm.Coordinates(seqid='a', start=915, end=2000)
     d.ti.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
     d.ti.modify4new_slice(new_coords=new_coords_1, is_plus_strand=True)
     # we expect 3 new pieces,
@@ -769,20 +770,20 @@ def test_modify4slice_transsplice():
 
     assert [len(x.features) for x in sorted_pieces] == [6, 6, 6]
     ftypes_0 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[0].features])
-    assert ftypes_0 == {(type_enums.TRANSCRIBED, type_enums.START),
-                        (type_enums.CODING, type_enums.START),
-                        (type_enums.TRANS_INTRON, type_enums.START),
-                        (type_enums.TRANSCRIBED, type_enums.END),
-                        (type_enums.CODING, type_enums.CLOSE_STATUS),
-                        (type_enums.TRANS_INTRON, type_enums.CLOSE_STATUS)}
+    assert ftypes_0 == {(geenuff.types.TRANSCRIBED, geenuff.types.START),
+                        (geenuff.types.CODING, geenuff.types.START),
+                        (geenuff.types.TRANS_INTRON, geenuff.types.START),
+                        (geenuff.types.TRANSCRIBED, geenuff.types.END),
+                        (geenuff.types.CODING, geenuff.types.CLOSE_STATUS),
+                        (geenuff.types.TRANS_INTRON, geenuff.types.CLOSE_STATUS)}
 
     ftypes_2 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[2].features])
-    assert ftypes_2 == {(type_enums.CODING, type_enums.OPEN_STATUS),
-                        (type_enums.TRANSCRIBED, type_enums.OPEN_STATUS),
-                        (type_enums.TRANS_INTRON, type_enums.OPEN_STATUS),
-                        (type_enums.CODING, type_enums.END),
-                        (type_enums.TRANSCRIBED, type_enums.END),
-                        (type_enums.TRANS_INTRON, type_enums.END)}
+    assert ftypes_2 == {(geenuff.types.CODING, geenuff.types.OPEN_STATUS),
+                        (geenuff.types.TRANSCRIBED, geenuff.types.OPEN_STATUS),
+                        (geenuff.types.TRANS_INTRON, geenuff.types.OPEN_STATUS),
+                        (geenuff.types.CODING, geenuff.types.END),
+                        (geenuff.types.TRANSCRIBED, geenuff.types.END),
+                        (geenuff.types.TRANS_INTRON, geenuff.types.END)}
     # and now where second original piece is flipped and slice is thus between STOP and TTS
     print('moving on to flipped...')
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
@@ -800,15 +801,15 @@ def test_modify4slice_transsplice():
 
     assert [len(x.features) for x in sorted_pieces] == [6, 6, 2]
     ftypes_0 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[0].features])
-    assert ftypes_0 == {(type_enums.TRANSCRIBED, type_enums.START),
-                        (type_enums.CODING, type_enums.START),
-                        (type_enums.TRANS_INTRON, type_enums.START),
-                        (type_enums.TRANSCRIBED, type_enums.END),
-                        (type_enums.TRANS_INTRON, type_enums.CLOSE_STATUS),
-                        (type_enums.CODING, type_enums.CLOSE_STATUS)}
+    assert ftypes_0 == {(geenuff.types.TRANSCRIBED, geenuff.types.START),
+                        (geenuff.types.CODING, geenuff.types.START),
+                        (geenuff.types.TRANS_INTRON, geenuff.types.START),
+                        (geenuff.types.TRANSCRIBED, geenuff.types.END),
+                        (geenuff.types.TRANS_INTRON, geenuff.types.CLOSE_STATUS),
+                        (geenuff.types.CODING, geenuff.types.CLOSE_STATUS)}
     ftypes_2 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[2].features])
-    assert ftypes_2 == {(type_enums.TRANSCRIBED, type_enums.OPEN_STATUS),
-                        (type_enums.TRANSCRIBED, type_enums.END)}
+    assert ftypes_2 == {(geenuff.types.TRANSCRIBED, geenuff.types.OPEN_STATUS),
+                        (geenuff.types.TRANSCRIBED, geenuff.types.END)}
     for piece in sorted_pieces:
         for f in piece.features:
             assert f.coordinates in {new_coords_1, new_coords_0}
@@ -820,8 +821,8 @@ def test_modify4slice_2nd_half_first():
     sess = mk_session()
     d = TransspliceDemoDataSlice(sess)  # setup _d_ata
     d.make_all_handlers()
-    new_coords_0 = annotations_orm.Coordinates(seqid='a', start=0, end=915)
-    new_coords_1 = annotations_orm.Coordinates(seqid='a', start=915, end=2000)
+    new_coords_0 = geenuff.orm.Coordinates(seqid='a', start=0, end=915)
+    new_coords_1 = geenuff.orm.Coordinates(seqid='a', start=915, end=2000)
     d.tiflip.modify4new_slice(new_coords=new_coords_1, is_plus_strand=False)
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=False)
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
@@ -836,15 +837,15 @@ def test_modify4slice_2nd_half_first():
 
     assert [len(x.features) for x in sorted_pieces] == [6, 6, 2]
     ftypes_0 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[0].features])
-    assert ftypes_0 == {(type_enums.TRANSCRIBED, type_enums.START),
-                        (type_enums.CODING, type_enums.START),
-                        (type_enums.TRANS_INTRON, type_enums.START),
-                        (type_enums.TRANSCRIBED, type_enums.END),
-                        (type_enums.TRANS_INTRON, type_enums.CLOSE_STATUS),
-                        (type_enums.CODING, type_enums.CLOSE_STATUS)}
+    assert ftypes_0 == {(geenuff.types.TRANSCRIBED, geenuff.types.START),
+                        (geenuff.types.CODING, geenuff.types.START),
+                        (geenuff.types.TRANS_INTRON, geenuff.types.START),
+                        (geenuff.types.TRANSCRIBED, geenuff.types.END),
+                        (geenuff.types.TRANS_INTRON, geenuff.types.CLOSE_STATUS),
+                        (geenuff.types.CODING, geenuff.types.CLOSE_STATUS)}
     ftypes_2 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[2].features])
-    assert ftypes_2 == {(type_enums.TRANSCRIBED, type_enums.OPEN_STATUS),
-                        (type_enums.TRANSCRIBED, type_enums.END)}
+    assert ftypes_2 == {(geenuff.types.TRANSCRIBED, geenuff.types.OPEN_STATUS),
+                        (geenuff.types.TRANSCRIBED, geenuff.types.END)}
 
     for piece in sorted_pieces:
         for f in piece.features:
@@ -901,18 +902,18 @@ def test_slicing_featureless_slice_inside_locus():
         print('got piece: {}\n-----------\n'.format(piece))
         for feature in piece.features:
             print('    {}'.format(feature))
-    coordinate40 = controller.session.query(annotations_orm.Coordinates).filter(
-        annotations_orm.Coordinates.start == 40
+    coordinate40 = controller.session.query(geenuff.orm.Coordinates).filter(
+        geenuff.orm.Coordinates.start == 40
     ).first()
     features40 = coordinate40.features
     print(features40)
 
     # x & y -> 2 translated, 2 transcribed each, z -> 2 error
-    assert len([x for x in features40 if x.type.value == type_enums.CODING]) == 4
-    assert len([x for x in features40 if x.type.value == type_enums.TRANSCRIBED]) == 4
+    assert len([x for x in features40 if x.type.value == geenuff.types.CODING]) == 4
+    assert len([x for x in features40 if x.type.value == geenuff.types.TRANSCRIBED]) == 4
     assert len(features40) == 10
-    assert set([x.type.value for x in features40]) == {type_enums.CODING, type_enums.TRANSCRIBED,
-                                                       type_enums.ERROR}
+    assert set([x.type.value for x in features40]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED,
+                                                       geenuff.types.ERROR}
 
 
 def rm_transcript_and_children(transcript, sess):
@@ -947,11 +948,11 @@ def test_reslice_at_same_spot():
     slices = (('1', 1, 100, 'x01'), )
     controller._slice_annotations_1way(iter(slices), controller.get_one_annotated_genome(), is_plus_strand=True)
     controller.session.commit()
-    old_len = len(controller.session.query(annotations_orm.UpDownPair).all())
+    old_len = len(controller.session.query(geenuff.orm.UpDownPair).all())
     print('used to be {} linkages'.format(old_len))
     controller._slice_annotations_1way(iter(slices), controller.get_one_annotated_genome(), is_plus_strand=True)
     controller.session.commit()
-    assert old_len == len(controller.session.query(annotations_orm.UpDownPair).all())
+    assert old_len == len(controller.session.query(geenuff.orm.UpDownPair).all())
 
 
 #### numerify ####
@@ -984,12 +985,12 @@ def setup4numerify():
     # no need to modify, so can just load briefly
     sess = controller.session
 
-    sinfo = sess.query(annotations_orm.SequenceInfo).first()
+    sinfo = sess.query(geenuff.orm.SequenceInfo).first()
     sinfo_h = slicer.SequenceInfoHandler()
     sinfo_h.add_data(sinfo)
     # simplify
 
-    sinfo = sess.query(annotations_orm.SequenceInfo).first()
+    sinfo = sess.query(geenuff.orm.SequenceInfo).first()
     sinfo_h = slicer.SequenceInfoHandler()
     sinfo_h.add_data(sinfo)
     return sess, controller, sinfo_h
@@ -1003,8 +1004,8 @@ def test_base_level_annotation_numerify():
         numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
 
     # simplify
-    transcriptx = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'x').first()
-    transcriptz = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'z').first()
+    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'x').first()
+    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
 
@@ -1025,8 +1026,8 @@ def test_transition_annotation_numerify():
     with pytest.raises(numerify.DataInterpretationError):
         numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
 
-    transcriptx = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'x').first()
-    transcriptz = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'z').first()
+    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'x').first()
+    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
 
@@ -1044,21 +1045,21 @@ def test_transition_annotation_numerify():
 
 def test_numerify_from_gr0():
     sess, controller, sinfo_h = setup4numerify()
-    transcriptx = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'x').first()
-    transcriptz = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'z').first()
+    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'x').first()
+    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
 
-    x = type_enums.OnSequence(type_enums.TRANSCRIBED)
+    x = geenuff.types.OnSequence(geenuff.types.TRANSCRIBED)
     print(x)
-    tss = sess.query(annotations_orm.Feature).filter(
-        annotations_orm.Feature.type == type_enums.OnSequence(type_enums.TRANSCRIBED)
+    tss = sess.query(geenuff.orm.Feature).filter(
+        geenuff.orm.Feature.type == geenuff.types.OnSequence(geenuff.types.TRANSCRIBED)
     ).filter(
-        annotations_orm.Feature.bearing == type_enums.Bearings(type_enums.START)
+        geenuff.orm.Feature.bearing == geenuff.types.Bearings(geenuff.types.START)
     ).all()
     assert len(tss) == 1
     tss = tss[0]
-    coords = sess.query(annotations_orm.Coordinates).all()
+    coords = sess.query(geenuff.orm.Coordinates).all()
     assert len(coords) == 1
     coords = coords[0]
     # move whole region back by 5 (was 0)
@@ -1093,16 +1094,16 @@ def test_numerify_from_gr0():
 
 def setup_simpler_numerifier():
     sess = mk_session()
-    ag = annotations_orm.AnnotatedGenome()
-    sinfo, sinfo_h = setup_data_handler(slicer.SequenceInfoHandler, annotations_orm.SequenceInfo, annotated_genome=ag)
-    coord = annotations_orm.Coordinates(start=0, end=100, seqid='a', sequence_info=sinfo)
-    sl = annotations_orm.SuperLocus()
-    transcript = annotations_orm.Transcribed(super_locus=sl)
-    piece = annotations_orm.TranscribedPiece(transcribed=transcript)
-    tss = annotations_orm.Feature(position=40, is_plus_strand=False, type=type_enums.TRANSCRIBED, bearing=type_enums.START,
-                                  coordinates=coord, super_locus=sl)
-    tts = annotations_orm.Feature(position=9, is_plus_strand=False, type=type_enums.TRANSCRIBED, bearing=type_enums.END,
-                                  coordinates=coord, super_locus=sl)
+    ag = geenuff.orm.AnnotatedGenome()
+    sinfo, sinfo_h = setup_data_handler(slicer.SequenceInfoHandler, geenuff.orm.SequenceInfo, annotated_genome=ag)
+    coord = geenuff.orm.Coordinates(start=0, end=100, seqid='a', sequence_info=sinfo)
+    sl = geenuff.orm.SuperLocus()
+    transcript = geenuff.orm.Transcribed(super_locus=sl)
+    piece = geenuff.orm.TranscribedPiece(transcribed=transcript)
+    tss = geenuff.orm.Feature(position=40, is_plus_strand=False, type=geenuff.types.TRANSCRIBED,
+                              bearing=geenuff.types.START, coordinates=coord, super_locus=sl)
+    tts = geenuff.orm.Feature(position=9, is_plus_strand=False, type=geenuff.types.TRANSCRIBED,
+                              bearing=geenuff.types.END, coordinates=coord, super_locus=sl)
     piece.features = [tss, tts]
 
     sess.add_all([ag, sinfo, coord, sl, transcript, piece, tss, tts])
@@ -1154,8 +1155,8 @@ def test_live_slicing():
 
 def test_example_gen():
     sess, controller, anno_slice = setup4numerify()
-    transcriptx = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'x').first()
-    transcriptz = sess.query(annotations_orm.Transcribed).filter(annotations_orm.Transcribed.given_id == 'z').first()
+    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'x').first()
+    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
 
@@ -1184,10 +1185,10 @@ def test_example_gen():
     assert step1['meta_Gbp'] == [405 / 10**9]
 
 
-#### type_enumss ####
+#### geenuff.typess ####  # todo, mv to geenuff
 def test_enum_non_inheritance():
-    allknown = [x.name for x in list(type_enums.AllKnown)]
-    allnice = [x.name for x in list(type_enums.AllKeepable)]
+    allknown = [x.name for x in list(geenuff.types.AllKnown)]
+    allnice = [x.name for x in list(geenuff.types.AllKeepable)]
     # check that some random bits made it in to all
     assert 'error' in allknown
     assert 'region' in allknown
@@ -1202,7 +1203,7 @@ def test_enum_non_inheritance():
 
 
 def test_enums_name_val_match():
-    for x in type_enums.AllKnown:
+    for x in geenuff.types.AllKnown:
         assert x.name == x.value
 
 

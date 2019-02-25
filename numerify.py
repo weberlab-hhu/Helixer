@@ -3,8 +3,7 @@
 import numpy as np
 import copy
 
-from geenuff import api as annotations
-from geenuff import types as type_enums
+import geenuff
 import slicer
 import partitions
 import sequences
@@ -181,20 +180,19 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
             print('labelling {}-{} as {}'.format(py_start, py_end, labels))
 
 
-
 class TransitionAnnotationNumerifier(AnnotationNumerifier):
     def __init__(self, data_slice):
         super().__init__(data_slice, [12])
 
-    types = {type_enums.TRANSCRIBED: 0,
-             type_enums.CODING: 4,
-             type_enums.INTRON: 8,
-             type_enums.TRANS_INTRON: 8}
+    types = {geenuff.types.TRANSCRIBED: 0,
+             geenuff.types.CODING: 4,
+             geenuff.types.INTRON: 8,
+             geenuff.types.TRANS_INTRON: 8}
 
-    bearings = {type_enums.START: 0,
-                type_enums.END: 1,
-                type_enums.OPEN_STATUS: 2,
-                type_enums.CLOSE_STATUS: 3}
+    bearings = {geenuff.types.START: 0,
+                geenuff.types.END: 1,
+                geenuff.types.OPEN_STATUS: 2,
+                geenuff.types.CLOSE_STATUS: 3}
 
     @staticmethod
     def class_labels(aligned_features):
@@ -259,10 +257,10 @@ class StepHolder(object):
 
     def any_erroneous_features(self):
         #errors = [x.value for x in type_enums.ErrorFeature]
-        return any([x.type.value == type_enums.ERROR for x in self.features])
+        return any([x.type.value == geenuff.types.ERROR for x in self.features])
 
 
-class TranscriptLocalReader(annotations.TranscriptInterpBase):
+class TranscriptLocalReader(geenuff.api.TranscriptInterpBase):
     def sort_features(self, coords, is_plus_strand):
         # features from transcript
         features = []
@@ -277,7 +275,7 @@ class TranscriptLocalReader(annotations.TranscriptInterpBase):
         return features
 
     def local_transition_5p_to_3p(self, coords, is_plus_strand):
-        status = annotations.TranscriptStatus()
+        status = geenuff.api.TranscriptStatus()
         for aligned_features in self.stack_matches(self.sort_features(coords, is_plus_strand)):
             self.update_status(status, aligned_features)
             yield aligned_features, copy.deepcopy(status)
