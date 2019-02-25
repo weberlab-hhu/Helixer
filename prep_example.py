@@ -2,9 +2,9 @@ import logging
 import argparse
 import os
 
-import sequences
-import gff_2_annotations
-import slicer
+import helixerprep.datas.sequences as sequences
+import helixerprep.datas.annotations.annotations as gff_2_annotations
+import helixerprep.datas.annotations.slicer as slicer
 
 
 def gff3_to_sqlite(gff3, db_path, sequence_path, prob_path):

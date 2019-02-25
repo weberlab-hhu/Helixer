@@ -3,7 +3,7 @@ from ..core import structure
 import geenuff
 #from geenuff import api as annotations
 #from geenuff import orm as annotations_orm
-from ..datas import slice_dbmods
+from helixerprep.datas.annotations import slice_dbmods, slicer
 from ..core import helpers
 #from geenuff import types as type_enums
 
@@ -15,7 +15,6 @@ import numpy as np
 from sqlalchemy.orm import sessionmaker
 import sqlalchemy
 
-from ..datas import slicer
 from ..numerify import numerify
 
 #from test_geenuff import setup_data_handler, mk_session, TransspliceDemoData

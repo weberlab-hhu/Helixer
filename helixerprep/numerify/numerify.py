@@ -4,7 +4,7 @@ import numpy as np
 import copy
 
 import geenuff
-from ..datas import slicer
+from helixerprep.datas.annotations import slicer
 from ..core import partitions
 from ..datas import sequences
 from ..core import helpers

@@ -5,13 +5,13 @@ import copy
 import logging
 
 import geenuff
-from . import slice_dbmods
+from helixerprep.datas.annotations import slice_dbmods
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import os
-from . import sequences
+from helixerprep.datas import sequences
 #from annotations import TranscriptInterpBase
 TranscriptInterpBase = geenuff.api.TranscriptInterpBase
 
