@@ -1,10 +1,10 @@
-from structure import GenericData, add_paired_dictionaries
+from ..core.structure import GenericData, add_paired_dictionaries
 from dustdas import fastahelper
 import itertools
 import copy
 import hashlib
-from partitions import CoordinateGenerator
-import helpers
+from ..core.partitions import CoordinateGenerator
+from ..core import helpers
 
 
 class StructuredGenome(GenericData):

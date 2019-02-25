@@ -1,22 +1,22 @@
-import sequences
-import structure
+from ..datas import sequences
+from ..core import structure
 import geenuff
 #from geenuff import api as annotations
 #from geenuff import orm as annotations_orm
-import slice_dbmods
-import helpers
+from ..datas import slice_dbmods
+from ..core import helpers
 #from geenuff import types as type_enums
 
 import pytest
-import partitions
+from ..core import partitions
 import os
 import numpy as np
 
 from sqlalchemy.orm import sessionmaker
 import sqlalchemy
 
-import slicer
-import numerify
+from ..datas import slicer
+from ..numerify import numerify
 
 #from test_geenuff import setup_data_handler, mk_session, TransspliceDemoData
 from geenuff.tests.test_geenuff import setup_data_handler, mk_session, TransspliceDemoData

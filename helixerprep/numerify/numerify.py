@@ -4,10 +4,10 @@ import numpy as np
 import copy
 
 import geenuff
-import slicer
-import partitions
-import sequences
-import helpers
+from ..datas import slicer
+from ..core import partitions
+from ..datas import sequences
+from ..core import helpers
 
 
 # for now collapse everything to one vector (with or without pre-selection of primary transcript)

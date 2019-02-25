@@ -5,13 +5,13 @@ import copy
 import logging
 
 import geenuff
-import slice_dbmods
+from . import slice_dbmods
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import os
-import sequences
+from . import sequences
 #from annotations import TranscriptInterpBase
 TranscriptInterpBase = geenuff.api.TranscriptInterpBase
 
