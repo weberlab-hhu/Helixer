@@ -427,8 +427,8 @@ def test_set_updown_features_downstream_border():
                             x.bearing.value == type_enums.CLOSE_STATUS][0]
 
     translated_down_status = [x for x in piece0.features if x.type.value == type_enums.TRANSCRIBED][0]
-    assert translated_up_status.start == 200
-    assert translated_down_status.start == 200
+    assert translated_up_status.position == 200
+    assert translated_down_status.position == 200
     # cleanup to try similar again
     for f in piece0.features:
         sess.delete(f)
@@ -460,8 +460,8 @@ def test_set_updown_features_downstream_border():
 
     translated_down_status = [x for x in piece0.features if x.type.value == type_enums.TRANSCRIBED][0]
 
-    assert translated_up_status.start == 99
-    assert translated_down_status.start == 99
+    assert translated_up_status.position == 99
+    assert translated_down_status.position == 99
 
 
 def test_transition_with_right_new_pieces():
@@ -709,7 +709,7 @@ def test_transition_unused_coordinates_detection():
         print('\nstart mod for coords, - strand', new_coords)
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
         for piece in d.tilong.transcript.data.transcribed_pieces:
-            print(piece, [(f.start, f.type, f.bearing) for f in piece.features])
+            print(piece, [(f.position, f.type, f.bearing) for f in piece.features])
     assert d.pieceCD not in d.scribedlong.transcribed_pieces  # confirm full transition
     assert d.pieceAB not in d.sl.transcribed_pieces
 
@@ -1062,7 +1062,7 @@ def test_numerify_from_gr0():
     assert len(coords) == 1
     coords = coords[0]
     # move whole region back by 5 (was 0)
-    tss.start = coords.start = 4
+    tss.position = coords.start = 4
     # and now make sure it really starts form 4
     numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h)
     nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
