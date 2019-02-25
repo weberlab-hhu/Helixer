@@ -2,4 +2,5 @@ intervaltree
 sqlalchemy
 pytest
 dustdas
+geenuff
 numpy

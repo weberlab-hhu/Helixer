@@ -4,17 +4,19 @@ import intervaltree
 import copy
 import logging
 
-import annotations
-import annotations_orm
+# change to geenuff improved naming
+from geenuff import api as annotations
+from geenuff import orm as annotations_orm
 import slice_dbmods
-import type_enums
+from geenuff import types as type_enums
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import os
 import sequences
-from annotations import TranscriptInterpBase
+#from annotations import TranscriptInterpBase
+TranscriptInterpBase = annotations.TranscriptInterpBase
 
 
 class SliceController(object):
@@ -196,7 +198,7 @@ def load_to_intervaltree(obj, trees):
     if seqid not in trees:
         trees[seqid] = intervaltree.IntervalTree()
     tree = trees[seqid]
-    py_start = obj.data.start
+    py_start = obj.data.position
     tree[py_start:(py_start + 1)] = obj
 
 
@@ -256,10 +258,10 @@ class FeatureVsCoords(object):
         return out
 
     def _is_lower(self):
-        return self.c_py_start - self.feature.start > 0
+        return self.c_py_start - self.feature.position > 0
 
     def _is_higher(self):
-        return self.feature.start - self.c_py_end >= 0
+        return self.feature.position - self.c_py_end >= 0
 
     def is_upstream(self):
         if self.is_plus_strand:
@@ -274,7 +276,7 @@ class FeatureVsCoords(object):
             return self._is_lower()
 
     def is_contained(self):
-        start_contained = self.c_py_start <= self.feature.start < self.c_py_end
+        start_contained = self.c_py_start <= self.feature.position < self.c_py_end
         return start_contained
 
 

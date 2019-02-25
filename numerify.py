@@ -3,8 +3,8 @@
 import numpy as np
 import copy
 
-import annotations
-import type_enums
+from geenuff import api as annotations
+from geenuff import types as type_enums
 import slicer
 import partitions
 import sequences
@@ -209,7 +209,7 @@ class TransitionAnnotationNumerifier(AnnotationNumerifier):
     def update_matrix(self, matrix, prev_step, step):
         if step.any_erroneous_features():
             raise DataInterpretationError
-        py_start = step.a_feature.start - step.a_feature.coordinates.start
+        py_start = step.a_feature.position - step.a_feature.coordinates.start
         labels = self.class_labels(step.features)
         matrix[py_start, :] = np.logical_or(
             matrix[py_start, :],
@@ -236,7 +236,7 @@ class StepHolder(object):
         if self._at is not None:
             return self._at
         elif self.features is not None:
-            return self.a_feature.start
+            return self.a_feature.position
         else:
             raise ValueError
 

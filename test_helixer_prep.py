@@ -1,10 +1,10 @@
 import sequences
 import structure
-import annotations
-import annotations_orm
+from geenuff import api as annotations
+from geenuff import orm as annotations_orm
 import slice_dbmods
 import helpers
-import type_enums
+from geenuff import types as type_enums
 
 import pytest
 import partitions
@@ -17,8 +17,8 @@ import sqlalchemy
 import slicer
 import numerify
 
-from test_geenuff import setup_data_handler, mk_session, TransspliceDemoData
-
+#from test_geenuff import setup_data_handler, mk_session, TransspliceDemoData
+from geenuff.tests.test_geenuff import setup_data_handler, mk_session, TransspliceDemoData
 
 ### structure ###
 # testing: add_paired_dictionaries
@@ -341,12 +341,12 @@ def test_order_features():
     features = ti.sorted_features(piece)
     for f in features:
         print(f)
-    assert [x.start for x in features] == ordered_starts
+    assert [x.position for x in features] == ordered_starts
     for feature in piece.features:
         feature.is_plus_strand = False
     features = ti.sorted_features(piece)
     ordered_starts.reverse()
-    assert [x.start for x in features] == ordered_starts
+    assert [x.position for x in features] == ordered_starts
     # force erroneous data
     piece.features[0].is_plus_strand = True
     controller.session.add(piece.features[0])
@@ -376,7 +376,7 @@ def test_slicer_transition():
     statusses = [x[1] for x in transitions]
     features = [x[0][0] for x in transitions]
     ordered_starts = [0, 10, 100, 110, 120, 200, 300, 400]
-    assert [x.start for x in features] == ordered_starts
+    assert [x.position for x in features] == ordered_starts
     expected_intronic = [False, False, True, False, True, False, False, False]
     assert [x.in_intron for x in statusses] == expected_intronic
     expected_genic = [True] * 7 + [False]
@@ -398,7 +398,7 @@ def test_set_updown_features_downstream_border():
     scribed.transcribed_pieces = [piece0]
     # setup some paired features
     # new coords, is plus, template, status
-    feature = annotations_orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, start=110,
+    feature = annotations_orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, position=110,
                                       is_plus_strand=True, super_locus=sl, type=type_enums.CODING,
                                       bearing=type_enums.START)
 
@@ -437,7 +437,7 @@ def test_set_updown_features_downstream_border():
     sess.commit()
 
     # and now try backwards pass
-    feature = annotations_orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, start=110,
+    feature = annotations_orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, position=110,
                                       is_plus_strand=False, super_locus=sl, type=type_enums.CODING,
                                       bearing=type_enums.START)
     sess.add(feature)
@@ -482,17 +482,17 @@ def test_transition_with_right_new_pieces():
     pieceABp = annotations_orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
     pieceCD = annotations_orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
 
-    fA = annotations_orm.Feature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, start=190, end=190,
+    fA = annotations_orm.Feature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, position=190,
                                  is_plus_strand=True, super_locus=sl, type=type_enums.ERROR,
                                  bearing=type_enums.START)
-    fB = annotations_orm.UpstreamFeature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, start=210, end=210,
+    fB = annotations_orm.UpstreamFeature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, position=210,
                                          is_plus_strand=True, super_locus=sl, type=type_enums.ERROR,
                                          bearing=type_enums.CLOSE_STATUS)  # todo, double check for consistency after type/bearing mod to slice...
 
-    fC = annotations_orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=90, end=90,
+    fC = annotations_orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=90,
                                            is_plus_strand=True, super_locus=sl, type=type_enums.ERROR,
                                            bearing=type_enums.OPEN_STATUS)
-    fD = annotations_orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=110, end=110,
+    fD = annotations_orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=110,
                                  is_plus_strand=True, super_locus=sl, type=type_enums.ERROR, bearing=type_enums.END)
 
     pair = annotations_orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
@@ -544,7 +544,7 @@ def test_modify4slice():
     for piece in transcript.transcribed_pieces:
         print(piece)
         for f in piece.features:
-            print('::::', (f.type.value, f.bearing.value, f.start))
+            print('::::', (f.type.value, f.bearing.value, f.position))
     assert sorted([len(x.features) for x in transcript.transcribed_pieces]) == [4, 4, 8]  # todo, why does this occasionally fail??
     assert set([x.type.value for x in ori_piece.features]) == {type_enums.TRANSCRIBED,
                                                                type_enums.CODING}
@@ -567,17 +567,17 @@ def test_modify4slice_directions():
     pieceCD = annotations_orm.TranscribedPiece(super_locus=sl)
     scribedlong.transcribed_pieces = [pieceAB, pieceCD]
 
-    fA = annotations_orm.Feature(transcribed_pieces=[pieceAB], coordinates=old_coor, start=190, end=190, given_id='A',
+    fA = annotations_orm.Feature(transcribed_pieces=[pieceAB], coordinates=old_coor, position=190, given_id='A',
                                  is_plus_strand=True, super_locus=sl, type=type_enums.TRANSCRIBED,
                                  bearing=type_enums.START)
-    fB = annotations_orm.UpstreamFeature(transcribed_pieces=[pieceAB], coordinates=old_coor, start=210, end=210,
+    fB = annotations_orm.UpstreamFeature(transcribed_pieces=[pieceAB], coordinates=old_coor, position=210,
                                          is_plus_strand=True, super_locus=sl, type=type_enums.TRANSCRIBED,
                                          bearing=type_enums.CLOSE_STATUS, given_id='B')
 
-    fC = annotations_orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=110, end=110,
+    fC = annotations_orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=110,
                                            is_plus_strand=False, super_locus=sl, type=type_enums.TRANSCRIBED,
                                            bearing=type_enums.OPEN_STATUS, given_id='C')
-    fD = annotations_orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, start=90, end=90,
+    fD = annotations_orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=90,
                                  is_plus_strand=False, super_locus=sl, type=type_enums.TRANSCRIBED,
                                  bearing=type_enums.END, given_id='D')
 
@@ -658,19 +658,19 @@ class SimplestDemoData(object):
         self.pieceCD = annotations_orm.TranscribedPiece(super_locus=self.sl)
         self.scribedlong.transcribed_pieces = [self.pieceAB, self.pieceCD]
 
-        self.fA = annotations_orm.Feature(transcribed_pieces=[self.pieceAB], coordinates=self.old_coor, start=190,
+        self.fA = annotations_orm.Feature(transcribed_pieces=[self.pieceAB], coordinates=self.old_coor, position=190,
                                           given_id='A', is_plus_strand=True, super_locus=self.sl,
                                           type=type_enums.TRANSCRIBED, bearing=type_enums.START)
         self.fB = annotations_orm.UpstreamFeature(transcribed_pieces=[self.pieceAB], coordinates=self.old_coor,
-                                                  is_plus_strand=True, super_locus=self.sl, start=210,
+                                                  is_plus_strand=True, super_locus=self.sl, position=210,
                                                   type=type_enums.TRANSCRIBED, bearing=type_enums.CLOSE_STATUS,
                                                   given_id='B')
 
         self.fC = annotations_orm.DownstreamFeature(transcribed_pieces=[self.pieceCD], coordinates=self.old_coor,
-                                                    is_plus_strand=False, super_locus=self.sl, start=110,
+                                                    is_plus_strand=False, super_locus=self.sl, position=110,
                                                     type=type_enums.TRANSCRIBED, bearing=type_enums.OPEN_STATUS,
                                                     given_id='C')
-        self.fD = annotations_orm.Feature(transcribed_pieces=[self.pieceCD], coordinates=self.old_coor, start=90,
+        self.fD = annotations_orm.Feature(transcribed_pieces=[self.pieceCD], coordinates=self.old_coor, position=90,
                                           is_plus_strand=False, super_locus=self.sl,
                                           type=type_enums.TRANSCRIBED, bearing=type_enums.END, given_id='D')
 
@@ -1099,9 +1099,9 @@ def setup_simpler_numerifier():
     sl = annotations_orm.SuperLocus()
     transcript = annotations_orm.Transcribed(super_locus=sl)
     piece = annotations_orm.TranscribedPiece(transcribed=transcript)
-    tss = annotations_orm.Feature(start=40, is_plus_strand=False, type=type_enums.TRANSCRIBED, bearing=type_enums.START,
+    tss = annotations_orm.Feature(position=40, is_plus_strand=False, type=type_enums.TRANSCRIBED, bearing=type_enums.START,
                                   coordinates=coord, super_locus=sl)
-    tts = annotations_orm.Feature(start=9, is_plus_strand=False, type=type_enums.TRANSCRIBED, bearing=type_enums.END,
+    tts = annotations_orm.Feature(position=9, is_plus_strand=False, type=type_enums.TRANSCRIBED, bearing=type_enums.END,
                                   coordinates=coord, super_locus=sl)
     piece.features = [tss, tts]
 
