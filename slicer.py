@@ -497,10 +497,10 @@ class TranscriptTrimmer(TranscriptInterpBase):
     def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
                                   old_piece, trees):
         assert new_piece in template_feature.transcribed_pieces
-        upstream = self.new_handled_data(template_feature, annotations_orm.UpstreamFeature, start=up_at,
+        upstream = self.new_handled_data(template_feature, annotations_orm.UpstreamFeature, position=up_at,
                                          given_id=None, type=status_type, bearing=type_enums.CLOSE_STATUS)
         upstream.load_to_intervaltree(trees)
-        downstream = self.new_handled_data(template_feature, annotations_orm.DownstreamFeature, start=down_at,
+        downstream = self.new_handled_data(template_feature, annotations_orm.DownstreamFeature, position=down_at,
                                            given_id=None, type=status_type, coordinates=old_coords,
                                            bearing=type_enums.OPEN_STATUS)
         downstream.load_to_intervaltree(trees)
