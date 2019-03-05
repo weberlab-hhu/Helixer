@@ -124,8 +124,8 @@ class AnnotationNumerifier(Numerifier, AnnotationFoo):
         assert is_plus_strand is not None
         length = self.coordinates.end - self.coordinates.start
         matrix = self._zeros(length)
-        for transcript in self.transcribeds_to_use():
-            t_interp = TranscriptLocalReader(transcript)
+        for transcript, super_locus in self.transcribeds_to_use():
+            t_interp = TranscriptLocalReader(transcript, super_locus=super_locus)
             for prev_step, step in t_interp.transition_5p_to_3p_paired_steps(self.coordinates, is_plus_strand):
                 self.update_matrix(matrix, prev_step, step)
         return matrix
@@ -137,7 +137,7 @@ class AnnotationNumerifier(Numerifier, AnnotationFoo):
         for super_locus in self.super_loci:
             super_locus.make_all_handlers()
             for transcript in self.select_transcripts(super_locus):
-                yield transcript.handler
+                yield transcript.handler, super_locus
 
     @staticmethod
     def select_transcripts(super_locus):

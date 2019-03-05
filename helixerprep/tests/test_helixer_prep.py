@@ -333,7 +333,7 @@ def test_order_features():
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
     transcripth = slicer.TranscribedHandler()
     transcripth.add_data(transcript)
-    ti = slicer.TranscriptTrimmer(transcripth, sess=controller.session)
+    ti = slicer.TranscriptTrimmer(transcripth, super_locus=None, sess=controller.session)
     assert len(transcript.transcribed_pieces) == 1
     piece = transcript.transcribed_pieces[0]
     # features expected to be ordered by increasing position (note: as they are in db)
@@ -369,7 +369,7 @@ def test_slicer_transition():
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
     transcripth = slicer.TranscribedHandler()
     transcripth.add_data(transcript)
-    ti = slicer.TranscriptTrimmer(transcript=transcripth, sess=controller.session)
+    ti = slicer.TranscriptTrimmer(transcript=transcripth, super_locus=None, sess=controller.session)
     transition_gen = ti.transition_5p_to_3p()
     transitions = list(transition_gen)
     assert len(transitions) == 8
@@ -392,7 +392,7 @@ def test_set_updown_features_downstream_border():
     new_coord = geenuff.orm.Coordinates(seqid='a', start=100, end=200)
     sl, slh = setup_data_handler(slicer.SuperLocusHandler, geenuff.orm.SuperLocus)
     scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed, super_locus=sl)
-    ti = slicer.TranscriptTrimmer(transcript=scribedh, sess=sess)
+    ti = slicer.TranscriptTrimmer(transcript=scribedh, super_locus=slh, sess=sess)
     piece0 = geenuff.orm.TranscribedPiece(super_locus=sl)
     piece1 = geenuff.orm.TranscribedPiece(super_locus=sl)
     scribed.transcribed_pieces = [piece0]
@@ -475,8 +475,8 @@ def test_transition_with_right_new_pieces():
     scribedlong, scribedlongh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed,
                                                    super_locus=sl)
 
-    ti = slicer.TranscriptTrimmer(transcript=scribedh, sess=sess)
-    tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, sess=sess)
+    ti = slicer.TranscriptTrimmer(transcript=scribedh, super_locus=slh, sess=sess)
+    tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, super_locus=slh, sess=sess)
 
     pieceAB = geenuff.orm.TranscribedPiece(super_locus=sl, transcribed=scribed)
     pieceABp = geenuff.orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
@@ -519,7 +519,7 @@ def test_modify4slice():
     slh = controller.super_loci[0]
     transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
     slh.make_all_handlers()
-    ti = slicer.TranscriptTrimmer(transcript=transcript.handler, sess=controller.session)
+    ti = slicer.TranscriptTrimmer(transcript=transcript.handler, super_locus=slh, sess=controller.session)
     new_coords = geenuff.orm.Coordinates(seqid='1', start=0, end=100)
     newer_coords = geenuff.orm.Coordinates(seqid='1', start=100, end=200)
     ti.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
@@ -561,7 +561,7 @@ def test_modify4slice_directions():
     scribedlong, scribedlongh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed,
                                                    super_locus=sl)
 
-    tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, sess=sess)
+    tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, super_locus=slh, sess=sess)
 
     pieceAB = geenuff.orm.TranscribedPiece(super_locus=sl)
     pieceCD = geenuff.orm.TranscribedPiece(super_locus=sl)
@@ -617,8 +617,8 @@ class TransspliceDemoDataSlice(TransspliceDemoData):
         self.scribedfliph = slicer.TranscribedHandler()
         self.scribedfliph.add_data(self.scribedflip)
 
-        self.ti = slicer.TranscriptTrimmer(transcript=self.scribedh, sess=sess)
-        self.tiflip = slicer.TranscriptTrimmer(transcript=self.scribedfliph, sess=sess)
+        self.ti = slicer.TranscriptTrimmer(transcript=self.scribedh, super_locus=self.slh, sess=sess)
+        self.tiflip = slicer.TranscriptTrimmer(transcript=self.scribedfliph, super_locus=self.slh, sess=sess)
 
 
 def test_piece_swap_handling_during_multipiece_one_coordinate_transition():
@@ -652,7 +652,7 @@ class SimplestDemoData(object):
         self.scribedlong, self.scribedlongh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed,
                                                                  super_locus=self.sl)
 
-        self.tilong = slicer.TranscriptTrimmer(transcript=self.scribedlongh, sess=sess)
+        self.tilong = slicer.TranscriptTrimmer(transcript=self.scribedlongh, super_locus=self.slh, sess=sess)
 
         self.pieceAB = geenuff.orm.TranscribedPiece(super_locus=self.sl)
         self.pieceCD = geenuff.orm.TranscribedPiece(super_locus=self.sl)
@@ -944,6 +944,7 @@ def test_reslice_at_same_spot():
     rm_transcript_and_children(transcriptz, controller.session)
     # slice
     controller.fill_intervaltrees()
+    print('controller.sess', controller.session)
     slices = (('1', 1, 100, 'x01'), )
     controller._slice_annotations_1way(iter(slices), controller.get_one_annotated_genome(), is_plus_strand=True)
     controller.session.commit()

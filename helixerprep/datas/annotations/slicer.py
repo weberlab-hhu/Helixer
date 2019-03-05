@@ -173,7 +173,7 @@ class SuperLocusHandler(geenuff.api.SuperLocusHandler):
         logging.debug('modifying sl {} for new slice {}:{}-{},  is plus: {}'.format(
             self.data.id, new_coords.seqid, new_coords.start, new_coords.end, is_plus_strand))
         for transcribed in self.data.transcribeds:
-            trimmer = TranscriptTrimmer(transcript=transcribed.handler, sess=session)
+            trimmer = TranscriptTrimmer(transcript=transcribed.handler, super_locus=self, sess=session)
             trimmer.modify4new_slice(new_coords=new_coords, is_plus_strand=is_plus_strand, trees=trees)
 
 
@@ -333,8 +333,8 @@ class StepHolder(object):
 
 class TranscriptTrimmer(TranscriptInterpBase):
     """takes pre-cleaned/explicit transcripts and crops to what fits in a slice"""
-    def __init__(self, transcript, sess):
-        super().__init__(transcript, sess)
+    def __init__(self, transcript, super_locus, sess):
+        super().__init__(transcript, super_locus=super_locus, session=sess)
         #self.session = sess
         self.handlers = []
 
