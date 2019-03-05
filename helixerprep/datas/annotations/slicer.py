@@ -174,7 +174,19 @@ class SuperLocusHandler(geenuff.api.SuperLocusHandler):
             self.data.id, new_coords.seqid, new_coords.start, new_coords.end, is_plus_strand))
         for transcribed in self.data.transcribeds:
             trimmer = TranscriptTrimmer(transcript=transcribed.handler, super_locus=self, sess=session)
-            trimmer.modify4new_slice(new_coords=new_coords, is_plus_strand=is_plus_strand, trees=trees)
+            try:
+                trimmer.modify4new_slice(new_coords=new_coords, is_plus_strand=is_plus_strand, trees=trees)
+            except NoFeaturesInSliceError:
+                # temporary patch to not die on case where gene, but not _this_ transcript overlaps, todo, fix!
+                # but try and double check no-overlap first
+                for piece in transcribed.transcribed_pieces:
+                    for feature in piece.features:
+                        # ignore all features on the opposite strand
+                        if is_plus_strand == feature.is_plus_strand:
+                            if is_plus_strand:
+                                assert not (new_coords.start <= feature.position <= new_coords.end)
+                            else:
+                                assert not (new_coords.start - 1 <= feature.position <= new_coords.end - 1)
 
 
 # todo, switch back to simple import if not changing...
