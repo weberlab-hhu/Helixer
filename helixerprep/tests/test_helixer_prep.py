@@ -18,7 +18,15 @@ import sqlalchemy
 from ..numerify import numerify
 
 #from test_geenuff import setup_data_handler, mk_session, TransspliceDemoData
-from geenuff.tests.test_geenuff import setup_data_handler, mk_session, TransspliceDemoData
+from geenuff.tests.test_geenuff import setup_data_handler, TransspliceDemoData  #, mk_sesstion
+
+
+def mk_session(db_path='sqlite:///:memory:'):
+    engine = sqlalchemy.create_engine(db_path, echo=False)
+    geenuff.orm.Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    return Session(), engine
+
 
 ### structure ###
 # testing: add_paired_dictionaries
@@ -203,7 +211,7 @@ def test_processing_set_enum():
 
 
 def test_add_processing_set():
-    sess = mk_session()
+    sess, engine = mk_session()
     ag = geenuff.orm.AnnotatedGenome()
     sequence_info, sequence_infoh = setup_data_handler(slicer.SequenceInfoHandler, geenuff.orm.SequenceInfo,
                                                        annotated_genome=ag)
@@ -333,7 +341,8 @@ def test_order_features():
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
     transcripth = slicer.TranscribedHandler()
     transcripth.add_data(transcript)
-    ti = slicer.TranscriptTrimmer(transcripth, super_locus=None, sess=controller.session)
+    ti = slicer.TranscriptTrimmer(transcripth, super_locus=None, sess=controller.session,
+                                  core_queue=controller.core_queue)
     assert len(transcript.transcribed_pieces) == 1
     piece = transcript.transcribed_pieces[0]
     # features expected to be ordered by increasing position (note: as they are in db)
@@ -369,7 +378,8 @@ def test_slicer_transition():
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
     transcripth = slicer.TranscribedHandler()
     transcripth.add_data(transcript)
-    ti = slicer.TranscriptTrimmer(transcript=transcripth, super_locus=None, sess=controller.session)
+    ti = slicer.TranscriptTrimmer(transcript=transcripth, super_locus=None, sess=controller.session,
+                                  core_queue=controller.core_queue)
     transition_gen = ti.transition_5p_to_3p()
     transitions = list(transition_gen)
     assert len(transitions) == 8
@@ -387,12 +397,13 @@ def test_slicer_transition():
 
 
 def test_set_updown_features_downstream_border():
-    sess = mk_session()
+    sess, engine = mk_session()
+    core_queue = slicer.CoreQueue(session=sess, engine=engine)
     old_coor = geenuff.orm.Coordinates(seqid='a', start=1, end=1000)
     new_coord = geenuff.orm.Coordinates(seqid='a', start=100, end=200)
     sl, slh = setup_data_handler(slicer.SuperLocusHandler, geenuff.orm.SuperLocus)
     scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed, super_locus=sl)
-    ti = slicer.TranscriptTrimmer(transcript=scribedh, super_locus=slh, sess=sess)
+    ti = slicer.TranscriptTrimmer(transcript=scribedh, super_locus=slh, sess=sess, core_queue=core_queue)
     piece0 = geenuff.orm.TranscribedPiece(super_locus=sl)
     piece1 = geenuff.orm.TranscribedPiece(super_locus=sl)
     scribed.transcribed_pieces = [piece0]
@@ -465,7 +476,8 @@ def test_set_updown_features_downstream_border():
 
 
 def test_transition_with_right_new_pieces():
-    sess = mk_session()
+    sess, engine = mk_session()
+    core_queue = slicer.CoreQueue(session=sess, engine=engine)
     old_coor = geenuff.orm.Coordinates(seqid='a', start=1, end=1000)
     # setup two transitions:
     # 1) scribed - [[A,B]] -> AB, -> one expected new piece
@@ -475,8 +487,8 @@ def test_transition_with_right_new_pieces():
     scribedlong, scribedlongh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed,
                                                    super_locus=sl)
 
-    ti = slicer.TranscriptTrimmer(transcript=scribedh, super_locus=slh, sess=sess)
-    tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, super_locus=slh, sess=sess)
+    ti = slicer.TranscriptTrimmer(transcript=scribedh, super_locus=slh, sess=sess, core_queue=core_queue)
+    tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, super_locus=slh, sess=sess, core_queue=core_queue)
 
     pieceAB = geenuff.orm.TranscribedPiece(super_locus=sl, transcribed=scribed)
     pieceABp = geenuff.orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
@@ -519,7 +531,8 @@ def test_modify4slice():
     slh = controller.super_loci[0]
     transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
     slh.make_all_handlers()
-    ti = slicer.TranscriptTrimmer(transcript=transcript.handler, super_locus=slh, sess=controller.session)
+    ti = slicer.TranscriptTrimmer(transcript=transcript.handler, super_locus=slh, sess=controller.session,
+                                  core_queue=controller.core_queue)
     new_coords = geenuff.orm.Coordinates(seqid='1', start=0, end=100)
     newer_coords = geenuff.orm.Coordinates(seqid='1', start=100, end=200)
     ti.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
@@ -553,7 +566,10 @@ def test_modify4slice():
 
 
 def test_modify4slice_directions():
-    sess = mk_session()
+    sess, engine = mk_session()
+
+    core_queue = slicer.CoreQueue(session=sess, engine=engine)
+
     old_coor = geenuff.orm.Coordinates(seqid='a', start=1, end=1000)
     # setup two transitions:
     # 2) scribedlong - [[D<-,C<-],[->A,->B]] -> ABCD, -> two pieces forward, one backward
@@ -561,7 +577,7 @@ def test_modify4slice_directions():
     scribedlong, scribedlongh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed,
                                                    super_locus=sl)
 
-    tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, super_locus=slh, sess=sess)
+    tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, super_locus=slh, sess=sess, core_queue=core_queue)
 
     pieceAB = geenuff.orm.TranscribedPiece(super_locus=sl)
     pieceCD = geenuff.orm.TranscribedPiece(super_locus=sl)
@@ -604,8 +620,9 @@ def test_modify4slice_directions():
 
 
 class TransspliceDemoDataSlice(TransspliceDemoData):
-    def __init__(self, sess):
+    def __init__(self, sess, engine):
         super().__init__(sess)
+        self.core_queue = slicer.CoreQueue(session=sess, engine=engine)
         self.old_coor = geenuff.orm.Coordinates(seqid='a', start=1, end=2000)
         # replace handlers with those from slicer
         self.slh = slicer.SuperLocusHandler()
@@ -617,13 +634,15 @@ class TransspliceDemoDataSlice(TransspliceDemoData):
         self.scribedfliph = slicer.TranscribedHandler()
         self.scribedfliph.add_data(self.scribedflip)
 
-        self.ti = slicer.TranscriptTrimmer(transcript=self.scribedh, super_locus=self.slh, sess=sess)
-        self.tiflip = slicer.TranscriptTrimmer(transcript=self.scribedfliph, super_locus=self.slh, sess=sess)
+        self.ti = slicer.TranscriptTrimmer(transcript=self.scribedh, super_locus=self.slh, sess=sess,
+                                           core_queue=self.core_queue)
+        self.tiflip = slicer.TranscriptTrimmer(transcript=self.scribedfliph, super_locus=self.slh, sess=sess,
+                                               core_queue=self.core_queue)
 
 
 def test_piece_swap_handling_during_multipiece_one_coordinate_transition():
-    sess = mk_session()
-    d = TransspliceDemoDataSlice(sess)  # setup _d_ata
+    sess, engine = mk_session()
+    d = TransspliceDemoDataSlice(sess, engine)  # setup _d_ata
     d.make_all_handlers()
     # forward pass, same sequence, two pieces
     ti_transitions = list(d.ti.transition_5p_to_3p_with_new_pieces())
@@ -644,7 +663,8 @@ def test_piece_swap_handling_during_multipiece_one_coordinate_transition():
 
 
 class SimplestDemoData(object):
-    def __init__(self, sess):
+    def __init__(self, sess, engine):
+        self.core_queue = slicer.CoreQueue(session=sess, engine=engine)
         self.old_coor = geenuff.orm.Coordinates(seqid='a', start=0, end=1000)
         # setup two transitions:
         # 2) scribedlong - [[D<-,C<-],[->A,->B]] -> ABCD, -> two pieces forward, one backward
@@ -652,7 +672,8 @@ class SimplestDemoData(object):
         self.scribedlong, self.scribedlongh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed,
                                                                  super_locus=self.sl)
 
-        self.tilong = slicer.TranscriptTrimmer(transcript=self.scribedlongh, super_locus=self.slh, sess=sess)
+        self.tilong = slicer.TranscriptTrimmer(transcript=self.scribedlongh, super_locus=self.slh, sess=sess,
+                                               core_queue=self.core_queue)
 
         self.pieceAB = geenuff.orm.TranscribedPiece(super_locus=self.sl)
         self.pieceCD = geenuff.orm.TranscribedPiece(super_locus=self.sl)
@@ -683,8 +704,8 @@ class SimplestDemoData(object):
 
 
 def test_transition_unused_coordinates_detection():
-    sess = mk_session()
-    d = SimplestDemoData(sess)
+    sess, engine = mk_session()
+    d = SimplestDemoData(sess, engine)
     # modify to coordinates with complete contain, should work fine
     new_coords = geenuff.orm.Coordinates(seqid='a', start=0, end=300)
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
@@ -692,7 +713,7 @@ def test_transition_unused_coordinates_detection():
     assert d.pieceCD not in d.sl.transcribed_pieces  # confirm full transition
     assert d.pieceAB not in d.scribedlong.transcribed_pieces
     # modify to coordinates across tiny slice, include those w/o original features, should work fine
-    d = SimplestDemoData(sess)
+    d = SimplestDemoData(sess, engine)
     new_coords_list = [geenuff.orm.Coordinates(seqid='a', start=185, end=195),
                        geenuff.orm.Coordinates(seqid='a', start=195, end=205),
                        geenuff.orm.Coordinates(seqid='a', start=205, end=215)]
@@ -714,35 +735,35 @@ def test_transition_unused_coordinates_detection():
     assert d.pieceAB not in d.sl.transcribed_pieces
 
     # try and slice before coordinates, should raise error
-    d = SimplestDemoData(sess)
+    d = SimplestDemoData(sess, engine)
     new_coords = geenuff.orm.Coordinates(seqid='a', start=0, end=10)
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     # try and slice after coordinates, should raise error
-    d = SimplestDemoData(sess)
+    d = SimplestDemoData(sess, engine)
     new_coords = geenuff.orm.Coordinates(seqid='a', start=399, end=410)
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     # try and slice between slices where there are no coordinates, should raise error
-    d = SimplestDemoData(sess)
+    d = SimplestDemoData(sess, engine)
     new_coords = geenuff.orm.Coordinates(seqid='a', start=149, end=160)
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
-    d = SimplestDemoData(sess)
+    d = SimplestDemoData(sess, engine)
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
 
 
 def test_features_on_opposite_strand_are_not_modified():
-    sess = mk_session()
-    d = SimplestDemoData(sess)
+    sess, engine = mk_session()
+    d = SimplestDemoData(sess, engine)
     # forward pass only, back pass should be untouched
     new_coords = geenuff.orm.Coordinates(seqid='a', start=1, end=300)
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     assert d.pieceAB not in d.sl.transcribed_pieces
     assert d.pieceCD in d.sl.transcribed_pieces  # minus piece should not change on 'plus' pass
 
-    d = SimplestDemoData(sess)
+    d = SimplestDemoData(sess, engine)
     # backward pass only, plus pass should be untouched
     new_coords = geenuff.orm.Coordinates(seqid='a', start=1, end=300)
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
@@ -751,8 +772,8 @@ def test_features_on_opposite_strand_are_not_modified():
 
 
 def test_modify4slice_transsplice():
-    sess = mk_session()
-    d = TransspliceDemoDataSlice(sess)  # setup _d_ata
+    sess, engine = mk_session()
+    d = TransspliceDemoDataSlice(sess, engine)  # setup _d_ata
     d.make_all_handlers()
     new_coords_0 = geenuff.orm.Coordinates(seqid='a', start=0, end=915)
     new_coords_1 = geenuff.orm.Coordinates(seqid='a', start=915, end=2000)
@@ -817,8 +838,8 @@ def test_modify4slice_transsplice():
 def test_modify4slice_2nd_half_first():
     # because trans-splice occasions can theoretically hit transitions in the 'wrong' order where the 1st half of
     # the _final_ transcript hasn't been adjusted when the second half is adjusted/sliced. Results should be the same.
-    sess = mk_session()
-    d = TransspliceDemoDataSlice(sess)  # setup _d_ata
+    sess, engine = mk_session()
+    d = TransspliceDemoDataSlice(sess, engine)  # setup _d_ata
     d.make_all_handlers()
     new_coords_0 = geenuff.orm.Coordinates(seqid='a', start=0, end=915)
     new_coords_1 = geenuff.orm.Coordinates(seqid='a', start=915, end=2000)
@@ -867,7 +888,7 @@ def test_slicing_multi_sl():
     slh = controller.super_loci[0]
     slh.make_all_handlers()
     # setup more
-    more = SimplestDemoData(controller.session)
+    more = SimplestDemoData(controller.session, controller.engine)
     controller.super_loci.append(more.slh)
     more.old_coor.seqid = '1'  # so it matches std dummyloci
     controller.session.commit()
@@ -1093,7 +1114,7 @@ def test_numerify_from_gr0():
 
 
 def setup_simpler_numerifier():
-    sess = mk_session()
+    sess, engine = mk_session()
     ag = geenuff.orm.AnnotatedGenome()
     sinfo, sinfo_h = setup_data_handler(slicer.SequenceInfoHandler, geenuff.orm.SequenceInfo, annotated_genome=ag)
     coord = geenuff.orm.Coordinates(start=0, end=100, seqid='a', sequence_info=sinfo)
