@@ -535,10 +535,10 @@ def test_modify4slice():
                                   core_queue=controller.core_queue)
     new_coords = geenuff.orm.Coordinates(seqid='1', start=0, end=100)
     newer_coords = geenuff.orm.Coordinates(seqid='1', start=100, end=200)
-    ti.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
-    assert len(transcript.transcribed_pieces) == 2
     controller.session.add_all([new_coords, newer_coords])
     controller.session.commit()
+    ti.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
+    assert len(transcript.transcribed_pieces) == 2
     print(transcript.transcribed_pieces[0])
     for feature in transcript.transcribed_pieces[1].features:
         print('-- {} --\n'.format(feature))
@@ -708,6 +708,8 @@ def test_transition_unused_coordinates_detection():
     d = SimplestDemoData(sess, engine)
     # modify to coordinates with complete contain, should work fine
     new_coords = geenuff.orm.Coordinates(seqid='a', start=0, end=300)
+    sess.add(new_coords)
+    sess.commit()
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
     assert d.pieceCD not in d.sl.transcribed_pieces  # confirm full transition
@@ -719,6 +721,8 @@ def test_transition_unused_coordinates_detection():
                        geenuff.orm.Coordinates(seqid='a', start=205, end=215)]
     print([x.id for x in d.tilong.transcript.data.transcribed_pieces])
     for new_coords in new_coords_list:
+        sess.add(new_coords)
+        sess.commit()
         print('fw {}, {}'.format(new_coords.id, new_coords))
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
         print([x.id for x in d.tilong.transcript.data.transcribed_pieces])
@@ -727,6 +731,8 @@ def test_transition_unused_coordinates_detection():
                        geenuff.orm.Coordinates(seqid='a', start=95, end=105),
                        geenuff.orm.Coordinates(seqid='a', start=85, end=95)]
     for new_coords in new_coords_list:
+        sess.add(new_coords)
+        sess.commit()
         print('\nstart mod for coords, - strand', new_coords)
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
         for piece in d.tilong.transcript.data.transcribed_pieces:
@@ -737,16 +743,22 @@ def test_transition_unused_coordinates_detection():
     # try and slice before coordinates, should raise error
     d = SimplestDemoData(sess, engine)
     new_coords = geenuff.orm.Coordinates(seqid='a', start=0, end=10)
+    sess.add(new_coords)
+    sess.commit()
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     # try and slice after coordinates, should raise error
     d = SimplestDemoData(sess, engine)
     new_coords = geenuff.orm.Coordinates(seqid='a', start=399, end=410)
+    sess.add(new_coords)
+    sess.commit()
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     # try and slice between slices where there are no coordinates, should raise error
     d = SimplestDemoData(sess, engine)
     new_coords = geenuff.orm.Coordinates(seqid='a', start=149, end=160)
+    sess.add(new_coords)
+    sess.commit()
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     d = SimplestDemoData(sess, engine)
@@ -777,6 +789,8 @@ def test_modify4slice_transsplice():
     d.make_all_handlers()
     new_coords_0 = geenuff.orm.Coordinates(seqid='a', start=0, end=915)
     new_coords_1 = geenuff.orm.Coordinates(seqid='a', start=915, end=2000)
+    sess.add_all([new_coords_1, new_coords_0])
+    sess.commit()
     d.ti.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
     d.ti.modify4new_slice(new_coords=new_coords_1, is_plus_strand=True)
     # we expect 3 new pieces,
@@ -843,6 +857,8 @@ def test_modify4slice_2nd_half_first():
     d.make_all_handlers()
     new_coords_0 = geenuff.orm.Coordinates(seqid='a', start=0, end=915)
     new_coords_1 = geenuff.orm.Coordinates(seqid='a', start=915, end=2000)
+    sess.add_all([new_coords_0, new_coords_1])
+    sess.commit()
     d.tiflip.modify4new_slice(new_coords=new_coords_1, is_plus_strand=False)
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=False)
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
