@@ -22,8 +22,8 @@ class CoreQueue(object):
         self.engine = engine
         self.session = session
         # updates
-        self.piece_swaps = []  # {'piece_id_old':, 'piece_id_new':, 'feature_id':}
-        self.coord_swaps = []  # {'feature_id':, 'coordinate_id_new':}
+        self.piece_swaps = []  # {'piece_id_old':, 'piece_id_new':, 'feat_id':}
+        self.coord_swaps = []  # {'feat_id':, 'coordinate_id_new':}
         # insertions
         self.transcribed_pieces = []
         self.upstream_features = []
@@ -34,16 +34,17 @@ class CoreQueue(object):
 
     @property
     def piece_swaps_update(self):
-        return geenuff.orm.association_transcribeds_to_features.update().\
-            where(geenuff.orm.association_transcribeds_to_features.c.transcribed_piece_id == bindparam('piece_id_old')
-                  and
-                  geenuff.orm.association_transcribeds_to_features.c.feature_id == bindparam('feature_id')).\
+        out = geenuff.orm.association_transcribeds_to_features.update().\
+            where(geenuff.orm.association_transcribeds_to_features.c.transcribed_piece_id == bindparam('piece_id_old')).\
+            where(geenuff.orm.association_transcribeds_to_features.c.feature_id == bindparam('feat_id')).\
             values(transcribed_piece_id=bindparam('piece_id_new'))
+        print(out, 'swap call')
+        return out
 
     @property
     def coord_swaps_update(self):
         return geenuff.orm.Feature.__table__.update().\
-            where(geenuff.orm.Feature.id == bindparam('feature_id')).\
+            where(geenuff.orm.Feature.id == bindparam('feat_id')).\
             values(coordinate_id=bindparam('coordinate_id_new'))
 
     @property
@@ -52,6 +53,7 @@ class CoreQueue(object):
                 (self.coord_swaps_update, self.coord_swaps)]
 
     def execute_so_far(self):
+        print(self.piece_swaps)
         conn = self.engine.connect()
         for action, a_list in self.actions_lists:
             if a_list:
@@ -127,6 +129,8 @@ class SliceController(object):
         for seqid, start, end, slice_id in slices:
             seq_info = geenuff.orm.SequenceInfo(annotated_genome=annotated_genome)
             coordinates = geenuff.orm.Coordinates(seqid=seqid, start=start, end=end, sequence_info=seq_info)
+            self.session.add(coordinates)
+            self.session.commit()
             overlapping_super_loci = self.get_super_loci_frm_slice(seqid, start, end, is_plus_strand=is_plus_strand)
             for super_locus in overlapping_super_loci:
                 super_locus.make_all_handlers()
@@ -458,19 +462,19 @@ class TranscriptTrimmer(TranscriptInterpBase):
             elif position_interp.is_contained():
                 seen_one_overlap = True
                 for f in current_step.features:
-                    self.core_queue.coord_swaps.append(
-                        {'feature_id': f.id, 'coordinate_id_new': new_coords.id})
+                    coord_swap = {'feat_id': f.id, 'coordinate_id_new': new_coords.id}
+                    print(coord_swap, 'coord_swap')
+                    self.core_queue.coord_swaps.append(coord_swap)
                     #f.coordinates = new_coords
                     #self.swap_piece(feature_handler=f.handler, new_piece=current_step.replacement_piece,
                     #                old_piece=current_step.old_piece)
-                    self.core_queue.piece_swaps.append(
-                        {'piece_id_old': current_step.old_piece.id,
-                         'piece_id_new': current_step.replacement_piece.id,
-                         'feature_id': f.id})
+                    to_swap = {'piece_id_old': current_step.old_piece.id,
+                               'piece_id_new': current_step.replacement_piece.id,
+                               'feat_id': f.id}
+                    self.core_queue.piece_swaps.append(to_swap)
             # handle pass end of coordinates between previous and current feature, [p] | [f]
             elif position_interp.just_passed_downstream():
                 self.core_queue.execute_so_far()  # todo, rm from here once everything uses core
-                self.session.commit()
                 if not seen_one_overlap:
                     raise NoFeaturesInSliceError("seen no features overlapping or contained in new piece '{}', can't "
                                                  "set downstream pass.\n  Last feature: '{}'\n  "
@@ -565,7 +569,8 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
     def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
                                   old_piece, trees):
-        assert new_piece in template_feature.transcribed_pieces
+        assert new_piece in template_feature.transcribed_pieces, "new id: ({}) not in feature {}'s pieces: {}".format(
+            new_piece.id, template_feature.id, template_feature.transcribed_pieces)
         upstream = self.new_handled_data(template_feature, geenuff.orm.UpstreamFeature, position=up_at,
                                          given_id=None, type=status_type, bearing=geenuff.types.CLOSE_STATUS)
         upstream.load_to_intervaltree(trees)
