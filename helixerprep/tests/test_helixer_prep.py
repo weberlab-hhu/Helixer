@@ -22,13 +22,29 @@ from geenuff.tests.test_geenuff import (setup_data_handler, mk_session,
                                         setup_testable_super_loci, TransspliceDemoData)
 
 
+TMP_DB = 'testdata/tmp.db'
+DUMMYLOCI_DB = 'testdata/dummyloci_annotations.sqlitedb'
+SLICED_SEQ_PATH = 'testdata/dummyloci.sequence.sliced.json'
+
+
+### helper functions ###
+def construct_slice_controller(source=DUMMYLOCI_DB, dest=TMP_DB, sequences_path=None):
+    if os.path.exists(dest):
+        os.remove(dest)
+    controller = slicer.SliceController(db_path_in=source,
+                                        db_path_sliced=dest,
+                                        sequences_path=sequences_path)
+    controller.mk_session()
+    controller.load_annotations()
+    return controller
+
+
 ### preparation ###
 @pytest.fixture(scope="session", autouse=True)
 def setup_dummy_db(request):
-    dummy_db_path = 'testdata/dummyloci_annotations.sqlitedb'
-    if os.path.exists(dummy_db_path):
-        os.remove(dummy_db_path)
-    sl, controller = setup_testable_super_loci('sqlite:///' + dummy_db_path)
+    if os.path.exists(DUMMYLOCI_DB):
+        os.remove(DUMMYLOCI_DB)
+    sl, controller = setup_testable_super_loci('sqlite:///' + DUMMYLOCI_DB)
     coordinates = controller.sequence_info.data.coordinates[0]
     sl.check_and_fix_structure(coordinates=coordinates, controller=controller)
     controller.execute_so_far()
@@ -335,14 +351,7 @@ def test_intervaltree():
 
 
 def test_order_features():
-    destination = 'testdata/tmp.db'
-    if os.path.exists(destination):
-        os.remove(destination)
-    source = 'testdata/dummyloci_annotations.sqlitedb'
-
-    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
-    controller.mk_session()
-    controller.load_annotations()
+    controller = construct_slice_controller()
     sl = controller.super_loci[0]
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
     transcripth = slicer.TranscribedHandler()
@@ -371,14 +380,7 @@ def test_order_features():
 
 # todo, we don't actually need slicer for this, mv to test_geenuff
 def test_slicer_transition():
-    destination = 'testdata/tmp.db'
-    if os.path.exists(destination):
-        os.remove(destination)
-    source = 'testdata/dummyloci_annotations.sqlitedb'
-
-    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
-    controller.mk_session()
-    controller.load_annotations()
+    controller = construct_slice_controller()
     sl = controller.super_loci[0]
     transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
     transcripth = slicer.TranscribedHandler()
@@ -522,14 +524,7 @@ def test_transition_with_right_new_pieces():
 
 
 def test_modify4slice():
-    destination = 'testdata/tmp.db'
-    if os.path.exists(destination):
-        os.remove(destination)
-    source = 'testdata/dummyloci_annotations.sqlitedb'
-
-    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
-    controller.mk_session()
-    controller.load_annotations()
+    controller = construct_slice_controller()
     slh = controller.super_loci[0]
     transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
     slh.make_all_handlers()
@@ -866,16 +861,8 @@ def test_modify4slice_2nd_half_first():
 
 
 def test_slicing_multi_sl():
-    # import standard testers
-    destination = 'testdata/tmp.db'
-    if os.path.exists(destination):
-        os.remove(destination)
-    source = 'testdata/dummyloci_annotations.sqlitedb'
     # TODO, add sliced sequences path
-    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination,
-                                        sequences_path='testdata/dummyloci.sequence.sliced.json')
-    controller.mk_session()
-    controller.load_annotations()
+    controller = construct_slice_controller(sequences_path=SLICED_SEQ_PATH)
     controller.load_sliced_seqs()
     controller.fill_intervaltrees()
     slh = controller.super_loci[0]
@@ -891,14 +878,7 @@ def test_slicing_multi_sl():
 
 
 def test_slicing_featureless_slice_inside_locus():
-    destination = 'testdata/tmp.db'
-    if os.path.exists(destination):
-        os.remove(destination)
-    source = 'testdata/dummyloci_annotations.sqlitedb'
-
-    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
-    controller.mk_session()
-    controller.load_annotations()
+    controller = construct_slice_controller()
     controller.fill_intervaltrees()
     ag = controller.get_one_annotated_genome()
     slh = controller.super_loci[0]
@@ -939,15 +919,7 @@ def rm_transcript_and_children(transcript, sess):
 
 
 def test_reslice_at_same_spot():
-    destination = 'testdata/tmp.db'
-    if os.path.exists(destination):
-        os.remove(destination)
-    source = 'testdata/dummyloci_annotations.sqlitedb'
-
-    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination,
-                                        sequences_path='testdata/dummyloci.sequence.sliced.json')
-    controller.mk_session()
-    controller.load_annotations()
+    controller = construct_slice_controller(sequences_path=SLICED_SEQ_PATH)
     controller.load_sliced_seqs()
 
     slh = controller.super_loci[0]
@@ -986,16 +958,7 @@ def test_sequence_numerify():
 
 
 def setup4numerify():
-
-    destination = 'testdata/tmp.db'
-    if os.path.exists(destination):
-        os.remove(destination)
-    source = 'testdata/dummyloci_annotations.sqlitedb'
-
-    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination,
-                                        sequences_path='testdata/dummyloci.sequence.json')
-    controller.mk_session()
-    controller.load_annotations()
+    controller = construct_slice_controller(sequences_path='testdata/dummyloci.sequence.json')
     # no need to modify, so can just load briefly
     sess = controller.session
 
