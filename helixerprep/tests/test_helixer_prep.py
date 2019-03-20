@@ -18,7 +18,21 @@ import sqlalchemy
 from ..numerify import numerify
 
 #from test_geenuff import setup_data_handler, mk_session, TransspliceDemoData
-from geenuff.tests.test_geenuff import setup_data_handler, mk_session, TransspliceDemoData
+from geenuff.tests.test_geenuff import (setup_data_handler, mk_session,
+                                        setup_testable_super_loci, TransspliceDemoData)
+
+
+### preparation ###
+@pytest.fixture(scope="session", autouse=True)
+def setup_dummy_db(request):
+    dummy_db_path = 'testdata/dummyloci_annotations.sqlitedb'
+    if os.path.exists(dummy_db_path):
+        os.remove(dummy_db_path)
+    sl, controller = setup_testable_super_loci('sqlite:///' + dummy_db_path)
+    coordinates = controller.sequence_info.data.coordinates[0]
+    sl.check_and_fix_structure(coordinates=coordinates, controller=controller)
+    controller.execute_so_far()
+
 
 ### structure ###
 # testing: add_paired_dictionaries
