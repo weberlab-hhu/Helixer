@@ -606,10 +606,12 @@ def test_modify4slice_directions():
     slh.make_all_handlers()
 
     tilong.modify4new_slice(new_coords=half1_coords, is_plus_strand=True)
-
+    core_queue.execute_so_far()
     sess.commit()
     tilong.modify4new_slice(new_coords=half2_coords, is_plus_strand=True)
+    core_queue.execute_so_far()
     tilong.modify4new_slice(new_coords=half1_coords, is_plus_strand=False)
+    core_queue.execute_so_far()
     for f in sess.query(geenuff.orm.Feature).all():
         assert len(f.transcribed_pieces) == 1
     slice0 = fA.transcribed_pieces[0]
@@ -711,7 +713,9 @@ def test_transition_unused_coordinates_detection():
     sess.add(new_coords)
     sess.commit()
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
+    d.core_queue.execute_so_far()
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
+    d.core_queue.execute_so_far()
     assert d.pieceCD not in d.sl.transcribed_pieces  # confirm full transition
     assert d.pieceAB not in d.scribedlong.transcribed_pieces
     # modify to coordinates across tiny slice, include those w/o original features, should work fine
@@ -725,6 +729,7 @@ def test_transition_unused_coordinates_detection():
         sess.commit()
         print('fw {}, {}'.format(new_coords.id, new_coords))
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
+        d.core_queue.execute_so_far()
         print([x.id for x in d.tilong.transcript.data.transcribed_pieces])
 
     new_coords_list = [geenuff.orm.Coordinates(seqid='a', start=105, end=115),
@@ -735,6 +740,7 @@ def test_transition_unused_coordinates_detection():
         sess.commit()
         print('\nstart mod for coords, - strand', new_coords)
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
+        d.core_queue.execute_so_far()
         for piece in d.tilong.transcript.data.transcribed_pieces:
             print(piece, [(f.position, f.type, f.bearing) for f in piece.features])
     assert d.pieceCD not in d.scribedlong.transcribed_pieces  # confirm full transition
@@ -772,6 +778,7 @@ def test_features_on_opposite_strand_are_not_modified():
     # forward pass only, back pass should be untouched
     new_coords = geenuff.orm.Coordinates(seqid='a', start=1, end=300)
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
+    d.core_queue.execute_so_far()
     assert d.pieceAB not in d.sl.transcribed_pieces
     assert d.pieceCD in d.sl.transcribed_pieces  # minus piece should not change on 'plus' pass
 
@@ -779,6 +786,7 @@ def test_features_on_opposite_strand_are_not_modified():
     # backward pass only, plus pass should be untouched
     new_coords = geenuff.orm.Coordinates(seqid='a', start=1, end=300)
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
+    d.core_queue.execute_so_far()
     assert d.pieceAB in d.sl.transcribed_pieces  # plus piece should not change on 'minus' pass
     assert d.pieceCD not in d.sl.transcribed_pieces
 
@@ -792,7 +800,9 @@ def test_modify4slice_transsplice():
     sess.add_all([new_coords_1, new_coords_0])
     sess.commit()
     d.ti.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
+    d.core_queue.execute_so_far()
     d.ti.modify4new_slice(new_coords=new_coords_1, is_plus_strand=True)
+    d.core_queue.execute_so_far()
     # we expect 3 new pieces,
     #    1: TSS-start-DonorTranssplice-TTS via <2x status> to (6 features)
     #    2: <2x status>-TSS- via <3x status> to (6 features)
@@ -821,9 +831,12 @@ def test_modify4slice_transsplice():
     # and now where second original piece is flipped and slice is thus between STOP and TTS
     print('moving on to flipped...')
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
+    d.core_queue.execute_so_far()
     assert len(d.tiflip.transcript.data.transcribed_pieces) == 2
     d.tiflip.modify4new_slice(new_coords=new_coords_1, is_plus_strand=False)
+    d.core_queue.execute_so_far()
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=False)
+    d.core_queue.execute_so_far()
     # we expect 3 new pieces,
     #    1: TSS-start-DonorTranssplice-TTS via <2x status> to (6 features)
     #    2: <2x status>-TSS-AcceptorTranssplice-stop via <1x status> to (6 features)
@@ -860,8 +873,11 @@ def test_modify4slice_2nd_half_first():
     sess.add_all([new_coords_0, new_coords_1])
     sess.commit()
     d.tiflip.modify4new_slice(new_coords=new_coords_1, is_plus_strand=False)
+    d.core_queue.execute_so_far()
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=False)
+    d.core_queue.execute_so_far()
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
+    d.core_queue.execute_so_far()
     # we expect 3 new pieces,
     #    1: TSS-start-DonorTranssplice-TTS via <2x status> to (6 features)
     #    2: <2x status>-TSS-AcceptorTranssplice-stop via <1x status> to (6 features)

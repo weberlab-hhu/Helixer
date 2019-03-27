@@ -61,6 +61,16 @@ class CoreQueue(object):
                 del a_list[:]
         self.session.commit()
 
+        # and remove any abandoned pieces
+        todel = []
+        for piece in self.session.query(geenuff.orm.TranscribedPiece).all():
+            if not piece.features:
+                todel.append({'piece_id': piece.id})
+        del_cmd = geenuff.orm.TranscribedPiece.__table__.delete().\
+            where(geenuff.orm.TranscribedPiece.id == bindparam('piece_id'))
+        if todel:
+            conn.execute(del_cmd, todel)
+
 
 class SliceController(object):
 
@@ -136,6 +146,7 @@ class SliceController(object):
                 super_locus.make_all_handlers()
                 super_locus.modify4slice(new_coords=coordinates, is_plus_strand=is_plus_strand,
                                          session=self.session, trees=self.interval_trees, core_queue=self.core_queue)
+            self.core_queue.execute_so_far()
             # todo, setup slice as coordinates w/ seq info in database
             # todo, get features & there by superloci in slice
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
@@ -499,13 +510,13 @@ class TranscriptTrimmer(TranscriptInterpBase):
             previous_step = copy.copy(current_step)
 
         # apply batch changes
-        self.core_queue.execute_so_far()
+        #self.core_queue.execute_so_far()
 
         # clean up any unused or abandoned pieces
-        for piece in self.transcript.data.transcribed_pieces:
-            if piece.features == []:
-                self.session.delete(piece)
-        self.session.commit()
+        #for piece in self.transcript.data.transcribed_pieces:
+        #    if piece.features == []:
+        #        self.session.delete(piece)
+        #self.session.commit()
 
         if not seen_one_overlap:
             raise NoFeaturesInSliceError("Saw no features what-so-ever in new_coords {} for transcript {}".format(
