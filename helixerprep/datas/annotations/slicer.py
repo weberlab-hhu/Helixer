@@ -427,12 +427,12 @@ class TranscriptTrimmer(TranscriptInterpBase):
     def _transition_5p_to_3p_with_new_pieces(self):
         transition_gen = self.transition_5p_to_3p()
         aligned_features, status, prev_piece = next(transition_gen)
-        new_piece = self.mk_new_piece()
+        new_piece = None  # self.mk_new_piece() # todo, refactor this whole new piece bit away once replaced...
         yield aligned_features, status, prev_piece, new_piece
 
         for aligned_features, status, piece in transition_gen:
             if piece is not prev_piece:
-                new_piece = self.mk_new_piece()
+                new_piece = None  # self.mk_new_piece()
             yield aligned_features, status, piece, new_piece
             prev_piece = piece
 
@@ -485,13 +485,13 @@ class TranscriptTrimmer(TranscriptInterpBase):
             elif position_interp.just_passed_downstream():
                 piece_at_border = current_step.old_piece
                 # todo, make new_piece_after_border _here_ not in transition gen...
-                new_piece_after_border = current_step.replacement_piece
+                new_piece_after_border = self.mk_new_piece()
                 self.core_queue.execute_so_far()  # todo, rm from here once everything uses core
                 if not seen_one_overlap:
-                    raise NoFeaturesInSliceError("seen no features overlapping or contained in new piece '{}', can't "
+                    raise NoFeaturesInSliceError("seen no features overlapping or contained in old piece '{}', can't "
                                                  "set downstream pass.\n  Last feature: '{}'\n  "
                                                  "Current feature: '{}'".format(
-                                                     current_step.replacement_piece, previous_step.example_feature, f0,
+                                                     piece_at_border, previous_step.example_feature, f0,
                                                  ))
                 print(new_coords, self.transcript.data.given_id, previous_step.status)
                 self.set_status_downstream_border(new_coords=new_coords, old_coords=f0.coordinates,

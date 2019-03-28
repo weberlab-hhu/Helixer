@@ -477,50 +477,6 @@ def test_set_updown_features_downstream_border():
     assert translated_down_status.position == 99
 
 
-def test_transition_with_right_new_pieces():
-    sess, engine = mk_session()
-    core_queue = slicer.CoreQueue(session=sess, engine=engine)
-    old_coor = geenuff.orm.Coordinates(seqid='a', start=1, end=1000)
-    # setup two transitions:
-    # 1) scribed - [[A,B]] -> AB, -> one expected new piece
-    # 2) scribedlong - [[C,D],[A,B]] -> ABCD, -> two expected new pieces
-    sl, slh = setup_data_handler(slicer.SuperLocusHandler, geenuff.orm.SuperLocus)
-    scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed, super_locus=sl)
-    scribedlong, scribedlongh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed,
-                                                   super_locus=sl)
-
-    ti = slicer.TranscriptTrimmer(transcript=scribedh, super_locus=slh, sess=sess, core_queue=core_queue)
-    tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, super_locus=slh, sess=sess, core_queue=core_queue)
-
-    pieceAB = geenuff.orm.TranscribedPiece(super_locus=sl, transcribed=scribed)
-    pieceABp = geenuff.orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
-    pieceCD = geenuff.orm.TranscribedPiece(super_locus=sl, transcribed=scribedlong)
-
-    fA = geenuff.orm.Feature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, position=190,
-                             is_plus_strand=True, super_locus=sl, type=geenuff.types.ERROR,
-                             bearing=geenuff.types.START)
-    fB = geenuff.orm.UpstreamFeature(transcribed_pieces=[pieceAB, pieceABp], coordinates=old_coor, position=210,
-                                     is_plus_strand=True, super_locus=sl, type=geenuff.types.ERROR,
-                                     bearing=geenuff.types.CLOSE_STATUS)  # todo, double check for consistency after type/bearing mod to slice...
-
-    fC = geenuff.orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=90,
-                                       is_plus_strand=True, super_locus=sl, type=geenuff.types.ERROR,
-                                       bearing=geenuff.types.OPEN_STATUS)
-    fD = geenuff.orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=110,
-                             is_plus_strand=True, super_locus=sl, type=geenuff.types.ERROR, bearing=geenuff.types.END)
-
-    pair = geenuff.orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
-    sess.add_all([scribed, scribedlong, pieceAB, pieceABp, pieceCD, fA, fB, fC, fD, pair, old_coor, sl])
-    sess.commit()
-    short_transition = list(ti.transition_5p_to_3p_with_new_pieces())
-    assert len(set([x.replacement_piece for x in short_transition])) == 1
-    long_transition = list(tilong.transition_5p_to_3p_with_new_pieces())
-    assert len(long_transition) == 4
-    assert len(set([x.replacement_piece for x in long_transition])) == 2
-    # make sure piece swap is between B(1) & C(2) as expected
-    assert long_transition[1].replacement_piece is not long_transition[2].replacement_piece
-
-
 def test_modify4slice():
     destination = 'testdata/tmp.db'
     if os.path.exists(destination):
@@ -548,7 +504,6 @@ def test_modify4slice():
     print(transcript.transcribed_pieces[1])
     assert {len(transcript.transcribed_pieces[0].features), len(transcript.transcribed_pieces[1].features)} == {8, 4}
     new_piece = [x for x in transcript.transcribed_pieces if len(x.features) == 4][0]
-    ori_piece = [x for x in transcript.transcribed_pieces if len(x.features) == 8][0]
 
     assert set([x.type.value for x in new_piece.features]) == {geenuff.types.TRANSCRIBED,
                                                                geenuff.types.CODING}
@@ -562,11 +517,6 @@ def test_modify4slice():
         print(piece)
         for f in piece.features:
             print('::::', (f.type.value, f.bearing.value, f.position))
-    # todo, rm once we stop creating unnecessary pieces.
-    for piece in controller.session.query(geenuff.orm.TranscribedPiece).all():
-        if not piece.features:
-            controller.session.delete(piece)
-    controller.session.commit()
 
     lengths = sorted([len(x.features) for x in transcript.transcribed_pieces])
     assert lengths == [4, 4, 8]  # todo, why does this occasionally fail??
@@ -728,8 +678,8 @@ def test_transition_unused_coordinates_detection():
     d.core_queue.execute_so_far()
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
     d.core_queue.execute_so_far()
-    assert d.pieceCD not in d.sl.transcribed_pieces  # confirm full transition
-    assert d.pieceAB not in d.scribedlong.transcribed_pieces
+    assert d.pieceCD in d.sl.transcribed_pieces  # should now keep original at start
+    assert d.pieceAB in d.scribedlong.transcribed_pieces
     # modify to coordinates across tiny slice, include those w/o original features, should work fine
     d = SimplestDemoData(sess, engine)
     new_coords_list = [geenuff.orm.Coordinates(seqid='a', start=185, end=195),
@@ -755,8 +705,8 @@ def test_transition_unused_coordinates_detection():
         d.core_queue.execute_so_far()
         for piece in d.tilong.transcript.data.transcribed_pieces:
             print(piece, [(f.position, f.type, f.bearing) for f in piece.features])
-    assert d.pieceCD not in d.scribedlong.transcribed_pieces  # confirm full transition
-    assert d.pieceAB not in d.sl.transcribed_pieces
+    assert d.pieceCD in d.scribedlong.transcribed_pieces
+    assert d.pieceAB in d.sl.transcribed_pieces
 
     # try and slice before coordinates, should raise error
     d = SimplestDemoData(sess, engine)
@@ -787,20 +737,22 @@ def test_transition_unused_coordinates_detection():
 def test_features_on_opposite_strand_are_not_modified():
     sess, engine = mk_session()
     d = SimplestDemoData(sess, engine)
-    # forward pass only, back pass should be untouched
-    new_coords = geenuff.orm.Coordinates(seqid='a', start=1, end=300)
+
+    # forward pass only, back pass should be untouched (and + coordinates unaffected)
+    new_coords = geenuff.orm.Coordinates(seqid='a', start=100, end=1000)
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
     d.core_queue.execute_so_far()
-    assert d.pieceAB not in d.sl.transcribed_pieces
-    assert d.pieceCD in d.sl.transcribed_pieces  # minus piece should not change on 'plus' pass
+    assert len(d.pieceAB.features) == 2
+    assert len(d.pieceCD.features) == 2
 
     d = SimplestDemoData(sess, engine)
-    # backward pass only, plus pass should be untouched
-    new_coords = geenuff.orm.Coordinates(seqid='a', start=1, end=300)
+    # backward pass only (no coord hit), plus pass should be untouched
+    new_coords = geenuff.orm.Coordinates(seqid='a', start=1, end=200)
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
     d.core_queue.execute_so_far()
-    assert d.pieceAB in d.sl.transcribed_pieces  # plus piece should not change on 'minus' pass
-    assert d.pieceCD not in d.sl.transcribed_pieces
+
+    assert len(d.pieceAB.features) == 2
+    assert len(d.pieceCD.features) == 2
 
 
 def test_modify4slice_transsplice():
