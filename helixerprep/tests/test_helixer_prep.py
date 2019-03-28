@@ -404,12 +404,14 @@ def test_set_updown_features_downstream_border():
     sl, slh = setup_data_handler(slicer.SuperLocusHandler, geenuff.orm.SuperLocus)
     scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed, super_locus=sl)
     ti = slicer.TranscriptTrimmer(transcript=scribedh, super_locus=slh, sess=sess, core_queue=core_queue)
+    # start   -> 5' [------piece0----------] 3'
+    # expect  -> 5' [--piece0--][--piece1--] 3'
     piece0 = geenuff.orm.TranscribedPiece(super_locus=sl)
     piece1 = geenuff.orm.TranscribedPiece(super_locus=sl)
     scribed.transcribed_pieces = [piece0]
     # setup some paired features
     # new coords, is plus, template, status
-    feature = geenuff.orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, position=110,
+    feature = geenuff.orm.Feature(transcribed_pieces=[piece0], coordinates=old_coor, position=110,
                                   is_plus_strand=True, super_locus=sl, type=geenuff.types.CODING,
                                   bearing=geenuff.types.START)
 
@@ -425,19 +427,19 @@ def test_set_updown_features_downstream_border():
                                     old_piece=piece0, new_piece=piece1, old_coords=old_coor, trees={})
 
     sess.commit()
-    assert len(piece1.features) == 3  # feature, 2x upstream
-    assert len(piece0.features) == 2  # 2x downstream
-
-    assert set([x.type.value for x in piece1.features]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED}
-    assert set([x.bearing.value for x in piece1.features]) == {geenuff.types.START, geenuff.types.CLOSE_STATUS}
+    assert len(piece0.features) == 3  # feature, 2x upstream
+    assert len(piece1.features) == 2  # 2x downstream
 
     assert set([x.type.value for x in piece0.features]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED}
-    assert set([x.bearing.value for x in piece0.features]) == {geenuff.types.OPEN_STATUS}
+    assert set([x.bearing.value for x in piece0.features]) == {geenuff.types.START, geenuff.types.CLOSE_STATUS}
 
-    translated_up_status = [x for x in piece1.features if x.type.value == geenuff.types.CODING and
+    assert set([x.type.value for x in piece1.features]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED}
+    assert set([x.bearing.value for x in piece1.features]) == {geenuff.types.OPEN_STATUS}
+
+    translated_up_status = [x for x in piece0.features if x.type.value == geenuff.types.CODING and
                             x.bearing.value == geenuff.types.CLOSE_STATUS][0]
 
-    translated_down_status = [x for x in piece0.features if x.type.value == geenuff.types.TRANSCRIBED][0]
+    translated_down_status = [x for x in piece1.features if x.type.value == geenuff.types.TRANSCRIBED][0]
     assert translated_up_status.position == 200
     assert translated_down_status.position == 200
     # cleanup to try similar again
@@ -448,7 +450,7 @@ def test_set_updown_features_downstream_border():
     sess.commit()
 
     # and now try backwards pass
-    feature = geenuff.orm.Feature(transcribed_pieces=[piece1], coordinates=old_coor, position=110,
+    feature = geenuff.orm.Feature(transcribed_pieces=[piece0], coordinates=old_coor, position=110,
                                   is_plus_strand=False, super_locus=sl, type=geenuff.types.CODING,
                                   bearing=geenuff.types.START)
     sess.add(feature)
@@ -458,18 +460,18 @@ def test_set_updown_features_downstream_border():
                                     old_piece=piece0, new_piece=piece1, old_coords=old_coor, trees={})
     sess.commit()
 
-    assert len(piece1.features) == 3  # feature, 2x upstream
-    assert len(piece0.features) == 2  # 2x downstream
-    assert set([x.type.value for x in piece1.features]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED}
-    assert set([x.bearing.value for x in piece1.features]) == {geenuff.types.START, geenuff.types.CLOSE_STATUS}
-
+    assert len(piece0.features) == 3  # feature, 2x upstream
+    assert len(piece1.features) == 2  # 2x downstream
     assert set([x.type.value for x in piece0.features]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED}
-    assert set([x.bearing.value for x in piece0.features]) == {geenuff.types.OPEN_STATUS}
+    assert set([x.bearing.value for x in piece0.features]) == {geenuff.types.START, geenuff.types.CLOSE_STATUS}
 
-    translated_up_status = [x for x in piece1.features if x.type.value == geenuff.types.CODING and
+    assert set([x.type.value for x in piece1.features]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED}
+    assert set([x.bearing.value for x in piece1.features]) == {geenuff.types.OPEN_STATUS}
+
+    translated_up_status = [x for x in piece0.features if x.type.value == geenuff.types.CODING and
                             x.bearing.value == geenuff.types.CLOSE_STATUS][0]
 
-    translated_down_status = [x for x in piece0.features if x.type.value == geenuff.types.TRANSCRIBED][0]
+    translated_down_status = [x for x in piece1.features if x.type.value == geenuff.types.TRANSCRIBED][0]
 
     assert translated_up_status.position == 99
     assert translated_down_status.position == 99
@@ -538,6 +540,7 @@ def test_modify4slice():
     controller.session.add_all([new_coords, newer_coords])
     controller.session.commit()
     ti.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
+    controller.core_queue.execute_so_far()
     assert len(transcript.transcribed_pieces) == 2
     print(transcript.transcribed_pieces[0])
     for feature in transcript.transcribed_pieces[1].features:
@@ -554,15 +557,24 @@ def test_modify4slice():
 
     print('starting second modify...')
     ti.modify4new_slice(new_coords=newer_coords, is_plus_strand=True)
+    controller.core_queue.execute_so_far()
     for piece in transcript.transcribed_pieces:
         print(piece)
         for f in piece.features:
             print('::::', (f.type.value, f.bearing.value, f.position))
-    assert sorted([len(x.features) for x in transcript.transcribed_pieces]) == [4, 4, 8]  # todo, why does this occasionally fail??
-    assert set([x.type.value for x in ori_piece.features]) == {geenuff.types.TRANSCRIBED,
-                                                               geenuff.types.CODING}
-    assert set([x.bearing.value for x in ori_piece.features]) == {geenuff.types.END,
-                                                                  geenuff.types.OPEN_STATUS}
+    # todo, rm once we stop creating unnecessary pieces.
+    for piece in controller.session.query(geenuff.orm.TranscribedPiece).all():
+        if not piece.features:
+            controller.session.delete(piece)
+    controller.session.commit()
+
+    lengths = sorted([len(x.features) for x in transcript.transcribed_pieces])
+    assert lengths == [4, 4, 8]  # todo, why does this occasionally fail??
+    last_piece = ti.sort_pieces()[-1]
+    assert set([x.type.value for x in last_piece.features]) == {geenuff.types.TRANSCRIBED,
+                                                                geenuff.types.CODING}
+    assert set([x.bearing.value for x in last_piece.features]) == {geenuff.types.END,
+                                                                   geenuff.types.OPEN_STATUS}
 
 
 def test_modify4slice_directions():

@@ -62,14 +62,14 @@ class CoreQueue(object):
         self.session.commit()
 
         # and remove any abandoned pieces
-        todel = []
-        for piece in self.session.query(geenuff.orm.TranscribedPiece).all():
-            if not piece.features:
-                todel.append({'piece_id': piece.id})
-        del_cmd = geenuff.orm.TranscribedPiece.__table__.delete().\
-            where(geenuff.orm.TranscribedPiece.id == bindparam('piece_id'))
-        if todel:
-            conn.execute(del_cmd, todel)
+        #todel = []
+        #for piece in self.session.query(geenuff.orm.TranscribedPiece).all():
+        #    if not piece.features:
+        #        todel.append({'piece_id': piece.id})
+        #del_cmd = geenuff.orm.TranscribedPiece.__table__.delete().\
+        #    where(geenuff.orm.TranscribedPiece.id == bindparam('piece_id'))
+        #if todel:
+        #    conn.execute(del_cmd, todel)
 
 
 class SliceController(object):
@@ -458,6 +458,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         seen_one_overlap = False
         transition_gen = self.transition_5p_to_3p_with_new_pieces()
         previous_step = StepHolder()
+        piece_at_border = None
         for current_step in transition_gen:
             # if we've switched pieces in transcript, reset the previous features seen on piece to None
             previous_step.set_as_previous_of(current_step)
@@ -479,12 +480,12 @@ class TranscriptTrimmer(TranscriptInterpBase):
                     #f.coordinates = new_coords
                     #self.swap_piece(feature_handler=f.handler, new_piece=current_step.replacement_piece,
                     #                old_piece=current_step.old_piece)
-                    to_swap = {'piece_id_old': current_step.old_piece.id,
-                               'piece_id_new': current_step.replacement_piece.id,
-                               'feat_id': f.id}
-                    self.core_queue.piece_swaps.append(to_swap)
+
             # handle pass end of coordinates between previous and current feature, [p] | [f]
             elif position_interp.just_passed_downstream():
+                piece_at_border = current_step.old_piece
+                # todo, make new_piece_after_border _here_ not in transition gen...
+                new_piece_after_border = current_step.replacement_piece
                 self.core_queue.execute_so_far()  # todo, rm from here once everything uses core
                 if not seen_one_overlap:
                     raise NoFeaturesInSliceError("seen no features overlapping or contained in new piece '{}', can't "
@@ -497,11 +498,24 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                                   is_plus_strand=is_plus_strand,
                                                   template_feature=previous_step.example_feature,
                                                   status=previous_step.status, old_piece=current_step.old_piece,
-                                                  new_piece=current_step.replacement_piece, trees=trees)
+                                                  new_piece=new_piece_after_border, trees=trees)
+                # the current features too, need the new_piece
+                for f in current_step.features:
+                    to_swap = {'piece_id_old': piece_at_border.id,
+                               'piece_id_new': new_piece_after_border.id,
+                               'feat_id': f.id}
+                    self.core_queue.piece_swaps.append(to_swap)
 
             elif position_interp.is_downstream():
-                pass  # will get to this at next slice
-
+                if piece_at_border is not None:
+                    if current_step.old_piece is piece_at_border:
+                        print('real downstream')
+                        # todo, swap from old piece to new_piece_after_border
+                        for f in current_step.features:
+                            to_swap = {'piece_id_old': piece_at_border.id,
+                                       'piece_id_new': new_piece_after_border.id,
+                                       'feat_id': f.id}
+                            self.core_queue.piece_swaps.append(to_swap)
             else:
                 print('ooops', f0)
                 raise AssertionError('this code should be unreachable...? Check what is up!')
@@ -580,8 +594,8 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
     def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
                                   old_piece, trees):
-        assert new_piece in template_feature.transcribed_pieces, "new id: ({}) not in feature {}'s pieces: {}".format(
-            new_piece.id, template_feature.id, template_feature.transcribed_pieces)
+        assert old_piece in template_feature.transcribed_pieces, "old id: ({}) not in feature {}'s pieces: {}".format(
+            old_piece.id, template_feature.id, template_feature.transcribed_pieces)
         upstream = self.new_handled_data(template_feature, geenuff.orm.UpstreamFeature, position=up_at,
                                          given_id=None, type=status_type, bearing=geenuff.types.CLOSE_STATUS)
         upstream.load_to_intervaltree(trees)
@@ -589,9 +603,8 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                            given_id=None, type=status_type, coordinates=old_coords,
                                            bearing=geenuff.types.OPEN_STATUS)
         downstream.load_to_intervaltree(trees)
-        # swap piece back to previous, as downstream is outside of new_coordinates (slice), and will be ran through
-        # modify4new_slice once more and get it's final coordinates/piece then
-        self.swap_piece(feature_handler=downstream, new_piece=old_piece, old_piece=new_piece)
+        # swap the new downstream feature to have new piece (which will be shared with further downstream features)
+        self.swap_piece(feature_handler=downstream, new_piece=new_piece, old_piece=old_piece)
         self.new_handled_data(new_type=geenuff.orm.UpDownPair, upstream=upstream.data,
                               downstream=downstream.data, transcribed=self.transcript.data)
         self.session.add_all([upstream.data, downstream.data])
