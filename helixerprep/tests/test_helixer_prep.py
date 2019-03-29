@@ -773,7 +773,7 @@ def test_modify4slice_transsplice():
     #    3: <3x status>-AcceptorTranssplice-stop-TTS (6 features)
     pieces = d.ti.transcript.data.transcribed_pieces
     assert len(pieces) == 3
-    assert d.pieceA2D not in pieces  # pieces themselves should have been replaced
+    assert d.pieceA2D in pieces  # ori piece should not have been replaced
     sorted_pieces = d.ti.sort_pieces()
 
     assert [len(x.features) for x in sorted_pieces] == [6, 6, 6]
@@ -962,7 +962,7 @@ def test_reslice_at_same_spot():
     # slice
     controller.fill_intervaltrees()
     print('controller.sess', controller.session)
-    slices = (('1', 1, 100, 'x01'), )
+    slices = (('1', 0, 100, 'x01'), )
     controller._slice_annotations_1way(iter(slices), controller.get_one_annotated_genome(), is_plus_strand=True)
     controller.session.commit()
     old_len = len(controller.session.query(geenuff.orm.UpDownPair).all())

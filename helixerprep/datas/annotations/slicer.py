@@ -469,7 +469,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
             if position_interp.is_detached():
                 pass
             elif position_interp.is_upstream():
-                pass
+                pass  # todo, check that this _has_ been handled already
             # within new_coords -> swap coordinates
             elif position_interp.is_contained():
                 seen_one_overlap = True
