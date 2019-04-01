@@ -38,7 +38,6 @@ class CoreQueue(object):
             where(geenuff.orm.association_transcribeds_to_features.c.transcribed_piece_id == bindparam('piece_id_old')).\
             where(geenuff.orm.association_transcribeds_to_features.c.feature_id == bindparam('feat_id')).\
             values(transcribed_piece_id=bindparam('piece_id_new'))
-        print(out, 'swap call')
         return out
 
     @property
@@ -53,7 +52,6 @@ class CoreQueue(object):
                 (self.coord_swaps_update, self.coord_swaps)]
 
     def execute_so_far(self):
-        print(self.piece_swaps)
         conn = self.engine.connect()
         for action, a_list in self.actions_lists:
             if a_list:
@@ -159,9 +157,12 @@ class SliceController(object):
     def get_features_from_slice(self, seqid, start, end, is_plus_strand):
         if self.interval_trees == {}:
             raise ValueError('No, interval trees defined. The method .fill_intervaltrees must be called first')
-        tree = self.interval_trees[seqid]
+        try:
+            tree = self.interval_trees[seqid]
+        except KeyError as e:
+            logging.warning('no annotations for {}'.format(e))
+            return []
         intervals = tree[start:end]
-        print('start, end', start, end)
         features = [x.data for x in intervals if x.data.data.is_plus_strand == is_plus_strand]
         return features
 
@@ -475,7 +476,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 seen_one_overlap = True
                 for f in current_step.features:
                     coord_swap = {'feat_id': f.id, 'coordinate_id_new': new_coords.id}
-                    print(coord_swap, 'coord_swap')
                     self.core_queue.coord_swaps.append(coord_swap)
                     #f.coordinates = new_coords
                     #self.swap_piece(feature_handler=f.handler, new_piece=current_step.replacement_piece,
@@ -493,7 +493,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
                                                  "Current feature: '{}'".format(
                                                      piece_at_border, previous_step.example_feature, f0,
                                                  ))
-                print(new_coords, self.transcript.data.given_id, previous_step.status)
                 self.set_status_downstream_border(new_coords=new_coords, old_coords=f0.coordinates,
                                                   is_plus_strand=is_plus_strand,
                                                   template_feature=previous_step.example_feature,
@@ -509,7 +508,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
             elif position_interp.is_downstream():
                 if piece_at_border is not None:
                     if current_step.old_piece is piece_at_border:
-                        print('real downstream')
                         # todo, swap from old piece to new_piece_after_border
                         for f in current_step.features:
                             to_swap = {'piece_id_old': piece_at_border.id,
