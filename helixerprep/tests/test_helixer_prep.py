@@ -1007,7 +1007,6 @@ def test_base_level_annotation_numerify():
     expect[10:300, 1] = 1.  # set in transcribed
     expect[100:110, 2] = 1.  # both introns
     expect[120:200, 2] = 1.
-    print(nums)
     assert np.allclose(nums, expect)
 
 
@@ -1036,29 +1035,24 @@ def test_transition_annotation_numerify():
 
 
 def test_numerify_from_gr0():
-    sess, controller, sinfo_h = setup4numerify()
+    sess, controller, coordinate_handler = setup4numerify()
     transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'x').first()
     transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
 
     x = geenuff.types.OnSequence(geenuff.types.TRANSCRIBED)
-    print(x)
-    tss = sess.query(geenuff.orm.Feature).filter(
+    transcribed = sess.query(geenuff.orm.Feature).filter(
         geenuff.orm.Feature.type == geenuff.types.OnSequence(geenuff.types.TRANSCRIBED)
-    ).filter(
-        geenuff.orm.Feature.bearing == geenuff.types.Bearings(geenuff.types.START)
     ).all()
-    assert len(tss) == 1
-    tss = tss[0]
-    coords = sess.query(geenuff.orm.Coordinates).all()
-    assert len(coords) == 1
-    coords = coords[0]
+    assert len(transcribed) == 1
+    transcribed = transcribed[0]
+    coord = coordinate_handler.data
     # move whole region back by 5 (was 0)
-    tss.position = coords.start = 4
+    transcribed.start = coord.start = 4
     # and now make sure it really starts form 4
-    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=sinfo_h)
-    nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
+    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=coordinate_handler)
+    nums = numerifier.slice_to_matrix(data_slice=coordinate_handler, is_plus_strand=True)
     # setup as above except for the change in position of TSS
     expect = np.zeros([405, 12], dtype=float)
     expect[4, 0] = 1.  # TSS
@@ -1072,8 +1066,8 @@ def test_numerify_from_gr0():
     assert np.allclose(nums, expect)
 
     # and now once for ranges
-    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h)
-    nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
+    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=coordinate_handler)
+    nums = numerifier.slice_to_matrix(data_slice=coordinate_handler, is_plus_strand=True)
     # as above (except TSS), then truncate
     expect = np.zeros([405, 3], dtype=float)
     expect[4:400, 0] = 1.  # set genic/in raw transcript

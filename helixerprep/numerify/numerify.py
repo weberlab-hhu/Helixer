@@ -144,6 +144,14 @@ class AnnotationNumerifier(Numerifier, AnnotationFoo):
     def update_matrix(self, matrix, transcript_interpreter):
         raise NotImplementedError
 
+    def check_no_errors(self, transcript_interpreter):
+        errors = transcript_interpreter.error_ranges()
+        errors = transcript_interpreter.filter_to_coordinate(coordinate_id=self.data_slice.data.id,
+                                                             transcript_coordinates=errors)
+        errors = list(errors)
+        if errors:
+            raise DataInterpretationError
+
 
 class DataInterpretationError(Exception):
     pass
@@ -164,27 +172,21 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
         return [float(x) for x in labs]
 
     def update_matrix(self, matrix, transcript_interpreter):
-        errors = transcript_interpreter.error_ranges()
-        errors = transcript_interpreter.filter_to_coordinate(coordinate_id=self.data_slice.data.id,
-                                                             transcript_coordinates=errors)
-        errors = list(errors)
-        if errors:
-            print(errors)
-            raise DataInterpretationError
+        self.check_no_errors(transcript_interpreter)
 
-        for i_col, fn in self.row_fns(transcript_interpreter):
-            self._update_row(matrix, i_col, fn())
+        for i_col, fn in self.col_fns(transcript_interpreter):
+            ranges = transcript_interpreter.filter_to_coordinate(transcript_coordinates=fn(),
+                                                                 coordinate_id=self.data_slice.data.id)
+            self._update_row(matrix, i_col, ranges)
 
     def _update_row(self, matrix, i_col, ranges):
         shift_by = self.data_slice.data.start
-        for a_range in ranges:
+        for a_range in ranges:  # todo, how to handle - strand??
             start = a_range.start - shift_by
             end = a_range.end - shift_by
-            if not a_range.is_plus_strand:
-                start, end = end + 1, start + 1
             matrix[start:end, i_col] = 1
 
-    def row_fns(self, transcript_interpreter):
+    def col_fns(self, transcript_interpreter):
         assert isinstance(transcript_interpreter, geenuff.api.TranscriptInterpBase)
         return [(0, transcript_interpreter.transcribed_ranges),
                 (1, transcript_interpreter.translated_ranges),
@@ -195,35 +197,44 @@ class TransitionAnnotationNumerifier(AnnotationNumerifier):
     def __init__(self, data_slice):
         super().__init__(data_slice, [12])
 
-    types = {geenuff.types.TRANSCRIBED: 0,
-             geenuff.types.CODING: 4,
-             geenuff.types.INTRON: 8,
-             geenuff.types.TRANS_INTRON: 8}
+    def update_matrix(self, matrix, transcript_interpreter):
+        self.check_no_errors(transcript_interpreter)
 
-    bearings = {geenuff.types.START: 0,
-                geenuff.types.END: 1,
-                geenuff.types.OPEN_STATUS: 2,
-                geenuff.types.CLOSE_STATUS: 3}
+        for i_col, transitions in self.col_transitions(transcript_interpreter):
+            print(i_col)
+            self._update_row(matrix, i_col, transitions)
 
-    @staticmethod
-    def class_labels(aligned_features):
-        # ordered [start, end, status for types in transcribed, translated, any_intron]
-        labs = [False] * 12
-        for feature in aligned_features:
-            i = TransitionAnnotationNumerifier.types[feature.type.value]
-            i += TransitionAnnotationNumerifier.bearings[feature.bearing.value]
-            labs[i] = True
-        return labs
+    def _update_row(self, matrix, i_col, transitions):
+        shift_by = self.data_slice.data.start
+        for transition in transitions:  # todo, how to handle - strand?
+            position = transition.start - shift_by
+            matrix[position, i_col] = 1
 
-    def update_matrix(self, matrix, prev_step, step):
-        if step.any_erroneous_features():
-            raise DataInterpretationError
-        py_start = step.a_feature.position - step.a_feature.coordinates.start
-        labels = self.class_labels(step.features)
-        matrix[py_start, :] = np.logical_or(
-            matrix[py_start, :],
-            labels)
-        print('labelling {} as {}'.format(py_start, labels))
+    def col_transitions(self, transcript_interpreter):
+        assert isinstance(transcript_interpreter, geenuff.api.TranscriptInterpBase)
+        #                transcribed, coding, intron, trans_intron
+        # real start     0            4       8       8
+        # open status    1            5       9       9
+        # real end       2            6       10      10
+        # close status   3            7       11      11
+        out = []
+        targ_types = [(0, geenuff.types.TRANSCRIBED),
+                      (4, geenuff.types.CODING),
+                      (8, geenuff.types.INTRON),
+                      (8, geenuff.types.TRANS_INTRON)]
+
+        for i in range(4):
+            offset, targ_type = targ_types[i]
+            j = 0
+            for is_biological in [True, False]:
+                for is_start_not_end in [True, False]:
+                    out.append((offset + j, transcript_interpreter.get_by_type_and_bearing(
+                        target_type=targ_type,
+                        target_start_not_end=is_start_not_end,
+                        target_is_biological=is_biological
+                    )))
+                    j += 1
+        return out
 
     def slice_to_matrices(self, data_slice, is_plus_strand, max_len, *args, **kwargs):
         raise NotImplementedError  # todo!
