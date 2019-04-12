@@ -27,21 +27,35 @@ from ..core import helpers
 
 
 class Numerifier(object):
-    def __init__(self, shape, dtype=np.float):
+    def __init__(self, shape, is_plus_strand, dtype=np.float):
         self.shape = shape
         self.dtype = dtype
         self.matrix = None
+        self.is_plus_strand = is_plus_strand
 
-    def slice_to_matrix(self, data_slice, *args, **kwargs):
+    def slice_to_matrix(self, *args, **kwargs):
+        matrix = self.unflipped_slice_to_matrix(*args, **kwargs)
+        if not self.is_plus_strand:
+            matrix = np.flip(matrix, axis=1)
+        return matrix
+
+    def unflipped_slice_to_matrix(self, *arkgs, **kwargs):
         raise NotImplementedError
 
     # this works only when each bp has it's own annotation; In other cases (e.g. where transitions are encoded)
     # this method must be overwritten
-    def slice_to_matrices(self, data_slice, is_plus_strand, max_len, *args, **kwargs):
-        matrix = self.slice_to_matrix(data_slice, is_plus_strand)
+    def slice_to_matrices(self, max_len, *args, **kwargs):
+        matrix = self.unflipped_slice_to_matrix(*args, **kwargs)
         partitioner = partitions.Stepper(end=matrix.shape[0], by=max_len)
-        for prev, current in partitioner.step_to_end():
-            yield matrix[prev:current]
+        paired_steps = list(partitioner.step_to_end())
+        if not self.is_plus_strand:
+            paired_steps.reverse()
+        for prev, current in paired_steps:
+            to_yield = matrix[prev:current]
+            if self.is_plus_strand:
+                yield to_yield
+            else:
+                yield np.flip(to_yield, axis=1)
 
     def flatten_matrix(self):
         assert isinstance(self.matrix, np.ndarray)
@@ -72,11 +86,11 @@ AMBIGUITY_DECODE = {'c': [1., 0., 0., 0.],
 
 
 class SequenceNumerifier(Numerifier):
-    def __init__(self):
-        super().__init__([4])
+    def __init__(self, is_plus_strand):
+        super().__init__([4], is_plus_strand=is_plus_strand)
+        # todo, add data_slice as attribute for consistency & ease of use
 
-    def slice_to_matrix(self, data_slice, is_plus_strand=None, *args, **kwargs):
-        assert is_plus_strand is not None  # todo, can I make this standard part of sig?
+    def unflipped_slice_to_matrix(self, data_slice, *args, **kwargs):
         assert isinstance(data_slice, sequences.SequenceSlice)
         length = data_slice.end - data_slice.start
         matrix = self._zeros(length)
@@ -86,71 +100,64 @@ class SequenceNumerifier(Numerifier):
                 matrix[i] = AMBIGUITY_DECODE[bp.lower()]
                 i += 1
         assert i == length, 'sequence length {} does not match expected {}'.format(i, length)
+        if not self.is_plus_strand:
+            matrix = np.flip(matrix, axis=1)
         return matrix
 
 
 class AnnotationFoo(object):
 
-    def __init__(self, data_slice):
+    def __init__(self, data_slice, is_plus_strand):
         assert isinstance(data_slice, slicer.CoordinateHandler)
         self.data_slice = data_slice
+        self.is_plus_strand = is_plus_strand
         self.coordinates = self._get_coordinates()
-        self.super_loci = self._get_super_loci()
+        self.transcribed_pieces = self._get_pieces()
 
     def _get_coordinates(self):
         return self.data_slice.data  # todo, clean up
 
-    def _get_super_loci(self):
-        super_loci = set()
+    def _get_pieces(self):
+        pieces = set()
         for feature in self.coordinates.features:
-            for piece in feature.transcribed_pieces:
-                super_loci.add(piece.transcribed.super_locus)
-        out = []
-        for sl in super_loci:
-            handler = slicer.SuperLocusHandler()
-            handler.add_data(sl)
-            out.append(handler)
-        return out
+            if feature.is_plus_strand == self.is_plus_strand:
+                for piece in feature.transcribed_pieces:
+                    pieces.add(piece)
+
+        return pieces
 
 
 class AnnotationNumerifier(Numerifier, AnnotationFoo):
-    def __init__(self, data_slice, shape, **kwargs):
-        Numerifier.__init__(self, shape)
-        AnnotationFoo.__init__(self, data_slice)
+    def __init__(self, data_slice, shape, is_plus_strand, **kwargs):
+        assert isinstance(is_plus_strand, bool)
+        Numerifier.__init__(self, shape, is_plus_strand)
+        AnnotationFoo.__init__(self, data_slice, is_plus_strand)
 
-    def slice_to_matrix(self, data_slice, is_plus_strand=None, *args, **kwargs):
-        assert is_plus_strand is not None
+    def unflipped_slice_to_matrix(self, *arkgs, **kwargs):
         length = self.coordinates.end - self.coordinates.start
         matrix = self._zeros(length)
-        for transcript, super_locus in self.transcribeds_to_use():
-            t_interp = TranscriptLocalReader(transcript, super_locus=super_locus)
-            self.update_matrix(matrix, t_interp)
+        for piece, transcribed_handler, super_locus_handler in self.transcribeds_with_handlers():
+            t_interp = TranscriptLocalReader(transcribed_handler, super_locus=super_locus_handler)
+            self.update_matrix(matrix, piece, t_interp)
         return matrix
-        # todo, setup transcript local reader for each transcript.
-        #   maybe grab primary transcript only
-        #   transition setting numbers into matrix
 
-    def transcribeds_to_use(self):
-        for super_locus in self.super_loci:
-            super_locus.make_all_handlers()
-            for transcript in self.select_transcripts(super_locus):
-                yield transcript.handler, super_locus
+    def transcribeds_with_handlers(self):
+        for piece in self.transcribed_pieces:
+            transcribed_handler = geenuff.api.TranscribedHandlerBase()
+            transcribed_handler.add_data(piece.transcribed)
+
+            super_locus_handler = geenuff.api.SuperLocusHandlerBase()
+            super_locus_handler.add_data(piece.transcribed.super_locus)
+            yield piece, transcribed_handler, super_locus_handler
 
     @staticmethod
     def select_transcripts(super_locus):
         for transcribed in super_locus.data.transcribeds:
             yield transcribed
 
-    def update_matrix(self, matrix, transcript_interpreter):
+    def update_matrix(self, matrix, transcribed_piece, transcript_interpreter):
         raise NotImplementedError
 
-    def check_no_errors(self, transcript_interpreter):
-        errors = transcript_interpreter.error_ranges()
-        errors = transcript_interpreter.filter_to_coordinate(coordinate_id=self.data_slice.data.id,
-                                                             transcript_coordinates=errors)
-        errors = list(errors)
-        if errors:
-            raise DataInterpretationError
 
 
 class DataInterpretationError(Exception):
@@ -159,8 +166,8 @@ class DataInterpretationError(Exception):
 
 # TODO, break or mask on errors
 class BasePairAnnotationNumerifier(AnnotationNumerifier):
-    def __init__(self, data_slice):
-        super().__init__(data_slice, self._shape)
+    def __init__(self, data_slice, is_plus_strand):
+        super().__init__(data_slice, self._shape, is_plus_strand=is_plus_strand)
 
     @property
     def _shape(self):
@@ -171,12 +178,12 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
         labs = (status.genic, status.in_translated_region, status.in_intron or status.in_trans_intron)
         return [float(x) for x in labs]
 
-    def update_matrix(self, matrix, transcript_interpreter):
-        self.check_no_errors(transcript_interpreter)
+    def update_matrix(self, matrix, transcribed_piece, transcript_interpreter):
+        transcript_interpreter.check_no_errors(piece=transcribed_piece)
 
         for i_col, fn in self.col_fns(transcript_interpreter):
-            ranges = transcript_interpreter.filter_to_coordinate(transcript_coordinates=fn(),
-                                                                 coordinate_id=self.data_slice.data.id)
+            ranges = transcript_interpreter.filter_to_piece(transcript_coordinates=fn(),
+                                                            piece=transcribed_piece)
             self._update_row(matrix, i_col, ranges)
 
     def _update_row(self, matrix, i_col, ranges):
@@ -184,6 +191,8 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
         for a_range in ranges:  # todo, how to handle - strand??
             start = a_range.start - shift_by
             end = a_range.end - shift_by
+            if not self.is_plus_strand:
+                start, end = end + 1, start + 1
             matrix[start:end, i_col] = 1
 
     def col_fns(self, transcript_interpreter):
@@ -194,14 +203,15 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
 
 
 class TransitionAnnotationNumerifier(AnnotationNumerifier):
-    def __init__(self, data_slice):
-        super().__init__(data_slice, [12])
+    def __init__(self, data_slice, is_plus_strand):
+        super().__init__(data_slice, [12], is_plus_strand=is_plus_strand)
 
-    def update_matrix(self, matrix, transcript_interpreter):
-        self.check_no_errors(transcript_interpreter)
+    def update_matrix(self, matrix, transcribed_piece, transcript_interpreter):
+        transcript_interpreter.check_no_errors(transcribed_piece)
 
         for i_col, transitions in self.col_transitions(transcript_interpreter):
-            print(i_col)
+            transitions = transcript_interpreter.filter_to_piece(transcript_coordinates=transitions,
+                                                                 piece=transcribed_piece)
             self._update_row(matrix, i_col, transitions)
 
     def _update_row(self, matrix, i_col, transitions):
@@ -236,65 +246,53 @@ class TransitionAnnotationNumerifier(AnnotationNumerifier):
                     j += 1
         return out
 
-    def slice_to_matrices(self, data_slice, is_plus_strand, max_len, *args, **kwargs):
+    def slice_to_matrices(self, data_slice, max_len, *args, **kwargs):
         raise NotImplementedError  # todo!
 
 
-class StepHolder(object):
-    def __init__(self, features=None, status=None, at=None):
-        # todo, check not everything is none
-        self._at = at
-        self.features = features
-        self.status = status
-
-    @property
-    def a_feature(self):
-        return self.features[0]
-
-    @property
-    def at(self):
-        if self._at is not None:
-            return self._at
-        elif self.features is not None:
-            return self.a_feature.position
-        else:
-            raise ValueError
-
-    def py_range(self, previous):
-        current_at = self.at
-        if previous.features is not None:
-            previous_at = previous.at
-            if not self.a_feature.is_plus_strand:
-                # + 1 to move from - strand coordinates (,] to pythonic coordinates [,)
-                current_at += 1
-                previous_at += 1
-        else:
-            if self.a_feature.is_plus_strand:
-                previous_at = self.a_feature.coordinates.start
-            else:
-                previous_at = self.a_feature.coordinates.end
-                current_at += 1  # + 1 to move from - strand coordinate ( to pythonic coordinate [
-
-        return helpers.min_max(previous_at, current_at)
-
-    def any_erroneous_features(self):
-        #errors = [x.value for x in type_enums.ErrorFeature]
-        return any([x.type.value == geenuff.types.ERROR for x in self.features])
+#class StepHolder(object):
+#    def __init__(self, features=None, status=None, at=None):
+#        # todo, check not everything is none
+#        self._at = at
+#        self.features = features
+#        self.status = status
+#
+#    @property
+#    def a_feature(self):
+#        return self.features[0]
+#
+#    @property
+#    def at(self):
+#        if self._at is not None:
+#            return self._at
+#        elif self.features is not None:
+#            return self.a_feature.position
+#        else:
+#            raise ValueError
+#
+#    def py_range(self, previous):
+#        current_at = self.at
+#        if previous.features is not None:
+#            previous_at = previous.at
+#            if not self.a_feature.is_plus_strand:
+#                # + 1 to move from - strand coordinates (,] to pythonic coordinates [,)
+#                current_at += 1
+#                previous_at += 1
+#        else:
+#            if self.a_feature.is_plus_strand:
+#                previous_at = self.a_feature.coordinates.start
+#            else:
+#                previous_at = self.a_feature.coordinates.end
+#                current_at += 1  # + 1 to move from - strand coordinate ( to pythonic coordinate [
+#
+#        return helpers.min_max(previous_at, current_at)
+#
+#    def any_erroneous_features(self):
+#        #errors = [x.value for x in type_enums.ErrorFeature]
+#        return any([x.type.value == geenuff.types.ERROR for x in self.features])
 
 
 class TranscriptLocalReader(geenuff.api.TranscriptInterpBase):
-    def sort_features(self, coords, is_plus_strand):
-        # features from transcript
-        features = []
-        for piece in self.transcript.data.transcribed_pieces:
-            for feature in piece.features:
-                if feature.coordinates is coords and feature.is_plus_strand == is_plus_strand:
-                    features.append(feature)
-        # sort
-        features = sorted(features, key=lambda x: x.pos_cmp_key())
-        if not is_plus_strand:
-            features.reverse()
-        return features
 
     @staticmethod  # todo, rather move to Handler?
     def coordinate_id_from_piece(piece):
@@ -310,26 +308,20 @@ class TranscriptLocalReader(geenuff.api.TranscriptInterpBase):
                 out.append(piece)
         return out
 
-    def filter_to_coordinate(self, coordinate_id, transcript_coordinates):
+    @staticmethod
+    def filter_to_piece(piece, transcript_coordinates):
         # where transcript_coordinates should be a list of geenuff.api.TranscriptCoordinate instances
-        matching_pieces = self.pieces_on_coordinate(coordinate_id)
-        matching_piece_positions = [p.position for p in matching_pieces]
         for item in transcript_coordinates:
-            if item.piece_position in matching_piece_positions:
+            if item.piece_position == piece.position:
                 yield item
 
-    #def local_transition_5p_to_3p(self, coords, is_plus_strand):
-    #    status = geenuff.api.TranscriptStatusBase()
-    #    for aligned_features in self.stack_matches(self.sort_features(coords, is_plus_strand)):
-    #        self.update_status(status, aligned_features)
-    #        yield aligned_features, copy.deepcopy(status)
-
-    def transition_5p_to_3p_paired_steps(self, coords, is_plus_strand):
-        prev_step = StepHolder()
-        for aligned_features, status in self.local_transition_5p_to_3p(coords, is_plus_strand):
-            step = StepHolder(aligned_features, status)
-            yield prev_step, step
-            prev_step = step
+    def check_no_errors(self, piece):
+        errors = self.error_ranges()
+        errors = self.filter_to_piece(piece=piece,
+                                      transcript_coordinates=errors)
+        errors = list(errors)
+        if errors:
+            raise DataInterpretationError
 
 
 #### and now on to actual example gen
@@ -337,10 +329,10 @@ class ExampleMakerSeqMetaBP(object):
     def examples_from_slice(self, anno_slice, seq_slice, structured_genome, is_plus_strand, max_len):
         assert isinstance(seq_slice, sequences.SequenceSlice)
         assert isinstance(structured_genome, sequences.StructuredGenome)
-        anno_nummerifier = BasePairAnnotationNumerifier(anno_slice)
-        anno_gen = anno_nummerifier.slice_to_matrices(anno_slice, is_plus_strand=is_plus_strand, max_len=max_len)
-        seq_nummerifier = SequenceNumerifier()
-        seq_gen = seq_nummerifier.slice_to_matrices(seq_slice, is_plus_strand=is_plus_strand, max_len=max_len)
+        anno_nummerifier = BasePairAnnotationNumerifier(anno_slice, is_plus_strand=is_plus_strand)
+        anno_gen = anno_nummerifier.slice_to_matrices(max_len=max_len)
+        seq_nummerifier = SequenceNumerifier(is_plus_strand=is_plus_strand)
+        seq_gen = seq_nummerifier.slice_to_matrices(data_slice=seq_slice, max_len=max_len)
         total_Gbp = structured_genome.meta_info.total_bp / 10**9
         gc = structured_genome.meta_info.gc_content
         for anno in anno_gen:
