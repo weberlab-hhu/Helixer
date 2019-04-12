@@ -178,13 +178,13 @@ class HandleMaker(geenuff.api.HandleMaker):
         return self._get_paired_item(type(old_data), search_col=1, return_col=0, nested_list=key)
 
 
-# todo, delete, but maybe check if methods need to move to GenomeHandler?
-class SequenceInfoHandler(object):
+# todo, check everything moved successfully from seq info...
+class CoordinateHandler(geenuff.api.CoordinateHandlerBase):
     def processing_set(self, sess):
         return sess.query(
-            slice_dbmods.SequenceInfoSets
+            slice_dbmods.CoordinateSet
         ).filter(
-            slice_dbmods.SequenceInfoSets.id == self.data.id
+            slice_dbmods.CoordinateSet.id == self.data.id
         ).first()
 
     def processing_set_val(self, sess):
@@ -197,7 +197,7 @@ class SequenceInfoHandler(object):
     def set_processing_set(self, sess, processing_set):
         current = self.processing_set(sess)
         if current is None:
-            current = slice_dbmods.SequenceInfoSets(sequence_info=self.data, processing_set=processing_set)
+            current = slice_dbmods.CoordinateSet(coordinate=self.data, processing_set=processing_set)
         else:
             current.processing_set = processing_set
         sess.add(current)

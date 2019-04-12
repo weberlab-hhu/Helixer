@@ -240,55 +240,54 @@ def test_processing_set_enum():
 
 def test_add_processing_set():
     sess, engine = mk_session()
-    ag = geenuff.orm.AnnotatedGenome()
-    sequence_info, sequence_infoh = setup_data_handler(slicer.SequenceInfoHandler, geenuff.orm.SequenceInfo,
-                                                       annotated_genome=ag)
-    sequence_info_s = slice_dbmods.SequenceInfoSets(processing_set='train', sequence_info=sequence_info)
-    sequence_info2 = geenuff.orm.SequenceInfo(annotated_genome=ag)
-    sequence_info2_s = slice_dbmods.SequenceInfoSets(processing_set='train', sequence_info=sequence_info2)
-    sess.add_all([ag, sequence_info_s, sequence_info2_s])
-    sess.commit()
-    assert sequence_info_s.processing_set.value == 'train'
-    assert sequence_info2_s.processing_set.value == 'train'
+    genome = geenuff.orm.Genome()
+    coordinate0, coordinate0_handler = setup_data_handler(slicer.CoordinateHandler, geenuff.orm.Coordinate,
+                                                          genome=genome, start=0, end=100, seqid='a')
+    coordinate0_set = slice_dbmods.CoordinateSet(processing_set='train', coordinate=coordinate0)
 
-    sess.add_all([sequence_info, sequence_info2, sequence_info2_s, sequence_info_s])
+    coordinate1 = geenuff.orm.Coordinate(genome=genome, start=100, end=200, seqid='a')
+    coordinate1_set = slice_dbmods.CoordinateSet(processing_set='train', coordinate=coordinate1)
+    sess.add_all([genome, coordinate0_set, coordinate1_set])
     sess.commit()
+    assert coordinate0_set.processing_set.value == 'train'
+    assert coordinate1_set.processing_set.value == 'train'
+
     # make sure we can get the right info together back from the db
-    maybe_join = sess.query(geenuff.orm.SequenceInfo, slice_dbmods.SequenceInfoSets).filter(
-        geenuff.orm.SequenceInfo.id == slice_dbmods.SequenceInfoSets.id)
-    for si, sis in maybe_join.all():
-        assert si.id == sis.id
-        assert sis.processing_set.value == 'train'
+    maybe_join = sess.query(geenuff.orm.Coordinate, slice_dbmods.CoordinateSet).filter(
+        geenuff.orm.Coordinate.id == slice_dbmods.CoordinateSet.id)
+    for coord, coord_set in maybe_join.all():
+        assert coord.id == coord_set.id
+        assert coord_set.processing_set.value == 'train'
 
     # and make sure we can get the processing_set from the sequence_info
-    sis = sess.query(slice_dbmods.SequenceInfoSets).filter(slice_dbmods.SequenceInfoSets.id == sequence_info.id).all()
-    assert len(sis) == 1
-    assert sis[0] == sequence_info_s
+    coord_set = sess.query(slice_dbmods.CoordinateSet).filter(slice_dbmods.CoordinateSet.id == coordinate0.id).all()
+    assert len(coord_set) == 1
+    assert coord_set[0] == coordinate0_set
 
     # and over api
-    sis = sequence_infoh.processing_set(sess)
-    assert sis is sequence_info_s
-    assert sequence_infoh.processing_set_val(sess) == 'train'
+    coord_set = coordinate0_handler.processing_set(sess)
+    assert coord_set is coordinate0_set
+    assert coordinate0_handler.processing_set_val(sess) == 'train'
     # set over api
-    sequence_infoh.set_processing_set(sess, 'test')
-    assert sequence_infoh.processing_set_val(sess) == 'test'
+    coordinate0_handler.set_processing_set(sess, 'test')
+    assert coordinate0_handler.processing_set_val(sess) == 'test'
 
     # confirm we can't have two processing sets per sequence_info
     with pytest.raises(sqlalchemy.orm.exc.FlushError):
-        extra_set = slice_dbmods.SequenceInfoSets(processing_set='dev', sequence_info=sequence_info)
+        extra_set = slice_dbmods.CoordinateSet(processing_set='dev', coordinate=coordinate0)
         sess.add(extra_set)
         sess.commit()
     sess.rollback()
-    assert sequence_infoh.processing_set_val(sess) == 'test'
+    assert coordinate0_handler.processing_set_val(sess) == 'test'
 
-    # check that absence of entry, is handles with None
-    sequence_info3, sequence_info3h = setup_data_handler(slicer.SequenceInfoHandler, geenuff.orm.SequenceInfo,
-                                                         annotated_genome=ag)
-    assert sequence_info3h.processing_set(sess) is None
-    assert sequence_info3h.processing_set_val(sess) is None
+    # check that absence of entry, is handled with None
+    coordinate2, coordinate2_handler = setup_data_handler(slicer.CoordinateHandler, geenuff.orm.Coordinate,
+                                                          genome=genome, start=200, end=300, seqid='a')
+    assert coordinate2_handler.processing_set(sess) is None
+    assert coordinate2_handler.processing_set_val(sess) is None
     # finally setup complete new set via api
-    sequence_info3h.set_processing_set(sess, 'dev')
-    assert sequence_info3h.processing_set_val(sess) == 'dev'
+    coordinate2_handler.set_processing_set(sess, 'dev')
+    assert coordinate2_handler.processing_set_val(sess) == 'dev'
 
 
 #### slicer ####
@@ -306,14 +305,17 @@ def test_copy_n_import():
     sl = controller.super_loci[0].data
     assert len(sl.transcribeds) == 3
     assert len(sl.translateds) == 3
+    all_features = []
     for transcribed in sl.transcribeds:
         assert len(transcribed.transcribed_pieces) == 1
         piece = transcribed.transcribed_pieces[0]
+        for feature in piece.features:
+            all_features.append(feature)
         print('{}: {}'.format(transcribed.given_id, [x.type.value for x in piece.features]))
     for translated in sl.translateds:
         print('{}: {}'.format(translated.given_id, [x.type.value for x in translated.features]))
 
-    assert len(sl.features) == 24  # if I ever get to collapsing redundant features this will change
+    assert len(all_features) == 12  # if I ever get to collapsing redundant features this will change
 
 
 def test_intervaltree():
@@ -367,22 +369,20 @@ def test_order_features():
     assert len(transcript.transcribed_pieces) == 1
     piece = transcript.transcribed_pieces[0]
     # features expected to be ordered by increasing position (note: as they are in db)
-    ordered_starts = [0, 10, 100, 110, 120, 200, 300, 400]
+    ordered_starts = [0, 10, 100, 120]
     features = ti.sorted_features(piece)
     for f in features:
         print(f)
-    assert [x.position for x in features] == ordered_starts
+    assert [x.start for x in features] == ordered_starts
+    # force erroneous data
     for feature in piece.features:
         feature.is_plus_strand = False
-    features = ti.sorted_features(piece)
-    ordered_starts.reverse()
-    assert [x.position for x in features] == ordered_starts
-    # force erroneous data
     piece.features[0].is_plus_strand = True
     controller.session.add(piece.features[0])
     controller.session.commit()
     with pytest.raises(AssertionError):
         ti.sorted_features(piece)
+    # todo, test s.t. on - strand? (or is this anyways redundant with geenuff?
 
 
 # todo, we don't actually need slicer for this, mv to test_geenuff
