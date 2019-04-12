@@ -977,23 +977,19 @@ def setup4numerify():
     # no need to modify, so can just load briefly
     sess = controller.session
 
-    sinfo = sess.query(geenuff.orm.SequenceInfo).first()
-    sinfo_h = slicer.SequenceInfoHandler()
-    sinfo_h.add_data(sinfo)
-    # simplify
+    coordinate = sess.query(geenuff.orm.Coordinate).first()
+    coordinate_handler = slicer.CoordinateHandler()
+    coordinate_handler.add_data(coordinate)
 
-    sinfo = sess.query(geenuff.orm.SequenceInfo).first()
-    sinfo_h = slicer.SequenceInfoHandler()
-    sinfo_h.add_data(sinfo)
-    return sess, controller, sinfo_h
+    return sess, controller, coordinate_handler
 
 
 def test_base_level_annotation_numerify():
-    sess, controller, sinfo_h = setup4numerify()
+    sess, controller, coordinate_handler = setup4numerify()
 
-    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h)
+    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=coordinate_handler)
     with pytest.raises(numerify.DataInterpretationError):
-        numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
+        numerifier.slice_to_matrix(data_slice=coordinate_handler, is_plus_strand=True)
 
     # simplify
     transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'x').first()
@@ -1001,13 +997,17 @@ def test_base_level_annotation_numerify():
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
 
-    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=sinfo_h)
-    nums = numerifier.slice_to_matrix(data_slice=sinfo_h, is_plus_strand=True)
+    transcribeds = sess.query(geenuff.orm.Transcribed).all()
+    print(transcribeds, ' <- transcribeds')
+
+    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=coordinate_handler)
+    nums = numerifier.slice_to_matrix(data_slice=coordinate_handler, is_plus_strand=True)
     expect = np.zeros([405, 3], dtype=float)
     expect[0:400, 0] = 1.  # set genic/in raw transcript
     expect[10:300, 1] = 1.  # set in transcribed
     expect[100:110, 2] = 1.  # both introns
     expect[120:200, 2] = 1.
+    print(nums)
     assert np.allclose(nums, expect)
 
 

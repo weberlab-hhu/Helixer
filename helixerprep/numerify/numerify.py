@@ -92,21 +92,19 @@ class SequenceNumerifier(Numerifier):
 class AnnotationFoo(object):
 
     def __init__(self, data_slice):
-        assert isinstance(data_slice, slicer.SequenceInfoHandler)
+        assert isinstance(data_slice, slicer.CoordinateHandler)
         self.data_slice = data_slice
         self.coordinates = self._get_coordinates()
         self.super_loci = self._get_super_loci()
 
     def _get_coordinates(self):
-        coords = self.data_slice.data.coordinates
-        assert len(coords) == 1, '{} != {}'.format(len(coords), 1)
-        coords = coords[0]
-        return coords
+        return self.data_slice.data  # todo, clean up
 
     def _get_super_loci(self):
         super_loci = set()
         for feature in self.coordinates.features:
-            super_loci.add(feature.super_locus)
+            for piece in feature.transcribed_pieces:
+                super_loci.add(piece.transcribed.super_locus)
         out = []
         for sl in super_loci:
             handler = slicer.SuperLocusHandler()
@@ -126,8 +124,7 @@ class AnnotationNumerifier(Numerifier, AnnotationFoo):
         matrix = self._zeros(length)
         for transcript, super_locus in self.transcribeds_to_use():
             t_interp = TranscriptLocalReader(transcript, super_locus=super_locus)
-            for prev_step, step in t_interp.transition_5p_to_3p_paired_steps(self.coordinates, is_plus_strand):
-                self.update_matrix(matrix, prev_step, step)
+            self.update_matrix(matrix, t_interp)
         return matrix
         # todo, setup transcript local reader for each transcript.
         #   maybe grab primary transcript only
@@ -144,7 +141,7 @@ class AnnotationNumerifier(Numerifier, AnnotationFoo):
         for transcribed in super_locus.data.transcribeds:
             yield transcribed
 
-    def update_matrix(self, matrix, prev_step, step):
+    def update_matrix(self, matrix, transcript_interpreter):
         raise NotImplementedError
 
 
@@ -166,18 +163,32 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
         labs = (status.genic, status.in_translated_region, status.in_intron or status.in_trans_intron)
         return [float(x) for x in labs]
 
-    def update_matrix(self, matrix, prev_step, step):
-        if prev_step.features is None:
-            pass
-        else:
-            if step.any_erroneous_features():
-                raise DataInterpretationError
-            py_start, py_end = step.py_range(prev_step)
-            py_start -= step.a_feature.coordinates.start
-            py_end -= step.a_feature.coordinates.start
-            labels = self.class_labels(prev_step.status)
-            matrix[py_start:py_end, :] = np.logical_or(matrix[py_start:py_end, :], labels)
-            print('labelling {}-{} as {}'.format(py_start, py_end, labels))
+    def update_matrix(self, matrix, transcript_interpreter):
+        errors = transcript_interpreter.error_ranges()
+        errors = transcript_interpreter.filter_to_coordinate(coordinate_id=self.data_slice.data.id,
+                                                             transcript_coordinates=errors)
+        errors = list(errors)
+        if errors:
+            print(errors)
+            raise DataInterpretationError
+
+        for i_col, fn in self.row_fns(transcript_interpreter):
+            self._update_row(matrix, i_col, fn())
+
+    def _update_row(self, matrix, i_col, ranges):
+        shift_by = self.data_slice.data.start
+        for a_range in ranges:
+            start = a_range.start - shift_by
+            end = a_range.end - shift_by
+            if not a_range.is_plus_strand:
+                start, end = end + 1, start + 1
+            matrix[start:end, i_col] = 1
+
+    def row_fns(self, transcript_interpreter):
+        assert isinstance(transcript_interpreter, geenuff.api.TranscriptInterpBase)
+        return [(0, transcript_interpreter.transcribed_ranges),
+                (1, transcript_interpreter.translated_ranges),
+                (2, transcript_interpreter.intronic_ranges)]
 
 
 class TransitionAnnotationNumerifier(AnnotationNumerifier):
@@ -274,11 +285,33 @@ class TranscriptLocalReader(geenuff.api.TranscriptInterpBase):
             features.reverse()
         return features
 
-    def local_transition_5p_to_3p(self, coords, is_plus_strand):
-        status = geenuff.api.TranscriptStatus()
-        for aligned_features in self.stack_matches(self.sort_features(coords, is_plus_strand)):
-            self.update_status(status, aligned_features)
-            yield aligned_features, copy.deepcopy(status)
+    @staticmethod  # todo, rather move to Handler?
+    def coordinate_id_from_piece(piece):
+        coord_ids = [f.coordinate_id for f in piece.features]
+        assert all([x == coord_ids[0] for x in coord_ids]), \
+            "not all coordinates match for features from piece: {}".format(coord_ids)
+        return coord_ids[0]
+
+    def pieces_on_coordinate(self, coordinate_id):
+        out = []
+        for piece in self.transcript.data.transcribed_pieces:
+            if self.coordinate_id_from_piece(piece) == coordinate_id:
+                out.append(piece)
+        return out
+
+    def filter_to_coordinate(self, coordinate_id, transcript_coordinates):
+        # where transcript_coordinates should be a list of geenuff.api.TranscriptCoordinate instances
+        matching_pieces = self.pieces_on_coordinate(coordinate_id)
+        matching_piece_positions = [p.position for p in matching_pieces]
+        for item in transcript_coordinates:
+            if item.piece_position in matching_piece_positions:
+                yield item
+
+    #def local_transition_5p_to_3p(self, coords, is_plus_strand):
+    #    status = geenuff.api.TranscriptStatusBase()
+    #    for aligned_features in self.stack_matches(self.sort_features(coords, is_plus_strand)):
+    #        self.update_status(status, aligned_features)
+    #        yield aligned_features, copy.deepcopy(status)
 
     def transition_5p_to_3p_paired_steps(self, coords, is_plus_strand):
         prev_step = StepHolder()
