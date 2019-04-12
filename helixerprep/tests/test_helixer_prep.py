@@ -18,7 +18,7 @@ import sqlalchemy
 from ..numerify import numerify
 
 from geenuff.tests.test_geenuff import (setup_data_handler,
-                                        setup_testable_super_loci, TransspliceDemoData)
+                                        setup_testable_super_locus, TransspliceDemoData)
 
 
 TMP_DB = 'testdata/tmp.db'
@@ -43,10 +43,10 @@ def construct_slice_controller(source=DUMMYLOCI_DB, dest=TMP_DB, sequences_path=
 def setup_dummy_db(request):
     if os.path.exists(DUMMYLOCI_DB):
         os.remove(DUMMYLOCI_DB)
-    sl, controller = setup_testable_super_loci('sqlite:///' + DUMMYLOCI_DB)
-    coordinates = controller.sequence_info.data.coordinates[0]
-    sl.check_and_fix_structure(coordinates=coordinates, controller=controller)
-    controller.execute_so_far()
+    sl, controller = setup_testable_super_locus('sqlite:///' + DUMMYLOCI_DB)
+    coordinate = controller.genome_handler.data.coordinates[0]
+    sl.check_and_fix_structure(coordinate=coordinate, controller=controller)
+    controller.insertion_queues.execute_so_far()
 
 
 def mk_session(db_path='sqlite:///:memory:'):

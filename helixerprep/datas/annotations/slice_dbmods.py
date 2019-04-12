@@ -10,14 +10,15 @@ class ProcessingSet(enum.Enum):
     test = 'test'
 
 
-class SequenceInfoSets(orm.Base):
-    __tablename__ = "sequence_info_sets"
-
-    id = Column(Integer, ForeignKey('sequence_infos.id'), primary_key=True)
-    sequence_info = relationship('orm.SequenceInfo')
-    processing_set = Column(Enum(ProcessingSet), nullable=False)
-
-    def __repr__(self):
-        return '{}: matching {} in set {}'.format(type(self), self.sequence_info, self.processing_set)
+# todo, mv to coordinate somehow
+#class SequenceInfoSets(orm.Base):
+#    __tablename__ = "sequence_info_sets"
+#
+#    id = Column(Integer, ForeignKey('sequence_infos.id'), primary_key=True)
+#    sequence_info = relationship('orm.SequenceInfo')
+#    processing_set = Column(Enum(ProcessingSet), nullable=False)
+#
+#    def __repr__(self):
+#        return '{}: matching {} in set {}'.format(type(self), self.sequence_info, self.processing_set)
 
 

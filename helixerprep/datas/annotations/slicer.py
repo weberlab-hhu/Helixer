@@ -34,9 +34,10 @@ class CoreQueue(object):
 
     @property
     def piece_swaps_update(self):
-        out = geenuff.orm.association_transcribeds_to_features.update().\
-            where(geenuff.orm.association_transcribeds_to_features.c.transcribed_piece_id == bindparam('piece_id_old')).\
-            where(geenuff.orm.association_transcribeds_to_features.c.feature_id == bindparam('feat_id')).\
+        table = geenuff.orm.association_transcribed_piece_to_feature
+        out = table.update().\
+            where(table.c.transcribed_piece_id == bindparam('piece_id_old')).\
+            where(table.c.feature_id == bindparam('feat_id')).\
             values(transcribed_piece_id=bindparam('piece_id_new'))
         return out
 
@@ -59,16 +60,6 @@ class CoreQueue(object):
                 del a_list[:]
         self.session.commit()
 
-        # and remove any abandoned pieces
-        #todel = []
-        #for piece in self.session.query(geenuff.orm.TranscribedPiece).all():
-        #    if not piece.features:
-        #        todel.append({'piece_id': piece.id})
-        #del_cmd = geenuff.orm.TranscribedPiece.__table__.delete().\
-        #    where(geenuff.orm.TranscribedPiece.id == bindparam('piece_id'))
-        #if todel:
-        #    conn.execute(del_cmd, todel)
-
 
 class SliceController(object):
 
@@ -84,7 +75,7 @@ class SliceController(object):
         self.core_queue = None
 
     def get_one_annotated_genome(self):
-        ags = self.session.query(geenuff.orm.AnnotatedGenome).all()
+        ags = self.session.query(geenuff.orm.Genome).all()
         assert len(ags) == 1
         return ags[0]
 
@@ -133,10 +124,9 @@ class SliceController(object):
         slices.reverse()
         self._slice_annotations_1way(slices, annotated_genome, is_plus_strand=False)
 
-    def _slice_annotations_1way(self, slices, annotated_genome, is_plus_strand):
+    def _slice_annotations_1way(self, slices, genome, is_plus_strand):
         for seqid, start, end, slice_id in slices:
-            seq_info = geenuff.orm.SequenceInfo(annotated_genome=annotated_genome)
-            coordinates = geenuff.orm.Coordinates(seqid=seqid, start=start, end=end, sequence_info=seq_info)
+            coordinates = geenuff.orm.Coordinate(seqid=seqid, start=start, end=end, genome=genome)
             self.session.add(coordinates)
             self.session.commit()
             overlapping_super_loci = self.get_super_loci_frm_slice(seqid, start, end, is_plus_strand=is_plus_strand)
@@ -183,15 +173,13 @@ class HandleMaker(geenuff.api.HandleMaker):
                (TranscribedHandler, geenuff.orm.Transcribed),
                (TranslatedHandler, geenuff.orm.Translated),
                (TranscribedPieceHandler, geenuff.orm.TranscribedPiece),
-               (FeatureHandler, geenuff.orm.Feature),
-               (UpstreamFeatureHandler, geenuff.orm.UpstreamFeature),
-               (DownstreamFeatureHandler, geenuff.orm.DownstreamFeature),
-               (UpDownPairHandler, geenuff.orm.UpDownPair)]
+               (FeatureHandler, geenuff.orm.Feature)]
 
         return self._get_paired_item(type(old_data), search_col=1, return_col=0, nested_list=key)
 
 
-class SequenceInfoHandler(geenuff.api.SequenceInfoHandler):
+# todo, delete, but maybe check if methods need to move to GenomeHandler?
+class SequenceInfoHandler(object):
     def processing_set(self, sess):
         return sess.query(
             slice_dbmods.SequenceInfoSets
@@ -216,7 +204,7 @@ class SequenceInfoHandler(geenuff.api.SequenceInfoHandler):
         sess.commit()
 
 
-class SuperLocusHandler(geenuff.api.SuperLocusHandler):
+class SuperLocusHandler(geenuff.api.SuperLocusHandlerBase):
     def __init__(self):
         super().__init__()
         self.handler_holder = HandleMaker(self)
@@ -253,19 +241,20 @@ class SuperLocusHandler(geenuff.api.SuperLocusHandler):
 
 
 # todo, switch back to simple import if not changing...
-class TranscribedHandler(geenuff.api.TranscribedHandler):
+class TranscribedHandler(geenuff.api.TranscribedHandlerBase):
     pass
 
 
-class TranslatedHandler(geenuff.api.TranslatedHandler):
+class TranslatedHandler(geenuff.api.TranslatedHandlerBase):
     pass
 
 
-class TranscribedPieceHandler(geenuff.api.TranscribedPieceHandler):
+class TranscribedPieceHandler(geenuff.api.TranscribedPieceHandlerBase):
     pass
 
 
 # todo, there is probably a nicer way to accomplish the following with multi inheritance...
+# todo, order py_start / py_end from start/end
 def load_to_intervaltree(obj, trees):
     seqid = obj.data.coordinates.seqid
     if seqid not in trees:
@@ -275,23 +264,9 @@ def load_to_intervaltree(obj, trees):
     tree[py_start:(py_start + 1)] = obj
 
 
-class FeatureHandler(geenuff.api.FeatureHandler):
+class FeatureHandler(geenuff.api.FeatureHandlerBase):
     def load_to_intervaltree(self, trees):
         load_to_intervaltree(self, trees)
-
-
-class UpstreamFeatureHandler(geenuff.api.UpstreamFeatureHandler):
-    def load_to_intervaltree(self, trees):
-        load_to_intervaltree(self, trees)
-
-
-class DownstreamFeatureHandler(geenuff.api.DownstreamFeatureHandler):
-    def load_to_intervaltree(self, trees):
-        load_to_intervaltree(self, trees)
-
-
-class UpDownPairHandler(geenuff.api.UpDownPairHandler):
-    pass
 
 
 class FeatureVsCoords(object):
