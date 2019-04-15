@@ -353,29 +353,34 @@ class TranscriptTrimmer(TranscriptInterpBase):
         self.handlers = []
         self._downstream_piece = None
 
-    @property
-    def downstream_piece(self):
+    def downstream_piece(self, piece):
         if self._downstream_piece is None:
-            self._downstream_piece = self.mk_new_piece()
+            self._downstream_piece = self.mk_new_piece(piece)
         return self._downstream_piece
 
     def new_handled_data(self, template=None, new_type=geenuff.orm.Feature, **kwargs):
+        # todo, clean up handler bit that is now defunct
         data = new_type()
-        # todo, simplify below...
         handler = self.transcript.data.super_locus.handler.handler_holder.mk_n_append_handler(data)
         if template is not None:
+            raise NotImplementedError
             template.handler.fax_all_attrs_to_another(another=handler)
 
         for key in kwargs:
             handler.set_data_attribute(key, kwargs[key])
         return handler
 
-    def mk_new_piece(self):
-        new_piece = geenuff.orm.TranscribedPiece(super_locus=self.transcript.data.super_locus,
-                                                 transcribed=self.transcript.data)
+    def mk_new_piece(self, piece):
+        # increment position of any higher pieces
+        old_pieces = self.transcript.data.transcribed_pieces
+        for old_piece in old_pieces:
+            if old_piece.position > piece.position:
+                old_piece.position += 1
+
+        new_piece = geenuff.orm.TranscribedPiece(transcribed=self.transcript.data, position=piece.position + 1)
         new_handler = TranscribedPieceHandler()
         new_handler.add_data(new_piece)
-        self.session.add(new_piece)
+        self.session.add_all(old_pieces + [new_piece])
         self.session.commit()
         self.handlers.append(new_handler)
         return new_piece
@@ -411,15 +416,15 @@ class TranscriptTrimmer(TranscriptInterpBase):
             elif position_interp.overlaps_downstream():
                 seen_one_overlap = True
                 # todo, make new_piece_after_border _here_ not in transition gen...
-                piece_at_border = f0.data.transcribed_piece
-                new_piece_after_border = self.downstream_piece
+                piece_at_border = piece
+                new_piece_after_border = self.downstream_piece(piece)
                 self.core_queue.execute_so_far()  # todo, rm from here once everything uses core
                 for feature in aligned_features:
-                    self.set_status_downstream_border(new_coords=new_coords, old_coords=f0.coordinates,
+                    self.set_status_downstream_border(new_coords=new_coords, old_coords=f0.coordinate,
                                                       is_plus_strand=is_plus_strand,
                                                       template_feature=feature,
                                                       old_piece=piece_at_border,
-                                                      new_piece=new_piece_after_border, trees=trees)
+                                                      new_piece=new_piece_after_border, trees=trees,)
 
             elif position_interp.is_downstream():
                 if piece_at_border is not None:
@@ -427,7 +432,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                         # todo, swap from old piece to new_piece_after_border
                         for f in aligned_features:
                             to_swap = {'piece_id_old': piece_at_border.id,
-                                       'piece_id_new': self.downstream_piece.id,
+                                       'piece_id_new': self.downstream_piece(piece).id,
                                        'feat_id': f.id}
                             self.core_queue.piece_swaps.append(to_swap)
             else:

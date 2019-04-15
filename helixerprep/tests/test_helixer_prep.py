@@ -396,18 +396,15 @@ def test_slicer_transition():
                                   core_queue=controller.core_queue)
     transition_gen = ti.transition_5p_to_3p()
     transitions = list(transition_gen)
-    assert len(transitions) == 8
-    statusses = [x[1] for x in transitions]
+    assert len(transitions) == 4
+    pieces = [x[1] for x in transitions]
     features = [x[0][0] for x in transitions]
-    ordered_starts = [0, 10, 100, 110, 120, 200, 300, 400]
-    assert [x.position for x in features] == ordered_starts
-    expected_intronic = [False, False, True, False, True, False, False, False]
-    assert [x.in_intron for x in statusses] == expected_intronic
-    expected_genic = [True] * 7 + [False]
-    print('statuses', [x.genic for x in statusses])
-    assert [x.genic for x in statusses] == expected_genic
-    expected_seen_startstop = [(False, False)] + [(True, False)] * 5 + [(True, True)] * 2
-    assert [(x.seen_start, x.seen_stop) for x in statusses] == expected_seen_startstop
+    #ordered_starts = [0, 10, 100, 110, 120, 200, 300, 400]
+    ordered_starts = [0, 10, 100, 120]
+    assert [x.start for x in features] == ordered_starts
+    expected_types = [geenuff.types.TRANSCRIBED, geenuff.types.CODING, geenuff.types.INTRON, geenuff.types.INTRON]
+    assert [x.type.value for x in features] == expected_types
+    assert all([x.position == 0 for x in pieces])
 
 
 def test_set_updown_features_downstream_border():
@@ -594,7 +591,8 @@ class TransspliceDemoDataSlice(TransspliceDemoData):
     def __init__(self, sess, engine):
         super().__init__(sess)
         self.core_queue = slicer.CoreQueue(session=sess, engine=engine)
-        self.old_coor = geenuff.orm.Coordinates(seqid='a', start=1, end=2000)
+        self.genome = geenuff.orm.Genome()
+        self.old_coor = geenuff.orm.Coordinate(genome=self.genome, seqid='a', start=1, end=2000)
         # replace handlers with those from slicer
         self.slh = slicer.SuperLocusHandler()
         self.slh.add_data(self.sl)
@@ -835,8 +833,8 @@ def test_modify4slice_2nd_half_first():
     sess, engine = mk_session()
     d = TransspliceDemoDataSlice(sess, engine)  # setup _d_ata
     d.make_all_handlers()
-    new_coords_0 = geenuff.orm.Coordinates(seqid='a', start=0, end=915)
-    new_coords_1 = geenuff.orm.Coordinates(seqid='a', start=915, end=2000)
+    new_coords_0 = geenuff.orm.Coordinate(genome=d.genome, seqid='a', start=0, end=915)
+    new_coords_1 = geenuff.orm.Coordinate(genome=d.genome, seqid='a', start=915, end=2000)
     sess.add_all([new_coords_0, new_coords_1])
     sess.commit()
     d.tiflip.modify4new_slice(new_coords=new_coords_1, is_plus_strand=False)
