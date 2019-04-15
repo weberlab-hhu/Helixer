@@ -282,34 +282,27 @@ class FeatureVsCoords(object):
         else:
             self.sign = -1
 
-        # inclusive coordinates (classic python in for slice)
-        if feature.bearing.value in [geenuff.types.START, geenuff.types.OPEN_STATUS, geenuff.types.POINT]:
-            self.c_py_start = slice_coordinates.start
-            self.c_py_end = slice_coordinates.end
-        else:  # exclusive coordinates for a closing feature (not 1st upstream bp, one after downstream)
-            self.c_py_start = slice_coordinates.start + self.sign
-            self.c_py_end = slice_coordinates.end + self.sign
-
         if is_plus_strand:
-            self.c_py_upstream = self.c_py_start
-            self.c_py_downstream = self.c_py_end
+            self.feature_py_start = feature.start
+            self.feature_py_end = feature.end
         else:
-            self.c_py_upstream = self.c_py_end
-            self.c_py_downstream = self.c_py_start
+            # ~ start, end = min(coords) + 1, max(coords) + 1, where +1 makes them incl, excl in the + direction
+            self.feature_py_start = feature.end + 1
+            self.feature_py_end = feature.start + 1
 
     def is_detached(self):
         out = False
-        if self.slice_coordinates.seqid != self.feature.coordinates.seqid:
+        if self.slice_coordinates.seqid != self.feature.coordinate.seqid:
             out = True
         elif self.is_plus_strand != self.feature.is_plus_strand:
             out = True
         return out
 
     def _is_lower(self):
-        return self.c_py_start - self.feature.position > 0
+        return self.slice_coordinates.start - self.feature_py_end >= 0
 
     def _is_higher(self):
-        return self.feature.position - self.c_py_end >= 0
+        return self.feature_py_start - self.slice_coordinates.end >= 0
 
     def is_upstream(self):
         if self.is_plus_strand:
@@ -324,61 +317,31 @@ class FeatureVsCoords(object):
             return self._is_lower()
 
     def is_contained(self):
-        start_contained = self.c_py_start <= self.feature.position < self.c_py_end
-        return start_contained
+        start_contained = self.slice_coordinates.start <= self.feature_py_start < self.slice_coordinates.end
+        end_contained = self.slice_coordinates.start < self.feature_py_end <= self.slice_coordinates.end
+        return start_contained and end_contained
 
+    def _overlaps_lower(self):
+        return self.feature_py_start < self.slice_coordinates.start < self.feature_py_end
 
-class PositionInterpreter(object):
-    def __init__(self, feature, prev_feature, slice_coordinates, is_plus_strand):
-        self.feature_vs_coord = FeatureVsCoords(feature, slice_coordinates, is_plus_strand)
-        if prev_feature is not None:  # this marks a disjointed (diff piece) previous feature, todo cleanup/mk explicit
-            self.previous_vs_coord = FeatureVsCoords(prev_feature, slice_coordinates, is_plus_strand)
+    def _overlaps_higher(self):
+        return self.feature_py_start < self.slice_coordinates.end < self.feature_py_end
+
+    def overlaps_upstream(self):
+        if self.is_plus_strand:
+            return self._overlaps_lower()
         else:
-            self.previous_vs_coord = None
-        self.slice_coordinates = slice_coordinates
-        self.is_plus_strand = is_plus_strand
+            return self._overlaps_higher()
 
-    def is_detached(self):
-        return self.feature_vs_coord.is_detached()
-
-    def is_upstream(self):
-        return self.feature_vs_coord.is_upstream()
-
-    def is_downstream(self):
-        return self.feature_vs_coord.is_downstream()
-
-    def is_contained(self):
-        return self.feature_vs_coord.is_contained()
-
-    def just_passed_downstream(self):
-        if self.previous_vs_coord is None:
-            return False
+    def overlaps_downstream(self):
+        if self.is_plus_strand:
+            return self._overlaps_higher()
         else:
-            return self.feature_vs_coord.is_downstream() and self.previous_vs_coord.is_contained()
+            return self._overlaps_lower()
 
 
 class NoFeaturesInSliceError(Exception):
     pass
-
-
-class StepHolder(object):
-    def __init__(self, features=None, status=None, old_piece=None, replacement_piece=None):
-        self.features = features
-        self.status = status
-        self.old_piece = old_piece
-        self.replacement_piece = replacement_piece
-
-    @property
-    def example_feature(self):
-        if self.features is None:
-            return None
-        else:
-            return self.features[0]
-
-    def set_as_previous_of(self, new_step_holder):
-        # because we only want to use previous features from the _same_ piece
-        if self.old_piece is not new_step_holder.old_piece:
-            self.features = None
 
 
 class TranscriptTrimmer(TranscriptInterpBase):
@@ -388,6 +351,13 @@ class TranscriptTrimmer(TranscriptInterpBase):
         self.core_queue = core_queue
         #self.session = sess
         self.handlers = []
+        self._downstream_piece = None
+
+    @property
+    def downstream_piece(self):
+        if self._downstream_piece is None:
+            self._downstream_piece = self.mk_new_piece()
+        return self._downstream_piece
 
     def new_handled_data(self, template=None, new_type=geenuff.orm.Feature, **kwargs):
         data = new_type()
@@ -399,22 +369,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
         for key in kwargs:
             handler.set_data_attribute(key, kwargs[key])
         return handler
-
-    def _transition_5p_to_3p_with_new_pieces(self):
-        transition_gen = self.transition_5p_to_3p()
-        aligned_features, status, prev_piece = next(transition_gen)
-        new_piece = None  # self.mk_new_piece() # todo, refactor this whole new piece bit away once replaced...
-        yield aligned_features, status, prev_piece, new_piece
-
-        for aligned_features, status, piece in transition_gen:
-            if piece is not prev_piece:
-                new_piece = None  # self.mk_new_piece()
-            yield aligned_features, status, piece, new_piece
-            prev_piece = piece
-
-    def transition_5p_to_3p_with_new_pieces(self):
-        for features, status, old_piece, replacement_piece in self._transition_5p_to_3p_with_new_pieces():
-            yield StepHolder(features=features, status=status, old_piece=old_piece, replacement_piece=replacement_piece)
 
     def mk_new_piece(self):
         new_piece = geenuff.orm.TranscribedPiece(super_locus=self.transcript.data.super_locus,
@@ -428,73 +382,58 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
     def modify4new_slice(self, new_coords, is_plus_strand=True, trees=None):
         """adjusts features and pieces of transcript to be artificially split across a new sub-coordinate"""
+        # todo, this should be done in batch w/ a coordinate filter; not transcript by transcript...
         if trees is None:
             trees = {}
         logging.debug('mod4slice, transcribed: {}, {}'.format(self.transcript.data.id, self.transcript.data.given_id))
         seen_one_overlap = False
-        transition_gen = self.transition_5p_to_3p_with_new_pieces()
-        previous_step = StepHolder()
+        transition_gen = self.transition_5p_to_3p()
         piece_at_border = None
-        for current_step in transition_gen:
-            # if we've switched pieces in transcript, reset the previous features seen on piece to None
-            previous_step.set_as_previous_of(current_step)
+        for aligned_features, piece in transition_gen:
 
-            f0 = current_step.example_feature  # take first as all "aligned" features have the same coordinates
-            position_interp = PositionInterpreter(f0, previous_step.example_feature, new_coords, is_plus_strand)
+            f0 = aligned_features[0]  # take first as all "aligned" features have the same coordinates
+            position_interp = FeatureVsCoords(feature=f0, slice_coordinates=new_coords, is_plus_strand=is_plus_strand)
             # before or detached coordinates (already handled or good as-is, at least for now)
             if position_interp.is_detached():
                 pass
             elif position_interp.is_upstream():
                 pass  # todo, check that this _has_ been handled already
+            elif position_interp.overlaps_upstream():
+                pass  # todo, again, this should have already been handled, double check?
             # within new_coords -> swap coordinates
             elif position_interp.is_contained():
                 seen_one_overlap = True
-                for f in current_step.features:
+                for f in aligned_features:
                     coord_swap = {'feat_id': f.id, 'coordinate_id_new': new_coords.id}
                     self.core_queue.coord_swaps.append(coord_swap)
-                    #f.coordinates = new_coords
-                    #self.swap_piece(feature_handler=f.handler, new_piece=current_step.replacement_piece,
-                    #                old_piece=current_step.old_piece)
 
             # handle pass end of coordinates between previous and current feature, [p] | [f]
-            elif position_interp.just_passed_downstream():
-                piece_at_border = current_step.old_piece
+            elif position_interp.overlaps_downstream():
+                seen_one_overlap = True
                 # todo, make new_piece_after_border _here_ not in transition gen...
-                new_piece_after_border = self.mk_new_piece()
+                piece_at_border = f0.data.transcribed_piece
+                new_piece_after_border = self.downstream_piece
                 self.core_queue.execute_so_far()  # todo, rm from here once everything uses core
-                if not seen_one_overlap:
-                    raise NoFeaturesInSliceError("seen no features overlapping or contained in old piece '{}', can't "
-                                                 "set downstream pass.\n  Last feature: '{}'\n  "
-                                                 "Current feature: '{}'".format(
-                                                     piece_at_border, previous_step.example_feature, f0,
-                                                 ))
-                self.set_status_downstream_border(new_coords=new_coords, old_coords=f0.coordinates,
-                                                  is_plus_strand=is_plus_strand,
-                                                  template_feature=previous_step.example_feature,
-                                                  status=previous_step.status, old_piece=current_step.old_piece,
-                                                  new_piece=new_piece_after_border, trees=trees)
-                # the current features too, need the new_piece
-                for f in current_step.features:
-                    to_swap = {'piece_id_old': piece_at_border.id,
-                               'piece_id_new': new_piece_after_border.id,
-                               'feat_id': f.id}
-                    self.core_queue.piece_swaps.append(to_swap)
+                for feature in aligned_features:
+                    self.set_status_downstream_border(new_coords=new_coords, old_coords=f0.coordinates,
+                                                      is_plus_strand=is_plus_strand,
+                                                      template_feature=feature,
+                                                      old_piece=piece_at_border,
+                                                      new_piece=new_piece_after_border, trees=trees)
 
             elif position_interp.is_downstream():
                 if piece_at_border is not None:
-                    if current_step.old_piece is piece_at_border:
+                    if piece is piece_at_border:
                         # todo, swap from old piece to new_piece_after_border
-                        for f in current_step.features:
+                        for f in aligned_features:
                             to_swap = {'piece_id_old': piece_at_border.id,
-                                       'piece_id_new': new_piece_after_border.id,
+                                       'piece_id_new': self.downstream_piece.id,
                                        'feat_id': f.id}
                             self.core_queue.piece_swaps.append(to_swap)
             else:
                 print('ooops', f0)
                 raise AssertionError('this code should be unreachable...? Check what is up!')
 
-            # and step
-            previous_step = copy.copy(current_step)
 
         # apply batch changes
         #self.core_queue.execute_so_far()
@@ -525,62 +464,28 @@ class TranscriptTrimmer(TranscriptInterpBase):
             raise e
         feature_handler.link_to(new_piece.handler)
 
-    def set_status_downstream_border(self, new_coords, old_coords, is_plus_strand, template_feature, status, new_piece,
+    def set_status_downstream_border(self, new_coords, old_coords, is_plus_strand, template_feature, new_piece,
                                      old_piece, trees):
         if is_plus_strand:
-            up_at = down_at = new_coords.end
+            down_at = new_coords.end
         else:
-            up_at = down_at = new_coords.start - 1  # -1 so it's exclusive close (incl next open), in reverse direction
+            down_at = new_coords.start - 1  # -1 so it's exclusive close (incl next open), in reverse direction
 
-        at_least_one_link = False
-        if status.genic:
-            self._set_one_status_at_border(old_coords, template_feature, geenuff.types.TRANSCRIBED, up_at, down_at,
-                                           new_piece, old_piece, trees)
-            at_least_one_link = True
-        if status.in_intron:
-            self._set_one_status_at_border(old_coords, template_feature, geenuff.types.INTRON, up_at, down_at,
-                                           new_piece, old_piece, trees)
-            at_least_one_link = True
-        if status.in_translated_region:
-            self._set_one_status_at_border(old_coords, template_feature, geenuff.types.CODING, up_at,
-                                           down_at, new_piece, old_piece, trees)
-            at_least_one_link = True
-        if status.in_trans_intron:
-            self._set_one_status_at_border(old_coords, template_feature, geenuff.types.TRANS_INTRON, up_at, down_at,
-                                           new_piece, old_piece, trees)
-            at_least_one_link = True
-
-        if status.erroneous:
-            self._set_one_status_at_border(old_coords, template_feature, geenuff.types.ERROR, up_at, down_at, new_piece,
-                                           old_piece, trees)
-            at_least_one_link = True
-        if not at_least_one_link:
-            print('dying here.....')
-            print('old piece: {}'.format(old_piece))
-            print('old coords: {}'.format(old_coords))
-            print(':::: {}\n'.format(old_piece.features))
-
-            print('new piece: {}'.format(new_piece))
-            print('new coords: {}'.format(new_coords))
-            print(':::: {}'.format(new_piece.features))
-            raise ValueError('Expected some sort of known status to set the status at border')
-
-    def _set_one_status_at_border(self, old_coords, template_feature, status_type, up_at, down_at, new_piece,
-                                  old_piece, trees):
         assert old_piece in template_feature.transcribed_pieces, "old id: ({}) not in feature {}'s pieces: {}".format(
             old_piece.id, template_feature.id, template_feature.transcribed_pieces)
-        upstream = self.new_handled_data(template_feature, geenuff.orm.UpstreamFeature, position=up_at,
-                                         given_id=None, type=status_type, bearing=geenuff.types.CLOSE_STATUS)
-        upstream.load_to_intervaltree(trees)
-        downstream = self.new_handled_data(template_feature, geenuff.orm.DownstreamFeature, position=down_at,
-                                           given_id=None, type=status_type, coordinates=old_coords,
-                                           bearing=geenuff.types.OPEN_STATUS)
+
+        downstream = self.new_handled_data(template_feature, geenuff.orm.Feature, start=down_at,
+                                           given_id=None, coordinate=old_coords,
+                                           start_is_biological_start=False)
         downstream.load_to_intervaltree(trees)
+
+        template_feature.end = down_at
+        template_feature.end_is_biological_end = False
+
         # swap the new downstream feature to have new piece (which will be shared with further downstream features)
         self.swap_piece(feature_handler=downstream, new_piece=new_piece, old_piece=old_piece)
-        self.new_handled_data(new_type=geenuff.orm.UpDownPair, upstream=upstream.data,
-                              downstream=downstream.data, transcribed=self.transcript.data)
-        self.session.add_all([upstream.data, downstream.data])
+
+        self.session.add_all([downstream.data])
         self.session.commit()  # todo, figure out what the real rules are for committing, bc slower, but less buggy?
 
 
