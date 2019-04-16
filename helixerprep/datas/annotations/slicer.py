@@ -359,15 +359,16 @@ class TranscriptTrimmer(TranscriptInterpBase):
         return self._downstream_piece
 
     def new_handled_data(self, template=None, new_type=geenuff.orm.Feature, **kwargs):
-        # todo, clean up handler bit that is now defunct
         data = new_type()
         handler = self.transcript.data.super_locus.handler.handler_holder.mk_n_append_handler(data)
         if template is not None:
-            raise NotImplementedError
-            template.handler.fax_all_attrs_to_another(another=handler)
+            template_dict = geenuff.api.db_attr_as_dict(template)
+        else:
+            template_dict = {}
 
-        for key in kwargs:
-            handler.set_data_attribute(key, kwargs[key])
+        template_dict.update(kwargs)
+        for key in template_dict:
+            data.__setattr__(key, template_dict[key])
         return handler
 
     def mk_new_piece(self, piece):
