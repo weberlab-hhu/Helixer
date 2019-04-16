@@ -5,17 +5,16 @@ from helixerprep.datas.sequences import StructuredGenome
 
 import hashlib
 
+
 # mod default importer to use json instead of .fa for sequences
 # todo, test import from _json_
 class ImportControl(gffimporter.ImportControl):
-
-    def _setup_sequence_info(self):
-        self.sequence_info = SequenceInfoHandler()
-        seq_info = orm.SequenceInfo(annotated_genome=self.annotated_genome.data)
-        self.sequence_info.add_data(seq_info)
+    @property
+    def genome_handler_type(self):
+        return GenomeHandler
 
 
-class SequenceInfoHandler(gffimporter.SequenceInfoHandler):
+class GenomeHandler(gffimporter.GenomeHandler):
     def add_sequences(self, seq_file):
         self.add_json(seq_file)
 
@@ -27,5 +26,5 @@ class SequenceInfoHandler(gffimporter.SequenceInfoHandler):
             sha1 = hashlib.sha1()
             sha1.update(sequence.encode())
             # todo, parallelize sequence & annotation format, then import directly from sequence_info (~Slice)
-            orm.Coordinates(seqid=seq.meta_info.seqid, start=0, sha1=sha1.hexdigest(),
-                            end=seq.meta_info.total_bp, sequence_info=self.data)
+            orm.Coordinate(seqid=seq.meta_info.seqid, start=0, sha1=sha1.hexdigest(),
+                           end=seq.meta_info.total_bp, genome=self.data)
