@@ -76,7 +76,7 @@ class SliceController(object):
 
     def get_one_annotated_genome(self):
         ags = self.session.query(geenuff.orm.Genome).all()
-        assert len(ags) == 1
+        assert len(ags) == 1, "found # genomes != 1: {}".format(ags)
         return ags[0]
 
     def copy_db(self):
@@ -159,7 +159,8 @@ class SliceController(object):
     def get_super_loci_frm_features(self, features):
         super_loci = set()
         for feature in features:
-            super_loci.add(feature.data.super_locus.handler)
+            for piece in feature.data.transcribed_pieces:
+                super_loci.add(piece.transcribed.super_locus.handler)
         return super_loci
 
     def clean_slice(self):
@@ -214,10 +215,21 @@ class SuperLocusHandler(geenuff.api.SuperLocusHandlerBase):
 
     def load_to_intervaltree(self, trees):
         self.make_all_handlers()
-        features = self.data.features
+        features = self.features
         for f in features:
-            feature = f.handler
+            try:
+                feature = f.handler
+            except AttributeError:
+                feature = FeatureHandler()
+                feature.add_data(f)
             feature.load_to_intervaltree(trees)
+
+    @property
+    def features(self):
+        for transcript in self.data.transcribeds:
+            for piece in transcript.transcribed_pieces:
+                for feature in piece.features:
+                    yield feature
 
     def modify4slice(self, new_coords, is_plus_strand, session, core_queue, trees=None):  # todo, can trees then be None?
         logging.debug('modifying sl {} for new slice {}:{}-{},  is plus: {}'.format(
@@ -391,11 +403,11 @@ class TranscriptTrimmer(TranscriptInterpBase):
             trees = {}
         logging.debug('mod4slice, transcribed: {}, {}'.format(self.transcript.data.id, self.transcript.data.given_id))
         seen_one_overlap = False
-        transition_gen = self.transition_5p_to_3p()
+        transition_gen = list(self.transition_5p_to_3p())
         piece_at_border = None
         for aligned_features, piece in transition_gen:
-
             f0 = aligned_features[0]  # take first as all "aligned" features have the same coordinates
+            old_coordinate = f0.coordinate
             position_interp = FeatureVsCoords(feature=f0, slice_coordinates=new_coords, is_plus_strand=is_plus_strand)
             # before or detached coordinates (already handled or good as-is, at least for now)
             if position_interp.is_detached():
@@ -419,7 +431,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 new_piece_after_border = self.downstream_piece(piece)
                 self.core_queue.execute_so_far()  # todo, rm from here once everything uses core
                 for feature in aligned_features:
-                    self.set_status_downstream_border(new_coords=new_coords, old_coords=f0.coordinate,
+                    self.set_status_downstream_border(new_coords=new_coords, old_coords=old_coordinate,
                                                       is_plus_strand=is_plus_strand,
                                                       template_feature=feature,
                                                       old_piece=piece_at_border,
@@ -452,6 +464,8 @@ class TranscriptTrimmer(TranscriptInterpBase):
             raise NoFeaturesInSliceError("Saw no features what-so-ever in new_coords {} for transcript {}".format(
                 new_coords, self.transcript.data
             ))
+
+        self._downstream_piece = None  # reset so the piece won't be saved for the next slice
 
     def get_rel_feature_position(self, feature, prev_feature, new_coords, is_plus_strand):
         pass

@@ -329,20 +329,20 @@ def test_intervaltree():
     controller.load_annotations()
     controller.fill_intervaltrees()
     print(controller.interval_trees.keys())
-    print(controller.interval_trees['1'])
+    for intv in controller.interval_trees["1"]:
+        s = '{}:{}, {}'.format(intv.begin, intv.end, intv.data.data)
+        print(s)
     # check that one known area has two errors, and one transcription termination site as expected
-    intervals = controller.interval_trees['1'][400:406]
+    intervals = controller.interval_trees['1'][399:406]
     assert len(intervals) == 3
     print(intervals, '...intervals')
     print([x.data.data.type.value for x in intervals])
-    errors = [x for x in intervals if x.data.data.type.value == geenuff.types.ERROR and
-              x.data.data.bearing.value == geenuff.types.END]
+    errors = [x for x in intervals if x.data.data.type.value == geenuff.types.ERROR]
 
     assert len(errors) == 2
-    tts = [x for x in intervals if x.data.data.type.value == geenuff.types.TRANSCRIBED and
-           x.data.data.bearing.value == geenuff.types.END]
+    transcribeds = [x for x in intervals if x.data.data.type.value == geenuff.types.TRANSCRIBED]
 
-    assert len(tts) == 1
+    assert len(transcribeds) == 1
     # check that the major filter functions work
     sls = controller.get_super_loci_frm_slice(seqid='1', start=300, end=405, is_plus_strand=True)
     assert len(sls) == 1
@@ -350,11 +350,10 @@ def test_intervaltree():
 
     features = controller.get_features_from_slice(seqid='1', start=0, end=1, is_plus_strand=True)
     assert len(features) == 3
-    starts = [x for x in features if x.data.type.value == geenuff.types.TRANSCRIBED and
-              x.data.bearing.value == geenuff.types.START]
+    starts = [x for x in features if x.data.type.value == geenuff.types.TRANSCRIBED]
 
     assert len(starts) == 2
-    errors = [x for x in features if x.data.type.value == geenuff.types.ERROR and x.data.bearing.value == geenuff.types.START]
+    errors = [x for x in features if x.data.type.value == geenuff.types.ERROR]
     assert len(errors) == 1
 
 
@@ -407,52 +406,53 @@ def test_slicer_transition():
     assert all([x.position == 0 for x in pieces])
 
 
-def test_set_updown_features_downstream_border():
+def test_split_features_downstream_border():
     sess, engine = mk_session()
     core_queue = slicer.CoreQueue(session=sess, engine=engine)
-    old_coor = geenuff.orm.Coordinates(seqid='a', start=1, end=1000)
-    new_coord = geenuff.orm.Coordinates(seqid='a', start=100, end=200)
+    genome = geenuff.orm.Genome()
+    old_coor = geenuff.orm.Coordinate(genome=genome, seqid='a', start=1, end=1000)
+    new_coord = geenuff.orm.Coordinate(genome=genome, seqid='a', start=100, end=200)
     sl, slh = setup_data_handler(slicer.SuperLocusHandler, geenuff.orm.SuperLocus)
     scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed, super_locus=sl)
     ti = slicer.TranscriptTrimmer(transcript=scribedh, super_locus=slh, sess=sess, core_queue=core_queue)
     # start   -> 5' [------piece0----------] 3'
     # expect  -> 5' [--piece0--][--piece1--] 3'
-    piece0 = geenuff.orm.TranscribedPiece(super_locus=sl)
-    piece1 = geenuff.orm.TranscribedPiece(super_locus=sl)
-    scribed.transcribed_pieces = [piece0]
+    piece0 = geenuff.orm.TranscribedPiece(position=0, transcribed=scribed)
+    piece1 = geenuff.orm.TranscribedPiece(position=1, transcribed=scribed)
     # setup some paired features
     # new coords, is plus, template, status
-    feature = geenuff.orm.Feature(transcribed_pieces=[piece0], coordinates=old_coor, position=110,
-                                  is_plus_strand=True, super_locus=sl, type=geenuff.types.CODING,
-                                  bearing=geenuff.types.START)
-
+    coding_feature = geenuff.orm.Feature(transcribed_pieces=[piece0], coordinate=old_coor, start=110, end=209,
+                                         is_plus_strand=True, type=geenuff.types.CODING, start_is_biological_start=True,
+                                         end_is_biological_end=True)
+    transcribed_feature = geenuff.orm.Feature(transcribed_pieces=[piece0], coordinate=old_coor, start=100, end=300,
+                                              is_plus_strand=True, type=geenuff.types.TRANSCRIBED,
+                                              start_is_biological_start=True, end_is_biological_end=True)
     sess.add_all([scribed, piece0, piece1, old_coor, new_coord, sl])
     sess.commit()
     slh.make_all_handlers()
-    # set to genic, non intron area
-    status = geenuff.api.TranscriptStatus()
-    status.saw_tss()
-    status.saw_start(0)
 
-    ti.set_status_downstream_border(new_coords=new_coord, is_plus_strand=True, template_feature=feature, status=status,
+    ti.set_status_downstream_border(new_coords=new_coord, is_plus_strand=True, template_feature=coding_feature,
+                                    old_piece=piece0, new_piece=piece1, old_coords=old_coor, trees={})
+    ti.set_status_downstream_border(new_coords=new_coord, is_plus_strand=True, template_feature=transcribed_feature,
                                     old_piece=piece0, new_piece=piece1, old_coords=old_coor, trees={})
 
     sess.commit()
-    assert len(piece0.features) == 3  # feature, 2x upstream
-    assert len(piece1.features) == 2  # 2x downstream
+    assert len(piece0.features) == 2
+    assert len(piece1.features) == 2
 
     assert set([x.type.value for x in piece0.features]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED}
-    assert set([x.bearing.value for x in piece0.features]) == {geenuff.types.START, geenuff.types.CLOSE_STATUS}
+    assert set([x.start_is_biological_start for x in piece0.features]) == {True}
+    assert set([x.end_is_biological_end for x in piece0.features]) == {False}
 
     assert set([x.type.value for x in piece1.features]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED}
-    assert set([x.bearing.value for x in piece1.features]) == {geenuff.types.OPEN_STATUS}
+    assert set([x.start_is_biological_start for x in piece1.features]) == {False}
+    assert set([x.end_is_biological_end for x in piece1.features]) == {True}
 
-    translated_up_status = [x for x in piece0.features if x.type.value == geenuff.types.CODING and
-                            x.bearing.value == geenuff.types.CLOSE_STATUS][0]
+    translated0 = [x for x in piece0.features if x.type.value == geenuff.types.CODING][0]
 
-    translated_down_status = [x for x in piece1.features if x.type.value == geenuff.types.TRANSCRIBED][0]
-    assert translated_up_status.position == 200
-    assert translated_down_status.position == 200
+    translated1 = [x for x in piece1.features if x.type.value == geenuff.types.CODING][0]
+    assert translated0.end == 200
+    assert translated1.start == 200
     # cleanup to try similar again
     for f in piece0.features:
         sess.delete(f)
@@ -461,31 +461,37 @@ def test_set_updown_features_downstream_border():
     sess.commit()
 
     # and now try backwards pass
-    feature = geenuff.orm.Feature(transcribed_pieces=[piece0], coordinates=old_coor, position=110,
-                                  is_plus_strand=False, super_locus=sl, type=geenuff.types.CODING,
-                                  bearing=geenuff.types.START)
-    sess.add(feature)
+    coding_feature = geenuff.orm.Feature(transcribed_pieces=[piece0], coordinate=old_coor, start=110, end=90,
+                                         is_plus_strand=False, type=geenuff.types.CODING,
+                                         start_is_biological_start=True, end_is_biological_end=True)
+    transcribed_feature = geenuff.orm.Feature(transcribed_pieces=[piece0], coordinate=old_coor, start=130, end=80,
+                                              is_plus_strand=False, type=geenuff.types.TRANSCRIBED,
+                                              start_is_biological_start=True, end_is_biological_end=True)
+
+    sess.add_all([coding_feature, transcribed_feature])
     sess.commit()
     slh.make_all_handlers()
-    ti.set_status_downstream_border(new_coords=new_coord, is_plus_strand=False, template_feature=feature, status=status,
+    ti.set_status_downstream_border(new_coords=new_coord, is_plus_strand=False, template_feature=coding_feature,
+                                    old_piece=piece0, new_piece=piece1, old_coords=old_coor, trees={})
+    ti.set_status_downstream_border(new_coords=new_coord, is_plus_strand=False, template_feature=transcribed_feature,
                                     old_piece=piece0, new_piece=piece1, old_coords=old_coor, trees={})
     sess.commit()
 
-    assert len(piece0.features) == 3  # feature, 2x upstream
-    assert len(piece1.features) == 2  # 2x downstream
+    assert len(piece0.features) == 2
+    assert len(piece1.features) == 2
     assert set([x.type.value for x in piece0.features]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED}
-    assert set([x.bearing.value for x in piece0.features]) == {geenuff.types.START, geenuff.types.CLOSE_STATUS}
+    assert set([(x.start_is_biological_start, x.end_is_biological_end) for x in piece0.features]) == \
+        {(True, False)}
 
     assert set([x.type.value for x in piece1.features]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED}
-    assert set([x.bearing.value for x in piece1.features]) == {geenuff.types.OPEN_STATUS}
+    assert set([(x.start_is_biological_start, x.end_is_biological_end) for x in piece1.features]) == \
+        {(False, True)}
 
-    translated_up_status = [x for x in piece0.features if x.type.value == geenuff.types.CODING and
-                            x.bearing.value == geenuff.types.CLOSE_STATUS][0]
+    translated0 = [x for x in piece0.features if x.type.value == geenuff.types.CODING][0]
+    translated1 = [x for x in piece1.features if x.type.value == geenuff.types.CODING][0]
 
-    translated_down_status = [x for x in piece1.features if x.type.value == geenuff.types.TRANSCRIBED][0]
-
-    assert translated_up_status.position == 99
-    assert translated_down_status.position == 99
+    assert translated1.start == 99
+    assert translated0.end == 99
 
 
 def test_modify4slice():
@@ -493,10 +499,11 @@ def test_modify4slice():
     slh = controller.super_loci[0]
     transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
     slh.make_all_handlers()
+    genome = controller.get_one_annotated_genome()
     ti = slicer.TranscriptTrimmer(transcript=transcript.handler, super_locus=slh, sess=controller.session,
                                   core_queue=controller.core_queue)
-    new_coords = geenuff.orm.Coordinates(seqid='1', start=0, end=100)
-    newer_coords = geenuff.orm.Coordinates(seqid='1', start=100, end=200)
+    new_coords = geenuff.orm.Coordinate(genome=genome, seqid='1', start=0, end=100)
+    newer_coords = geenuff.orm.Coordinate(genome=genome, seqid='1', start=100, end=200)
     controller.session.add_all([new_coords, newer_coords])
     controller.session.commit()
     ti.modify4new_slice(new_coords=new_coords, is_plus_strand=True)
@@ -506,13 +513,14 @@ def test_modify4slice():
     for feature in transcript.transcribed_pieces[1].features:
         print('-- {} --\n'.format(feature))
     print(transcript.transcribed_pieces[1])
-    assert {len(transcript.transcribed_pieces[0].features), len(transcript.transcribed_pieces[1].features)} == {8, 4}
-    new_piece = [x for x in transcript.transcribed_pieces if len(x.features) == 4][0]
+    assert {len(transcript.transcribed_pieces[0].features), len(transcript.transcribed_pieces[1].features)} == {4, 2}
+    upstream_piece = [x for x in transcript.transcribed_pieces if len(x.features) == 2][0]
 
-    assert set([x.type.value for x in new_piece.features]) == {geenuff.types.TRANSCRIBED,
-                                                               geenuff.types.CODING}
+    assert set([x.type.value for x in upstream_piece.features]) == {geenuff.types.TRANSCRIBED,
+                                                                    geenuff.types.CODING}
 
-    assert set([x.bearing.value for x in new_piece.features]) == {geenuff.types.START, geenuff.types.CLOSE_STATUS}
+    assert set([(x.start_is_biological_start, x.end_is_biological_end) for x in upstream_piece.features]) == \
+        {(True, False)}
 
     print('starting second modify...')
     ti.modify4new_slice(new_coords=newer_coords, is_plus_strand=True)
@@ -520,15 +528,15 @@ def test_modify4slice():
     for piece in transcript.transcribed_pieces:
         print(piece)
         for f in piece.features:
-            print('::::', (f.type.value, f.bearing.value, f.position))
+            print('::::', (f.type.value, f.start_is_biological_start, f.end_is_biological_end, f.start, f.end))
 
     lengths = sorted([len(x.features) for x in transcript.transcribed_pieces])
-    assert lengths == [4, 4, 8]  # todo, why does this occasionally fail??
+    assert lengths == [2, 2, 4]
     last_piece = ti.sort_pieces()[-1]
     assert set([x.type.value for x in last_piece.features]) == {geenuff.types.TRANSCRIBED,
                                                                 geenuff.types.CODING}
-    assert set([x.bearing.value for x in last_piece.features]) == {geenuff.types.END,
-                                                                   geenuff.types.OPEN_STATUS}
+    assert set([(x.start_is_biological_start, x.end_is_biological_end) for x in last_piece.features]) == \
+        {(False, True)}
 
 
 def test_modify4slice_directions():
@@ -536,38 +544,30 @@ def test_modify4slice_directions():
 
     core_queue = slicer.CoreQueue(session=sess, engine=engine)
 
-    old_coor = geenuff.orm.Coordinates(seqid='a', start=1, end=1000)
-    # setup two transitions:
-    # 2) scribedlong - [[D<-,C<-],[->A,->B]] -> ABCD, -> two pieces forward, one backward
+    genome = geenuff.orm.Genome()
+    old_coor = geenuff.orm.Coordinate(genome=genome, seqid='a', start=1, end=1000)
+    # setup a transitions (where a transcript is split for technical reasons, e.g. mis assembly):
+    # 2) scribedlong - [[DC<-],[->AB]] -> ABCD, -> two pieces forward, one backward
     sl, slh = setup_data_handler(slicer.SuperLocusHandler, geenuff.orm.SuperLocus)
     scribedlong, scribedlongh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed,
                                                    super_locus=sl)
 
     tilong = slicer.TranscriptTrimmer(transcript=scribedlongh, super_locus=slh, sess=sess, core_queue=core_queue)
 
-    pieceAB = geenuff.orm.TranscribedPiece(super_locus=sl)
-    pieceCD = geenuff.orm.TranscribedPiece(super_locus=sl)
-    scribedlong.transcribed_pieces = [pieceAB, pieceCD]
+    pieceAB = geenuff.orm.TranscribedPiece(transcribed=scribedlong, position=0)
+    pieceCD = geenuff.orm.TranscribedPiece(transcribed=scribedlong, position=1)
 
-    fA = geenuff.orm.Feature(transcribed_pieces=[pieceAB], coordinates=old_coor, position=190, given_id='A',
-                             is_plus_strand=True, super_locus=sl, type=geenuff.types.TRANSCRIBED,
-                             bearing=geenuff.types.START)
-    fB = geenuff.orm.UpstreamFeature(transcribed_pieces=[pieceAB], coordinates=old_coor, position=210,
-                                     is_plus_strand=True, super_locus=sl, type=geenuff.types.TRANSCRIBED,
-                                     bearing=geenuff.types.CLOSE_STATUS, given_id='B')
+    fAB = geenuff.orm.Feature(transcribed_pieces=[pieceAB], coordinate=old_coor, start=190, end=210, given_id='AB',
+                              start_is_biological_start=True, end_is_biological_end=False,
+                              is_plus_strand=True, type=geenuff.types.TRANSCRIBED)
 
-    fC = geenuff.orm.DownstreamFeature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=110,
-                                       is_plus_strand=False, super_locus=sl, type=geenuff.types.TRANSCRIBED,
-                                       bearing=geenuff.types.OPEN_STATUS, given_id='C')
-    fD = geenuff.orm.Feature(transcribed_pieces=[pieceCD], coordinates=old_coor, position=90,
-                             is_plus_strand=False, super_locus=sl, type=geenuff.types.TRANSCRIBED,
-                             bearing=geenuff.types.END, given_id='D')
+    fCD = geenuff.orm.Feature(transcribed_pieces=[pieceCD], coordinate=old_coor, start=110, end=90,
+                              start_is_biological_start=False, end_is_biological_end=True,
+                              is_plus_strand=False, type=geenuff.types.TRANSCRIBED, given_id='CD')
 
-    pair = geenuff.orm.UpDownPair(upstream=fB, downstream=fC, transcribed=scribedlong)
-
-    half1_coords = geenuff.orm.Coordinates(seqid='a', start=1, end=200)
-    half2_coords = geenuff.orm.Coordinates(seqid='a', start=200, end=400)
-    sess.add_all([scribedlong, pieceAB, pieceCD, fA, fB, fC, fD, pair, old_coor, sl, half1_coords, half2_coords])
+    half1_coords = geenuff.orm.Coordinate(genome=genome, seqid='a', start=1, end=200)
+    half2_coords = geenuff.orm.Coordinate(genome=genome, seqid='a', start=200, end=400)
+    sess.add_all([scribedlong, pieceAB, pieceCD, fAB, fCD, old_coor, sl, half1_coords, half2_coords])
     sess.commit()
     slh.make_all_handlers()
 
@@ -580,11 +580,26 @@ def test_modify4slice_directions():
     core_queue.execute_so_far()
     for f in sess.query(geenuff.orm.Feature).all():
         assert len(f.transcribed_pieces) == 1
-    slice0 = fA.transcribed_pieces[0]
-    slice1 = fB.transcribed_pieces[0]
-    slice2 = fC.transcribed_pieces[0]
-    assert sorted([len(x.features) for x in tilong.transcript.data.transcribed_pieces]) == [2, 2, 2]
-    assert set(slice2.features) == {fC, fD}
+    slices = scribedlong.transcribed_pieces
+    slice0 = [x for x in slices if x.position == 0][0]
+    slice1 = [x for x in slices if x.position == 1][0]
+    slice2 = [x for x in slices if x.position == 2][0]
+    assert [len(x.features) for x in tilong.transcript.data.transcribed_pieces] == [1, 1, 1]
+    # expect slice 0: fAB, truncated
+    assert len(slice0.features) == 1
+    assert slice0.features[0] is fAB
+    assert fAB.end == 200
+    assert fAB.start_is_biological_start is True
+    assert fAB.end_is_biological_end is False
+    # expect slice1: new feature from fAB, second half
+    assert len(slice1.features) == 1
+    assert slice1.features[0].start == 200
+    assert slice1.features[0].end == 210  # old end of fAB
+    assert slice1.features[0].start_is_biological_start is False
+    assert slice1.features[0].end_is_biological_end is False  # was False for fAB as well
+    # expect slice2: same reverse piece as always, unchanged
+    assert slice2.features == [fCD]
+    assert slice2 is pieceCD
 
 
 class TransspliceDemoDataSlice(TransspliceDemoData):
@@ -609,32 +624,13 @@ class TransspliceDemoDataSlice(TransspliceDemoData):
                                                core_queue=self.core_queue)
 
 
-def test_piece_swap_handling_during_multipiece_one_coordinate_transition():
-    sess, engine = mk_session()
-    d = TransspliceDemoDataSlice(sess, engine)  # setup _d_ata
-    d.make_all_handlers()
-    # forward pass, same sequence, two pieces
-    ti_transitions = list(d.ti.transition_5p_to_3p_with_new_pieces())
-    pre_slice_swap = ti_transitions[4]
-    assert pre_slice_swap.example_feature is not None
-    post_slice_swap = ti_transitions[5]
-    pre_slice_swap.set_as_previous_of(post_slice_swap)
-    assert pre_slice_swap.example_feature is None
-    assert post_slice_swap.example_feature is not None
-    # two way pass, same sequence, two (one +, one -) piece
-    tiflip_transitions = list(d.tiflip.transition_5p_to_3p_with_new_pieces())
-    pre_slice_swap = tiflip_transitions[4]
-    assert pre_slice_swap.example_feature is not None
-    post_slice_swap = tiflip_transitions[5]
-    pre_slice_swap.set_as_previous_of(post_slice_swap)
-    assert pre_slice_swap.example_feature is None
-    assert post_slice_swap.example_feature is not None
-
-
 class SimplestDemoData(object):
-    def __init__(self, sess, engine):
+    def __init__(self, sess, engine, genome=None):
         self.core_queue = slicer.CoreQueue(session=sess, engine=engine)
-        self.genome = geenuff.orm.Genome()
+        if genome is None:
+            self.genome = geenuff.orm.Genome()
+        else:
+            self.genome = genome
         self.old_coor = geenuff.orm.Coordinate(seqid='a', start=0, end=1000, genome=self.genome)
         # setup 1 transition (encoding e.g. a transcript split across a miss assembled scaffold...):
         # 2) scribedlong - [[CD<-],[->AB]] -> ABCD, -> two transcribed pieces: one forward, one backward
@@ -679,14 +675,14 @@ def test_transition_unused_coordinates_detection():
     d.core_queue.execute_so_far()
     d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
     d.core_queue.execute_so_far()
-    assert d.pieceCD in d.sl.transcribed_pieces  # should now keep original at start
+    assert d.pieceCD in d.scribedlong.transcribed_pieces  # should now keep original at start
     assert d.pieceAB in d.scribedlong.transcribed_pieces
     # modify to coordinates across tiny slice, include those w/o original features, should work fine
     d = SimplestDemoData(sess, engine)
     new_coords_list = [geenuff.orm.Coordinate(genome=genome, seqid='a', start=185, end=195),
                        geenuff.orm.Coordinate(genome=genome, seqid='a', start=195, end=205),
                        geenuff.orm.Coordinate(genome=genome, seqid='a', start=205, end=215)]
-    print([x.id for x in d.tilong.transcript.data.transcribed_pieces])
+
     for new_coords in new_coords_list:
         sess.add(new_coords)
         sess.commit()
@@ -704,10 +700,9 @@ def test_transition_unused_coordinates_detection():
         print('\nstart mod for coords, - strand', new_coords)
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
         d.core_queue.execute_so_far()
-        for piece in d.tilong.transcript.data.transcribed_pieces:
-            print(piece, [(f.position, f.type, f.bearing) for f in piece.features])
+
     assert d.pieceCD in d.scribedlong.transcribed_pieces
-    assert d.pieceAB in d.sl.transcribed_pieces
+    assert d.pieceAB in d.scribedlong.transcribed_pieces
 
     # try and slice before coordinates, should raise error
     d = SimplestDemoData(sess, engine)
@@ -760,8 +755,8 @@ def test_modify4slice_transsplice():
     sess, engine = mk_session()
     d = TransspliceDemoDataSlice(sess, engine)  # setup _d_ata
     d.make_all_handlers()
-    new_coords_0 = geenuff.orm.Coordinates(seqid='a', start=0, end=915)
-    new_coords_1 = geenuff.orm.Coordinates(seqid='a', start=915, end=2000)
+    new_coords_0 = geenuff.orm.Coordinate(seqid='a', start=0, end=915, genome=d.genome)
+    new_coords_1 = geenuff.orm.Coordinate(seqid='a', start=915, end=2000, genome=d.genome)
     sess.add_all([new_coords_1, new_coords_0])
     sess.commit()
     d.ti.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
@@ -774,25 +769,22 @@ def test_modify4slice_transsplice():
     #    3: <3x status>-AcceptorTranssplice-stop-TTS (6 features)
     pieces = d.ti.transcript.data.transcribed_pieces
     assert len(pieces) == 3
-    assert d.pieceA2D in pieces  # ori piece should not have been replaced
+    assert d.pieceA2C in pieces  # ori piece should not have been replaced
     sorted_pieces = d.ti.sort_pieces()
 
-    assert [len(x.features) for x in sorted_pieces] == [6, 6, 6]
-    ftypes_0 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[0].features])
-    assert ftypes_0 == {(geenuff.types.TRANSCRIBED, geenuff.types.START),
-                        (geenuff.types.CODING, geenuff.types.START),
-                        (geenuff.types.TRANS_INTRON, geenuff.types.START),
-                        (geenuff.types.TRANSCRIBED, geenuff.types.END),
-                        (geenuff.types.CODING, geenuff.types.CLOSE_STATUS),
-                        (geenuff.types.TRANS_INTRON, geenuff.types.CLOSE_STATUS)}
+    assert [len(x.features) for x in sorted_pieces] == [3, 3, 3]
+    ftypes_0 = set([(x.type.value, x.start_is_biological_start, x.end_is_biological_end)
+                    for x in sorted_pieces[0].features])
+    assert ftypes_0 == {(geenuff.types.TRANSCRIBED, True, True),
+                        (geenuff.types.CODING, True, False),
+                        (geenuff.types.TRANS_INTRON, True, False)}
 
-    ftypes_2 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[2].features])
-    assert ftypes_2 == {(geenuff.types.CODING, geenuff.types.OPEN_STATUS),
-                        (geenuff.types.TRANSCRIBED, geenuff.types.OPEN_STATUS),
-                        (geenuff.types.TRANS_INTRON, geenuff.types.OPEN_STATUS),
-                        (geenuff.types.CODING, geenuff.types.END),
-                        (geenuff.types.TRANSCRIBED, geenuff.types.END),
-                        (geenuff.types.TRANS_INTRON, geenuff.types.END)}
+    ftypes_2 = set([(x.type.value, x.start_is_biological_start, x.end_is_biological_end)
+                    for x in sorted_pieces[2].features])
+    assert ftypes_2 == {(geenuff.types.CODING, False, True),
+                        (geenuff.types.TRANSCRIBED, False, True),
+                        (geenuff.types.TRANS_INTRON, False, True)}
+
     # and now where second original piece is flipped and slice is thus between STOP and TTS
     print('moving on to flipped...')
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
@@ -808,23 +800,21 @@ def test_modify4slice_transsplice():
     #    3: <1x status>-TTS (2 features)
     pieces = d.tiflip.transcript.data.transcribed_pieces
     assert len(pieces) == 3
-    assert d.pieceA2D not in pieces  # pieces themselves should have been replaced
+    assert d.pieceA2C_prime in pieces
     sorted_pieces = d.tiflip.sort_pieces()
 
-    assert [len(x.features) for x in sorted_pieces] == [6, 6, 2]
-    ftypes_0 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[0].features])
-    assert ftypes_0 == {(geenuff.types.TRANSCRIBED, geenuff.types.START),
-                        (geenuff.types.CODING, geenuff.types.START),
-                        (geenuff.types.TRANS_INTRON, geenuff.types.START),
-                        (geenuff.types.TRANSCRIBED, geenuff.types.END),
-                        (geenuff.types.TRANS_INTRON, geenuff.types.CLOSE_STATUS),
-                        (geenuff.types.CODING, geenuff.types.CLOSE_STATUS)}
-    ftypes_2 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[2].features])
-    assert ftypes_2 == {(geenuff.types.TRANSCRIBED, geenuff.types.OPEN_STATUS),
-                        (geenuff.types.TRANSCRIBED, geenuff.types.END)}
+    assert [len(x.features) for x in sorted_pieces] == [3, 3, 1]
+    ftypes_0 = set([(x.type.value, x.start_is_biological_start, x.end_is_biological_end)
+                    for x in sorted_pieces[0].features])
+    assert ftypes_0 == {(geenuff.types.TRANSCRIBED, True, True),
+                        (geenuff.types.CODING, True, False),
+                        (geenuff.types.TRANS_INTRON, True, False)}
+    ftypes_2 = set([(x.type.value, x.start_is_biological_start, x.end_is_biological_end)
+                    for x in sorted_pieces[2].features])
+    assert ftypes_2 == {(geenuff.types.TRANSCRIBED, False, True)}
     for piece in sorted_pieces:
         for f in piece.features:
-            assert f.coordinates in {new_coords_1, new_coords_0}
+            assert f.coordinate in {new_coords_1, new_coords_0}
 
 
 def test_modify4slice_2nd_half_first():
@@ -879,7 +869,7 @@ def test_slicing_multi_sl():
     slh = controller.super_loci[0]
     slh.make_all_handlers()
     # setup more
-    more = SimplestDemoData(controller.session, controller.engine)
+    more = SimplestDemoData(controller.session, controller.engine, genome=controller.get_one_annotated_genome())
     controller.super_loci.append(more.slh)
     more.old_coor.seqid = '1'  # so it matches std dummyloci
     controller.session.commit()
@@ -891,31 +881,29 @@ def test_slicing_multi_sl():
 def test_slicing_featureless_slice_inside_locus():
     controller = construct_slice_controller()
     controller.fill_intervaltrees()
-    ag = controller.get_one_annotated_genome()
+    genome = controller.get_one_annotated_genome()
     slh = controller.super_loci[0]
     transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
     slices = (('1', 0, 40, '0-40'),
               ('1', 40, 80, '40-80'),
               ('1', 80, 120, '80-120'))
     slices = iter(slices)
-    controller._slice_annotations_1way(slices, annotated_genome=ag, is_plus_strand=True)
-    # todo, this is failing due coordinates issues. The status is closed for coding,transcribed prior to the
-    #   end of exon/cds at same time error, and then we hit the slice, and then we open the error. AKA, no status
-    #   at end of slice. Fix coordinates, get back to this.
+    controller._slice_annotations_1way(slices, genome=genome, is_plus_strand=True)
+
     for piece in transcript.transcribed_pieces:
         print('got piece: {}\n-----------\n'.format(piece))
         for feature in piece.features:
             print('    {}'.format(feature))
-    coordinate40 = controller.session.query(geenuff.orm.Coordinates).filter(
-        geenuff.orm.Coordinates.start == 40
+    coordinate40 = controller.session.query(geenuff.orm.Coordinate).filter(
+        geenuff.orm.Coordinate.start == 40
     ).first()
     features40 = coordinate40.features
     print(features40)
 
     # x & y -> 2 translated, 2 transcribed each, z -> 2 error
-    assert len([x for x in features40 if x.type.value == geenuff.types.CODING]) == 4
-    assert len([x for x in features40 if x.type.value == geenuff.types.TRANSCRIBED]) == 4
-    assert len(features40) == 10
+    assert len([x for x in features40 if x.type.value == geenuff.types.CODING]) == 2
+    assert len([x for x in features40 if x.type.value == geenuff.types.TRANSCRIBED]) == 2
+    assert len(features40) == 5
     assert set([x.type.value for x in features40]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED,
                                                        geenuff.types.ERROR}
 
@@ -945,11 +933,11 @@ def test_reslice_at_same_spot():
     slices = (('1', 0, 100, 'x01'), )
     controller._slice_annotations_1way(iter(slices), controller.get_one_annotated_genome(), is_plus_strand=True)
     controller.session.commit()
-    old_len = len(controller.session.query(geenuff.orm.UpDownPair).all())
+    old_len = len(controller.session.query(geenuff.orm.TranscribedPiece).all())
     print('used to be {} linkages'.format(old_len))
     controller._slice_annotations_1way(iter(slices), controller.get_one_annotated_genome(), is_plus_strand=True)
     controller.session.commit()
-    assert old_len == len(controller.session.query(geenuff.orm.UpDownPair).all())
+    assert old_len == len(controller.session.query(geenuff.orm.TranscribedPiece).all())
 
 
 #### numerify ####
