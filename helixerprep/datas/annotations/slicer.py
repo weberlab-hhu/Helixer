@@ -255,18 +255,16 @@ class TranscribedPieceHandler(geenuff.api.TranscribedPieceHandlerBase):
 
 # todo, there is probably a nicer way to accomplish the following with multi inheritance...
 # todo, order py_start / py_end from start/end
-def load_to_intervaltree(obj, trees):
-    seqid = obj.data.coordinates.seqid
-    if seqid not in trees:
-        trees[seqid] = intervaltree.IntervalTree()
-    tree = trees[seqid]
-    py_start = obj.data.position
-    tree[py_start:(py_start + 1)] = obj
-
-
 class FeatureHandler(geenuff.api.FeatureHandlerBase):
     def load_to_intervaltree(self, trees):
-        load_to_intervaltree(self, trees)
+        seqid = self.data.coordinate.seqid
+        if seqid not in trees:
+            trees[seqid] = intervaltree.IntervalTree()
+        tree = trees[seqid]
+        py_start, py_end = self.data.start, self.data.end
+        if not self.data.is_plus_strand:
+            py_start, py_end = py_end + 1, py_start + 1  # todo, clean up w/ similar redundant code elsewhere
+        tree[py_start:py_end] = self
 
 
 class FeatureVsCoords(object):
@@ -459,16 +457,11 @@ class TranscriptTrimmer(TranscriptInterpBase):
         pass
 
     @staticmethod
-    def swap_piece(feature_handler, new_piece, old_piece):
-        try:
-            feature_handler.de_link(old_piece.handler)
-        except ValueError as e:
-            coords_old = [x.coordinates for x in old_piece.features]
-            coords_new = [x.coordinates for x in new_piece.features]
-            print('trying to swap feature: {}\n  from: {} (coords: {})\n  to: {} (coords: {})'.format(
-                feature_handler.data, old_piece, set(coords_old), new_piece, set(coords_new)))
-            raise e
-        feature_handler.link_to(new_piece.handler)
+    def swap_list_item(template_list, replacement_item, item_to_remove):
+        template_list = copy.copy(template_list)
+        i = template_list.index(item_to_remove)
+        template_list[i] = replacement_item
+        return template_list
 
     def set_status_downstream_border(self, new_coords, old_coords, is_plus_strand, template_feature, new_piece,
                                      old_piece, trees):
@@ -480,16 +473,20 @@ class TranscriptTrimmer(TranscriptInterpBase):
         assert old_piece in template_feature.transcribed_pieces, "old id: ({}) not in feature {}'s pieces: {}".format(
             old_piece.id, template_feature.id, template_feature.transcribed_pieces)
 
-        downstream = self.new_handled_data(template_feature, geenuff.orm.Feature, start=down_at,
+        downstream_pieces = self.swap_list_item(template_list=template_feature.transcribed_pieces,
+                                                replacement_item=new_piece, item_to_remove=old_piece)
+
+        # downstream feature setup to mark the 2nd half of the template feature outside of the new coordinates
+        downstream = self.new_handled_data(template_feature, geenuff.orm.Feature, id=None, start=down_at,
                                            given_id=None, coordinate=old_coords,
-                                           start_is_biological_start=False)
+                                           start_is_biological_start=False,
+                                           transcribed_pieces=downstream_pieces)
         downstream.load_to_intervaltree(trees)
 
+        # template feature is truncated until it's contained in the new coordiantes
         template_feature.end = down_at
         template_feature.end_is_biological_end = False
-
-        # swap the new downstream feature to have new piece (which will be shared with further downstream features)
-        self.swap_piece(feature_handler=downstream, new_piece=new_piece, old_piece=old_piece)
+        template_feature.coordinate = new_coords
 
         self.session.add_all([downstream.data])
         self.session.commit()  # todo, figure out what the real rules are for committing, bc slower, but less buggy?

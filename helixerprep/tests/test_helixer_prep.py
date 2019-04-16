@@ -839,34 +839,36 @@ def test_modify4slice_2nd_half_first():
     sess.commit()
     d.tiflip.modify4new_slice(new_coords=new_coords_1, is_plus_strand=False)
     d.core_queue.execute_so_far()
+    for piece in d.scribedflip.transcribed_pieces:
+        print(">>> {}".format(piece))
+        for feature in piece.features:
+            print('     {}'.format(feature))
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=False)
     d.core_queue.execute_so_far()
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
     d.core_queue.execute_so_far()
-    # we expect 3 new pieces,
-    #    1: TSS-start-DonorTranssplice-TTS via <2x status> to (6 features)
-    #    2: <2x status>-TSS-AcceptorTranssplice-stop via <1x status> to (6 features)
-    #    3: <1x status>-TTS (2 features)
+    # we expect to now have 3 pieces,
+    #    1: TSS-start-DonorTranssplice-TTS via <2x status> to (3 features)
+    #    2: <2x status>-TSS-AcceptorTranssplice-stop via <1x status> to (3 features)
+    #    3: <1x status>-TTS (1 feature)
     pieces = d.tiflip.transcript.data.transcribed_pieces
     assert len(pieces) == 3
-    assert d.pieceA2D not in pieces  # pieces themselves should have been replaced
+    assert d.pieceA2C_prime in pieces  # old pieces should be retained
     sorted_pieces = d.tiflip.sort_pieces()
 
-    assert [len(x.features) for x in sorted_pieces] == [6, 6, 2]
-    ftypes_0 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[0].features])
-    assert ftypes_0 == {(geenuff.types.TRANSCRIBED, geenuff.types.START),
-                        (geenuff.types.CODING, geenuff.types.START),
-                        (geenuff.types.TRANS_INTRON, geenuff.types.START),
-                        (geenuff.types.TRANSCRIBED, geenuff.types.END),
-                        (geenuff.types.TRANS_INTRON, geenuff.types.CLOSE_STATUS),
-                        (geenuff.types.CODING, geenuff.types.CLOSE_STATUS)}
-    ftypes_2 = set([(x.type.value, x.bearing.value) for x in sorted_pieces[2].features])
-    assert ftypes_2 == {(geenuff.types.TRANSCRIBED, geenuff.types.OPEN_STATUS),
-                        (geenuff.types.TRANSCRIBED, geenuff.types.END)}
+    assert [len(x.features) for x in sorted_pieces] == [3, 3, 1]
+    ftypes_0 = set([(x.type.value, x.start_is_biological_start, x.end_is_biological_end)
+                    for x in sorted_pieces[0].features])
+    assert ftypes_0 == {(geenuff.types.TRANSCRIBED, True, True),
+                        (geenuff.types.CODING, True, False),
+                        (geenuff.types.TRANS_INTRON, True, False)}
+    ftypes_2 = [(x.type.value, x.start_is_biological_start, x.end_is_biological_end)
+                    for x in sorted_pieces[2].features][0]
+    assert ftypes_2 == (geenuff.types.TRANSCRIBED, False, True)
 
     for piece in sorted_pieces:
         for f in piece.features:
-            assert f.coordinates in {new_coords_1, new_coords_0}
+            assert f.coordinate in {new_coords_1, new_coords_0}
 
 
 def test_slicing_multi_sl():
