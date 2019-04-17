@@ -247,9 +247,9 @@ class SuperLocusHandler(geenuff.api.SuperLocusHandlerBase):
                         # ignore all features on the opposite strand
                         if is_plus_strand == feature.is_plus_strand:
                             if is_plus_strand:
-                                assert not (new_coords.start <= feature.position <= new_coords.end)
+                                assert not (new_coords.start <= feature.start <= new_coords.end)
                             else:
-                                assert not (new_coords.start - 1 <= feature.position <= new_coords.end - 1)
+                                assert not (new_coords.start - 1 <= feature.start <= new_coords.end - 1)
 
 
 # todo, switch back to simple import if not changing...
@@ -276,7 +276,11 @@ class FeatureHandler(geenuff.api.FeatureHandlerBase):
         py_start, py_end = self.data.start, self.data.end
         if not self.data.is_plus_strand:
             py_start, py_end = py_end + 1, py_start + 1  # todo, clean up w/ similar redundant code elsewhere
-        tree[py_start:py_end] = self
+        try:
+            tree[py_start:py_end] = self
+        except ValueError as e:
+            print('negative interval for: {}'.format(self.data))
+            raise e
 
 
 class FeatureVsCoords(object):
