@@ -41,6 +41,8 @@ def construct_slice_controller(source=DUMMYLOCI_DB, dest=TMP_DB, sequences_path=
 ### preparation ###
 @pytest.fixture(scope="session", autouse=True)
 def setup_dummy_db(request):
+    if not os.getcwd().endswith('HelixerPrep/helixerprep'):
+        pytest.exit('Tests need to be run from HelixerPrep/helixerprep directory')
     if os.path.exists(DUMMYLOCI_DB):
         os.remove(DUMMYLOCI_DB)
     sl, controller = setup_testable_super_locus('sqlite:///' + DUMMYLOCI_DB)
@@ -311,9 +313,9 @@ def test_copy_n_import():
         piece = transcribed.transcribed_pieces[0]
         for feature in piece.features:
             all_features.append(feature)
-        print('{}: {}'.format(transcribed.given_id, [x.type.value for x in piece.features]))
+        print('{}: {}'.format(transcribed.given_name, [x.type.value for x in piece.features]))
     for translated in sl.translateds:
-        print('{}: {}'.format(translated.given_id, [x.type.value for x in translated.features]))
+        print('{}: {}'.format(translated.given_name, [x.type.value for x in translated.features]))
 
     assert len(all_features) == 12  # if I ever get to collapsing redundant features this will change
 
@@ -360,7 +362,7 @@ def test_intervaltree():
 def test_order_features():
     controller = construct_slice_controller()
     sl = controller.super_loci[0]
-    transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
+    transcript = [x for x in sl.data.transcribeds if x.given_name == 'y'][0]
     transcripth = slicer.TranscribedHandler()
     transcripth.add_data(transcript)
     ti = slicer.TranscriptTrimmer(transcripth, super_locus=None, sess=controller.session,
@@ -388,7 +390,7 @@ def test_order_features():
 def test_slicer_transition():
     controller = construct_slice_controller()
     sl = controller.super_loci[0]
-    transcript = [x for x in sl.data.transcribeds if x.given_id == 'y'][0]
+    transcript = [x for x in sl.data.transcribeds if x.given_name == 'y'][0]
     transcripth = slicer.TranscribedHandler()
     transcripth.add_data(transcript)
     ti = slicer.TranscriptTrimmer(transcript=transcripth, super_locus=None, sess=controller.session,
@@ -497,7 +499,7 @@ def test_split_features_downstream_border():
 def test_modify4slice():
     controller = construct_slice_controller()
     slh = controller.super_loci[0]
-    transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
+    transcript = [x for x in slh.data.transcribeds if x.given_name == 'y'][0]
     slh.make_all_handlers()
     genome = controller.get_one_annotated_genome()
     ti = slicer.TranscriptTrimmer(transcript=transcript.handler, super_locus=slh, sess=controller.session,
@@ -532,7 +534,7 @@ def test_modify4slice():
 
     lengths = sorted([len(x.features) for x in transcript.transcribed_pieces])
     assert lengths == [2, 2, 4]
-    last_piece = ti.sort_pieces()[-1]
+    last_piece = ti.sorted_pieces()[-1]
     assert set([x.type.value for x in last_piece.features]) == {geenuff.types.TRANSCRIBED,
                                                                 geenuff.types.CODING}
     assert set([(x.start_is_biological_start, x.end_is_biological_end) for x in last_piece.features]) == \
@@ -557,13 +559,13 @@ def test_modify4slice_directions():
     pieceAB = geenuff.orm.TranscribedPiece(transcribed=scribedlong, position=0)
     pieceCD = geenuff.orm.TranscribedPiece(transcribed=scribedlong, position=1)
 
-    fAB = geenuff.orm.Feature(transcribed_pieces=[pieceAB], coordinate=old_coor, start=190, end=210, given_id='AB',
+    fAB = geenuff.orm.Feature(transcribed_pieces=[pieceAB], coordinate=old_coor, start=190, end=210, given_name='AB',
                               start_is_biological_start=True, end_is_biological_end=False,
                               is_plus_strand=True, type=geenuff.types.TRANSCRIBED)
 
     fCD = geenuff.orm.Feature(transcribed_pieces=[pieceCD], coordinate=old_coor, start=110, end=90,
                               start_is_biological_start=False, end_is_biological_end=True,
-                              is_plus_strand=False, type=geenuff.types.TRANSCRIBED, given_id='CD')
+                              is_plus_strand=False, type=geenuff.types.TRANSCRIBED, given_name='CD')
 
     half1_coords = geenuff.orm.Coordinate(genome=genome, seqid='a', start=1, end=200)
     half2_coords = geenuff.orm.Coordinate(genome=genome, seqid='a', start=200, end=400)
@@ -647,12 +649,12 @@ class SimplestDemoData(object):
 
         self.fAB = geenuff.orm.Feature(transcribed_pieces=[self.pieceAB], coordinate=self.old_coor, start=190, end=210,
                                        start_is_biological_start=True, end_is_biological_end=False,
-                                       given_id='AB', is_plus_strand=True, type=geenuff.types.TRANSCRIBED)
+                                       given_name='AB', is_plus_strand=True, type=geenuff.types.TRANSCRIBED)
 
         self.fCD = geenuff.orm.Feature(transcribed_pieces=[self.pieceCD], coordinate=self.old_coor,
                                        is_plus_strand=False, start=110, end=90,
                                        start_is_biological_start=False, end_is_biological_end=True,
-                                       type=geenuff.types.TRANSCRIBED, given_id='CD')
+                                       type=geenuff.types.TRANSCRIBED, given_name='CD')
 
         self.pieceAB.features.append(self.fAB)
         self.pieceCD.features.append(self.fCD)
@@ -770,7 +772,7 @@ def test_modify4slice_transsplice():
     pieces = d.ti.transcript.data.transcribed_pieces
     assert len(pieces) == 3
     assert d.pieceA2C in pieces  # ori piece should not have been replaced
-    sorted_pieces = d.ti.sort_pieces()
+    sorted_pieces = d.ti.sorted_pieces()
 
     assert [len(x.features) for x in sorted_pieces] == [3, 3, 3]
     ftypes_0 = set([(x.type.value, x.start_is_biological_start, x.end_is_biological_end)
@@ -801,7 +803,7 @@ def test_modify4slice_transsplice():
     pieces = d.tiflip.transcript.data.transcribed_pieces
     assert len(pieces) == 3
     assert d.pieceA2C_prime in pieces
-    sorted_pieces = d.tiflip.sort_pieces()
+    sorted_pieces = d.tiflip.sorted_pieces()
 
     assert [len(x.features) for x in sorted_pieces] == [3, 3, 1]
     ftypes_0 = set([(x.type.value, x.start_is_biological_start, x.end_is_biological_end)
@@ -844,7 +846,7 @@ def test_modify4slice_2nd_half_first():
     pieces = d.tiflip.transcript.data.transcribed_pieces
     assert len(pieces) == 3
     assert d.pieceA2C_prime in pieces  # old pieces should be retained
-    sorted_pieces = d.tiflip.sort_pieces()
+    sorted_pieces = d.tiflip.sorted_pieces()
 
     assert [len(x.features) for x in sorted_pieces] == [3, 3, 1]
     ftypes_0 = set([(x.type.value, x.start_is_biological_start, x.end_is_biological_end)
@@ -883,7 +885,7 @@ def test_slicing_featureless_slice_inside_locus():
     controller.fill_intervaltrees()
     genome = controller.get_one_annotated_genome()
     slh = controller.super_loci[0]
-    transcript = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
+    transcript = [x for x in slh.data.transcribeds if x.given_name == 'y'][0]
     slices = (('1', 0, 40, '0-40'),
               ('1', 40, 80, '40-80'),
               ('1', 80, 120, '80-120'))
@@ -923,8 +925,8 @@ def test_reslice_at_same_spot():
 
     slh = controller.super_loci[0]
     # simplify
-    transcripty = [x for x in slh.data.transcribeds if x.given_id == 'y'][0]
-    transcriptz = [x for x in slh.data.transcribeds if x.given_id == 'z'][0]
+    transcripty = [x for x in slh.data.transcribeds if x.given_name == 'y'][0]
+    transcriptz = [x for x in slh.data.transcribeds if x.given_name == 'z'][0]
     rm_transcript_and_children(transcripty, controller.session)
     rm_transcript_and_children(transcriptz, controller.session)
     # slice
@@ -976,8 +978,8 @@ def test_base_level_annotation_numerify():
         numerifier.slice_to_matrix()
 
     # simplify
-    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'x').first()
-    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'z').first()
+    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'x').first()
+    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
 
@@ -1001,8 +1003,8 @@ def test_transition_annotation_numerify():
     with pytest.raises(numerify.DataInterpretationError):
         numerifier.slice_to_matrix()
 
-    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'x').first()
-    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'z').first()
+    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'x').first()
+    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
 
@@ -1020,8 +1022,8 @@ def test_transition_annotation_numerify():
 
 def test_numerify_from_gr0():
     sess, controller, coordinate_handler = setup4numerify()
-    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'x').first()
-    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'z').first()
+    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'x').first()
+    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
 
@@ -1127,8 +1129,8 @@ def test_live_slicing():
 
 def test_example_gen():
     sess, controller, anno_slice = setup4numerify()
-    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'x').first()
-    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_id == 'z').first()
+    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'x').first()
+    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
 

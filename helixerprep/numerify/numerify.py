@@ -4,6 +4,7 @@ import numpy as np
 import copy
 
 import geenuff
+from geenuff.base.transcript_interp import TranscriptInterpBase
 from helixerprep.datas.annotations import slicer
 from ..core import partitions
 from ..datas import sequences
@@ -143,10 +144,10 @@ class AnnotationNumerifier(Numerifier, AnnotationFoo):
 
     def transcribeds_with_handlers(self):
         for piece in self.transcribed_pieces:
-            transcribed_handler = geenuff.api.TranscribedHandlerBase()
+            transcribed_handler = geenuff.handlers.TranscribedHandlerBase()
             transcribed_handler.add_data(piece.transcribed)
 
-            super_locus_handler = geenuff.api.SuperLocusHandlerBase()
+            super_locus_handler = geenuff.handlers.SuperLocusHandlerBase()
             super_locus_handler.add_data(piece.transcribed.super_locus)
             yield piece, transcribed_handler, super_locus_handler
 
@@ -196,7 +197,7 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
             matrix[start:end, i_col] = 1
 
     def col_fns(self, transcript_interpreter):
-        assert isinstance(transcript_interpreter, geenuff.api.TranscriptInterpBase)
+        assert isinstance(transcript_interpreter, TranscriptInterpBase)
         return [(0, transcript_interpreter.transcribed_ranges),
                 (1, transcript_interpreter.translated_ranges),
                 (2, transcript_interpreter.intronic_ranges)]
@@ -205,7 +206,6 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
 class TransitionAnnotationNumerifier(AnnotationNumerifier):
     def __init__(self, data_slice, is_plus_strand):
         super().__init__(data_slice, [12], is_plus_strand=is_plus_strand)
-
     def update_matrix(self, matrix, transcribed_piece, transcript_interpreter):
         transcript_interpreter.check_no_errors(transcribed_piece)
 
@@ -221,7 +221,7 @@ class TransitionAnnotationNumerifier(AnnotationNumerifier):
             matrix[position, i_col] = 1
 
     def col_transitions(self, transcript_interpreter):
-        assert isinstance(transcript_interpreter, geenuff.api.TranscriptInterpBase)
+        assert isinstance(transcript_interpreter, TranscriptInterpBase)
         #                transcribed, coding, intron, trans_intron
         # real start     0            4       8       8
         # open status    1            5       9       9
@@ -292,7 +292,7 @@ class TransitionAnnotationNumerifier(AnnotationNumerifier):
 #        return any([x.type.value == geenuff.types.ERROR for x in self.features])
 
 
-class TranscriptLocalReader(geenuff.api.TranscriptInterpBase):
+class TranscriptLocalReader(TranscriptInterpBase):
 
     @staticmethod  # todo, rather move to Handler?
     def coordinate_id_from_piece(piece):
@@ -310,7 +310,7 @@ class TranscriptLocalReader(geenuff.api.TranscriptInterpBase):
 
     @staticmethod
     def filter_to_piece(piece, transcript_coordinates):
-        # where transcript_coordinates should be a list of geenuff.api.TranscriptCoordinate instances
+        # where transcript_coordinates should be a list of TranscriptCoordinate instances
         for item in transcript_coordinates:
             if item.piece_position == piece.position:
                 yield item

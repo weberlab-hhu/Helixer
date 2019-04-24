@@ -1,5 +1,8 @@
 # Project specific
 tmp/*
+helixerprep/testdata/dummyloci.sequence.sliced.json
+helixerprep/testdata/dummyloci_annotations.sqlitedb
+helixerprep/testdata/tmp.db
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

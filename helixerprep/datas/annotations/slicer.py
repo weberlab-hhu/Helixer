@@ -14,7 +14,7 @@ from sqlalchemy.sql.expression import bindparam
 import os
 from helixerprep.datas import sequences
 #from annotations import TranscriptInterpBase
-TranscriptInterpBase = geenuff.api.TranscriptInterpBase
+TranscriptInterpBase = geenuff.transcript_interp.TranscriptInterpBase
 
 
 class CoreQueue(object):
@@ -167,7 +167,7 @@ class SliceController(object):
         pass
 
 
-class HandleMaker(geenuff.api.HandleMaker):
+class HandleMaker(geenuff.handlers.HandleMaker):
     # redefine to get handlers from slicer, here
     def _get_handler_type(self, old_data):
         key = [(SuperLocusHandler, geenuff.orm.SuperLocus),
@@ -180,7 +180,7 @@ class HandleMaker(geenuff.api.HandleMaker):
 
 
 # todo, check everything moved successfully from seq info...
-class CoordinateHandler(geenuff.api.CoordinateHandlerBase):
+class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
     def processing_set(self, sess):
         return sess.query(
             slice_dbmods.CoordinateSet
@@ -205,7 +205,7 @@ class CoordinateHandler(geenuff.api.CoordinateHandlerBase):
         sess.commit()
 
 
-class SuperLocusHandler(geenuff.api.SuperLocusHandlerBase):
+class SuperLocusHandler(geenuff.handlers.SuperLocusHandlerBase):
     def __init__(self):
         super().__init__()
         self.handler_holder = HandleMaker(self)
@@ -253,21 +253,21 @@ class SuperLocusHandler(geenuff.api.SuperLocusHandlerBase):
 
 
 # todo, switch back to simple import if not changing...
-class TranscribedHandler(geenuff.api.TranscribedHandlerBase):
+class TranscribedHandler(geenuff.handlers.TranscribedHandlerBase):
     pass
 
 
-class TranslatedHandler(geenuff.api.TranslatedHandlerBase):
+class TranslatedHandler(geenuff.handlers.TranslatedHandlerBase):
     pass
 
 
-class TranscribedPieceHandler(geenuff.api.TranscribedPieceHandlerBase):
+class TranscribedPieceHandler(geenuff.handlers.TranscribedPieceHandlerBase):
     pass
 
 
 # todo, there is probably a nicer way to accomplish the following with multi inheritance...
 # todo, order py_start / py_end from start/end
-class FeatureHandler(geenuff.api.FeatureHandlerBase):
+class FeatureHandler(geenuff.handlers.FeatureHandlerBase):
     def load_to_intervaltree(self, trees):
         seqid = self.data.coordinate.seqid
         if seqid not in trees:
@@ -376,7 +376,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         data = new_type()
         handler = self.transcript.data.super_locus.handler.handler_holder.mk_n_append_handler(data)
         if template is not None:
-            template_dict = geenuff.api.db_attr_as_dict(template)
+            template_dict = geenuff.helpers.db_attr_as_dict(template)
         else:
             template_dict = {}
 
@@ -405,7 +405,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
         # todo, this should be done in batch w/ a coordinate filter; not transcript by transcript...
         if trees is None:
             trees = {}
-        logging.debug('mod4slice, transcribed: {}, {}'.format(self.transcript.data.id, self.transcript.data.given_id))
+        logging.debug('mod4slice, transcribed: {}, {}'.format(self.transcript.data.id, self.transcript.data.given_name))
         seen_one_overlap = False
         transition_gen = list(self.transition_5p_to_3p())
         piece_at_border = None
@@ -496,7 +496,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
 
         # downstream feature setup to mark the 2nd half of the template feature outside of the new coordinates
         downstream = self.new_handled_data(template_feature, geenuff.orm.Feature, id=None, start=down_at,
-                                           given_id=None, coordinate=old_coords,
+                                           given_name=None, coordinate=old_coords,
                                            start_is_biological_start=False,
                                            transcribed_pieces=downstream_pieces)
         downstream.load_to_intervaltree(trees)
