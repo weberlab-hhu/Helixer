@@ -210,12 +210,6 @@ class MerCounter(object):
         # most recent base pairs of up to length k
         self.sliding_mer = []
 
-    def add_mer(self, mer):
-        try:
-            self.counts[mer] += 1
-        except KeyError:
-            self.counts[MerCounter.amb] += 1
-
     def export(self):
         out = copy.deepcopy(self.counts)
         for key in self.counts:
@@ -228,13 +222,12 @@ class MerCounter(object):
         return out
 
     def add_sequence(self, sequence):
-        for mer in gen_mers(sequence, self.k):
-            self.add_mer(mer)
-
-
-def gen_mers(sequence, k):
-    for i in range(len(sequence) - k + 1):
-        yield sequence[i:(i+k)]
+        for i in range(len(sequence) -  self.k + 1):
+            mer = sequence[i:i+self.k]
+            try:
+                self.counts[mer] += 1
+            except KeyError:
+                self.counts[MerCounter.amb] += 1
 
 
 def reverse_complement(seq):

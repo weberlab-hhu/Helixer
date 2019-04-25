@@ -1,5 +1,6 @@
 # Project specific
 tmp/*
+*.prf
 helixerprep/testdata/dummyloci.sequence.sliced.json
 helixerprep/testdata/dummyloci_annotations.sqlitedb
 helixerprep/testdata/tmp.db
