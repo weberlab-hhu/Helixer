@@ -52,40 +52,71 @@ def mk_memory_session(db_path='sqlite:///:memory:'):
 
 ### sequences ###
 # testing: counting kmers
-def test_gen_mers():
-    seq = 'atatat'
-    # expect (at x 3) and  (ta x 2)
-    mers = list(sequences.gen_mers(seq, 2))
-    assert len(mers) == 5
-    assert mers[-1] == 'at'
-    # expect just 2, w and w/o first/last
-    mers = list(sequences.gen_mers(seq, 5))
-    assert len(mers) == 2
-    assert mers[-1] == 'tatat'
-
-
 def test_count2mers():
-    mc = sequences.MerCounter(2)
-    mers = ['aa', 'aa', 'aa']
-    for mer in mers:
-        mc.add_mer(mer)
+    mc = helpers.MerCounter(2)
+    sequence = 'AAAA'
+    mc.add_sequence(sequence)
     counted = mc.export()
-    assert counted['aa'] == 3
+    print(counted)
+    assert counted['AA'] == 3
 
-    rc_mers = ['tt', 'tt']
-    for mer in rc_mers:
-        mc.add_mer(mer)
+    sequence = 'TTT'
+    mc.add_sequence(sequence)
     counted = mc.export()
-    assert counted['aa'] == 5
+    assert counted['AA'] == 5
 
-    mc2 = sequences.MerCounter(2)
-    seq = 'aaattt'
+    mc2 = helpers.MerCounter(2)
+    seq = 'AAATTT'
     mc2.add_sequence(seq)
     counted = mc2.export()
     non0 = [x for x in counted if counted[x] > 0]
     assert len(non0) == 2
-    assert counted['aa'] == 4
-    assert counted['at'] == 1
+    assert counted['AA'] == 4
+    assert counted['AT'] == 1
+
+
+def test_count_range_of_mers():
+    seq = 'atatat'
+
+    coordinate_handler = slicer.CoordinateHandler()
+    genome = geenuff.orm.Genome()
+    coordinate = geenuff.orm.Coordinate(genome=genome, start=0, end=6, sequence=seq)
+    coordinate_handler.add_data(coordinate)
+
+    all_mer_counters = coordinate_handler.count_mers(1, 6)
+
+    assert len(all_mer_counters) == 6
+
+    # make sure total counts for any mer length, k, equal seq_length - k + 1
+    for i in range(len(all_mer_counters)):
+        counted = all_mer_counters[i].export()
+        assert sum(counted.values()) == 6 - i
+
+    # counting 1-mers, expect 6 x 'A'
+    counted = all_mer_counters[0].export()
+    assert counted['A'] == 6
+
+    # counting 2-mers, expect (3, 'AT'; 2 'TA')
+    counted = all_mer_counters[1].export()
+    assert counted['AT'] == 3
+    assert counted['TA'] == 2
+
+    # counting 3-mers, expect (4, 'ATA')
+    counted = all_mer_counters[2].export()
+    assert counted['ATA'] == 4
+
+    # counting 4-mers, expect (2, 'ATAT'; 1, 'TATA')
+    counted = all_mer_counters[3].export()
+    assert counted['ATAT'] == 2
+    assert counted['TATA'] == 1
+
+    # counting 5-mers, expect (2, 'ATATA')
+    counted = all_mer_counters[4].export()
+    assert counted['ATATA'] == 2
+
+    # counting 6-mer, expect original sequence, uppercase
+    counted = all_mer_counters[5].export()
+    assert counted['ATATAT'] == 1
 
 
 def test_sequence_slicing():

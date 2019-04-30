@@ -206,27 +206,31 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
         sess.add(current)
         sess.commit()
 
-    def add_mer_counts(self, min_k, max_k):
-        session = self.controller.session
+    def count_mers(self, min_k, max_k):
         mer_counters = []
         # setup all counters
         for k in range(min_k, max_k + 1):
             mer_counters.append(MerCounter(k))
 
         # count all 'mers
-        for bp in self.data.sequence:
+        for bp in self.data.sequence.upper():
             for mer_counter in mer_counters:
                 mer_counter.add_bp(bp)
 
+        return mer_counters
+
+    def add_mer_counts_to_db(self, min_k, max_k, session):
+        mer_counters = self.count_mers(min_k, max_k)
         # convert to canonical and setup db entries
         for mer_counter in mer_counters:
             for mer_sequence, count in mer_counter.export().items():
-                mer = orm.Mer(coordinate_id=self.data.id,
-                              mer_sequence=mer_sequence,
-                              count=count,
-                              length=k)
+                mer = slice_dbmods.Mer(coordinate_id=self.data.id,
+                                       mer_sequence=mer_sequence,
+                                       count=count,
+                                       length=mer_counter.k)
                 session.add(mer)
         session.commit()
+
 
 class SuperLocusHandler(geenuff.handlers.SuperLocusHandlerBase):
     def __init__(self):
