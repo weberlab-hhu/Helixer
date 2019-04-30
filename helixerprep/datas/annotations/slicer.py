@@ -10,6 +10,7 @@ from sqlalchemy.sql.expression import bindparam
 import geenuff
 from helixerprep.datas.annotations import slice_dbmods
 from helixerprep.core.partitions import CoordinateGenerator
+from helixerprep.core.helpers import MerCounter
 
 TranscriptInterpBase = geenuff.transcript_interp.TranscriptInterpBase
 
@@ -181,6 +182,7 @@ class HandleMaker(geenuff.handlers.HandleMaker):
 
 # todo, check everything moved successfully from seq info...
 class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
+
     def processing_set(self, sess):
         return sess.query(
             slice_dbmods.CoordinateSet
@@ -204,6 +206,27 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
         sess.add(current)
         sess.commit()
 
+    def add_mer_counts(self, min_k, max_k):
+        session = self.controller.session
+        mer_counters = []
+        # setup all counters
+        for k in range(min_k, max_k + 1):
+            mer_counters.append(MerCounter(k))
+
+        # count all 'mers
+        for bp in self.data.sequence:
+            for mer_counter in mer_counters:
+                mer_counter.add_bp(bp)
+
+        # convert to canonical and setup db entries
+        for mer_counter in mer_counters:
+            for mer_sequence, count in mer_counter.export().items():
+                mer = orm.Mer(coordinate_id=self.data.id,
+                              mer_sequence=mer_sequence,
+                              count=count,
+                              length=k)
+                session.add(mer)
+        session.commit()
 
 class SuperLocusHandler(geenuff.handlers.SuperLocusHandlerBase):
     def __init__(self):
