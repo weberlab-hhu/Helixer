@@ -11,7 +11,7 @@ from sqlalchemy.sql.expression import bindparam
 
 import geenuff
 from geenuff.base.helpers import full_db_path
-from helixerprep.datas.annotations.slice_dbmods import CoordinateSet
+from helixerprep.datas.annotations.slice_dbmods import CoordinateSet, Mer
 from helixerprep.core.partitions import CoordinateGenerator
 from helixerprep.core.helpers import MerCounter
 
@@ -80,8 +80,9 @@ class SliceController(object):
 
         self.engine = create_engine(full_db_path(self.db_path_sliced), echo=False)
         # add Helixer specific table to the copied db if it doesn't exist yet
-        if not self.engine.dialect.has_table(self.engine, 'coordinate_set'):
-            geenuff.orm.Base.metadata.tables['coordinate_set'].create(self.engine)
+        for table in ['mer', 'coordinate_set']:
+            if not self.engine.dialect.has_table(self.engine, table):
+                geenuff.orm.Base.metadata.tables[table].create(self.engine)
         self.session = sessionmaker(bind=self.engine)()
 
     def get_one_genome(self):
@@ -232,10 +233,10 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
         # convert to canonical and setup db entries
         for mer_counter in mer_counters:
             for mer_sequence, count in mer_counter.export().items():
-                mer = slice_dbmods.Mer(coordinate=self.data,
-                                       mer_sequence=mer_sequence,
-                                       count=count,
-                                       length=mer_counter.k)
+                mer = Mer(coordinate=self.data,
+                          mer_sequence=mer_sequence,
+                          count=count,
+                          length=mer_counter.k)
                 session.add(mer)
         session.commit()
 
