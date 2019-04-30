@@ -21,8 +21,7 @@ DUMMYLOCI_DB = 'testdata/dummyloci.sqlite3'
 def construct_slice_controller(source=DUMMYLOCI_DB, dest=TMP_DB, use_default_slices=True):
     if os.path.exists(dest):
         os.remove(dest)
-    controller = slicer.SliceController(db_path_in=source,
-                                        db_path_sliced=dest)
+    controller = slicer.SliceController(db_path_in=source, db_path_sliced=dest)
     controller.load_super_loci()
     if use_default_slices:
         genome = controller.get_one_genome()
@@ -194,13 +193,49 @@ def test_add_processing_set():
     assert coordinate0_handler.processing_set_val(sess) == 'test'
 
     # check that absence of entry, is handled with None
-    coordinate2, coordinate2_handler = setup_data_handler(slicer.CoordinateHandler, geenuff.orm.Coordinate,
-                                                          genome=genome, start=200, end=300, seqid='a')
+    coordinate2, coordinate2_handler = setup_data_handler(slicer.CoordinateHandler,
+                                                          geenuff.orm.Coordinate,
+                                                          genome=genome,
+                                                          start=200,
+                                                          end=300,
+                                                          seqid='a')
     assert coordinate2_handler.processing_set(sess) is None
     assert coordinate2_handler.processing_set_val(sess) is None
     # finally setup complete new set via api
     coordinate2_handler.set_processing_set(sess, 'dev')
     assert coordinate2_handler.processing_set_val(sess) == 'dev'
+
+
+def test_processing_set_ratio():
+    def num_pset(slices, pset):
+        return len([s for s in slices if s[4] == pset])
+
+    controller = construct_slice_controller(use_default_slices=False)
+    genome = controller.get_one_genome()
+    controller.gen_slices(genome, 0.8, 0.1, 6, 'puma')
+    slices_puma0 = controller.slices
+
+    # test if ratio is remotely okay
+    train_count = num_pset(slices_puma0, 'train')
+    dev_count = num_pset(slices_puma0, 'dev')
+    test_count = num_pset(slices_puma0, 'test')
+    assert train_count > dev_count
+    assert train_count > test_count
+
+    # test seeding effects
+    controller.gen_slices(genome, 0.8, 0.1, 6, 'puma')
+    slices_puma1 = controller.slices
+    for s0, s1 in zip(slices_puma0, slices_puma1):
+        assert s0 == s1
+
+    controller.gen_slices(genome, 0.8, 0.1, 6, 'gepard')
+    slices_gepard = controller.slices
+    same = True
+    for s, g in zip(slices_puma0, slices_gepard):
+        if s != g:
+            same = False
+            break
+    assert not same
 
 
 #### slicer ####
@@ -783,9 +818,9 @@ def test_slicing_featureless_slice_inside_locus():
     genome = controller.get_one_genome()
     slh = controller.super_loci[0]
     transcript = [x for x in slh.data.transcribeds if x.given_name == 'y'][0]
-    slices = (('1', 'A' * 40, 0, 40, '0-40'),
-              ('1', 'A' * 40, 40, 80, '40-80'),
-              ('1', 'A' * 40, 80, 120, '80-120'))
+    slices = (('1', 'A' * 40, 0, 40, 'train'),
+              ('1', 'A' * 40, 40, 80, 'train'),
+              ('1', 'A' * 40, 80, 120, 'train'))
     slices = iter(slices)
     controller._slice_annotations_1way(slices, genome=genome, is_plus_strand=True)
 
@@ -830,7 +865,7 @@ def test_reslice_at_same_spot():
     # slice
     controller.fill_intervaltrees()
     print('controller.sess', controller.session)
-    slices = (('1', 'A' * 100, 0, 100, 'x01'), )
+    slices = (('1', 'A' * 100, 0, 100, 'train'), )
     controller._slice_annotations_1way(iter(slices), controller.get_one_genome(), is_plus_strand=True)
     controller.session.commit()
     old_len = len(controller.session.query(geenuff.orm.TranscribedPiece).all())

@@ -1,5 +1,4 @@
 import itertools
-import geenuff
 import copy
 
 
