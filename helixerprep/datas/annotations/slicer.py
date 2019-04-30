@@ -66,9 +66,9 @@ class SliceController(object):
     def __init__(self, db_path_in=None, db_path_sliced=None):
         self.db_path_in = db_path_in
         self.db_path_sliced = db_path_sliced
-        self.super_loci = []
         self.slices = []
         self.interval_trees = {}
+        self.super_loci = []
         self._setup_db_and_mk_session()
 
         self.core_queue = CoreQueue(self.session, self.engine)
@@ -106,10 +106,12 @@ class SliceController(object):
                 self.slices.append(sliced_coord)
 
     def fill_intervaltrees(self):
+        self.intervaltrees = {}
         for sl in self.super_loci:
             sl.load_to_intervaltree(self.interval_trees)
 
     def load_super_loci(self):
+        self.super_loci = []
         sl_data = self.session.query(geenuff.orm.SuperLocus).all()
         for sl in sl_data:
             super_locus = SuperLocusHandler()
