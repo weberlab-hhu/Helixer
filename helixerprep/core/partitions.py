@@ -1,17 +1,18 @@
-from __future__ import division
 import random
 
 
 class CoordinateGenerator(object):
-    def __init__(self, user_seed, max_len=2000000):
-        self.user_seed = user_seed
+    def __init__(self, train_size, dev_size, max_len, user_seed) :
+        self.train_size = train_size
+        self.dev_size = dev_size
         self.max_len = max_len
+        self.user_seed = user_seed
 
-    def divvy_coordinates(self, seq_seed, length):
-        random.seed(seq_seed + self.user_seed)
+    def divvy_coordinates(self, length):
+        random.seed(self.user_seed)
         stepper = Stepper(length, self.max_len)
         for begin, end in stepper.step_to_end():
-            yield begin, end, choose_set()
+            yield begin, end, choose_set(self.train_size, self.dev_size)
 
 
 class Stepper(object):
@@ -39,11 +40,11 @@ class Stepper(object):
             yield self.step()
 
 
-def choose_set(train=0.8, dev=0.1):
+def choose_set(train_size, dev_size):
     r = random.random()
-    if r < train:
+    if r < train_size:
         return 'train'
-    elif r < train + dev:
+    elif r < train_size + dev_size:
         return 'dev'
     else:
         return 'test'

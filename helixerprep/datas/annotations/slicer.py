@@ -1,19 +1,16 @@
 """reopen and slice the new annotation.sqlitedb and divvy superloci to train/dev/test processing sets"""
-from shutil import copyfile
-import intervaltree
+import os
 import copy
 import logging
+import intervaltree
+from shutil import copyfile
+
+from sqlalchemy.sql.expression import bindparam
 
 import geenuff
 from helixerprep.datas.annotations import slice_dbmods
+from helixerprep.core.partitions import CoordinateGenerator
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.sql.expression import bindparam
-
-import os
-from helixerprep.datas import sequences
-#from annotations import TranscriptInterpBase
 TranscriptInterpBase = geenuff.transcript_interp.TranscriptInterpBase
 
 
@@ -61,80 +58,85 @@ class CoreQueue(object):
         self.session.commit()
 
 
-class SliceController(object):
-
-    def __init__(self, db_path_in=None, db_path_sliced=None, sequences_path=None):
+class SliceController(geenuff.base.controller.Controller):
+    def __init__(self, db_path_in=None, db_path_sliced=None):
+        super().__init__(db_path_sliced)  # do not setup a logging path
         self.db_path_in = db_path_in
-        self.db_path_sliced = db_path_sliced
-        self.sequences_path = sequences_path
-        self.structured_genome = None
-        self.engine = None
-        self.session = None
         self.super_loci = []
+        self.slices = []
         self.interval_trees = {}
-        self.core_queue = None
+        self.core_queue = CoreQueue(self.session, self.engine)
+        if os.path.exists(db_path_sliced):
+            print('overriding the sliced db at {}'.format(db_path_sliced))
+        copyfile(db_path_in, db_path_sliced)
 
-    def get_one_annotated_genome(self):
+    def get_one_genome(self):
         ags = self.session.query(geenuff.orm.Genome).all()
         assert len(ags) == 1, "found # genomes != 1: {}".format(ags)
         return ags[0]
 
-    def copy_db(self):
-        copyfile(self.db_path_in, self.db_path_sliced)
+    def gen_slices(self, genome, train_size, dev_size, chunk_size, seed):
+        coords = self.session.query(geenuff.orm.Coordinate).all()
+        for coord in coords:
+            cg = CoordinateGenerator(train_size, dev_size, chunk_size, seed)
+            for start, end, pset in cg.divvy_coordinates(coord.end - coord.start):
+                sliced_coord = (
+                    coord.seqid,
+                    coord.sequence[start:end],
+                    start,
+                    end,
+                    pset,
+                )
+                self.slices.append(sliced_coord)
 
-    def full_db_path(self):
-        return 'sqlite:///{}'.format(self.db_path_sliced)
+    def fill_intervaltrees(self):
+        for sl in self.super_loci:
+            sl.load_to_intervaltree(self.interval_trees)
 
-    def mk_session(self):
-        if not os.path.exists(self.db_path_sliced):
-            self.copy_db()
-        self.engine = create_engine(self.full_db_path(), echo=False)
-        geenuff.orm.Base.metadata.create_all(self.engine)
-        Session = sessionmaker(bind=self.engine)
-        self.session = Session()
-        self.core_queue = CoreQueue(self.session, self.engine)
-
-    def load_annotations(self):
+    def load_super_loci(self):
         sl_data = self.session.query(geenuff.orm.SuperLocus).all()
         for sl in sl_data:
             super_locus = SuperLocusHandler()
             super_locus.add_data(sl)
             self.super_loci.append(super_locus)
 
-    def load_sliced_seqs(self):
-        if self.sequences_path is None:
-            raise ValueError('Cannot load sequences from undefined (None) path')
-        sg = sequences.StructuredGenome()
-        sg.from_json(self.sequences_path)
-        self.structured_genome = sg
+    def slice_db(self, train_size, dev_size, chunk_size, seed):
+        self.load_super_loci()
+        self.fill_intervaltrees()
 
-    def fill_intervaltrees(self):
-        for sl in self.super_loci:
-            sl.load_to_intervaltree(self.interval_trees)
+        genome = self.get_one_genome()
+        self.gen_slices(genome, train_size, dev_size, chunk_size, seed)
+        self.slice_annotations(genome)
 
-    def gen_slices(self):
-        for seq in self.structured_genome.sequences:
-            for slice in seq.slices:
-                yield seq.meta_info.seqid, slice.start, slice.end, slice.slice_id
-
-    def slice_annotations(self, annotated_genome):
-        """artificially slices annotated genome to match sequence slices and adjusts transcripts as appropriate"""
-        slices = list(self.gen_slices())  # todo, double check whether I can assume sorted
-        self._slice_annotations_1way(slices, annotated_genome, is_plus_strand=True)
-        slices.reverse()
-        self._slice_annotations_1way(slices, annotated_genome, is_plus_strand=False)
+    def slice_annotations(self, genome):
+        """Artificially slices annotated genome to match sequence slices
+        and adjusts transcripts as appropriate.
+        """
+        # todo, double check whether I can assume sorted
+        self._slice_annotations_1way(self.slices, genome, is_plus_strand=True)
+        self._slice_annotations_1way(self.slices[::-1], genome, is_plus_strand=False)
 
     def _slice_annotations_1way(self, slices, genome, is_plus_strand):
-        for seqid, start, end, slice_id in slices:
-            coordinates = geenuff.orm.Coordinate(seqid=seqid, start=start, end=end, genome=genome)
-            self.session.add(coordinates)
+        for seqid, sequence, start, end, _ in slices:
+            coordinate = geenuff.orm.Coordinate(seqid=seqid,
+                                                sequence=sequence,
+                                                start=start,
+                                                end=end,
+                                                genome=genome)
+            self.session.add(coordinate)
             self.session.commit()
-            overlapping_super_loci = self.get_super_loci_frm_slice(seqid, start, end, is_plus_strand=is_plus_strand)
+            overlapping_super_loci = self.get_super_loci_frm_slice(seqid, start, end,
+                                                                   is_plus_strand=is_plus_strand)
             for super_locus in overlapping_super_loci:
                 super_locus.make_all_handlers()
-                super_locus.modify4slice(new_coords=coordinates, is_plus_strand=is_plus_strand,
-                                         session=self.session, trees=self.interval_trees, core_queue=self.core_queue)
+                super_locus.modify4slice(new_coords=coordinate, is_plus_strand=is_plus_strand,
+                                         session=self.session, trees=self.interval_trees,
+                                         core_queue=self.core_queue)
             self.core_queue.execute_so_far()
+            # todo add CoordinateSet
+            # coord_set = CoordinateSet(coordinate=coord, processing_set=pset)
+            # self.session.add_all([coord, coord_set])
+
             # todo, setup slice as coordinates w/ seq info in database
             # todo, get features & there by superloci in slice
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
@@ -146,7 +148,8 @@ class SliceController(object):
 
     def get_features_from_slice(self, seqid, start, end, is_plus_strand):
         if self.interval_trees == {}:
-            raise ValueError('No, interval trees defined. The method .fill_intervaltrees must be called first')
+            raise ValueError('No, interval trees defined. The method .fill_intervaltrees '
+                             'must be called first')
         try:
             tree = self.interval_trees[seqid]
         except KeyError as e:
@@ -162,9 +165,6 @@ class SliceController(object):
             for piece in feature.data.transcribed_pieces:
                 super_loci.add(piece.transcribed.super_locus.handler)
         return super_loci
-
-    def clean_slice(self):
-        pass
 
 
 class HandleMaker(geenuff.handlers.HandleMaker):

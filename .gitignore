@@ -3,6 +3,7 @@ tmp/*
 *.prf
 helixerprep/testdata/dummyloci.sequence.sliced.json
 helixerprep/testdata/dummyloci_annotations.sqlitedb
+helixerprep/testdata/dummyloci.sqlite3
 helixerprep/testdata/tmp.db
 
 # Byte-compiled / optimized / DLL files

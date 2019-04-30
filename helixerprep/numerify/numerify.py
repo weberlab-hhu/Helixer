@@ -7,7 +7,6 @@ import geenuff
 from geenuff.base.transcript_interp import TranscriptInterpBase
 from helixerprep.datas.annotations import slicer
 from ..core import partitions
-from ..datas import sequences
 from ..core import helpers
 
 

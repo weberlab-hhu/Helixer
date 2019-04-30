@@ -1,40 +1,32 @@
-from ..datas import sequences
-from ..core import structure
-import geenuff
-#from geenuff import api as annotations
-#from geenuff import orm as annotations_orm
-from helixerprep.datas.annotations import slice_dbmods, slicer
-from ..core import helpers
-#from geenuff import types as type_enums
-
-import pytest
-from ..core import partitions
 import os
 import numpy as np
-
-from sqlalchemy.orm import sessionmaker
+import pytest
 import sqlalchemy
+from sqlalchemy.orm import sessionmaker
 
-from ..numerify import numerify
-
+import geenuff
 from geenuff.tests.test_geenuff import (setup_data_handler,
                                         setup_testable_super_locus, TransspliceDemoData)
+from ..datas.annotations import slice_dbmods, slicer
+from ..core import partitions
+from ..core import helpers
+from ..numerify import numerify
 
 
 TMP_DB = 'testdata/tmp.db'
-DUMMYLOCI_DB = 'testdata/dummyloci_annotations.sqlitedb'
-SLICED_SEQ_PATH = 'testdata/dummyloci.sequence.sliced.json'
+DUMMYLOCI_DB = 'testdata/dummyloci.sqlite3'
 
 
 ### helper functions ###
-def construct_slice_controller(source=DUMMYLOCI_DB, dest=TMP_DB, sequences_path=None):
+def construct_slice_controller(source=DUMMYLOCI_DB, dest=TMP_DB, use_default_slices=True):
     if os.path.exists(dest):
         os.remove(dest)
     controller = slicer.SliceController(db_path_in=source,
-                                        db_path_sliced=dest,
-                                        sequences_path=sequences_path)
-    controller.mk_session()
-    controller.load_annotations()
+                                        db_path_sliced=dest)
+    controller.load_super_loci()
+    if use_default_slices:
+        genome = controller.get_one_genome()
+        controller.gen_slices(genome, 0.8, 0.1, 2000000, "puma")
     return controller
 
 
@@ -51,105 +43,11 @@ def setup_dummy_db(request):
     controller.insertion_queues.execute_so_far()
 
 
-def mk_session(db_path='sqlite:///:memory:'):
+def mk_memory_session(db_path='sqlite:///:memory:'):
     engine = sqlalchemy.create_engine(db_path, echo=False)
     geenuff.orm.Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     return Session(), engine
-
-
-### structure ###
-# testing: add_paired_dictionaries
-def test_add_to_empty_dictionary():
-    d1 = {'a': 1}
-    d2 = {}
-    d1_2 = structure.add_paired_dictionaries(d1, d2)
-    d2_1 = structure.add_paired_dictionaries(d2, d1)
-    assert d1 == d1_2
-    assert d1 == d2_1
-
-
-def test_add_nested_dictionaries():
-    d1 = {'a': {'b': 1,
-                'a': {'b': 10}},
-          'b': 100}
-    d2 = {'a': {'b': 1,
-                'a': {'b': 20}},
-          'b': 300}
-    dsum = {'a': {'b': 2,
-                  'a': {'b': 30}},
-            'b': 400}
-    d1_2 = structure.add_paired_dictionaries(d1, d2)
-    d2_1 = structure.add_paired_dictionaries(d2, d1)
-    print('d1_2', d1_2)
-    print('d2_1', d2_1)
-    print('dsum', dsum)
-    assert dsum == d1_2
-    assert dsum == d2_1
-
-
-# testing: class GenericData
-class GDataTesting(structure.GenericData):
-    def __init__(self):
-        super().__init__()
-        self.spec += [('expect', False, dict, None)]
-        self.expect = {}  # this is what we expect the jsonable to be, assuming we don't change the attributes
-
-
-class SimpleGData(GDataTesting):
-    def __init__(self):
-        super().__init__()
-        # attribute name, exported_to_json, expected_inner_type, data_structure
-        self.spec += [('some_ints', True, int, list),
-                      ('a_string', True, str, None)]
-        self.some_ints = [1, 2, 3]
-        self.a_string = 'abc'
-        self.expect = {'some_ints': [1, 2, 3], 'a_string': 'abc'}
-
-
-class HoldsGdata(GDataTesting):
-    def __init__(self):
-        super().__init__()
-        self.spec += [('a_gdata', True, SimpleGData, None),
-                      ('list_gdata', True, SimpleGData, list),
-                      ('dict_gdata', True, SimpleGData, dict)]
-        self.a_gdata = SimpleGData()
-        self.list_gdata = [SimpleGData()]
-        self.dict_gdata = {'x': SimpleGData()}
-        sgd_expect = self.a_gdata.expect
-        self.expect = {'a_gdata': sgd_expect,
-                       'list_gdata': [sgd_expect],
-                       'dict_gdata': {'x': sgd_expect}}
-
-
-def test_to_json_4_simplest_of_data():
-    x = SimpleGData()
-    assert x.to_jsonable() == x.expect
-
-
-def test_to_json_4_recursive_generic_datas():
-    x = HoldsGdata()
-    print(x.to_jsonable())
-    assert x.to_jsonable() == x.expect
-
-
-def test_from_json_gdata():
-    # make sure we get the same after export, as export->import->export
-    x = SimpleGData()
-    xjson = x.to_jsonable()
-    xjson['a_string'] = 'new_string'
-    y = SimpleGData()
-    y.load_jsonable(xjson)
-    assert y.to_jsonable() == xjson
-    # check as above but for more complicated data holder
-    holds = HoldsGdata()
-    holds.a_gdata = y
-    holdsjson = holds.to_jsonable()
-    assert holdsjson["a_gdata"]["a_string"] == 'new_string'
-    print(holdsjson)
-    yholds = HoldsGdata()
-    yholds.load_jsonable(holdsjson)
-    assert yholds.to_jsonable() == holdsjson
 
 
 ### sequences ###
@@ -190,39 +88,21 @@ def test_count2mers():
     assert counted['at'] == 1
 
 
-# testing parsing matches
-def test_fa_matches_sequences_json():
-    fa_path = 'testdata/tester.fa'
-    json_path = 'testdata/tester.sequence.json'
-    sd_fa = sequences.StructuredGenome()
-    sd_fa.add_fasta(fa_path)
-    # sd_fa.to_json(json_path)  # can uncomment when one intentionally changed the format, but check
-    sd_json = sequences.StructuredGenome()
-    sd_json.from_json(json_path)
-    j_fa = sd_fa.to_jsonable()
-    j_json = sd_json.to_jsonable()
-    for key in j_fa:
-        assert j_fa[key] == j_json[key]
-    assert sd_fa.to_jsonable() == sd_json.to_jsonable()
-
-
 def test_sequence_slicing():
-    json_path = 'testdata/dummyloci.sequence.json'
-    sd_fa = sequences.StructuredGenome()
-    sd_fa.from_json(json_path)
-    sd_fa.divvy_each_sequence(user_seed='', max_len=100)
-    print(sd_fa.to_jsonable())
-    sd_fa.to_json('testdata/dummyloci.sequence.sliced.json')  # used later, todo, cleanup this sorta of stuff
-    for sequence in sd_fa.sequences:
-        # all but the last two should be of max_len
-        for slice in sequence.slices[:-2]:
-            assert len(''.join(slice.sequence)) == 100
-            assert slice.end - slice.start == 100
-        # the last two should split the remainder in half, therefore have a length difference of 0 or 1
-        penultimate = sequence.slices[-2]
-        ultimate = sequence.slices[-1]
-        delta_len = abs((penultimate.end - penultimate.start) - (ultimate.end - ultimate.start))
-        assert delta_len == 1 or delta_len == 0
+    controller = construct_slice_controller(use_default_slices=False)
+    genome = controller.get_one_genome()
+    controller.gen_slices(genome, 0.8, 0.1, 100, "puma")
+
+    # all but the last two should be of max_len
+    for slice in controller.slices[:-2]:
+        assert len(''.join(slice[1])) == 100
+        assert slice[3] - slice[2] == 100
+
+    # the last two should split the remainder in half, therefore have a length difference of 0 or 1
+    penultimate = controller.slices[-2]
+    ultimate = controller.slices[-1]
+    delta_len = abs((penultimate[3] - penultimate[2]) - (ultimate[3] - ultimate[2]))
+    assert delta_len == 1 or delta_len == 0
 
 
 ## slice_dbmods
@@ -241,7 +121,7 @@ def test_processing_set_enum():
 
 
 def test_add_processing_set():
-    sess, engine = mk_session()
+    sess, engine = mk_memory_session()
     genome = geenuff.orm.Genome()
     coordinate0, coordinate0_handler = setup_data_handler(slicer.CoordinateHandler, geenuff.orm.Coordinate,
                                                           genome=genome, start=0, end=100, seqid='a')
@@ -294,15 +174,7 @@ def test_add_processing_set():
 
 #### slicer ####
 def test_copy_n_import():
-    # bc we don't want to change original db at any point
-    destination = 'testdata/tmp.db'
-    if os.path.exists(destination):
-        os.remove(destination)
-    source = 'testdata/dummyloci_annotations.sqlitedb'
-
-    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
-    controller.mk_session()
-    controller.load_annotations()
+    controller = construct_slice_controller()
     assert len(controller.super_loci) == 1
     sl = controller.super_loci[0].data
     assert len(sl.transcribeds) == 3
@@ -317,18 +189,12 @@ def test_copy_n_import():
     for translated in sl.translateds:
         print('{}: {}'.format(translated.given_name, [x.type.value for x in translated.features]))
 
-    assert len(all_features) == 12  # if I ever get to collapsing redundant features this will change
+    # if I ever get to collapsing redundant features this will change
+    assert len(all_features) == 12
 
 
 def test_intervaltree():
-    destination = 'testdata/tmp.db'
-    if os.path.exists(destination):
-        os.remove(destination)
-    source = 'testdata/dummyloci_annotations.sqlitedb'
-
-    controller = slicer.SliceController(db_path_in=source, db_path_sliced=destination)
-    controller.mk_session()
-    controller.load_annotations()
+    controller = construct_slice_controller()
     controller.fill_intervaltrees()
     print(controller.interval_trees.keys())
     for intv in controller.interval_trees["1"]:
@@ -409,7 +275,7 @@ def test_slicer_transition():
 
 
 def test_split_features_downstream_border():
-    sess, engine = mk_session()
+    sess, engine = mk_memory_session()
     core_queue = slicer.CoreQueue(session=sess, engine=engine)
     genome = geenuff.orm.Genome()
     old_coor = geenuff.orm.Coordinate(genome=genome, seqid='a', start=1, end=1000)
@@ -501,7 +367,7 @@ def test_modify4slice():
     slh = controller.super_loci[0]
     transcript = [x for x in slh.data.transcribeds if x.given_name == 'y'][0]
     slh.make_all_handlers()
-    genome = controller.get_one_annotated_genome()
+    genome = controller.get_one_genome()
     ti = slicer.TranscriptTrimmer(transcript=transcript.handler, super_locus=slh, sess=controller.session,
                                   core_queue=controller.core_queue)
     new_coords = geenuff.orm.Coordinate(genome=genome, seqid='1', start=0, end=100)
@@ -542,7 +408,7 @@ def test_modify4slice():
 
 
 def test_modify4slice_directions():
-    sess, engine = mk_session()
+    sess, engine = mk_memory_session()
 
     core_queue = slicer.CoreQueue(session=sess, engine=engine)
 
@@ -666,7 +532,7 @@ class SimplestDemoData(object):
 
 
 def test_transition_unused_coordinates_detection():
-    sess, engine = mk_session()
+    sess, engine = mk_memory_session()
     d = SimplestDemoData(sess, engine)
     # modify to coordinates with complete contain, should work fine
     genome = d.genome
@@ -733,7 +599,7 @@ def test_transition_unused_coordinates_detection():
 
 
 def test_features_on_opposite_strand_are_not_modified():
-    sess, engine = mk_session()
+    sess, engine = mk_memory_session()
     d = SimplestDemoData(sess, engine)
 
     # forward pass only, back pass should be untouched (and + coordinates unaffected)
@@ -754,7 +620,7 @@ def test_features_on_opposite_strand_are_not_modified():
 
 
 def test_modify4slice_transsplice():
-    sess, engine = mk_session()
+    sess, engine = mk_memory_session()
     d = TransspliceDemoDataSlice(sess, engine)  # setup _d_ata
     d.make_all_handlers()
     new_coords_0 = geenuff.orm.Coordinate(seqid='a', start=0, end=915, genome=d.genome)
@@ -822,7 +688,7 @@ def test_modify4slice_transsplice():
 def test_modify4slice_2nd_half_first():
     # because trans-splice occasions can theoretically hit transitions in the 'wrong' order where the 1st half of
     # the _final_ transcript hasn't been adjusted when the second half is adjusted/sliced. Results should be the same.
-    sess, engine = mk_session()
+    sess, engine = mk_memory_session()
     d = TransspliceDemoDataSlice(sess, engine)  # setup _d_ata
     d.make_all_handlers()
     new_coords_0 = geenuff.orm.Coordinate(genome=d.genome, seqid='a', start=0, end=915)
@@ -865,30 +731,30 @@ def test_modify4slice_2nd_half_first():
 
 def test_slicing_multi_sl():
     # TODO, add sliced sequences path
-    controller = construct_slice_controller(sequences_path=SLICED_SEQ_PATH)
-    controller.load_sliced_seqs()
+    controller = construct_slice_controller()
     controller.fill_intervaltrees()
     slh = controller.super_loci[0]
     slh.make_all_handlers()
     # setup more
-    more = SimplestDemoData(controller.session, controller.engine, genome=controller.get_one_annotated_genome())
+    genome = controller.get_one_genome()
+    more = SimplestDemoData(controller.session, controller.engine, genome=genome)
     controller.super_loci.append(more.slh)
     more.old_coor.seqid = '1'  # so it matches std dummyloci
     controller.session.commit()
     # and try and slice
-    controller.slice_annotations(controller.get_one_annotated_genome())
+    controller.slice_annotations(genome)
     # todo, test if valid pass of final res.
 
 
 def test_slicing_featureless_slice_inside_locus():
     controller = construct_slice_controller()
     controller.fill_intervaltrees()
-    genome = controller.get_one_annotated_genome()
+    genome = controller.get_one_genome()
     slh = controller.super_loci[0]
     transcript = [x for x in slh.data.transcribeds if x.given_name == 'y'][0]
-    slices = (('1', 0, 40, '0-40'),
-              ('1', 40, 80, '40-80'),
-              ('1', 80, 120, '80-120'))
+    slices = (('1', 'A' * 40, 0, 40, '0-40'),
+              ('1', 'A' * 40, 40, 80, '40-80'),
+              ('1', 'A' * 40, 80, 120, '80-120'))
     slices = iter(slices)
     controller._slice_annotations_1way(slices, genome=genome, is_plus_strand=True)
 
@@ -906,8 +772,11 @@ def test_slicing_featureless_slice_inside_locus():
     assert len([x for x in features40 if x.type.value == geenuff.types.CODING]) == 2
     assert len([x for x in features40 if x.type.value == geenuff.types.TRANSCRIBED]) == 2
     assert len(features40) == 5
-    assert set([x.type.value for x in features40]) == {geenuff.types.CODING, geenuff.types.TRANSCRIBED,
-                                                       geenuff.types.ERROR}
+    assert set([x.type.value for x in features40]) == {
+        geenuff.types.CODING,
+        geenuff.types.TRANSCRIBED,
+        geenuff.types.ERROR
+    }
 
 
 def rm_transcript_and_children(transcript, sess):
@@ -920,9 +789,7 @@ def rm_transcript_and_children(transcript, sess):
 
 
 def test_reslice_at_same_spot():
-    controller = construct_slice_controller(sequences_path=SLICED_SEQ_PATH)
-    controller.load_sliced_seqs()
-
+    controller = construct_slice_controller()
     slh = controller.super_loci[0]
     # simplify
     transcripty = [x for x in slh.data.transcribeds if x.given_name == 'y'][0]
@@ -932,20 +799,22 @@ def test_reslice_at_same_spot():
     # slice
     controller.fill_intervaltrees()
     print('controller.sess', controller.session)
-    slices = (('1', 0, 100, 'x01'), )
-    controller._slice_annotations_1way(iter(slices), controller.get_one_annotated_genome(), is_plus_strand=True)
+    slices = (('1', 'A' * 100, 0, 100, 'x01'), )
+    controller._slice_annotations_1way(iter(slices), controller.get_one_genome(), is_plus_strand=True)
     controller.session.commit()
     old_len = len(controller.session.query(geenuff.orm.TranscribedPiece).all())
     print('used to be {} linkages'.format(old_len))
-    controller._slice_annotations_1way(iter(slices), controller.get_one_annotated_genome(), is_plus_strand=True)
+    controller._slice_annotations_1way(iter(slices), controller.get_one_genome(), is_plus_strand=True)
     controller.session.commit()
     assert old_len == len(controller.session.query(geenuff.orm.TranscribedPiece).all())
 
 
 #### numerify ####
 def test_sequence_numerify():
-    sg = sequences.StructuredGenome()
-    sg.from_json('testdata/tester.sequence.json')
+    # geenuff_controller = ImportControl('testdata/geenuff_tester.sqlite3')
+    # geenuff_controller.add_sequences('testdata/tester.fa')
+    # session = geenuff_controller.session
+
     sequence = sg.sequences[0]
     slice0 = sequence.slices[0]
     numerifier = numerify.SequenceNumerifier(is_plus_strand=True)
@@ -959,7 +828,7 @@ def test_sequence_numerify():
 
 
 def setup4numerify():
-    controller = construct_slice_controller(sequences_path='testdata/dummyloci.sequence.json')
+    controller = construct_slice_controller()
     # no need to modify, so can just load briefly
     sess = controller.session
 
@@ -1064,7 +933,7 @@ def test_numerify_from_gr0():
 
 
 def setup_simpler_numerifier():
-    sess, engine = mk_session()
+    sess, engine = mk_memory_session()
     genome = geenuff.orm.Genome()
     coord, coord_handler = setup_data_handler(slicer.CoordinateHandler, geenuff.orm.Coordinate, genome=genome,
                                               start=0, end=100, seqid='a')
@@ -1182,19 +1051,3 @@ def test_stepper():
     strt_ends = list(s.step_to_end())
     assert len(strt_ends) == 1
     assert strt_ends[-1] == (0, 9)
-
-
-def test_id_maker():
-    ider = helpers.IDMaker()
-    for i in range(5):
-        ider.next_unique_id()
-    assert len(ider.seen) == 5
-    # add a new id
-    suggestion = 'apple'
-    new_id = ider.next_unique_id(suggestion)
-    assert len(ider.seen) == 6
-    assert new_id == suggestion
-    # try and add an ID we've now seen before
-    new_id = ider.next_unique_id(suggestion)
-    assert len(ider.seen) == 7
-    assert new_id != suggestion
