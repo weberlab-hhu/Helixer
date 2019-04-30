@@ -224,7 +224,7 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
         # convert to canonical and setup db entries
         for mer_counter in mer_counters:
             for mer_sequence, count in mer_counter.export().items():
-                mer = slice_dbmods.Mer(coordinate_id=self.data.id,
+                mer = slice_dbmods.Mer(coordinate=self.data,
                                        mer_sequence=mer_sequence,
                                        count=count,
                                        length=mer_counter.k)
