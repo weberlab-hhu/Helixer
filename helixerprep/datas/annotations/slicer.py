@@ -76,9 +76,11 @@ class SliceController(object):
         if os.path.exists(self.db_path_sliced):
             print('overriding the sliced db at {}'.format(self.db_path_sliced))
         copyfile(self.db_path_in, self.db_path_sliced)
+
         self.engine = create_engine(full_db_path(self.db_path_sliced), echo=False)
-        # add Helixer specific table to the copied db
-        geenuff.orm.Base.metadata.tables['coordinate_set'].create(self.engine)
+        # add Helixer specific table to the copied db if it doesn't exist yet
+        if not self.engine.dialect.has_table(self.engine, 'coordinate_set'):
+            geenuff.orm.Base.metadata.tables['coordinate_set'].create(self.engine)
         self.session = sessionmaker(bind=self.engine)()
 
     def get_one_genome(self):
@@ -87,10 +89,12 @@ class SliceController(object):
         return ags[0]
 
     def gen_slices(self, genome, train_size, dev_size, chunk_size, seed):
+        self.slices = []
         coords = self.session.query(geenuff.orm.Coordinate).all()
+        cg = CoordinateGenerator(train_size, dev_size, chunk_size, seed)
         for coord in coords:
-            cg = CoordinateGenerator(train_size, dev_size, chunk_size, seed)
-            for start, end, pset in cg.divvy_coordinates(coord.end - coord.start):
+            length = coord.end - coord.start
+            for start, end, pset in cg.divvy_coordinates(length, coord.sha1):
                 sliced_coord = (
                     coord.seqid,
                     coord.sequence[start:end],
@@ -190,11 +194,7 @@ class HandleMaker(geenuff.handlers.HandleMaker):
 
 class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
     def processing_set(self, sess):
-        return sess.query(
-            slice_dbmods.CoordinateSet
-        ).filter(
-            slice_dbmods.CoordinateSet.id == self.data.id
-        ).first()
+        return sess.query(CoordinateSet).filter(CoordinateSet.id == self.data.id).first()
 
     def processing_set_val(self, sess):
         si_set_obj = self.processing_set(sess)
@@ -206,7 +206,7 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
     def set_processing_set(self, sess, processing_set):
         current = self.processing_set(sess)
         if current is None:
-            current = slice_dbmods.CoordinateSet(coordinate=self.data, processing_set=processing_set)
+            current = CoordinateSet(coordinate=self.data, processing_set=processing_set)
         else:
             current.processing_set = processing_set
         sess.add(current)

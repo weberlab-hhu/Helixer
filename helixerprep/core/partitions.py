@@ -8,8 +8,8 @@ class CoordinateGenerator(object):
         self.max_len = max_len
         self.user_seed = user_seed
 
-    def divvy_coordinates(self, length):
-        random.seed(self.user_seed)
+    def divvy_coordinates(self, length, seq_hash):
+        random.seed(seq_hash + self.user_seed)
         stepper = Stepper(length, self.max_len)
         for begin, end in stepper.step_to_end():
             yield begin, end, choose_set(self.train_size, self.dev_size)
