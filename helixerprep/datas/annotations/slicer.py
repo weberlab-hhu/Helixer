@@ -5,10 +5,13 @@ import logging
 import intervaltree
 from shutil import copyfile
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.expression import bindparam
 
 import geenuff
-from helixerprep.datas.annotations import slice_dbmods
+from geenuff.base.helpers import full_db_path
+from helixerprep.datas.annotations.slice_dbmods import CoordinateSet
 from helixerprep.core.partitions import CoordinateGenerator
 
 TranscriptInterpBase = geenuff.transcript_interp.TranscriptInterpBase
@@ -58,17 +61,25 @@ class CoreQueue(object):
         self.session.commit()
 
 
-class SliceController(geenuff.base.controller.Controller):
+class SliceController(object):
     def __init__(self, db_path_in=None, db_path_sliced=None):
-        super().__init__(db_path_sliced)  # do not setup a logging path
         self.db_path_in = db_path_in
+        self.db_path_sliced = db_path_sliced
         self.super_loci = []
         self.slices = []
         self.interval_trees = {}
+        self._setup_db_and_mk_session()
+
         self.core_queue = CoreQueue(self.session, self.engine)
-        if os.path.exists(db_path_sliced):
-            print('overriding the sliced db at {}'.format(db_path_sliced))
-        copyfile(db_path_in, db_path_sliced)
+
+    def _setup_db_and_mk_session(self):
+        if os.path.exists(self.db_path_sliced):
+            print('overriding the sliced db at {}'.format(self.db_path_sliced))
+        copyfile(self.db_path_in, self.db_path_sliced)
+        self.engine = create_engine(full_db_path(self.db_path_sliced), echo=False)
+        # add Helixer specific table to the copied db
+        geenuff.orm.Base.metadata.tables['coordinate_set'].create(self.engine)
+        self.session = sessionmaker(bind=self.engine)()
 
     def get_one_genome(self):
         ags = self.session.query(geenuff.orm.Genome).all()
@@ -117,14 +128,16 @@ class SliceController(geenuff.base.controller.Controller):
         self._slice_annotations_1way(self.slices[::-1], genome, is_plus_strand=False)
 
     def _slice_annotations_1way(self, slices, genome, is_plus_strand):
-        for seqid, sequence, start, end, _ in slices:
+        for seqid, sequence, start, end, pset in slices:
             coordinate = geenuff.orm.Coordinate(seqid=seqid,
                                                 sequence=sequence,
                                                 start=start,
                                                 end=end,
                                                 genome=genome)
-            self.session.add(coordinate)
+            coordinate_set = CoordinateSet(coordinate=coordinate, processing_set=pset)
+            self.session.add_all([coordinate, coordinate_set])
             self.session.commit()
+
             overlapping_super_loci = self.get_super_loci_frm_slice(seqid, start, end,
                                                                    is_plus_strand=is_plus_strand)
             for super_locus in overlapping_super_loci:
@@ -133,10 +146,6 @@ class SliceController(geenuff.base.controller.Controller):
                                          session=self.session, trees=self.interval_trees,
                                          core_queue=self.core_queue)
             self.core_queue.execute_so_far()
-            # todo add CoordinateSet
-            # coord_set = CoordinateSet(coordinate=coord, processing_set=pset)
-            # self.session.add_all([coord, coord_set])
-
             # todo, setup slice as coordinates w/ seq info in database
             # todo, get features & there by superloci in slice
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
@@ -179,7 +188,6 @@ class HandleMaker(geenuff.handlers.HandleMaker):
         return self._get_paired_item(type(old_data), search_col=1, return_col=0, nested_list=key)
 
 
-# todo, check everything moved successfully from seq info...
 class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
     def processing_set(self, sess):
         return sess.query(

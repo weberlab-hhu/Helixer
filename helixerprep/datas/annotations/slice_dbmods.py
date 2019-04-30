@@ -15,8 +15,9 @@ class CoordinateSet(orm.Base):
     __tablename__ = "coordinate_set"
 
     id = Column(Integer, ForeignKey('coordinate.id'), primary_key=True)
-    coordinate = relationship('orm.Coordinate')
     processing_set = Column(Enum(ProcessingSet), nullable=False)
+
+    coordinate = relationship('orm.Coordinate')
 
     def __repr__(self):
         return '{}: matching {} in set {}'.format(type(self), self.coordinate, self.processing_set)
