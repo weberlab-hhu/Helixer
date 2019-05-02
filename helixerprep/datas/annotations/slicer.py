@@ -12,7 +12,7 @@ from sqlalchemy.sql.expression import bindparam
 import geenuff
 from geenuff.base.orm import Coordinate, Genome
 from geenuff.base.helpers import full_db_path
-from helixerprep.datas.annotations.slice_dbmods import CoordinateSet, Mer
+from helixerprep.datas.annotations.slice_dbmods import ProcessingSet, CoordinateSet, Mer
 from helixerprep.core.partitions import CoordinateGenerator, choose_set
 from helixerprep.core.helpers import MerCounter
 
@@ -126,7 +126,6 @@ class SliceController(object):
 
         genome = self.get_one_genome()
         self.gen_slices(genome, train_size, dev_size, chunk_size, seed)
-        import pudb; pudb.set_trace()
         self.slice_annotations(genome)
 
     def slice_annotations(self, genome):
@@ -193,12 +192,13 @@ class SliceController(object):
         """
         import random
         sliced_coord_id_query = self.session.query(CoordinateSet).with_entities(CoordinateSet.id)
-        non_sliced_coords = (
+        main_coords = (
             self.session.query(Coordinate)
+                .filter(Coordinate.genome == genome)
                 .filter(Coordinate.id.notin_(sliced_coord_id_query))
                 .all()
         )
-        for main_coord in non_sliced_coords:
+        for main_coord in main_coords:
             sub_coords = (
                 self.session.query(CoordinateSet).join(CoordinateSet.coordinate)
                     .filter(Coordinate.start >= main_coord.start)
@@ -228,24 +228,27 @@ class HandleMaker(geenuff.handlers.HandleMaker):
 
 
 class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
-    def processing_set(self, sess):
-        return sess.query(CoordinateSet).filter(CoordinateSet.id == self.data.id).one()
+    def coordinate_set(self, sess):
+        return sess.query(CoordinateSet).filter(CoordinateSet.id == self.data.id).one_or_none()
 
-    def processing_set_val(self, sess):
-        si_set_obj = self.processing_set(sess)
+    def get_processing_set(self, sess):
+        si_set_obj = self.coordinate_set(sess)
         if si_set_obj is None:
             return None
         else:
             return si_set_obj.processing_set.value
 
-    def set_processing_set(self, sess, processing_set):
-        current = self.processing_set(sess)
+    def set_processing_set(self, sess, processing_set, create=False):
+        current = self.coordinate_set(sess)
         if current is None:
-            current = CoordinateSet(coordinate=self.data, processing_set=processing_set)
+            if create:
+                current = CoordinateSet(coordinate=self.data, processing_set=processing_set)
+                sess.add(current)
+            else:
+                raise CoordinateHandler.CoordinateSetNotExisting()
         else:
-            current.processing_set = processing_set
-        sess.add(current)
-        sess.commit()
+            current.processing_set = ProcessingSet[processing_set]
+        return current
 
     def count_mers(self, min_k, max_k):
         mer_counters = []
@@ -271,6 +274,9 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
                           length=mer_counter.k)
                 session.add(mer)
         session.commit()
+
+    class CoordinateSetNotExisting(Exception):
+        pass
 
 
 class SuperLocusHandler(geenuff.handlers.SuperLocusHandlerBase):

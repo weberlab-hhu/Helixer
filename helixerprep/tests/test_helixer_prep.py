@@ -7,7 +7,8 @@ from sqlalchemy.orm import sessionmaker
 import geenuff
 from geenuff.tests.test_geenuff import (setup_data_handler,
                                         setup_testable_super_locus, TransspliceDemoData)
-from ..datas.annotations import slice_dbmods, slicer
+from ..datas.annotations import slicer
+from ..datas.annotations.slice_dbmods import ProcessingSet, CoordinateSet, Mer
 from ..core import partitions
 from ..core import helpers
 from ..numerify import numerify
@@ -138,59 +139,64 @@ def test_sequence_slicing():
 ## slice_dbmods
 def test_processing_set_enum():
     # valid numbers can be setup
-    ps = slice_dbmods.ProcessingSet(slice_dbmods.ProcessingSet.train)
-    ps2 = slice_dbmods.ProcessingSet('train')
+    ps = ProcessingSet(ProcessingSet.train)
+    ps2 = ProcessingSet('train')
     assert ps == ps2
     # other numbers can't
     with pytest.raises(ValueError):
-        slice_dbmods.ProcessingSet('training')
+        ProcessingSet('training')
     with pytest.raises(ValueError):
-        slice_dbmods.ProcessingSet(1.3)
+        ProcessingSet(1.3)
     with pytest.raises(ValueError):
-        slice_dbmods.ProcessingSet('Dev')
+        ProcessingSet('Dev')
 
 
 def test_add_processing_set():
     sess, engine = mk_memory_session()
     genome = geenuff.orm.Genome()
-    coordinate0, coordinate0_handler = setup_data_handler(slicer.CoordinateHandler, geenuff.orm.Coordinate,
-                                                          genome=genome, start=0, end=100, seqid='a')
-    coordinate0_set = slice_dbmods.CoordinateSet(processing_set='train', coordinate=coordinate0)
-
+    coordinate0, coordinate0_handler = setup_data_handler(slicer.CoordinateHandler,
+                                                          geenuff.orm.Coordinate,
+                                                          genome=genome,
+                                                          start=0,
+                                                          end=100,
+                                                          seqid='a')
+    coordinate0_set = CoordinateSet(processing_set='train', coordinate=coordinate0)
     coordinate1 = geenuff.orm.Coordinate(genome=genome, start=100, end=200, seqid='a')
-    coordinate1_set = slice_dbmods.CoordinateSet(processing_set='train', coordinate=coordinate1)
+    coordinate1_set = CoordinateSet(processing_set='train', coordinate=coordinate1)
+
     sess.add_all([genome, coordinate0_set, coordinate1_set])
     sess.commit()
     assert coordinate0_set.processing_set.value == 'train'
     assert coordinate1_set.processing_set.value == 'train'
 
     # make sure we can get the right info together back from the db
-    maybe_join = sess.query(geenuff.orm.Coordinate, slice_dbmods.CoordinateSet).filter(
-        geenuff.orm.Coordinate.id == slice_dbmods.CoordinateSet.id)
+    maybe_join = sess.query(geenuff.orm.Coordinate, CoordinateSet).filter(
+        geenuff.orm.Coordinate.id == CoordinateSet.id)
     for coord, coord_set in maybe_join.all():
         assert coord.id == coord_set.id
         assert coord_set.processing_set.value == 'train'
 
     # and make sure we can get the processing_set from the sequence_info
-    coord_set = sess.query(slice_dbmods.CoordinateSet).filter(slice_dbmods.CoordinateSet.id == coordinate0.id).all()
+    coord_set = sess.query(CoordinateSet).filter(CoordinateSet.id == coordinate0.id).all()
     assert len(coord_set) == 1
     assert coord_set[0] == coordinate0_set
 
     # and over api
-    coord_set = coordinate0_handler.processing_set(sess)
+    coord_set = coordinate0_handler.coordinate_set(sess)
     assert coord_set is coordinate0_set
-    assert coordinate0_handler.processing_set_val(sess) == 'train'
+    assert coordinate0_handler.get_processing_set(sess) == 'train'
     # set over api
     coordinate0_handler.set_processing_set(sess, 'test')
-    assert coordinate0_handler.processing_set_val(sess) == 'test'
+    sess.commit()
+    assert coordinate0_handler.get_processing_set(sess) == 'test'
 
-    # confirm we can't have two processing sets per sequence_info
+    # confirm we can't have two processing sets per Coordinate
     with pytest.raises(sqlalchemy.orm.exc.FlushError):
-        extra_set = slice_dbmods.CoordinateSet(processing_set='dev', coordinate=coordinate0)
+        extra_set = CoordinateSet(processing_set='dev', coordinate=coordinate0)
         sess.add(extra_set)
         sess.commit()
     sess.rollback()
-    assert coordinate0_handler.processing_set_val(sess) == 'test'
+    assert coordinate0_handler.get_processing_set(sess) == 'test'
 
     # check that absence of entry, is handled with None
     coordinate2, coordinate2_handler = setup_data_handler(slicer.CoordinateHandler,
@@ -199,11 +205,15 @@ def test_add_processing_set():
                                                           start=200,
                                                           end=300,
                                                           seqid='a')
-    assert coordinate2_handler.processing_set(sess) is None
-    assert coordinate2_handler.processing_set_val(sess) is None
+    assert coordinate2_handler.coordinate_set(sess) is None
+    assert coordinate2_handler.get_processing_set(sess) is None
+    # check for exception when CoordinateSet is not existing and we do not want to create it
+    with pytest.raises(slicer.CoordinateHandler.CoordinateSetNotExisting):
+        coordinate2_handler.set_processing_set(sess, 'dev', create=False)
     # finally setup complete new set via api
-    coordinate2_handler.set_processing_set(sess, 'dev')
-    assert coordinate2_handler.processing_set_val(sess) == 'dev'
+    coordinate2_handler.set_processing_set(sess, 'dev', create=True)
+    sess.commit()
+    assert coordinate2_handler.get_processing_set(sess) == 'dev'
 
 
 def test_processing_set_ratio():
