@@ -694,6 +694,12 @@ def test_modify4slice_transsplice():
     new_coords_1 = geenuff.orm.Coordinate(seqid='a', start=915, end=2000, genome=d.genome)
     sess.add_all([new_coords_1, new_coords_0])
     sess.commit()
+    for coord in [new_coords_0, new_coords_1]:
+        coord_handler = slicer.CoordinateHandler()
+        coord_handler.add_data(coord)
+        coord_handler.claim_contained_features_by_seqid(is_plus_strand=True, slicing_queue=d.slicing_queue)
+        coord_handler.claim_contained_features_by_seqid(is_plus_strand=False, slicing_queue=d.slicing_queue)
+    d.slicing_queue.execute_so_far()
     d.ti.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
     d.slicing_queue.execute_so_far()
     d.ti.modify4new_slice(new_coords=new_coords_1, is_plus_strand=True)
