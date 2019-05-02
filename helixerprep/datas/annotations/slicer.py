@@ -10,9 +10,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.expression import bindparam
 
 import geenuff
+from geenuff.base.orm import Coordinate, Genome
 from geenuff.base.helpers import full_db_path
 from helixerprep.datas.annotations.slice_dbmods import CoordinateSet, Mer
-from helixerprep.core.partitions import CoordinateGenerator
+from helixerprep.core.partitions import CoordinateGenerator, choose_set
 from helixerprep.core.helpers import MerCounter
 
 TranscriptInterpBase = geenuff.transcript_interp.TranscriptInterpBase
@@ -125,6 +126,7 @@ class SliceController(object):
 
         genome = self.get_one_genome()
         self.gen_slices(genome, train_size, dev_size, chunk_size, seed)
+        import pudb; pudb.set_trace()
         self.slice_annotations(genome)
 
     def slice_annotations(self, genome):
@@ -183,6 +185,35 @@ class SliceController(object):
                 super_loci.add(piece.transcribed.super_locus.handler)
         return super_loci
 
+    def reshuffle_train_dev_sets(self, genome, train_size, dev_size, seed):
+        """Reshuffles the train and dev annotation of processing sets for Coordinate individually.
+        Due to limitiation with the inheritance in Sqlalchemy, a is_slice flag could not
+        conveniently be added to the Coordinate class, which leads to much more complicated queries
+        used here.
+        """
+        import random
+        sliced_coord_id_query = self.session.query(CoordinateSet).with_entities(CoordinateSet.id)
+        non_sliced_coords = (
+            self.session.query(Coordinate)
+                .filter(Coordinate.id.notin_(sliced_coord_id_query))
+                .all()
+        )
+        for main_coord in non_sliced_coords:
+            sub_coords = (
+                self.session.query(CoordinateSet).join(CoordinateSet.coordinate)
+                    .filter(Coordinate.start >= main_coord.start)
+                    .filter(Coordinate.end <= main_coord.end)
+                    .filter(CoordinateSet.processing_set != 'test')
+                    .all()
+            )
+            random.seed(main_coord.sha1 + seed)
+            for sub_coord in sub_coords:
+                new_set = choose_set(train_size, dev_size)
+                while new_set == 'test':
+                    new_set = choose_set(train_size, dev_size)
+                sub_coord.processing_set = new_set
+        self.session.commit()
+
 
 class HandleMaker(geenuff.handlers.HandleMaker):
     # redefine to get handlers from slicer, here
@@ -197,9 +228,8 @@ class HandleMaker(geenuff.handlers.HandleMaker):
 
 
 class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
-
     def processing_set(self, sess):
-        return sess.query(CoordinateSet).filter(CoordinateSet.id == self.data.id).first()
+        return sess.query(CoordinateSet).filter(CoordinateSet.id == self.data.id).one()
 
     def processing_set_val(self, sess):
         si_set_obj = self.processing_set(sess)
