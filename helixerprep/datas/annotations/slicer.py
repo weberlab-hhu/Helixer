@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.expression import bindparam
 
 import geenuff
-from geenuff.base.helpers import full_db_path
+from geenuff.base.helpers import full_db_path, QueueController, CoreQueue
 from helixerprep.datas.annotations.slice_dbmods import CoordinateSet, Mer
 from helixerprep.core.partitions import CoordinateGenerator
 from helixerprep.core.helpers import MerCounter
@@ -18,48 +18,25 @@ from helixerprep.core.helpers import MerCounter
 TranscriptInterpBase = geenuff.transcript_interp.TranscriptInterpBase
 
 
-class CoreQueue(object):
+class SlicingQueue(QueueController):
     def __init__(self, session, engine):
-        self.engine = engine
-        self.session = session
+        super().__init__(session, engine)
         # updates
-        self.piece_swaps = []  # {'piece_id_old':, 'piece_id_new':, 'feat_id':}
-        self.coord_swaps = []  # {'feat_id':, 'coordinate_id_new':}
+        self.coord_swaps_contained_plus = CoreQueue(CoordinateHandler.coord_swaps_contained_update_plus)
+        self.coord_swaps_contained_minus = CoreQueue(CoordinateHandler.coord_swaps_contained_update_minus)
+        self.piece_swaps = CoreQueue(TranscribedPieceHandler.piece_swaps_update)
         # insertions
-        self.transcribed_pieces = []
-        self.upstream_features = []
-        self.downstream_features = []
-        self.up_down_pairs = []
-        self.association_transcribeds_to_features = []
-        self.association_translateds_to_features = []
+        self.transcribed_pieces = CoreQueue(geenuff.orm.TranscribedPiece.__table__.insert())
+        self.features = CoreQueue(geenuff.orm.Feature.__table__.insert())
+        # todo, anything else needed for edge case handling? coordinates, coordinate_sets?
 
-    @property
-    def piece_swaps_update(self):
-        table = geenuff.orm.association_transcribed_piece_to_feature
-        out = table.update().\
-            where(table.c.transcribed_piece_id == bindparam('piece_id_old')).\
-            where(table.c.feature_id == bindparam('feat_id')).\
-            values(transcribed_piece_id=bindparam('piece_id_new'))
-        return out
-
-    @property
-    def coord_swaps_update(self):
-        return geenuff.orm.Feature.__table__.update().\
-            where(geenuff.orm.Feature.id == bindparam('feat_id')).\
-            values(coordinate_id=bindparam('coordinate_id_new'))
-
-    @property
-    def actions_lists(self):
-        return [(self.piece_swaps_update, self.piece_swaps),
-                (self.coord_swaps_update, self.coord_swaps)]
-
-    def execute_so_far(self):
-        conn = self.engine.connect()
-        for action, a_list in self.actions_lists:
-            if a_list:
-                conn.execute(action, a_list)
-                del a_list[:]
-        self.session.commit()
+        self.ordered_queues = [
+            self.transcribed_pieces,
+            self.features,
+            self.piece_swaps,
+            self.coord_swaps_contained_plus,
+            self.coord_swaps_contained_minus,
+        ]
 
 
 class SliceController(object):
@@ -71,7 +48,7 @@ class SliceController(object):
         self.super_loci = []
         self._setup_db_and_mk_session()
 
-        self.core_queue = CoreQueue(self.session, self.engine)
+        self.slicing_queue = SlicingQueue(self.session, self.engine)
 
     def _setup_db_and_mk_session(self):
         if os.path.exists(self.db_path_sliced):
@@ -97,14 +74,16 @@ class SliceController(object):
         for coord in coords:
             length = coord.end - coord.start
             for start, end, pset in cg.divvy_coordinates(length, coord.sha1):
-                sliced_coord = (
-                    coord.seqid,
-                    coord.sequence[start:end],
-                    start,
-                    end,
-                    pset,
-                )
-                self.slices.append(sliced_coord)
+                coordinate_slice = geenuff.orm.Coordinate(seqid=coord.seqid,
+                                                          sequence=coord.sequence[start:end],
+                                                          start=start,
+                                                          end=end,
+                                                          genome=genome)
+                coordinate_slice_set = CoordinateSet(coordinate=coordinate_slice, processing_set=pset)
+
+                self.session.add_all([coordinate_slice, coordinate_slice_set])
+                self.session.commit()
+                self.slices.append((coordinate_slice, coordinate_slice_set))
 
     def fill_intervaltrees(self):
         self.intervaltrees = {}
@@ -125,35 +104,28 @@ class SliceController(object):
 
         genome = self.get_one_genome()
         self.gen_slices(genome, train_size, dev_size, chunk_size, seed)
-        self.slice_annotations(genome)
+        self.slice_annotations()
 
-    def slice_annotations(self, genome):
-        """Artificially slices annotated genome to match sequence slices
-        and adjusts transcripts as appropriate.
-        """
-        # todo, double check whether I can assume sorted
-        self._slice_annotations_1way(self.slices, genome, is_plus_strand=True)
-        self._slice_annotations_1way(self.slices[::-1], genome, is_plus_strand=False)
+    def slice_annotations(self):
+        """Artificially slices coordinates, features and transcript_pieces in db to match self.slices"""
+        self._slice_annotations_1way(self.slices, is_plus_strand=True)
+        self._slice_annotations_1way(self.slices[::-1], is_plus_strand=False)
 
-    def _slice_annotations_1way(self, slices, genome, is_plus_strand):
-        for seqid, sequence, start, end, pset in slices:
-            coordinate = geenuff.orm.Coordinate(seqid=seqid,
-                                                sequence=sequence,
-                                                start=start,
-                                                end=end,
-                                                genome=genome)
-            coordinate_set = CoordinateSet(coordinate=coordinate, processing_set=pset)
-            self.session.add_all([coordinate, coordinate_set])
-            self.session.commit()
+    def _slice_annotations_1way(self, slices, is_plus_strand):
+        for coordinate, _ in slices:
 
-            overlapping_super_loci = self.get_super_loci_frm_slice(seqid, start, end,
+            coordinate_handler = CoordinateHandler()
+            coordinate_handler.add_data(coordinate)
+
+            coordinate_handler.claim_contained_features_by_seqid(is_plus_strand, self.slicing_queue)
+            overlapping_super_loci = self.get_super_loci_frm_slice(coordinate.seqid, coordinate.start, coordinate.end,
                                                                    is_plus_strand=is_plus_strand)
             for super_locus in overlapping_super_loci:
                 super_locus.make_all_handlers()
                 super_locus.modify4slice(new_coords=coordinate, is_plus_strand=is_plus_strand,
                                          session=self.session, trees=self.interval_trees,
-                                         core_queue=self.core_queue)
-            self.core_queue.execute_so_far()
+                                         slicing_queue=self.slicing_queue)
+            self.slicing_queue.execute_so_far()
             # todo, setup slice as coordinates w/ seq info in database
             # todo, get features & there by superloci in slice
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
@@ -242,6 +214,45 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
                 session.add(mer)
         session.commit()
 
+    def claim_contained_features_by_seqid(self, is_plus_strand, slicing_queue):
+        """queues up changing features point to self.data for their coordinate, if they match data.seqid
+        and are fully contained between data.start and data.end"""
+        assert isinstance(slicing_queue, SlicingQueue)
+        update = {
+            "coordinate_seqid": self.data.seqid,
+            "coordinate_start": self.data.start,
+            "coordinate_end": self.data.end,
+            "coordinate_id_new": self.data.id,
+        }
+        if is_plus_strand:
+            slicing_queue.coord_swaps_contained_plus.queue.append(update)
+        else:
+            slicing_queue.coord_swaps_contained_minus.queue.append(update)
+
+    @property
+    def coord_swaps_update(self):
+        return geenuff.orm.Feature.__table__.update().\
+            where(geenuff.orm.Feature.id == bindparam('feat_id')).\
+            values(coordinate_id=bindparam('coordinate_id_new'))
+
+    @property
+    def coord_swaps_contained_update_plus(self):
+        return geenuff.orm.Feature.__table__.update().\
+            where(geenuff.orm.Feature.coordinate.seqid == bindparam('coordinate_seqid')).\
+            where(geenuff.orm.Feature.start >= bindparam('coordinate_start')).\
+            where(geenuff.orm.Feature.end <= bindparam('coordinate_end')).\
+            where(geenuff.orm.Feature.is_plus_strand is True).\
+            values(coordinate_id=bindparam('coordinate_id_new'))
+
+    @property
+    def coord_swaps_contained_update_minus(self):
+        return geenuff.orm.Feature.__table__.update().\
+            where(geenuff.orm.Feature.coordinate.seqid == bindparam('coordinate_seqid')).\
+            where(geenuff.orm.Feature.start < bindparam('coordinate_end')).\
+            where(geenuff.orm.Feature.end >= bindparam('coordinate_start') + 1).\
+            where(geenuff.orm.Feature.is_plus_strand is False).\
+            values(coordinate_id=bindparam('coordinate_id_new'))
+
 
 class SuperLocusHandler(geenuff.handlers.SuperLocusHandlerBase):
     def __init__(self):
@@ -269,12 +280,12 @@ class SuperLocusHandler(geenuff.handlers.SuperLocusHandlerBase):
                 for feature in piece.features:
                     yield feature
 
-    def modify4slice(self, new_coords, is_plus_strand, session, core_queue, trees=None):  # todo, can trees then be None?
+    def modify4slice(self, new_coords, is_plus_strand, session, slicing_queue, trees=None):  # todo, can trees then be None?
         logging.debug('modifying sl {} for new slice {}:{}-{},  is plus: {}'.format(
             self.data.id, new_coords.seqid, new_coords.start, new_coords.end, is_plus_strand))
         for transcribed in self.data.transcribeds:
             trimmer = TranscriptTrimmer(transcript=transcribed.handler, super_locus=self, sess=session,
-                                        core_queue=core_queue)
+                                        slicing_queue=slicing_queue)
             try:
                 trimmer.modify4new_slice(new_coords=new_coords, is_plus_strand=is_plus_strand, trees=trees)
             except NoFeaturesInSliceError:
@@ -300,7 +311,14 @@ class TranslatedHandler(geenuff.handlers.TranslatedHandlerBase):
 
 
 class TranscribedPieceHandler(geenuff.handlers.TranscribedPieceHandlerBase):
-    pass
+    @property
+    def piece_swaps_update(self):
+        table = geenuff.orm.association_transcribed_piece_to_feature
+        out = table.update().\
+            where(table.c.transcribed_piece_id == bindparam('piece_id_old')).\
+            where(table.c.feature_id == bindparam('feat_id')).\
+            values(transcribed_piece_id=bindparam('piece_id_new'))
+        return out
 
 
 # todo, there is probably a nicer way to accomplish the following with multi inheritance...
@@ -398,9 +416,9 @@ class NoFeaturesInSliceError(Exception):
 
 class TranscriptTrimmer(TranscriptInterpBase):
     """takes pre-cleaned/explicit transcripts and crops to what fits in a slice"""
-    def __init__(self, transcript, super_locus, sess, core_queue):
+    def __init__(self, transcript, super_locus, sess, slicing_queue):
         super().__init__(transcript, super_locus=super_locus, session=sess)
-        self.core_queue = core_queue
+        self.slicing_queue = slicing_queue
         #self.session = sess
         self.handlers = []
         self._downstream_piece = None
@@ -461,17 +479,14 @@ class TranscriptTrimmer(TranscriptInterpBase):
             # within new_coords -> swap coordinates
             elif position_interp.is_contained():
                 seen_one_overlap = True
-                for f in aligned_features:
-                    coord_swap = {'feat_id': f.id, 'coordinate_id_new': new_coords.id}
-                    self.core_queue.coord_swaps.append(coord_swap)
-
+                pass  # this is now done in batch by start/end, AKA, handled already
             # handle pass end of coordinates between previous and current feature, [p] | [f]
             elif position_interp.overlaps_downstream():
                 seen_one_overlap = True
                 # todo, make new_piece_after_border _here_ not in transition gen...
                 piece_at_border = piece
                 new_piece_after_border = self.downstream_piece(piece)
-                self.core_queue.execute_so_far()  # todo, rm from here once everything uses core
+                self.slicing_queue.execute_so_far()  # todo, rm from here once everything uses core
                 for feature in aligned_features:
                     self.set_status_downstream_border(new_coords=new_coords, old_coords=old_coordinate,
                                                       is_plus_strand=is_plus_strand,
@@ -487,7 +502,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                             to_swap = {'piece_id_old': piece_at_border.id,
                                        'piece_id_new': self.downstream_piece(piece).id,
                                        'feat_id': f.id}
-                            self.core_queue.piece_swaps.append(to_swap)
+                            self.slicing_queue.piece_swaps.queue.append(to_swap)
             else:
                 print('ooops', f0)
                 raise AssertionError('this code should be unreachable...? Check what is up!')
