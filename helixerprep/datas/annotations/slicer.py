@@ -22,9 +22,9 @@ class SlicingQueue(QueueController):
     def __init__(self, session, engine):
         super().__init__(session, engine)
         # updates
-        self.coord_swaps_contained_plus = CoreQueue(CoordinateHandler.coord_swaps_contained_update_plus)
-        self.coord_swaps_contained_minus = CoreQueue(CoordinateHandler.coord_swaps_contained_update_minus)
-        self.piece_swaps = CoreQueue(TranscribedPieceHandler.piece_swaps_update)
+        self.coord_swaps_contained_plus = CoreQueue(CoordinateHandler.coord_swaps_contained_update_plus())
+        self.coord_swaps_contained_minus = CoreQueue(CoordinateHandler.coord_swaps_contained_update_minus())
+        self.piece_swaps = CoreQueue(TranscribedPieceHandler.piece_swaps_update())
         # insertions
         self.transcribed_pieces = CoreQueue(geenuff.orm.TranscribedPiece.__table__.insert())
         self.features = CoreQueue(geenuff.orm.Feature.__table__.insert())
@@ -74,16 +74,20 @@ class SliceController(object):
         for coord in coords:
             length = coord.end - coord.start
             for start, end, pset in cg.divvy_coordinates(length, coord.sha1):
-                coordinate_slice = geenuff.orm.Coordinate(seqid=coord.seqid,
-                                                          sequence=coord.sequence[start:end],
-                                                          start=start,
-                                                          end=end,
-                                                          genome=genome)
-                coordinate_slice_set = CoordinateSet(coordinate=coordinate_slice, processing_set=pset)
+                yield coord, start, end, pset
 
-                self.session.add_all([coordinate_slice, coordinate_slice_set])
-                self.session.commit()
-                self.slices.append((coordinate_slice, coordinate_slice_set))
+    def gen_and_create_slices(self, genome, train_size, dev_size, chunk_sice, seed):
+        for coord, start, end, pset in self.gen_slices(genome, train_size, dev_size, chunk_sice, seed):
+            coordinate_slice = geenuff.orm.Coordinate(seqid=coord.seqid,
+                                                      sequence=coord.sequence[start:end],
+                                                      start=start,
+                                                      end=end,
+                                                      genome=genome)
+            coordinate_slice_set = CoordinateSet(coordinate=coordinate_slice, processing_set=pset)
+
+            self.session.add_all([coordinate_slice, coordinate_slice_set])
+            self.session.commit()
+            self.slices.append((coordinate_slice, coordinate_slice_set))
 
     def fill_intervaltrees(self):
         self.intervaltrees = {}
@@ -103,7 +107,7 @@ class SliceController(object):
         self.fill_intervaltrees()
 
         genome = self.get_one_genome()
-        self.gen_slices(genome, train_size, dev_size, chunk_size, seed)
+        self.gen_and_create_slices(genome, train_size, dev_size, chunk_size, seed)
         self.slice_annotations()
 
     def slice_annotations(self):
@@ -218,8 +222,12 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
         """queues up changing features point to self.data for their coordinate, if they match data.seqid
         and are fully contained between data.start and data.end"""
         assert isinstance(slicing_queue, SlicingQueue)
+        # get all coordinates that have the same seqid
+        coords = slicing_queue.session.query(geenuff.orm.Coordinate).\
+            filter(geenuff.orm.Coordinate.seqid == self.data.seqid).all()  # todo, core
+
         update = {
-            "coordinate_seqid": self.data.seqid,
+            "coordinate_ids": [x.id for x in coords],
             "coordinate_start": self.data.start,
             "coordinate_end": self.data.end,
             "coordinate_id_new": self.data.id,
@@ -229,25 +237,25 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
         else:
             slicing_queue.coord_swaps_contained_minus.queue.append(update)
 
-    @property
-    def coord_swaps_update(self):
+    @staticmethod
+    def coord_swaps_update():
         return geenuff.orm.Feature.__table__.update().\
             where(geenuff.orm.Feature.id == bindparam('feat_id')).\
             values(coordinate_id=bindparam('coordinate_id_new'))
 
-    @property
-    def coord_swaps_contained_update_plus(self):
+    @staticmethod
+    def coord_swaps_contained_update_plus():
         return geenuff.orm.Feature.__table__.update().\
-            where(geenuff.orm.Feature.coordinate.seqid == bindparam('coordinate_seqid')).\
+            where(geenuff.orm.Feature.coordinate_id.in_(bindparam('coordinate_ids', expanding=True))).\
             where(geenuff.orm.Feature.start >= bindparam('coordinate_start')).\
             where(geenuff.orm.Feature.end <= bindparam('coordinate_end')).\
             where(geenuff.orm.Feature.is_plus_strand is True).\
             values(coordinate_id=bindparam('coordinate_id_new'))
 
-    @property
-    def coord_swaps_contained_update_minus(self):
+    @staticmethod
+    def coord_swaps_contained_update_minus():
         return geenuff.orm.Feature.__table__.update().\
-            where(geenuff.orm.Feature.coordinate.seqid == bindparam('coordinate_seqid')).\
+            where(geenuff.orm.Feature.coordinate_id.in_(bindparam('coordinate_ids', expanding=True))).\
             where(geenuff.orm.Feature.start < bindparam('coordinate_end')).\
             where(geenuff.orm.Feature.end >= bindparam('coordinate_start') + 1).\
             where(geenuff.orm.Feature.is_plus_strand is False).\
@@ -311,8 +319,8 @@ class TranslatedHandler(geenuff.handlers.TranslatedHandlerBase):
 
 
 class TranscribedPieceHandler(geenuff.handlers.TranscribedPieceHandlerBase):
-    @property
-    def piece_swaps_update(self):
+    @staticmethod
+    def piece_swaps_update():
         table = geenuff.orm.association_transcribed_piece_to_feature
         out = table.update().\
             where(table.c.transcribed_piece_id == bindparam('piece_id_old')).\

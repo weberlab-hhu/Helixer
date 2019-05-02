@@ -25,7 +25,7 @@ def construct_slice_controller(source=DUMMYLOCI_DB, dest=TMP_DB, use_default_sli
     controller.load_super_loci()
     if use_default_slices:
         genome = controller.get_one_genome()
-        controller.gen_slices(genome, 0.8, 0.1, 2000000, "puma")
+        controller.gen_and_create_slices(genome, 0.8, 0.1, 2000000, "puma")
     return controller
 
 
@@ -121,17 +121,17 @@ def test_count_range_of_mers():
 def test_sequence_slicing():
     controller = construct_slice_controller(use_default_slices=False)
     genome = controller.get_one_genome()
-    controller.gen_slices(genome, 0.8, 0.1, 100, "puma")
+    controller.gen_and_create_slices(genome, 0.8, 0.1, 100, "puma")
 
     # all but the last two should be of max_len
-    for slice in controller.slices[:-2]:
-        assert len(''.join(slice[1])) == 100
-        assert slice[3] - slice[2] == 100
+    for slice in controller.slices[:-2]:  # slices should be of format [(Coordinate, CoordinateSet), ...]
+        assert len(slice[0].sequence) == 100
+        assert slice[0].end - slice[0].start == 100
 
     # the last two should split the remainder in half, therefore have a length difference of 0 or 1
     penultimate = controller.slices[-2]
     ultimate = controller.slices[-1]
-    delta_len = abs((penultimate[3] - penultimate[2]) - (ultimate[3] - ultimate[2]))
+    delta_len = abs((penultimate[0].end - penultimate[0].start) - (ultimate[0].end - ultimate[0].start))
     assert delta_len == 1 or delta_len == 0
 
 
@@ -208,12 +208,13 @@ def test_add_processing_set():
 
 def test_processing_set_ratio():
     def num_pset(slices, pset):
-        return len([s for s in slices if s[4] == pset])
+        print([s for s in slices])
+        return len([s for s in slices if s[3] == pset])
 
     controller = construct_slice_controller(use_default_slices=False)
     genome = controller.get_one_genome()
-    controller.gen_slices(genome, 0.8, 0.1, 6, 'puma')
-    slices_puma0 = controller.slices
+    slice_generator = controller.gen_slices(genome, 0.8, 0.1, 6, 'puma')
+    slices_puma0 = list(slice_generator)
 
     # test if ratio is remotely okay
     train_count = num_pset(slices_puma0, 'train')
@@ -223,13 +224,13 @@ def test_processing_set_ratio():
     assert train_count > test_count
 
     # test seeding effects
-    controller.gen_slices(genome, 0.8, 0.1, 6, 'puma')
-    slices_puma1 = controller.slices
+    slice_generator = controller.gen_slices(genome, 0.8, 0.1, 6, 'puma')
+    slices_puma1 = list(slice_generator)
     for s0, s1 in zip(slices_puma0, slices_puma1):
         assert s0 == s1
 
-    controller.gen_slices(genome, 0.8, 0.1, 6, 'gepard')
-    slices_gepard = controller.slices
+    slice_generator = controller.gen_slices(genome, 0.8, 0.1, 6, 'gepard')
+    slices_gepard = list(slice_generator)
     same = True
     for s, g in zip(slices_puma0, slices_gepard):
         if s != g:
@@ -868,7 +869,7 @@ def test_reslice_at_same_spot():
 
     new_coord = geenuff.orm.Coordinate(genome=controller.get_one_genome(), seqid='1',
                                        sequence='A' * 100, start=0, end=100)
-    slices = (new_coord, None)
+    slices = ((new_coord, None),)
     controller._slice_annotations_1way(slices, is_plus_strand=True)
     controller.session.commit()
     old_len = len(controller.session.query(geenuff.orm.TranscribedPiece).all())
