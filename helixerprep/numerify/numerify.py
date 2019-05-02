@@ -26,6 +26,27 @@ from ..core import helpers
 #   handles processing of said data via calls to appropriate Numerifier
 
 
+AMBIGUITY_DECODE = {'c': [1., 0., 0., 0.],
+                    'a': [0., 1., 0., 0.],
+                    't': [0., 0., 1., 0.],
+                    'g': [0., 0., 0., 1.],
+                    'y': [0.5, 0., 0.5, 0.],
+                    'r': [0., 0.5, 0., 0.5],
+                    'w': [0., 0.5, 0.5, 0.],
+                    's': [0.5, 0., 0., 0.5],
+                    'k': [0., 0., 0.5, 0.5],
+                    'm': [0.5, 0.5, 0., 0.],
+                    'd': [0., 0.33, 0.33, 0.33],
+                    'v': [0.33, 0.33, 0., 0.33],
+                    'h': [0.33, 0.33, 0.33, 0.],
+                    'b': [0.33, 0., 0.33, 0.33],
+                    'n': [0.25, 0.25, 0.25, 0.25]}
+
+
+class DataInterpretationError(Exception):
+    pass
+
+
 class Numerifier(object):
     def __init__(self, shape, is_plus_strand, dtype=np.float):
         self.shape = shape
@@ -39,7 +60,7 @@ class Numerifier(object):
             matrix = np.flip(matrix, axis=1)
         return matrix
 
-    def unflipped_slice_to_matrix(self, *arkgs, **kwargs):
+    def unflipped_slice_to_matrix(self, *args, **kwargs):
         raise NotImplementedError
 
     # this works only when each bp has it's own annotation; In other cases (e.g. where transitions are encoded)
@@ -68,23 +89,6 @@ class Numerifier(object):
         return np.zeros([length] + self.shape, self.dtype)
 
 
-AMBIGUITY_DECODE = {'c': [1., 0., 0., 0.],
-                    'a': [0., 1., 0., 0.],
-                    't': [0., 0., 1., 0.],
-                    'g': [0., 0., 0., 1.],
-                    'y': [0.5, 0., 0.5, 0.],
-                    'r': [0., 0.5, 0., 0.5],
-                    'w': [0., 0.5, 0.5, 0.],
-                    's': [0.5, 0., 0., 0.5],
-                    'k': [0., 0., 0.5, 0.5],
-                    'm': [0.5, 0.5, 0., 0.],
-                    'd': [0., 0.33, 0.33, 0.33],
-                    'v': [0.33, 0.33, 0., 0.33],
-                    'h': [0.33, 0.33, 0.33, 0.],
-                    'b': [0.33, 0., 0.33, 0.33],
-                    'n': [0.25, 0.25, 0.25, 0.25]}
-
-
 class SequenceNumerifier(Numerifier):
     def __init__(self, is_plus_strand):
         super().__init__([4], is_plus_strand=is_plus_strand)
@@ -106,7 +110,6 @@ class SequenceNumerifier(Numerifier):
 
 
 class AnnotationFoo(object):
-
     def __init__(self, data_slice, is_plus_strand):
         assert isinstance(data_slice, slicer.CoordinateHandler)
         self.data_slice = data_slice
@@ -123,7 +126,6 @@ class AnnotationFoo(object):
             if feature.is_plus_strand == self.is_plus_strand:
                 for piece in feature.transcribed_pieces:
                     pieces.add(piece)
-
         return pieces
 
 
@@ -158,10 +160,6 @@ class AnnotationNumerifier(Numerifier, AnnotationFoo):
     def update_matrix(self, matrix, transcribed_piece, transcript_interpreter):
         raise NotImplementedError
 
-
-
-class DataInterpretationError(Exception):
-    pass
 
 
 # TODO, break or mask on errors
@@ -205,6 +203,7 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
 class TransitionAnnotationNumerifier(AnnotationNumerifier):
     def __init__(self, data_slice, is_plus_strand):
         super().__init__(data_slice, [12], is_plus_strand=is_plus_strand)
+
     def update_matrix(self, matrix, transcribed_piece, transcript_interpreter):
         transcript_interpreter.check_no_errors(transcribed_piece)
 
@@ -325,10 +324,12 @@ class TranscriptLocalReader(TranscriptInterpBase):
 
 #### and now on to actual example gen
 class ExampleMakerSeqMetaBP(object):
-    def examples_from_slice(self, anno_slice, seq_slice, structured_genome, is_plus_strand, max_len):
+    def examples_from_slice(self, anno_slice, seq_slice, structured_genome,
+                            is_plus_strand, max_len):
         assert isinstance(seq_slice, sequences.SequenceSlice)
         assert isinstance(structured_genome, sequences.StructuredGenome)
-        anno_nummerifier = BasePairAnnotationNumerifier(anno_slice, is_plus_strand=is_plus_strand)
+        anno_nummerifier = BasePairAnnotationNumerifier(anno_slice,
+                                                        is_plus_strand=is_plus_strand)
         anno_gen = anno_nummerifier.slice_to_matrices(max_len=max_len)
         seq_nummerifier = SequenceNumerifier(is_plus_strand=is_plus_strand)
         seq_gen = seq_nummerifier.slice_to_matrices(data_slice=seq_slice, max_len=max_len)
@@ -336,5 +337,10 @@ class ExampleMakerSeqMetaBP(object):
         gc = structured_genome.meta_info.gc_content
         for anno in anno_gen:
             seq = next(seq_gen)
-            out = {'labels': anno.flatten(), 'input': seq.flatten(), 'meta_Gbp': [total_Gbp], 'meta_gc': [gc]}
+            out = {
+                'labels': anno.flatten(),
+                'input': seq.flatten(),
+                'meta_Gbp': [total_Gbp],
+                'meta_gc': [gc]
+            }
             yield out
