@@ -35,9 +35,8 @@ class Mer(orm.Base):
 
     coordinate = relationship('orm.Coordinate')
 
-    UniqueConstraint('mer_sequence', 'coordinate_id', name='unique_kmer_per_coord')
-
     __table_args__ = (
+        UniqueConstraint('mer_sequence', 'coordinate_id', name='unique_kmer_per_coord'),
         CheckConstraint('length(mer_sequence) > 0', name='check_string_gt_0'),
         CheckConstraint('count >= 0', name='check_count_gt_0'),
         CheckConstraint('length >= 1', name='check_length_gt_1'),
