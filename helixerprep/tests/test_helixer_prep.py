@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql.expression import bindparam
 
 import geenuff
 from geenuff.tests.test_geenuff import (setup_data_handler,
@@ -541,8 +542,8 @@ class TransspliceDemoDataSlice(TransspliceDemoData):
     def __init__(self, sess, engine):
         super().__init__(sess)
         self.slicing_queue = slicer.SlicingQueue(session=sess, engine=engine)
-        self.genome = geenuff.orm.Genome()
-        self.old_coor = geenuff.orm.Coordinate(genome=self.genome, seqid='a', start=1, end=2000)
+        #self.genome = geenuff.orm.Genome()
+        #self.old_coor = geenuff.orm.Coordinate(genome=self.genome, seqid='a', start=1, end=2000)
         # replace handlers with those from slicer
         self.slh = slicer.SuperLocusHandler()
         self.slh.add_data(self.sl)
@@ -690,20 +691,22 @@ def test_modify4slice_transsplice():
     sess, engine = mk_memory_session()
     d = TransspliceDemoDataSlice(sess, engine)  # setup _d_ata
     d.make_all_handlers()
-    new_coords_0 = geenuff.orm.Coordinate(seqid='a', start=0, end=915, genome=d.genome)
-    new_coords_1 = geenuff.orm.Coordinate(seqid='a', start=915, end=2000, genome=d.genome)
+    new_coords_0 = geenuff.orm.Coordinate(seqid='a', start=0, end=915, genome=d.old_coor.genome)
+    new_coords_1 = geenuff.orm.Coordinate(seqid='a', start=915, end=2000, genome=d.old_coor.genome)
     sess.add_all([new_coords_1, new_coords_0])
     sess.commit()
-    for coord in [new_coords_0, new_coords_1]:
-        coord_handler = slicer.CoordinateHandler()
-        coord_handler.add_data(coord)
-        coord_handler.claim_contained_features_by_seqid(is_plus_strand=True, slicing_queue=d.slicing_queue)
-        coord_handler.claim_contained_features_by_seqid(is_plus_strand=False, slicing_queue=d.slicing_queue)
-    d.slicing_queue.execute_so_far()
+
     d.ti.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
     d.slicing_queue.execute_so_far()
     d.ti.modify4new_slice(new_coords=new_coords_1, is_plus_strand=True)
     d.slicing_queue.execute_so_far()
+
+    # coordinate centric switch for all the contained features
+    for coord in [new_coords_0, new_coords_1]:
+        coord_handler = slicer.CoordinateHandler()
+        coord_handler.add_data(coord)
+        coord_handler.claim_contained_features_by_seqid(is_plus_strand=True, slicing_queue=d.slicing_queue)
+
     # we expect 3 new pieces,
     #    1: TSS-start-DonorTranssplice-TTS via <2x status> to (6 features)
     #    2: <2x status>-TSS- via <3x status> to (6 features)
@@ -735,6 +738,15 @@ def test_modify4slice_transsplice():
     d.slicing_queue.execute_so_far()
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=False)
     d.slicing_queue.execute_so_far()
+
+    # coordinate centric switch for all the contained features
+    # (note that this has to be redone for flipped only to pick up the newly split features)
+    for coord in [new_coords_0, new_coords_1]:
+        coord_handler = slicer.CoordinateHandler()
+        coord_handler.add_data(coord)
+        coord_handler.claim_contained_features_by_seqid(is_plus_strand=True, slicing_queue=d.slicing_queue)
+        coord_handler.claim_contained_features_by_seqid(is_plus_strand=False, slicing_queue=d.slicing_queue)
+
     # we expect 3 new pieces,
     #    1: TSS-start-DonorTranssplice-TTS via <2x status> to (6 features)
     #    2: <2x status>-TSS-AcceptorTranssplice-stop via <1x status> to (6 features)
@@ -753,8 +765,11 @@ def test_modify4slice_transsplice():
     ftypes_2 = set([(x.type.value, x.start_is_biological_start, x.end_is_biological_end)
                     for x in sorted_pieces[2].features])
     assert ftypes_2 == {(geenuff.types.TRANSCRIBED, False, True)}
+
     for piece in sorted_pieces:
+        print('----------\npiece: {}'.format(piece))
         for f in piece.features:
+            print('feature: {}'.format(f))
             assert f.coordinate in {new_coords_1, new_coords_0}
 
 
@@ -764,8 +779,8 @@ def test_modify4slice_2nd_half_first():
     sess, engine = mk_memory_session()
     d = TransspliceDemoDataSlice(sess, engine)  # setup _d_ata
     d.make_all_handlers()
-    new_coords_0 = geenuff.orm.Coordinate(genome=d.genome, seqid='a', start=0, end=915)
-    new_coords_1 = geenuff.orm.Coordinate(genome=d.genome, seqid='a', start=915, end=2000)
+    new_coords_0 = geenuff.orm.Coordinate(genome=d.old_coor.genome, seqid='a', start=0, end=915)
+    new_coords_1 = geenuff.orm.Coordinate(genome=d.old_coor.genome, seqid='a', start=915, end=2000)
     sess.add_all([new_coords_0, new_coords_1])
     sess.commit()
     d.tiflip.modify4new_slice(new_coords=new_coords_1, is_plus_strand=False)
@@ -778,6 +793,11 @@ def test_modify4slice_2nd_half_first():
     d.slicing_queue.execute_so_far()
     d.tiflip.modify4new_slice(new_coords=new_coords_0, is_plus_strand=True)
     d.slicing_queue.execute_so_far()
+    for coord in [new_coords_0, new_coords_1]:
+        coord_handler = slicer.CoordinateHandler()
+        coord_handler.add_data(coord)
+        coord_handler.claim_contained_features_by_seqid(is_plus_strand=True, slicing_queue=d.slicing_queue)
+        coord_handler.claim_contained_features_by_seqid(is_plus_strand=False, slicing_queue=d.slicing_queue)
     # we expect to now have 3 pieces,
     #    1: TSS-start-DonorTranssplice-TTS via <2x status> to (3 features)
     #    2: <2x status>-TSS-AcceptorTranssplice-stop via <1x status> to (3 features)
@@ -825,12 +845,11 @@ def test_slicing_featureless_slice_inside_locus():
     genome = controller.get_one_genome()
     slh = controller.super_loci[0]
     transcript = [x for x in slh.data.transcribeds if x.given_name == 'y'][0]
-    slices = (('1', 'A' * 40, 0, 40, 'train'),
-              ('1', 'A' * 40, 40, 80, 'train'),
-              ('1', 'A' * 40, 80, 120, 'train'))
-    slices = iter(slices)
-    controller._slice_annotations_1way(slices, is_plus_strand=True)
+    slices = ((geenuff.orm.Coordinate(seqid='1', sequence='A' * 40, start=0, end=40, genome=genome), None),
+              (geenuff.orm.Coordinate(seqid='1', sequence='A' * 40, start=40, end=80, genome=genome), None),
+              (geenuff.orm.Coordinate(seqid='1', sequence='A' * 40, start=80, end=120, genome=genome), None))
 
+    controller._slice_annotations_1way(slices, is_plus_strand=True)
     for piece in transcript.transcribed_pieces:
         print('got piece: {}\n-----------\n'.format(piece))
         for feature in piece.features:

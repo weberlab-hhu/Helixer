@@ -8,6 +8,7 @@ from shutil import copyfile
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.expression import bindparam
+from sqlalchemy.sql import select
 
 import geenuff
 from geenuff.base.helpers import full_db_path, QueueController, CoreQueue
@@ -22,8 +23,6 @@ class SlicingQueue(QueueController):
     def __init__(self, session, engine):
         super().__init__(session, engine)
         # updates
-        self.coord_swaps_contained_plus = CoreQueue(CoordinateHandler.coord_swaps_contained_update_plus())
-        self.coord_swaps_contained_minus = CoreQueue(CoordinateHandler.coord_swaps_contained_update_minus())
         self.piece_swaps = CoreQueue(TranscribedPieceHandler.piece_swaps_update())
         # insertions
         self.transcribed_pieces = CoreQueue(geenuff.orm.TranscribedPiece.__table__.insert())
@@ -34,8 +33,6 @@ class SlicingQueue(QueueController):
             self.transcribed_pieces,
             self.features,
             self.piece_swaps,
-            self.coord_swaps_contained_plus,
-            self.coord_swaps_contained_minus,
         ]
 
 
@@ -121,7 +118,6 @@ class SliceController(object):
             coordinate_handler = CoordinateHandler()
             coordinate_handler.add_data(coordinate)
 
-            coordinate_handler.claim_contained_features_by_seqid(is_plus_strand, self.slicing_queue)
             overlapping_super_loci = self.get_super_loci_frm_slice(coordinate.seqid, coordinate.start, coordinate.end,
                                                                    is_plus_strand=is_plus_strand)
             for super_locus in overlapping_super_loci:
@@ -130,6 +126,7 @@ class SliceController(object):
                                          session=self.session, trees=self.interval_trees,
                                          slicing_queue=self.slicing_queue)
             self.slicing_queue.execute_so_far()
+            coordinate_handler.claim_contained_features_by_seqid(is_plus_strand, self.slicing_queue)
             # todo, setup slice as coordinates w/ seq info in database
             # todo, get features & there by superloci in slice
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
@@ -223,6 +220,7 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
         and are fully contained between data.start and data.end"""
         assert isinstance(slicing_queue, SlicingQueue)
         # get all coordinates that have the same seqid
+        print(self.data, '<- this is the claimer')
         coords = slicing_queue.session.query(geenuff.orm.Coordinate).\
             filter(geenuff.orm.Coordinate.seqid == self.data.seqid).all()  # todo, core
 
@@ -232,10 +230,29 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
             "coordinate_end": self.data.end,
             "coordinate_id_new": self.data.id,
         }
+        print(update)
+        print([x.seqid for x in coords])
         if is_plus_strand:
-            slicing_queue.coord_swaps_contained_plus.queue.append(update)
+            slicing_queue.engine.execute(CoordinateHandler.coord_swaps_contained_update_plus(), update)
         else:
-            slicing_queue.coord_swaps_contained_minus.queue.append(update)
+            slicing_queue.engine.execute(CoordinateHandler.coord_swaps_contained_update_minus(), update)
+        slicing_queue.session.commit()
+
+    @staticmethod
+    def select_overlaps_downstream_plus():
+        return geenuff.orm.Feature.__table__.select().\
+            where(geenuff.orm.Feature.coordinate_id.in_(bindparam('coordinate_ids', expanding=True))).\
+            where(geenuff.orm.Feature.start < bindparam('coordinate_end')).\
+            where(geenuff.orm.Feature.end > bindparam('coordinate_end')).\
+            where(geenuff.orm.Feature.is_plus_strand == 1)
+
+    @staticmethod
+    def select_overlaps_downstream_minus():
+        return geenuff.orm.Feature.__table__.select().\
+            where(geenuff.orm.Feature.coordinate_id.in_(bindparam('coordinate_ids', expanding=True))).\
+            where(geenuff.orm.Feature.start >= bindparam('coordinate_start')).\
+            where(geenuff.orm.Feature.end < bindparam('coordinate_start') - 1).\
+            where(geenuff.orm.Feature.is_plus_strand == 0)
 
     @staticmethod
     def coord_swaps_update():
@@ -243,13 +260,21 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
             where(geenuff.orm.Feature.id == bindparam('feat_id')).\
             values(coordinate_id=bindparam('coordinate_id_new'))
 
+    #@staticmethod  # todo... get back to this when fully switching to core, but maybe one thing at a time...
+    #def get_transcribeds_from_features(features_select):
+    #    joined_association_table = features_select.join(geenuff.orm.association_transcribed_piece_to_feature)
+    #    just_transcribed_piece_id = select(
+    #        [geenuff.orm.association_transcribed_piece_to_feature.c.transcribed_piece_id]
+    #    ).select_from(joined_association_table)
+    #    joined_transcribed_pieces = just_transcribed_piece_id.join(geenuff.orm.TranscribedPiece.__table__)
+    #    joined_trans
     @staticmethod
     def coord_swaps_contained_update_plus():
         return geenuff.orm.Feature.__table__.update().\
             where(geenuff.orm.Feature.coordinate_id.in_(bindparam('coordinate_ids', expanding=True))).\
             where(geenuff.orm.Feature.start >= bindparam('coordinate_start')).\
             where(geenuff.orm.Feature.end <= bindparam('coordinate_end')).\
-            where(geenuff.orm.Feature.is_plus_strand is True).\
+            where(geenuff.orm.Feature.is_plus_strand == 1).\
             values(coordinate_id=bindparam('coordinate_id_new'))
 
     @staticmethod
@@ -258,7 +283,7 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
             where(geenuff.orm.Feature.coordinate_id.in_(bindparam('coordinate_ids', expanding=True))).\
             where(geenuff.orm.Feature.start < bindparam('coordinate_end')).\
             where(geenuff.orm.Feature.end >= bindparam('coordinate_start') + 1).\
-            where(geenuff.orm.Feature.is_plus_strand is False).\
+            where(geenuff.orm.Feature.is_plus_strand == 0).\
             values(coordinate_id=bindparam('coordinate_id_new'))
 
 
@@ -496,6 +521,7 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 new_piece_after_border = self.downstream_piece(piece)
                 self.slicing_queue.execute_so_far()  # todo, rm from here once everything uses core
                 for feature in aligned_features:
+                    print('this feature overlaps end of :::{}:::: {}'.format(new_coords, feature))
                     self.set_status_downstream_border(new_coords=new_coords, old_coords=old_coordinate,
                                                       is_plus_strand=is_plus_strand,
                                                       template_feature=feature,
