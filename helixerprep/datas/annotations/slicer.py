@@ -112,7 +112,7 @@ class SliceController(object):
         self._slice_annotations_1way(self.slices, is_plus_strand=True)
         self._slice_annotations_1way(self.slices[::-1], is_plus_strand=False)
 
-    def _slice_annotations_1way(self, slices, is_plus_strand):
+    def _slice_annotations_1way(self, slices, is_plus_strand):  # maybe rename 2 cleanup or so?
         for coordinate, _ in slices:
 
             coordinate_handler = CoordinateHandler()
@@ -131,7 +131,12 @@ class SliceController(object):
             # todo, get features & there by superloci in slice
             # todo, crop/reconcile superloci/transcripts/transcribeds/features with slice
 
-    def get_super_loci_frm_slice(self, seqid, start, end, is_plus_strand):
+    def get_super_loci_frm_slice_downstream_border(self, coordinate_handler, is_plus_strand):
+        transcript_res = coordinate_handler.get_transcripts_overlapping_downstream(session=self.session,
+                                                                                   engine=self.engine)
+        super_loci_ids = set()
+        for transcript in transcript_res:
+            super_loci_ids.add(transcript.super_loci_id)
         features = self.get_features_from_slice(seqid, start, end, is_plus_strand)
         super_loci = self.get_super_loci_frm_features(features)
         return super_loci
@@ -216,27 +221,28 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
         session.commit()
 
     def claim_contained_features_by_seqid(self, is_plus_strand, slicing_queue):
-        """queues up changing features point to self.data for their coordinate, if they match data.seqid
+        """changes features to point to self.data for their coordinate, if they match data.seqid
         and are fully contained between data.start and data.end"""
         assert isinstance(slicing_queue, SlicingQueue)
         # get all coordinates that have the same seqid
-        print(self.data, '<- this is the claimer')
-        coords = slicing_queue.session.query(geenuff.orm.Coordinate).\
-            filter(geenuff.orm.Coordinate.seqid == self.data.seqid).all()  # todo, core
-
+        coords_ids = self.coord_ids_with_matching_seqids(session=slicing_queue.session)
         update = {
-            "coordinate_ids": [x.id for x in coords],
+            "coordinate_ids": coords_ids,
             "coordinate_start": self.data.start,
             "coordinate_end": self.data.end,
             "coordinate_id_new": self.data.id,
         }
-        print(update)
-        print([x.seqid for x in coords])
         if is_plus_strand:
             slicing_queue.engine.execute(CoordinateHandler.coord_swaps_contained_update_plus(), update)
         else:
             slicing_queue.engine.execute(CoordinateHandler.coord_swaps_contained_update_minus(), update)
         slicing_queue.session.commit()
+
+    def coord_ids_with_matching_seqids(self, session):
+        # todo, change to core...
+        coords = session.query(geenuff.orm.Coordinate).\
+            filter(geenuff.orm.Coordinate.seqid == self.data.seqid).all()
+        return [x.id for x in coords]
 
     @staticmethod
     def select_overlaps_downstream_plus():
@@ -246,6 +252,7 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
             where(geenuff.orm.Feature.end > bindparam('coordinate_end')).\
             where(geenuff.orm.Feature.is_plus_strand == 1)
 
+
     @staticmethod
     def select_overlaps_downstream_minus():
         return geenuff.orm.Feature.__table__.select().\
@@ -254,20 +261,38 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
             where(geenuff.orm.Feature.end < bindparam('coordinate_start') - 1).\
             where(geenuff.orm.Feature.is_plus_strand == 0)
 
+    def get_transcripts_overlapping_downstream(self, is_plus_strand, session, engine):
+        """gets all transcripts overlapping downstream border of self.data as sqlalchemy core result"""
+        coord_ids = self.coord_ids_with_matching_seqids(session=session)
+        select_data = {"coordinate_ids": coord_ids,
+                       "coordinate_start": self.data.start,
+                       "coordinate_end": self.data.end}
+        if is_plus_strand:
+            select_statement = self.select_overlaps_downstream_plus()
+        else:
+            select_statement = self.select_overlaps_downstream_minus()
+        transcript_select = self.statement_transcribeds_from_features(select_statement)
+        return engine.execute(transcript_select, select_data)
+
     @staticmethod
     def coord_swaps_update():
         return geenuff.orm.Feature.__table__.update().\
             where(geenuff.orm.Feature.id == bindparam('feat_id')).\
             values(coordinate_id=bindparam('coordinate_id_new'))
 
-    #@staticmethod  # todo... get back to this when fully switching to core, but maybe one thing at a time...
-    #def get_transcribeds_from_features(features_select):
-    #    joined_association_table = features_select.join(geenuff.orm.association_transcribed_piece_to_feature)
-    #    just_transcribed_piece_id = select(
-    #        [geenuff.orm.association_transcribed_piece_to_feature.c.transcribed_piece_id]
-    #    ).select_from(joined_association_table)
-    #    joined_transcribed_pieces = just_transcribed_piece_id.join(geenuff.orm.TranscribedPiece.__table__)
-    #    joined_trans
+    @staticmethod  # todo... get back to this when fully switching to core, but maybe one thing at a time...
+    def statement_transcribeds_from_features(features_select):
+        joined_association_table = features_select.join(geenuff.orm.association_transcribed_piece_to_feature)
+        just_transcribed_piece_id = select(
+            [geenuff.orm.association_transcribed_piece_to_feature.c.transcribed_piece_id]
+        ).select_from(joined_association_table)
+        joined_transcribed_pieces = just_transcribed_piece_id.join(geenuff.orm.TranscribedPiece.__table__)
+        joined_transcribeds = joined_transcribed_pieces.join(geenuff.orm.Transcribed.__table__)
+        just_transcribeds = select(
+            [geenuff.orm.Transcribed.__table__]
+        ).select_from(joined_transcribeds)
+        return just_transcribeds
+
     @staticmethod
     def coord_swaps_contained_update_plus():
         return geenuff.orm.Feature.__table__.update().\
