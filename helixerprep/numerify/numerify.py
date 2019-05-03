@@ -4,6 +4,7 @@ import numpy as np
 import copy
 
 import geenuff
+from geenuff.base.orm import Coordinate
 from geenuff.base.transcript_interp import TranscriptInterpBase
 from helixerprep.datas.annotations import slicer
 from ..core import partitions
@@ -63,9 +64,10 @@ class Numerifier(object):
     def unflipped_slice_to_matrix(self, *args, **kwargs):
         raise NotImplementedError
 
-    # this works only when each bp has it's own annotation; In other cases (e.g. where transitions are encoded)
-    # this method must be overwritten
     def slice_to_matrices(self, max_len, *args, **kwargs):
+        """This works only when each bp has it's own annotation In other cases
+        (e.g. where transitions are encoded) this method must be overwritten
+        """
         matrix = self.unflipped_slice_to_matrix(*args, **kwargs)
         partitioner = partitions.Stepper(end=matrix.shape[0], by=max_len)
         paired_steps = list(partitioner.step_to_end())
@@ -82,20 +84,17 @@ class Numerifier(object):
         assert isinstance(self.matrix, np.ndarray)
         return self.matrix.flatten()
 
-    def deflatten_matrix(self, flattened):
-        return np.reshape(flattened, [-1] + self.shape)
-
     def _zeros(self, length):
-        return np.zeros([length] + self.shape, self.dtype)
+        return np.zeros((length,) + self.shape, self.dtype)
 
 
 class SequenceNumerifier(Numerifier):
     def __init__(self, is_plus_strand):
-        super().__init__([4], is_plus_strand=is_plus_strand)
+        super().__init__((4,), is_plus_strand=is_plus_strand)
         # todo, add data_slice as attribute for consistency & ease of use
 
     def unflipped_slice_to_matrix(self, data_slice, *args, **kwargs):
-        assert isinstance(data_slice, sequences.SequenceSlice)
+        assert isinstance(data_slice, Coordinate)
         length = data_slice.end - data_slice.start
         matrix = self._zeros(length)
         i = 0
@@ -169,12 +168,16 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
 
     @property
     def _shape(self):
-        return [3]
+        return (3,)
 
     @staticmethod
     def class_labels(status):
-        labs = (status.genic, status.in_translated_region, status.in_intron or status.in_trans_intron)
-        return [float(x) for x in labs]
+        labels = (
+            status.genic,
+            status.in_translated_region,
+            status.in_intron or status.in_trans_intron,
+        )
+        return [float(x) for x in labels]
 
     def update_matrix(self, matrix, transcribed_piece, transcript_interpreter):
         transcript_interpreter.check_no_errors(piece=transcribed_piece)
@@ -202,7 +205,7 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
 
 class TransitionAnnotationNumerifier(AnnotationNumerifier):
     def __init__(self, data_slice, is_plus_strand):
-        super().__init__(data_slice, [12], is_plus_strand=is_plus_strand)
+        super().__init__(data_slice, (12,), is_plus_strand=is_plus_strand)
 
     def update_matrix(self, matrix, transcribed_piece, transcript_interpreter):
         transcript_interpreter.check_no_errors(transcribed_piece)
@@ -246,48 +249,6 @@ class TransitionAnnotationNumerifier(AnnotationNumerifier):
 
     def slice_to_matrices(self, data_slice, max_len, *args, **kwargs):
         raise NotImplementedError  # todo!
-
-
-#class StepHolder(object):
-#    def __init__(self, features=None, status=None, at=None):
-#        # todo, check not everything is none
-#        self._at = at
-#        self.features = features
-#        self.status = status
-#
-#    @property
-#    def a_feature(self):
-#        return self.features[0]
-#
-#    @property
-#    def at(self):
-#        if self._at is not None:
-#            return self._at
-#        elif self.features is not None:
-#            return self.a_feature.position
-#        else:
-#            raise ValueError
-#
-#    def py_range(self, previous):
-#        current_at = self.at
-#        if previous.features is not None:
-#            previous_at = previous.at
-#            if not self.a_feature.is_plus_strand:
-#                # + 1 to move from - strand coordinates (,] to pythonic coordinates [,)
-#                current_at += 1
-#                previous_at += 1
-#        else:
-#            if self.a_feature.is_plus_strand:
-#                previous_at = self.a_feature.coordinates.start
-#            else:
-#                previous_at = self.a_feature.coordinates.end
-#                current_at += 1  # + 1 to move from - strand coordinate ( to pythonic coordinate [
-#
-#        return helpers.min_max(previous_at, current_at)
-#
-#    def any_erroneous_features(self):
-#        #errors = [x.value for x in type_enums.ErrorFeature]
-#        return any([x.type.value == geenuff.types.ERROR for x in self.features])
 
 
 class TranscriptLocalReader(TranscriptInterpBase):
@@ -344,3 +305,47 @@ class ExampleMakerSeqMetaBP(object):
                 'meta_gc': [gc]
             }
             yield out
+
+
+#class StepHolder(object):
+#    def __init__(self, features=None, status=None, at=None):
+#        # todo, check not everything is none
+#        self._at = at
+#        self.features = features
+#        self.status = status
+#
+#    @property
+#    def a_feature(self):
+#        return self.features[0]
+#
+#    @property
+#    def at(self):
+#        if self._at is not None:
+#            return self._at
+#        elif self.features is not None:
+#            return self.a_feature.position
+#        else:
+#            raise ValueError
+#
+#    def py_range(self, previous):
+#        current_at = self.at
+#        if previous.features is not None:
+#            previous_at = previous.at
+#            if not self.a_feature.is_plus_strand:
+#                # + 1 to move from - strand coordinates (,] to pythonic coordinates [,)
+#                current_at += 1
+#                previous_at += 1
+#        else:
+#            if self.a_feature.is_plus_strand:
+#                previous_at = self.a_feature.coordinates.start
+#            else:
+#                previous_at = self.a_feature.coordinates.end
+#                current_at += 1  # + 1 to move from - strand coordinate ( to pythonic coordinate [
+#
+#        return helpers.min_max(previous_at, current_at)
+#
+#    def any_erroneous_features(self):
+#        #errors = [x.value for x in type_enums.ErrorFeature]
+#        return any([x.type.value == geenuff.types.ERROR for x in self.features])
+
+

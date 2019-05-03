@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 import geenuff
 from geenuff.tests.test_geenuff import (setup_data_handler,
                                         setup_testable_super_locus, TransspliceDemoData)
+from geenuff.applications.importer import ImportController
 from ..datas.annotations import slicer
 from ..datas.annotations.slice_dbmods import ProcessingSet, CoordinateSet, Mer
 from ..core import partitions
@@ -806,7 +807,6 @@ def test_modify4slice_2nd_half_first():
 
 
 def test_slicing_multi_sl():
-    # TODO, add sliced sequences path
     controller = construct_slice_controller()
     controller.fill_intervaltrees()
     slh = controller.super_loci[0]
@@ -887,19 +887,17 @@ def test_reslice_at_same_spot():
 
 #### numerify ####
 def test_sequence_numerify():
-    # geenuff_controller = ImportControl('testdata/geenuff_tester.sqlite3')
-    # geenuff_controller.add_sequences('testdata/tester.fa')
-    # session = geenuff_controller.session
+    controller = ImportController(database_path='sqlite:///:memory:')
+    controller.add_sequences('testdata/tester.fa')
+    coord = controller.genome_handler.data.coordinates[0]
 
-    sequence = sg.sequences[0]
-    slice0 = sequence.slices[0]
     numerifier = numerify.SequenceNumerifier(is_plus_strand=True)
-    matrix = numerifier.slice_to_matrix(slice0)
-    print(slice0.sequence)
-    # ATATATAT, just btw
+    matrix = numerifier.slice_to_matrix(coord)
+    print(coord.sequence)
+    # ATATATAT
     x = [0., 1, 0, 0,
          0., 0, 1, 0]
-    expect = np.array(x * 4).reshape([-1, 4])
+    expect = np.array(x * 4).reshape((-1, 4))
     assert np.allclose(expect, matrix)
 
 

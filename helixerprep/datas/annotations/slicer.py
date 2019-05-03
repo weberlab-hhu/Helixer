@@ -92,6 +92,8 @@ class SliceController(object):
         return ags[0]
 
     def gen_slices(self, genome, train_size, dev_size, chunk_size, seed):
+        """Returns a list of all slices of all coordinates of a genome
+        with their assigned processing sets"""
         self.slices = []
         coords = self.session.query(geenuff.orm.Coordinate).all()
         cg = CoordinateGenerator(train_size, dev_size, chunk_size, seed)
@@ -132,7 +134,6 @@ class SliceController(object):
         """Artificially slices annotated genome to match sequence slices
         and adjusts transcripts as appropriate.
         """
-        # todo, double check whether I can assume sorted
         self._slice_annotations_1way(self.slices, genome, is_plus_strand=True)
         self._slice_annotations_1way(self.slices[::-1], genome, is_plus_strand=False)
 
