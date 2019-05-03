@@ -199,13 +199,9 @@ class SliceController(object):
                 .all()
         )
         for main_coord in main_coords:
-            sub_coords = (
-                self.session.query(CoordinateSet).join(CoordinateSet.coordinate)
-                    .filter(Coordinate.start >= main_coord.start)
-                    .filter(Coordinate.end <= main_coord.end)
-                    .filter(CoordinateSet.processing_set != 'test')
-                    .all()
-            )
+            main_coord_handler = CoordinateHandler(main_coord)
+            sub_coords = main_coord_handler.get_slices(self.session, ['train', 'dev'])
+
             random.seed(main_coord.sha1 + seed)
             for sub_coord in sub_coords:
                 new_set = choose_set(train_size, dev_size)
@@ -228,27 +224,38 @@ class HandleMaker(geenuff.handlers.HandleMaker):
 
 
 class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
-    def coordinate_set(self, sess):
-        return sess.query(CoordinateSet).filter(CoordinateSet.id == self.data.id).one_or_none()
+    def coordinate_set(self, session):
+        return session.query(CoordinateSet).filter(CoordinateSet.id == self.data.id).one_or_none()
 
-    def get_processing_set(self, sess):
-        si_set_obj = self.coordinate_set(sess)
+    def get_processing_set(self, session):
+        si_set_obj = self.coordinate_set(session)
         if si_set_obj is None:
             return None
         else:
             return si_set_obj.processing_set.value
 
-    def set_processing_set(self, sess, processing_set, create=False):
-        current = self.coordinate_set(sess)
+    def set_processing_set(self, session, processing_set, create=False):
+        current = self.coordinate_set(session)
         if current is None:
             if create:
                 current = CoordinateSet(coordinate=self.data, processing_set=processing_set)
-                sess.add(current)
+                session.add(current)
             else:
                 raise CoordinateHandler.CoordinateSetNotExisting()
         else:
             current.processing_set = ProcessingSet[processing_set]
         return current
+
+    def get_slices(self, session, allowed_processing_sets=['train', 'dev', 'test']):
+        slices = (
+            session.query(CoordinateSet).join(CoordinateSet.coordinate)
+                .filter(Coordinate.seqid == self.data.seqid)
+                .filter(Coordinate.start >= self.data.start)
+                .filter(Coordinate.end <= self.data.end)
+                .filter(CoordinateSet.processing_set.in_(allowed_processing_sets))
+                .all()
+        )
+        return slices
 
     def count_mers(self, min_k, max_k):
         mer_counters = []
