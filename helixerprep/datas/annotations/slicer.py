@@ -8,7 +8,7 @@ from shutil import copyfile
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.expression import bindparam
-from sqlalchemy.sql import select
+from sqlalchemy.sql import select, join
 
 import geenuff
 from geenuff.base.helpers import full_db_path, QueueController, CoreQueue
@@ -271,8 +271,9 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
             select_statement = self.select_overlaps_downstream_plus()
         else:
             select_statement = self.select_overlaps_downstream_minus()
-        transcript_select = self.statement_transcribeds_from_features(select_statement)
-        return engine.execute(transcript_select, select_data)
+        piece_join = self.statement_transcribed_pieces_from_features(select_statement)
+        transcribeds_select = TranscribedHandler.transcribeds_from_pieces(piece_join, select_final=True)
+        return engine.execute(transcribeds_select, select_data)
 
     @staticmethod
     def coord_swaps_update():
@@ -281,17 +282,18 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
             values(coordinate_id=bindparam('coordinate_id_new'))
 
     @staticmethod  # todo... get back to this when fully switching to core, but maybe one thing at a time...
-    def statement_transcribeds_from_features(features_select):
-        joined_association_table = features_select.join(geenuff.orm.association_transcribed_piece_to_feature)
-        just_transcribed_piece_id = select(
-            [geenuff.orm.association_transcribed_piece_to_feature.c.transcribed_piece_id]
-        ).select_from(joined_association_table)
-        joined_transcribed_pieces = just_transcribed_piece_id.join(geenuff.orm.TranscribedPiece.__table__)
-        joined_transcribeds = joined_transcribed_pieces.join(geenuff.orm.Transcribed.__table__)
-        just_transcribeds = select(
-            [geenuff.orm.Transcribed.__table__]
-        ).select_from(joined_transcribeds)
-        return just_transcribeds
+    def statement_transcribed_pieces_from_features(features_select):
+        Feature = geenuff.orm.Feature
+        at_piece2feature = geenuff.orm.association_transcribed_piece_to_feature
+        TranscribedPiece = geenuff.orm.TranscribedPiece
+
+        x = join(features_select, at_piece2feature,
+                 onclause=Feature.id == at_piece2feature.c.feature_id)
+        x = join(x, TranscribedPiece.__table__,
+                 onclause=at_piece2feature.c.feature_id == TranscribedPiece.id)
+
+        x = select([TranscribedPiece.__table__]).select_from(x)
+        return x
 
     @staticmethod
     def coord_swaps_contained_update_plus():
@@ -361,7 +363,14 @@ class SuperLocusHandler(geenuff.handlers.SuperLocusHandlerBase):
 
 # todo, switch back to simple import if not changing...
 class TranscribedHandler(geenuff.handlers.TranscribedHandlerBase):
-    pass
+    @staticmethod
+    def transcribeds_from_pieces(pieces_select, select_final=True):
+        Transcribed = geenuff.orm.Transcribed
+        x = join(pieces_select, Transcribed.__table__,
+                 onclause=geenuff.orm.TranscribedPiece.transcribed_id == Transcribed.id)
+        if select_final:
+            x = select(Transcribed.__table__).select_from(x)
+        return x
 
 
 class TranslatedHandler(geenuff.handlers.TranslatedHandlerBase):
