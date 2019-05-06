@@ -236,16 +236,11 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
         assert isinstance(slicing_queue, SlicingQueue)
         # get all coordinates that have the same seqid
         coords_ids = self.coord_ids_with_matching_seqids(session=slicing_queue.session)
-        update = {
-            "coordinate_ids": coords_ids,
-            "coordinate_start": self.data.start,
-            "coordinate_end": self.data.end,
-            "coordinate_id_new": self.data.id,
-        }
+
         if is_plus_strand:
-            slicing_queue.engine.execute(CoordinateHandler.coord_swaps_contained_update_plus(), update)
+            slicing_queue.engine.execute(self.coord_swaps_contained_update_plus(coords_ids))
         else:
-            slicing_queue.engine.execute(CoordinateHandler.coord_swaps_contained_update_minus(), update)
+            slicing_queue.engine.execute(self.coord_swaps_contained_update_minus(coords_ids))
         slicing_queue.session.commit()
 
     def coord_ids_with_matching_seqids(self, session):
@@ -296,23 +291,21 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
         x = select([TranscribedPiece.__table__]).select_from(x)
         return x
 
-    @staticmethod
-    def coord_swaps_contained_update_plus():
+    def coord_swaps_contained_update_plus(self, coord_ids):
         return geenuff.orm.Feature.__table__.update().\
-            where(geenuff.orm.Feature.coordinate_id.in_(bindparam('coordinate_ids', expanding=True))).\
-            where(geenuff.orm.Feature.start >= bindparam('coordinate_start')).\
-            where(geenuff.orm.Feature.end <= bindparam('coordinate_end')).\
+            where(geenuff.orm.Feature.coordinate_id.in_(coord_ids)).\
+            where(geenuff.orm.Feature.start >= self.data.start).\
+            where(geenuff.orm.Feature.end <= self.data.end).\
             where(geenuff.orm.Feature.is_plus_strand == 1).\
-            values(coordinate_id=bindparam('coordinate_id_new'))
+            values(coordinate_id=self.data.id)
 
-    @staticmethod
-    def coord_swaps_contained_update_minus():
+    def coord_swaps_contained_update_minus(self, coord_ids):
         return geenuff.orm.Feature.__table__.update().\
-            where(geenuff.orm.Feature.coordinate_id.in_(bindparam('coordinate_ids', expanding=True))).\
-            where(geenuff.orm.Feature.start < bindparam('coordinate_end')).\
-            where(geenuff.orm.Feature.end >= bindparam('coordinate_start') + 1).\
+            where(geenuff.orm.Feature.coordinate_id.in_(coord_ids)).\
+            where(geenuff.orm.Feature.start < self.data.end).\
+            where(geenuff.orm.Feature.end >= self.data.start).\
             where(geenuff.orm.Feature.is_plus_strand == 0).\
-            values(coordinate_id=bindparam('coordinate_id_new'))
+            values(coordinate_id=self.data.id)
 
 
 class SuperLocusHandler(geenuff.handlers.SuperLocusHandlerBase):
