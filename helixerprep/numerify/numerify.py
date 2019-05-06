@@ -69,7 +69,7 @@ class Numerifier(ABC):
     def slice_to_matrix(self):
         self._unflipped_slice_to_matrix()
         if not self.is_plus_strand:
-            self.matrix = np.flip(self.matrix, axis=1)
+            self.matrix = np.flip(self.matrix, axis=0)  # invert direction
         return self.matrix
 
     @abstractmethod
@@ -90,7 +90,7 @@ class Numerifier(ABC):
             if self.is_plus_strand:
                 yield to_yield
             else:
-                yield np.flip(to_yield, axis=1)
+                yield np.flip(to_yield, axis=0)  # invert direction
 
     def _zero_matrix(self):
         full_shape = (len(self.coordinate.sequence), self.n_cols,)
@@ -106,6 +106,8 @@ class SequenceNumerifier(Numerifier):
         self._zero_matrix()
         for i, bp in enumerate(self.coordinate.sequence):
             self.matrix[i] = AMBIGUITY_DECODE[bp]
+        if not self.is_plus_strand:
+            self.matrix = np.flip(self.matrix, axis=1)  # invert base
         return self.matrix
 
 

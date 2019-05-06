@@ -67,8 +67,6 @@ class MerCounter(object):
 def mk_rc_key():
     fw = "ACGTMRWSYKVHDBN"
     rv = "TGCAKYWSRMBDHVN"
-    fw += fw.lower()
-    rv += rv.lower()
     key = {}
     for f, r in zip(fw, rv):
         key[f] = r

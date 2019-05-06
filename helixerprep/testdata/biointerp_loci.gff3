@@ -1,0 +1,13 @@
+##gff-version 3
+# transcript coding0, simple coding with intron in middle of protein
+a	manual	gene	101	900	.	+	.	ID=gene0
+a	manual	mRNA	101	900	.	+	.	ID=coding0;Parent=gene0
+a	manual	exon	101	300	.	+	.	ID=ftr000000;Parent=coding0
+a	manual	CDS	201	300	.	+	0	ID=ftr000001;Parent=coding0;protein_id=coding0.p
+a	manual	exon	701	900	.	+	.	ID=ftr000002;Parent=coding0
+a	manual	CDS	701	800	.	+	1	ID=ftr000003;Parent=coding0;protein_id=coding0.p
+# transcript partial1, coding partial gene model
+a	manual	gene	101	500	.	+	.	ID=gene1
+a	manual	mRNA	101	500	.	+	.	ID=partial1;Parent=gene1
+a	manual	exon	101	500	.	+	.	ID=ftr000004;Parent=partial1
+a	manual	CDS	201	500	.	+	0	ID=ftr000005;Parent=partial1;protein_id=partial1.p

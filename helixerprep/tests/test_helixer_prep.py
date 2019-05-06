@@ -52,6 +52,14 @@ def mk_memory_session(db_path='sqlite:///:memory:'):
     return Session(), engine
 
 
+def memory_import_fasta(fasta_path):
+    controller = ImportController(database_path='sqlite:///:memory:')
+    controller.add_sequences(fasta_path)
+    coord = controller.genome_handler.data.coordinates[0]
+    coord_handler = CoordinateHandler(coord)
+    return controller, coord_handler
+
+
 ### sequences ###
 # testing: counting kmers
 def test_count2mers():
@@ -888,14 +896,9 @@ def test_reslice_at_same_spot():
 
 #### numerify ####
 def test_sequence_numerify():
-    controller = ImportController(database_path='sqlite:///:memory:')
-    controller.add_sequences('testdata/tester.fa')
-    coord = controller.genome_handler.data.coordinates[0]
-    coord_handler = CoordinateHandler(coord)
-
+    _, coord_handler = memory_import_fasta('testdata/tester.fa')
     numerifier = numerify.SequenceNumerifier(coord_handler=coord_handler, is_plus_strand=True)
     matrix = numerifier.slice_to_matrix()
-    print(coord.sequence)
     # ATATATAT
     x = [0., 1, 0, 0,
          0., 0, 1, 0]
@@ -937,7 +940,7 @@ def test_base_level_annotation_numerify():
     numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
                                                        is_plus_strand=True)
     nums = numerifier.slice_to_matrix()
-    expect = np.zeros([405, 3], dtype=float)
+    expect = np.zeros([405, 3], dtype=np.float32)
     expect[0:400, 0] = 1.  # set genic/in raw transcript
     expect[10:300, 1] = 1.  # set in transcribed
     expect[100:110, 2] = 1.  # both introns
@@ -963,7 +966,7 @@ def test_transition_annotation_numerify():
     numerifier = numerify.TransitionAnnotationNumerifier(coord_handler=coord_handler,
                                                          is_plus_strand=True)
     nums = numerifier.slice_to_matrix()
-    expect = np.zeros([405, 12], dtype=float)
+    expect = np.zeros([405, 12], dtype=np.float32)
     expect[0, 0] = 1.  # TSS
     expect[400, 1] = 1.  # TTS
     expect[10, 4] = 1.  # start codon
@@ -1050,7 +1053,7 @@ def test_minus_strand_numerify():
                                                        is_plus_strand=True)
     nums = numerifier.slice_to_matrix()
     # first, we should make sure the opposite strand is unmarked when empty
-    expect = np.zeros([100, 3], dtype=float)
+    expect = np.zeros([100, 3], dtype=np.float32)
     assert np.array_equal(nums, expect)
 
     numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
@@ -1060,39 +1063,48 @@ def test_minus_strand_numerify():
     nums = numerifier.slice_to_matrix()
 
     expect[10:41, 0] = 1.
-    expect = np.flip(expect, axis=1)
+    expect = np.flip(expect, axis=0)
     assert np.array_equal(nums, expect)
+
+    # sequences on minus strand
+    _, coord_handler = memory_import_fasta('testdata/biointerp_loci.fa')
+    numerifier = numerify.SequenceNumerifier(coord_handler=coord_handler, is_plus_strand=False)
+    matrix = numerifier.slice_to_matrix()
+    assert matrix.shape == (19900, 4,)
+
+    reverse_complement = helpers.reverse_complement(coord_handler.data.sequence)
+    expect = [numerify.AMBIGUITY_DECODE[bp] for bp in reverse_complement]
+    expect = np.vstack(expect)
+    assert np.array_equal(matrix, expect)
+
     # todo, test transitions as well...
 
 
 def test_live_slicing():
     sess, coord_handler = setup_simpler_numerifier()
-    # annotations by bp
+
+    # base pair annotations on minus strand with slicing
     numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
                                                        is_plus_strand=False)
     num_list = list(numerifier.slice_to_matrices(max_len=50))
 
-    expect = np.zeros([100, 3], dtype=float)
+    expect = np.zeros([100, 3], dtype=np.float32)
     expect[10:41, 0] = 1.
 
-    assert np.array_equal(num_list[0], np.flip(expect[50:100], axis=1))
-    assert np.array_equal(num_list[1], np.flip(expect[0:50], axis=1))
+    assert np.array_equal(num_list[0], np.flip(expect[50:100], axis=0))
+    assert np.array_equal(num_list[1], np.flip(expect[0:50], axis=0))
 
-    # sequences by bp
-    controller = ImportController(database_path='sqlite:///:memory:')
-    controller.add_sequences('testdata/dummyloci.fa')
-    coord = controller.genome_handler.data.coordinates[0]
-    coord_handler = CoordinateHandler(coord)
-
+    # dummyloci sequences slicing
+    _, coord_handler = memory_import_fasta('testdata/dummyloci.fa')
     numerifier = numerify.SequenceNumerifier(coord_handler=coord_handler, is_plus_strand=True)
     num_list = list(numerifier.slice_to_matrices(max_len=50))
     print([x.shape for x in num_list])
     # [(50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (27, 4), (28, 4)]
     assert len(num_list) == 9
     for i in range(7):
-        assert np.array_equal(num_list[i], np.full([50, 4], 0.25, dtype=float))
+        assert np.array_equal(num_list[i], np.full([50, 4], 0.25, dtype=np.float32))
     for i in [7, 8]:  # for the last two, just care that they're about the expected size...
-        assert np.array_equal(num_list[i][:27], np.full([27, 4], 0.25, dtype=float))
+        assert np.array_equal(num_list[i][:27], np.full([27, 4], 0.25, dtype=np.float32))
 
 
 def test_example_gen():
