@@ -430,6 +430,47 @@ def test_split_features_downstream_border():
     assert translated0.end == 99
 
 
+def test_get_transcripts_overlapping_downstream():
+    sess, engine = mk_memory_session()
+
+    genome = geenuff.orm.Genome()
+    old_coor = geenuff.orm.Coordinate(genome=genome, seqid='a', start=1, end=1000)
+    # 2) scribedlong - [A][B], scribed [A]; new_coord ends in the middle of B
+    sl, slh = setup_data_handler(slicer.SuperLocusHandler, geenuff.orm.SuperLocus)
+    scribed, scribedh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed, super_locus=sl,
+                                           given_name='short')
+    scribedlong, scribedlongh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed,
+                                                   given_name='long', super_locus=sl)
+
+    pieceA = geenuff.orm.TranscribedPiece(transcribed=scribed, position=0)
+    piece_longA = geenuff.orm.TranscribedPiece(transcribed=scribedlong, position=0)
+    piece_longB = geenuff.orm.TranscribedPiece(transcribed=scribedlong, position=1)
+
+    fA = geenuff.orm.Feature(transcribed_pieces=[pieceA, piece_longA], coordinate=old_coor, start=190, end=210,
+                             given_name='A',
+                             start_is_biological_start=True, end_is_biological_end=True,
+                             is_plus_strand=True, type=geenuff.types.TRANSCRIBED)
+
+    fB = geenuff.orm.Feature(transcribed_pieces=[piece_longB], coordinate=old_coor, start=280, end=500,
+                             start_is_biological_start=True, end_is_biological_end=True,
+                             is_plus_strand=True, type=geenuff.types.TRANSCRIBED, given_name='B')
+    sess.add_all([genome, old_coor, fA, fB])
+    sess.commit()
+
+    new_coord = geenuff.orm.Coordinate(genome=genome, start=0, end=300, seqid="a")
+    coord_handler = slicer.CoordinateHandler()
+    coord_handler.add_data(new_coord)
+    transcribeds = coord_handler.get_transcripts_overlapping_downstream(is_plus_strand=True, session=sess,
+                                                                        engine=engine)
+
+    overlapping_downstream = list(transcribeds)
+    assert len(overlapping_downstream) == 1  # this should be the core vesion of scribedlong
+    long_core = overlapping_downstream[0]
+    assert long_core.given_name == 'long'
+    fetch_again = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.id == long_core.id).first()
+    assert fetch_again is scribedlong
+
+
 def test_modify4slice():
     controller = construct_slice_controller()
     slh = controller.super_loci[0]

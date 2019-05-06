@@ -244,36 +244,30 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
             filter(geenuff.orm.Coordinate.seqid == self.data.seqid).all()
         return [x.id for x in coords]
 
-    @staticmethod
-    def select_overlaps_downstream_plus():
+    def select_overlaps_downstream_plus(self, coord_ids):
         return geenuff.orm.Feature.__table__.select().\
-            where(geenuff.orm.Feature.coordinate_id.in_(bindparam('coordinate_ids', expanding=True))).\
-            where(geenuff.orm.Feature.start < bindparam('coordinate_end')).\
-            where(geenuff.orm.Feature.end > bindparam('coordinate_end')).\
+            where(geenuff.orm.Feature.coordinate_id.in_(coord_ids)).\
+            where(geenuff.orm.Feature.start < self.data.end).\
+            where(geenuff.orm.Feature.end > self.data.end).\
             where(geenuff.orm.Feature.is_plus_strand == 1)
 
-
-    @staticmethod
-    def select_overlaps_downstream_minus():
+    def select_overlaps_downstream_minus(self, coord_ids):
         return geenuff.orm.Feature.__table__.select().\
-            where(geenuff.orm.Feature.coordinate_id.in_(bindparam('coordinate_ids', expanding=True))).\
-            where(geenuff.orm.Feature.start >= bindparam('coordinate_start')).\
-            where(geenuff.orm.Feature.end < bindparam('coordinate_start') - 1).\
+            where(geenuff.orm.Feature.coordinate_id.in_(coord_ids)).\
+            where(geenuff.orm.Feature.start >= self.data.start).\
+            where(geenuff.orm.Feature.end < self.data.start - 1).\
             where(geenuff.orm.Feature.is_plus_strand == 0)
 
     def get_transcripts_overlapping_downstream(self, is_plus_strand, session, engine):
         """gets all transcripts overlapping downstream border of self.data as sqlalchemy core result"""
         coord_ids = self.coord_ids_with_matching_seqids(session=session)
-        select_data = {"coordinate_ids": coord_ids,
-                       "coordinate_start": self.data.start,
-                       "coordinate_end": self.data.end}
         if is_plus_strand:
-            select_statement = self.select_overlaps_downstream_plus()
+            select_statement = self.select_overlaps_downstream_plus(coord_ids=coord_ids)
         else:
-            select_statement = self.select_overlaps_downstream_minus()
+            select_statement = self.select_overlaps_downstream_minus(coord_ids=coord_ids)
         piece_join = self.statement_transcribed_pieces_from_features(select_statement)
         transcribeds_select = TranscribedHandler.transcribeds_from_pieces(piece_join, select_final=True)
-        return engine.execute(transcribeds_select, select_data)
+        return engine.execute(transcribeds_select)
 
     @staticmethod
     def coord_swaps_update():
@@ -283,15 +277,12 @@ class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
 
     @staticmethod  # todo... get back to this when fully switching to core, but maybe one thing at a time...
     def statement_transcribed_pieces_from_features(features_select):
-        Feature = geenuff.orm.Feature
         at_piece2feature = geenuff.orm.association_transcribed_piece_to_feature
         TranscribedPiece = geenuff.orm.TranscribedPiece
 
-        x = join(features_select, at_piece2feature,
-                 onclause=Feature.id == at_piece2feature.c.feature_id)
-        x = join(x, TranscribedPiece.__table__,
-                 onclause=at_piece2feature.c.feature_id == TranscribedPiece.id)
-
+        x = features_select.join(at_piece2feature)
+        x = select([at_piece2feature]).select_from(x)
+        x = x.join(TranscribedPiece.__table__)
         x = select([TranscribedPiece.__table__]).select_from(x)
         return x
 
@@ -366,10 +357,9 @@ class TranscribedHandler(geenuff.handlers.TranscribedHandlerBase):
     @staticmethod
     def transcribeds_from_pieces(pieces_select, select_final=True):
         Transcribed = geenuff.orm.Transcribed
-        x = join(pieces_select, Transcribed.__table__,
-                 onclause=geenuff.orm.TranscribedPiece.transcribed_id == Transcribed.id)
+        x = pieces_select.join(Transcribed.__table__)
         if select_final:
-            x = select(Transcribed.__table__).select_from(x)
+            x = select([Transcribed.__table__]).select_from(x)
         return x
 
 
