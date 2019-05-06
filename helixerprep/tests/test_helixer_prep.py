@@ -9,6 +9,7 @@ from geenuff.tests.test_geenuff import (setup_data_handler,
                                         setup_testable_super_locus, TransspliceDemoData)
 from geenuff.applications.importer import ImportController
 from ..datas.annotations import slicer
+from ..datas.annotations.slicer import CoordinateHandler
 from ..datas.annotations.slice_dbmods import ProcessingSet, CoordinateSet, Mer
 from ..core import partitions
 from ..core import helpers
@@ -79,12 +80,12 @@ def test_count2mers():
 def test_count_range_of_mers():
     seq = 'atatat'
 
-    coordinate_handler = slicer.CoordinateHandler()
+    coord_handler = slicer.CoordinateHandler()
     genome = geenuff.orm.Genome()
     coordinate = geenuff.orm.Coordinate(genome=genome, start=0, end=6, sequence=seq)
-    coordinate_handler.add_data(coordinate)
+    coord_handler.add_data(coordinate)
 
-    all_mer_counters = coordinate_handler.count_mers(1, 6)
+    all_mer_counters = coord_handler.count_mers(1, 6)
 
     assert len(all_mer_counters) == 6
 
@@ -890,15 +891,16 @@ def test_sequence_numerify():
     controller = ImportController(database_path='sqlite:///:memory:')
     controller.add_sequences('testdata/tester.fa')
     coord = controller.genome_handler.data.coordinates[0]
+    coord_handler = CoordinateHandler(coord)
 
-    numerifier = numerify.SequenceNumerifier(is_plus_strand=True)
-    matrix = numerifier.slice_to_matrix(coord)
+    numerifier = numerify.SequenceNumerifier(coord_handler=coord_handler, is_plus_strand=True)
+    matrix = numerifier.slice_to_matrix()
     print(coord.sequence)
     # ATATATAT
     x = [0., 1, 0, 0,
          0., 0, 1, 0]
     expect = np.array(x * 4).reshape((-1, 4))
-    assert np.allclose(expect, matrix)
+    assert np.array_equal(expect, matrix)
 
 
 def setup4numerify():
@@ -907,51 +909,59 @@ def setup4numerify():
     sess = controller.session
 
     coordinate = sess.query(geenuff.orm.Coordinate).first()
-    coordinate_handler = slicer.CoordinateHandler()
-    coordinate_handler.add_data(coordinate)
+    coord_handler = slicer.CoordinateHandler()
+    coord_handler.add_data(coordinate)
 
-    return sess, controller, coordinate_handler
+    return sess, controller, coord_handler
 
 
 def test_base_level_annotation_numerify():
-    sess, controller, coordinate_handler = setup4numerify()
+    sess, controller, coord_handler = setup4numerify()
 
-    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=coordinate_handler, is_plus_strand=True)
+    numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
+                                                       is_plus_strand=True)
     with pytest.raises(numerify.DataInterpretationError):
         numerifier.slice_to_matrix()
 
     # simplify
-    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'x').first()
-    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'z').first()
+    transcriptx = sess.query(geenuff.orm.Transcribed).\
+                    filter(geenuff.orm.Transcribed.given_name == 'x').first()
+    transcriptz = sess.query(geenuff.orm.Transcribed).\
+                    filter(geenuff.orm.Transcribed.given_name == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
 
     transcribeds = sess.query(geenuff.orm.Transcribed).all()
     print(transcribeds, ' <- transcribeds')
 
-    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=coordinate_handler, is_plus_strand=True)
+    numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
+                                                       is_plus_strand=True)
     nums = numerifier.slice_to_matrix()
     expect = np.zeros([405, 3], dtype=float)
     expect[0:400, 0] = 1.  # set genic/in raw transcript
     expect[10:300, 1] = 1.  # set in transcribed
     expect[100:110, 2] = 1.  # both introns
     expect[120:200, 2] = 1.
-    assert np.allclose(nums, expect)
+    assert np.array_equal(nums, expect)
 
 
 def test_transition_annotation_numerify():
-    sess, controller, coordinate_handler = setup4numerify()
+    sess, controller, coord_handler = setup4numerify()
 
-    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=coordinate_handler, is_plus_strand=True)
+    numerifier = numerify.TransitionAnnotationNumerifier(coord_handler=coord_handler,
+                                                         is_plus_strand=True)
     with pytest.raises(numerify.DataInterpretationError):
         numerifier.slice_to_matrix()
 
-    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'x').first()
-    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'z').first()
+    transcriptx = sess.query(geenuff.orm.Transcribed).\
+                      filter(geenuff.orm.Transcribed.given_name == 'x').first()
+    transcriptz = sess.query(geenuff.orm.Transcribed).\
+                      filter(geenuff.orm.Transcribed.given_name == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
 
-    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=coordinate_handler, is_plus_strand=True)
+    numerifier = numerify.TransitionAnnotationNumerifier(coord_handler=coord_handler,
+                                                         is_plus_strand=True)
     nums = numerifier.slice_to_matrix()
     expect = np.zeros([405, 12], dtype=float)
     expect[0, 0] = 1.  # TSS
@@ -960,13 +970,15 @@ def test_transition_annotation_numerify():
     expect[300, 5] = 1.  # stop codon
     expect[(100, 120), 8] = 1.  # Don-splice
     expect[(110, 200), 9] = 1.  # Acc-splice
-    assert np.allclose(nums, expect)
+    assert np.array_equal(nums, expect)
 
 
 def test_numerify_from_gr0():
-    sess, controller, coordinate_handler = setup4numerify()
-    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'x').first()
-    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'z').first()
+    sess, controller, coord_handler = setup4numerify()
+    transcriptx = sess.query(geenuff.orm.Transcribed).\
+                      filter(geenuff.orm.Transcribed.given_name == 'x').first()
+    transcriptz = sess.query(geenuff.orm.Transcribed).\
+                      filter(geenuff.orm.Transcribed.given_name == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
 
@@ -975,14 +987,16 @@ def test_numerify_from_gr0():
     ).all()
     assert len(transcribed) == 1
     transcribed = transcribed[0]
-    coord = coordinate_handler.data
+    coord = coord_handler.data
     # move whole region back by 5 (was 0)
     transcribed.start = coord.start = 4
-    # and now make sure it really starts form 4
-    numerifier = numerify.TransitionAnnotationNumerifier(data_slice=coordinate_handler, is_plus_strand=True)
+    coord.sequence = coord.sequence[4:]
+    # and now make sure it really starts from 4
+    numerifier = numerify.TransitionAnnotationNumerifier(coord_handler=coord_handler,
+                                                         is_plus_strand=True)
     nums = numerifier.slice_to_matrix()
     # setup as above except for the change in position of TSS
-    expect = np.zeros([405, 12], dtype=float)
+    expect = np.zeros([405, 12], dtype=np.float32)
     expect[4, 0] = 1.  # TSS
     expect[400, 1] = 1.  # TTS
     expect[10, 4] = 1.  # start codon
@@ -991,31 +1005,36 @@ def test_numerify_from_gr0():
     expect[(110, 200), 9] = 1.  # Acc-splice
     # truncate from start
     expect = expect[4:, :]
-    assert np.allclose(nums, expect)
+    assert np.array_equal(nums, expect)
 
     # and now once for ranges
-    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=coordinate_handler, is_plus_strand=True)
+    numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
+                                                       is_plus_strand=True)
     nums = numerifier.slice_to_matrix()
     # as above (except TSS), then truncate
-    expect = np.zeros([405, 3], dtype=float)
+    expect = np.zeros([405, 3], dtype=np.float32)
     expect[4:400, 0] = 1.  # set genic/in raw transcript
     expect[10:300, 1] = 1.  # set in transcribed
     expect[100:110, 2] = 1.  # both introns
     expect[120:200, 2] = 1.
     expect = expect[4:, :]
-    assert np.allclose(nums, expect)
+    assert np.array_equal(nums, expect)
 
 
 def setup_simpler_numerifier():
     sess, engine = mk_memory_session()
     genome = geenuff.orm.Genome()
-    coord, coord_handler = setup_data_handler(slicer.CoordinateHandler, geenuff.orm.Coordinate, genome=genome,
+    coord, coord_handler = setup_data_handler(slicer.CoordinateHandler, geenuff.orm.Coordinate,
+                                              genome=genome, sequence='A' * 100,
                                               start=0, end=100, seqid='a')
     sl = geenuff.orm.SuperLocus()
     transcript = geenuff.orm.Transcribed(super_locus=sl)
     piece = geenuff.orm.TranscribedPiece(transcribed=transcript, position=0)
-    transcribed_feature = geenuff.orm.Feature(start=40, end=9,  is_plus_strand=False, type=geenuff.types.TRANSCRIBED,
-                                              start_is_biological_start=True, end_is_biological_end=True,
+    transcribed_feature = geenuff.orm.Feature(start=40, end=9,
+                                              is_plus_strand=False,
+                                              type=geenuff.types.TRANSCRIBED,
+                                              start_is_biological_start=True,
+                                              end_is_biological_end=True,
                                               coordinate=coord)
     piece.features = [transcribed_feature]
 
@@ -1026,64 +1045,70 @@ def setup_simpler_numerifier():
 
 def test_minus_strand_numerify():
     # setup a very basic -strand locus
-    sess, coordinate_handler = setup_simpler_numerifier()
-    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=coordinate_handler, is_plus_strand=True)
+    sess, coord_handler = setup_simpler_numerifier()
+    numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
+                                                       is_plus_strand=True)
     nums = numerifier.slice_to_matrix()
     # first, we should make sure the opposite strand is unmarked when empty
     expect = np.zeros([100, 3], dtype=float)
-    assert np.allclose(nums, expect)
+    assert np.array_equal(nums, expect)
 
-    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=coordinate_handler, is_plus_strand=False)
-    # and now that we get the expect range on the minus strand, keeping in mind the 40 is inclusive, and the 9, not
+    numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
+                                                       is_plus_strand=False)
+    # and now that we get the expect range on the minus strand,
+    # keeping in mind the 40 is inclusive, and the 9, not
     nums = numerifier.slice_to_matrix()
 
     expect[10:41, 0] = 1.
     expect = np.flip(expect, axis=1)
-    assert np.allclose(nums, expect)
+    assert np.array_equal(nums, expect)
     # todo, test transitions as well...
 
 
 def test_live_slicing():
-    sess, coordinate_handler = setup_simpler_numerifier()
+    sess, coord_handler = setup_simpler_numerifier()
     # annotations by bp
-    numerifier = numerify.BasePairAnnotationNumerifier(data_slice=coordinate_handler, is_plus_strand=False)
+    numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
+                                                       is_plus_strand=False)
     num_list = list(numerifier.slice_to_matrices(max_len=50))
 
     expect = np.zeros([100, 3], dtype=float)
     expect[10:41, 0] = 1.
 
-    assert np.allclose(num_list[0], np.flip(expect[50:100], axis=1))
-    assert np.allclose(num_list[1], np.flip(expect[0:50], axis=1))
+    assert np.array_equal(num_list[0], np.flip(expect[50:100], axis=1))
+    assert np.array_equal(num_list[1], np.flip(expect[0:50], axis=1))
+
     # sequences by bp
-    sg = sequences.StructuredGenome()
-    sg.from_json('testdata/dummyloci.sequence.json')
-    sequence = sg.sequences[0]
-    slice0 = sequence.slices[0]
-    numerifier = numerify.SequenceNumerifier(is_plus_strand=True)
-    num_list = list(numerifier.slice_to_matrices(data_slice=slice0, max_len=50))
+    controller = ImportController(database_path='sqlite:///:memory:')
+    controller.add_sequences('testdata/dummyloci.fa')
+    coord = controller.genome_handler.data.coordinates[0]
+    coord_handler = CoordinateHandler(coord)
+
+    numerifier = numerify.SequenceNumerifier(coord_handler=coord_handler, is_plus_strand=True)
+    num_list = list(numerifier.slice_to_matrices(max_len=50))
     print([x.shape for x in num_list])
     # [(50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (27, 4), (28, 4)]
     assert len(num_list) == 9
     for i in range(7):
-        assert np.allclose(num_list[i], np.full([50, 4], 0.25, dtype=float))
+        assert np.array_equal(num_list[i], np.full([50, 4], 0.25, dtype=float))
     for i in [7, 8]:  # for the last two, just care that they're about the expected size...
-        assert np.allclose(num_list[i][:27], np.full([27, 4], 0.25, dtype=float))
+        assert np.array_equal(num_list[i][:27], np.full([27, 4], 0.25, dtype=float))
 
 
 def test_example_gen():
-    sess, controller, anno_slice = setup4numerify()
-    transcriptx = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'x').first()
-    transcriptz = sess.query(geenuff.orm.Transcribed).filter(geenuff.orm.Transcribed.given_name == 'z').first()
+    sess, controller, coord_handler = setup4numerify()
+    transcriptx = sess.query(geenuff.orm.Transcribed).\
+                      filter(geenuff.orm.Transcribed.given_name == 'x').first()
+    transcriptz = sess.query(geenuff.orm.Transcribed).\
+                      filter(geenuff.orm.Transcribed.given_name == 'z').first()
     rm_transcript_and_children(transcriptx, sess)
     rm_transcript_and_children(transcriptz, sess)
 
-    controller.load_sliced_seqs()
-    seq_slice = controller.structured_genome.sequences[0].slices[0]
     example_maker = numerify.ExampleMakerSeqMetaBP()
-    egen = example_maker.examples_from_slice(anno_slice, seq_slice, controller.structured_genome, is_plus_strand=True,
-                                             max_len=400)
+    egen = example_maker.examples_from_slice(coord_handler, is_plus_strand=True, max_len=400)
+
     # prep anno
-    expect = np.zeros([405, 3], dtype=float)
+    expect = np.zeros([405, 3], dtype=np.float32)
     expect[0:400, 0] = 1.  # set genic/in raw transcript
     expect[10:300, 1] = 1.  # set in transcribed
     expect[100:110, 2] = 1.  # both introns
@@ -1092,14 +1117,12 @@ def test_example_gen():
     seqexpect = np.full([405, 4], 0.25)
 
     step0 = next(egen)
-    assert np.allclose(step0['input'].reshape([202, 4]), seqexpect[:202])
-    assert np.allclose(step0['labels'].reshape([202, 3]), expect[:202])
-    assert step0['meta_Gbp'] == [405 / 10**9]
+    assert np.array_equal(step0['input'].reshape([202, 4]), seqexpect[:202])
+    assert np.array_equal(step0['labels'].reshape([202, 3]), expect[:202])
 
     step1 = next(egen)
-    assert np.allclose(step1['input'].reshape([203, 4]), seqexpect[202:])
-    assert np.allclose(step1['labels'].reshape([203, 3]), expect[202:])
-    assert step1['meta_Gbp'] == [405 / 10**9]
+    assert np.array_equal(step1['input'].reshape([203, 4]), seqexpect[202:])
+    assert np.array_equal(step1['labels'].reshape([203, 3]), expect[202:])
 
 
 #### partitions
