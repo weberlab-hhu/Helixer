@@ -263,6 +263,7 @@ def test_copy_n_import():
 
 def test_intervaltree():
     controller = construct_slice_controller()
+    # todo, while deprecating intervaltrees, remove chunk below, rename >>>
     controller.fill_intervaltrees()
     print(controller.interval_trees.keys())
     for intv in controller.interval_trees["1"]:
@@ -279,11 +280,16 @@ def test_intervaltree():
     transcribeds = [x for x in intervals if x.data.data.type.value == geenuff.types.TRANSCRIBED]
 
     assert len(transcribeds) == 1
+    # <<<<
     # check that the major filter functions work
-    sls = controller.get_super_loci_frm_slice(seqid='1', start=300, end=405, is_plus_strand=True)
+    new_coord = geenuff.orm.Coordinate(genome=controller.get_one_genome(), seqid='1', start=300, end=404)
+    coord_handler = slicer.CoordinateHandler()
+    coord_handler.add_data(new_coord)
+    sls = controller.get_super_loci_frm_slice_downstream_border(coord_handler, is_plus_strand=True)
     assert len(sls) == 1
     assert isinstance(list(sls)[0], slicer.SuperLocusHandler)
 
+    # todo, check coordinate queries, but not via intervaltree
     features = controller.get_features_from_slice(seqid='1', start=0, end=1, is_plus_strand=True)
     assert len(features) == 3
     starts = [x for x in features if x.data.type.value == geenuff.types.TRANSCRIBED]

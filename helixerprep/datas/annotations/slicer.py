@@ -87,6 +87,7 @@ class SliceController(object):
             self.slices.append((coordinate_slice, coordinate_slice_set))
 
     def fill_intervaltrees(self):
+        # deprecating in favor of direct filtering of coordinate table
         self.intervaltrees = {}
         for sl in self.super_loci:
             sl.load_to_intervaltree(self.interval_trees)
@@ -118,8 +119,8 @@ class SliceController(object):
             coordinate_handler = CoordinateHandler()
             coordinate_handler.add_data(coordinate)
 
-            overlapping_super_loci = self.get_super_loci_frm_slice(coordinate.seqid, coordinate.start, coordinate.end,
-                                                                   is_plus_strand=is_plus_strand)
+            overlapping_super_loci = self.get_super_loci_frm_slice_downstream_border(coordinate_handler,
+                                                                                     is_plus_strand)
             for super_locus in overlapping_super_loci:
                 super_locus.make_all_handlers()
                 super_locus.modify4slice(new_coords=coordinate, is_plus_strand=is_plus_strand,
@@ -133,15 +134,23 @@ class SliceController(object):
 
     def get_super_loci_frm_slice_downstream_border(self, coordinate_handler, is_plus_strand):
         transcript_res = coordinate_handler.get_transcripts_overlapping_downstream(session=self.session,
-                                                                                   engine=self.engine)
+                                                                                   engine=self.engine,
+                                                                                   is_plus_strand=is_plus_strand)
         super_loci_ids = set()
         for transcript in transcript_res:
-            super_loci_ids.add(transcript.super_loci_id)
-        features = self.get_features_from_slice(seqid, start, end, is_plus_strand)
-        super_loci = self.get_super_loci_frm_features(features)
-        return super_loci
+            super_loci_ids.add(transcript.super_locus_id)
+        super_loci_data = self.session.query(geenuff.orm.SuperLocus).filter(
+            geenuff.orm.SuperLocus.id.in_(super_loci_ids)
+        ).all()
+        super_loci_handlers = []
+        for sl_data in super_loci_data:
+            slh = SuperLocusHandler()
+            slh.add_data(sl_data)
+            super_loci_handlers.append(slh)
+        return super_loci_handlers
 
     def get_features_from_slice(self, seqid, start, end, is_plus_strand):
+        # deprecating
         if self.interval_trees == {}:
             raise ValueError('No, interval trees defined. The method .fill_intervaltrees '
                              'must be called first')
@@ -155,6 +164,7 @@ class SliceController(object):
         return features
 
     def get_super_loci_frm_features(self, features):
+        # deprecating
         super_loci = set()
         for feature in features:
             for piece in feature.data.transcribed_pieces:
