@@ -28,22 +28,23 @@ from ..core import helpers
 #   handles processing of said data via calls to appropriate Numerifier
 
 
-AMBIGUITY_DECODE = {'c': [1., 0., 0., 0.],
-                    'a': [0., 1., 0., 0.],
-                    't': [0., 0., 1., 0.],
-                    'g': [0., 0., 0., 1.],
-                    'y': [0.5, 0., 0.5, 0.],
-                    'r': [0., 0.5, 0., 0.5],
-                    'w': [0., 0.5, 0.5, 0.],
-                    's': [0.5, 0., 0., 0.5],
-                    'k': [0., 0., 0.5, 0.5],
-                    'm': [0.5, 0.5, 0., 0.],
-                    'd': [0., 0.33, 0.33, 0.33],
-                    'v': [0.33, 0.33, 0., 0.33],
-                    'h': [0.33, 0.33, 0.33, 0.],
-                    'b': [0.33, 0., 0.33, 0.33],
-                    'n': [0.25, 0.25, 0.25, 0.25]}
-
+AMBIGUITY_DECODE = {
+    'C': [1., 0., 0., 0.],
+    'A': [0., 1., 0., 0.],
+    'T': [0., 0., 1., 0.],
+    'G': [0., 0., 0., 1.],
+    'Y': [0.5, 0., 0.5, 0.],
+    'R': [0., 0.5, 0., 0.5],
+    'W': [0., 0.5, 0.5, 0.],
+    'S': [0.5, 0., 0., 0.5],
+    'K': [0., 0., 0.5, 0.5],
+    'M': [0.5, 0.5, 0., 0.],
+    'D': [0., 0.33, 0.33, 0.33],
+    'V': [0.33, 0.33, 0., 0.33],
+    'H': [0.33, 0.33, 0.33, 0.],
+    'B': [0.33, 0., 0.33, 0.33],
+    'N': [0.25, 0.25, 0.25, 0.25]
+}
 
 class DataInterpretationError(Exception):
     pass
@@ -104,7 +105,7 @@ class SequenceNumerifier(Numerifier):
     def _unflipped_slice_to_matrix(self):
         self._zero_matrix()
         for i, bp in enumerate(self.coordinate.sequence):
-            self.matrix[i] = AMBIGUITY_DECODE[bp.lower()]
+            self.matrix[i] = AMBIGUITY_DECODE[bp]
         return self.matrix
 
 
