@@ -1,95 +1,39 @@
-"""reopen and slice the new annotation.sqlitedb and divvy superloci to train/dev/test processing sets"""
 import os
-import copy
-import logging
 import intervaltree
-from shutil import copyfile
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.sql.expression import bindparam
 
 import geenuff
 from geenuff.base.orm import Coordinate, Genome
 from geenuff.base.helpers import full_db_path
-from helixerprep.datas.annotations.slice_dbmods import ProcessingSet, CoordinateSet, Mer
 from helixerprep.core.partitions import CoordinateGenerator, choose_set
-from helixerprep.core.helpers import MerCounter
-
-TranscriptInterpBase = geenuff.transcript_interp.TranscriptInterpBase
-
-
-class CoreQueue(object):
-    def __init__(self, session, engine):
-        self.engine = engine
-        self.session = session
-        # updates
-        self.piece_swaps = []  # {'piece_id_old':, 'piece_id_new':, 'feat_id':}
-        self.coord_swaps = []  # {'feat_id':, 'coordinate_id_new':}
-        # insertions
-        self.transcribed_pieces = []
-        self.upstream_features = []
-        self.downstream_features = []
-        self.up_down_pairs = []
-        self.association_transcribeds_to_features = []
-        self.association_translateds_to_features = []
-
-    @property
-    def piece_swaps_update(self):
-        table = geenuff.orm.association_transcribed_piece_to_feature
-        out = table.update().\
-            where(table.c.transcribed_piece_id == bindparam('piece_id_old')).\
-            where(table.c.feature_id == bindparam('feat_id')).\
-            values(transcribed_piece_id=bindparam('piece_id_new'))
-        return out
-
-    @property
-    def coord_swaps_update(self):
-        return geenuff.orm.Feature.__table__.update().\
-            where(geenuff.orm.Feature.id == bindparam('feat_id')).\
-            values(coordinate_id=bindparam('coordinate_id_new'))
-
-    @property
-    def actions_lists(self):
-        return [(self.piece_swaps_update, self.piece_swaps),
-                (self.coord_swaps_update, self.coord_swaps)]
-
-    def execute_so_far(self):
-        conn = self.engine.connect()
-        for action, a_list in self.actions_lists:
-            if a_list:
-                conn.execute(action, a_list)
-                del a_list[:]
-        self.session.commit()
+from .numerify import ExampleMaker
+from ..core.handlers import CoordinateHandler
 
 
-class SliceController(object):
-    def __init__(self, db_path_in=None, db_path_sliced=None):
+class ExportController(object):
+    def __init__(self, db_path_in=None, h5_path_out):
         self.db_path_in = db_path_in
-        self.db_path_sliced = db_path_sliced
-        self.slices = []
-        self.interval_trees = {}
-        self.super_loci = []
-        self._setup_db_and_mk_session()
+        self.h5_path_out = h5_path_out
+        self._mk_session()
 
-        self.core_queue = CoreQueue(self.session, self.engine)
-
-    def _setup_db_and_mk_session(self):
-        if os.path.exists(self.db_path_sliced):
-            print('overriding the sliced db at {}'.format(self.db_path_sliced))
-        copyfile(self.db_path_in, self.db_path_sliced)
-
-        self.engine = create_engine(full_db_path(self.db_path_sliced), echo=False)
-        # add Helixer specific table to the copied db if it doesn't exist yet
-        for table in ['mer', 'coordinate_set']:
-            if not self.engine.dialect.has_table(self.engine, table):
-                geenuff.orm.Base.metadata.tables[table].create(self.engine)
+    def _mk_session(self):
+        self.engine = create_engine(full_db_path(self.db_path_in), echo=False)
         self.session = sessionmaker(bind=self.engine)()
 
-    def get_one_genome(self):
-        ags = self.session.query(geenuff.orm.Genome).all()
-        assert len(ags) == 1, "found # genomes != 1: {}".format(ags)
-        return ags[0]
+    def export(self, chunk_size, shuffle, seed):
+        """Fetches all Coordinates, calls on functions in numerify.py to split
+        and encode them and then saves the (possibly shuffled) sequences to the
+        specified .h5 file.
+        """
+        chunks = []
+        all_coords = self.session.query(Coordinate).all()
+        example_maker = ExampleMaker()
+        for coord in all_coords:
+            chunks.append(list(example_maker.examples_from_coord(coord, True, chunk_size)))
+
+        # output to .h5
 
     def gen_slices(self, genome, train_size, dev_size, chunk_size, seed):
         """Returns a list of all slices of all coordinates of a genome
@@ -133,7 +77,7 @@ class SliceController(object):
     def slice_annotations(self, genome):
         """Artificially slices annotated genome to match sequence slices
         and adjusts transcripts as appropriate.
-        """
+        Enum, """
         self._slice_annotations_1way(self.slices, genome, is_plus_strand=True)
         self._slice_annotations_1way(self.slices[::-1], genome, is_plus_strand=False)
 

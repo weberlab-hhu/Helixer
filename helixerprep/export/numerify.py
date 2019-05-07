@@ -257,8 +257,8 @@ class TranscriptLocalReader(TranscriptInterpBase):
 
 
 #### and now on to actual example gen
-class ExampleMakerSeqMetaBP(object):
-    def examples_from_slice(self, coord_handler, is_plus_strand, max_len):
+class ExampleMaker(object):
+    def examples_from_coord(self, coord_handler, is_plus_strand, max_len):
         anno_nummerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
                                                         is_plus_strand=is_plus_strand)
         anno_gen = anno_nummerifier.slice_to_matrices(max_len=max_len)
