@@ -64,8 +64,7 @@ class ExportController(object):
         self.super_loci = []
         sl_data = self.session.query(geenuff.orm.SuperLocus).all()
         for sl in sl_data:
-            super_locus = SuperLocusHandler()
-            super_locus.add_data(sl)
+            super_locus = SuperLocusHandler(sl)
             self.super_loci.append(super_locus)
 
     def slice_db(self, train_size, dev_size, chunk_size, seed):
@@ -79,7 +78,7 @@ class ExportController(object):
     def slice_annotations(self, genome):
         """Artificially slices annotated genome to match sequence slices
         and adjusts transcripts as appropriate.
-        Enum, """
+        """
         self._slice_annotations_1way(self.slices, genome, is_plus_strand=True)
         self._slice_annotations_1way(self.slices[::-1], genome, is_plus_strand=False)
 

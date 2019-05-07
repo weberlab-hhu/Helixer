@@ -48,6 +48,31 @@ class DataInterpretationError(Exception):
     pass
 
 
+class Stepper(object):
+    def __init__(self, end, by):
+        self.at = 0
+        self.end = end
+        self.by = by
+
+    def step(self):
+        prev = self.at
+        # fits twice or more, just step
+        if prev + self.by * 2 <= self.end:
+            new = prev + self.by
+        # fits less than twice, take half way point (to avoid an end of just a few bp)
+        elif prev + self.by < self.end:
+            new = prev + (self.end - prev) // 2
+        # doesn't fit at all
+        else:
+            new = self.end
+        self.at = new
+        return prev, new
+
+    def step_to_end(self):
+        while self.at < self.end:
+            yield self.step()
+
+
 class Numerifier(ABC):
     def __init__(self, n_cols, coord_handler, is_plus_strand, max_len, dtype=np.float32):
         assert isinstance(n_cols, int)
@@ -128,17 +153,11 @@ class AnnotationNumerifier(Numerifier, ABC):
 
     def transcribeds_with_handlers(self):
         for piece in self.transcribed_pieces:
-            transcribed_handler = geenuff.handlers.TranscribedHandlerBase()
-            transcribed_handler.add_data(piece.transcribed)
+            transcribed_handler = geenuff.handlers.TranscribedHandlerBase(piece.transcribed)
 
             super_locus_handler = geenuff.handlers.SuperLocusHandlerBase()
             super_locus_handler.add_data(piece.transcribed.super_locus)
             yield piece, transcribed_handler, super_locus_handler
-
-    @staticmethod
-    def select_transcripts(super_locus):
-        for transcribed in super_locus.data.transcribeds:
-            yield transcribed
 
     @abstractmethod
     def update_matrix(self, transcribed_piece, transcript_interpreter):
@@ -275,28 +294,3 @@ class CoordNumerifier(object):
                 'input': seq,
             }
             yield out
-
-
-class Stepper(object):
-    def __init__(self, end, by):
-        self.at = 0
-        self.end = end
-        self.by = by
-
-    def step(self):
-        prev = self.at
-        # fits twice or more, just step
-        if prev + self.by * 2 <= self.end:
-            new = prev + self.by
-        # fits less than twice, take half way point (to avoid an end of just a few bp)
-        elif prev + self.by < self.end:
-            new = prev + (self.end - prev) // 2
-        # doesn't fit at all
-        else:
-            new = self.end
-        self.at = new
-        return prev, new
-
-    def step_to_end(self):
-        while self.at < self.end:
-            yield self.step()

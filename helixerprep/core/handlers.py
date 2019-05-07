@@ -5,18 +5,6 @@ from helixerprep.core.orm import Mer
 from helixerprep.core.helpers import MerCounter
 
 
-class HandleMaker(geenuff.handlers.HandleMaker):
-    # redefine to get handlers from slicer, here
-    def _get_handler_type(self, old_data):
-        key = [(SuperLocusHandler, geenuff.orm.SuperLocus),
-               (TranscribedHandler, geenuff.orm.Transcribed),
-               (TranslatedHandler, geenuff.orm.Translated),
-               (TranscribedPieceHandler, geenuff.orm.TranscribedPiece),
-               (FeatureHandler, geenuff.orm.Feature)]
-
-        return self._get_paired_item(type(old_data), search_col=1, return_col=0, nested_list=key)
-
-
 class CoordinateHandler(geenuff.handlers.CoordinateHandlerBase):
     def coordinate_set(self, session):
         return session.query(CoordinateSet).filter(CoordinateSet.id == self.data.id).one_or_none()
@@ -74,9 +62,6 @@ class SuperLocusHandler(geenuff.handlers.SuperLocusHandlerBase):
         super().__init__()
         self.handler_holder = HandleMaker(self)
 
-    def make_all_handlers(self):
-        self.handler_holder.make_all_handlers()
-
     def load_to_intervaltree(self, trees):
         self.make_all_handlers()
         features = self.features
@@ -84,16 +69,8 @@ class SuperLocusHandler(geenuff.handlers.SuperLocusHandlerBase):
             try:
                 feature = f.handler
             except AttributeError:
-                feature = FeatureHandler()
-                feature.add_data(f)
+                feature = FeatureHandler(feature)
             feature.load_to_intervaltree(trees)
-
-    @property
-    def features(self):
-        for transcript in self.data.transcribeds:
-            for piece in transcript.transcribed_pieces:
-                for feature in piece.features:
-                    yield feature
 
     def modify4slice(self, new_coords, is_plus_strand, session, core_queue, trees=None):
         # todo, can trees then be None?
@@ -200,8 +177,10 @@ class FeatureVsCoords(object):
             return self._is_lower()
 
     def is_contained(self):
-        start_contained = self.slice_coordinates.start <= self.feature_py_start < self.slice_coordinates.end
-        end_contained = self.slice_coordinates.start < self.feature_py_end <= self.slice_coordinates.end
+        slice_start = self.slice_coordinates.start
+        slice_end = self.slice_coordinates.end
+        start_contained = slice_start <= self.feature_py_start < slice_end
+        end_contained = slice_start < self.feature_py_end <= slice_end
         return start_contained and end_contained
 
     def _overlaps_lower(self):
@@ -232,7 +211,6 @@ class TranscriptTrimmer(TranscriptInterpBase):
     def __init__(self, transcript, super_locus, sess, core_queue):
         super().__init__(transcript, super_locus=super_locus, session=sess)
         self.core_queue = core_queue
-        #self.session = sess
         self.handlers = []
         self._downstream_piece = None
 
@@ -279,9 +257,11 @@ class TranscriptTrimmer(TranscriptInterpBase):
         transition_gen = list(self.transition_5p_to_3p())
         piece_at_border = None
         for aligned_features, piece in transition_gen:
-            f0 = aligned_features[0]  # take first as all "aligned" features have the same coordinates
+            # take first as all "aligned" features have the same coordinates
+            f0 = aligned_features[0]
             old_coordinate = f0.coordinate
-            position_interp = FeatureVsCoords(feature=f0, slice_coordinates=new_coords, is_plus_strand=is_plus_strand)
+            position_interp = FeatureVsCoords(feature=f0, slice_coordinates=new_coords,
+                                              is_plus_strand=is_plus_strand)
             # before or detached coordinates (already handled or good as-is, at least for now)
             if position_interp.is_detached():
                 pass
@@ -304,20 +284,24 @@ class TranscriptTrimmer(TranscriptInterpBase):
                 new_piece_after_border = self.downstream_piece(piece)
                 self.core_queue.execute_so_far()  # todo, rm from here once everything uses core
                 for feature in aligned_features:
-                    self.set_status_downstream_border(new_coords=new_coords, old_coords=old_coordinate,
+                    self.set_status_downstream_border(new_coords=new_coords,
+                                                      old_coords=old_coordinate,
                                                       is_plus_strand=is_plus_strand,
                                                       template_feature=feature,
                                                       old_piece=piece_at_border,
-                                                      new_piece=new_piece_after_border, trees=trees,)
+                                                      new_piece=new_piece_after_border,
+                                                      trees=trees)
 
             elif position_interp.is_downstream():
                 if piece_at_border is not None:
                     if piece is piece_at_border:
                         # todo, swap from old piece to new_piece_after_border
                         for f in aligned_features:
-                            to_swap = {'piece_id_old': piece_at_border.id,
-                                       'piece_id_new': self.downstream_piece(piece).id,
-                                       'feat_id': f.id}
+                            to_swap = {
+                                'piece_id_old': piece_at_border.id,
+                                'piece_id_new': self.downstream_piece(piece).id,
+                                'feat_id': f.id
+                            }
                             self.core_queue.piece_swaps.append(to_swap)
             else:
                 print('ooops', f0)
@@ -334,10 +318,9 @@ class TranscriptTrimmer(TranscriptInterpBase):
         #self.session.commit()
 
         if not seen_one_overlap:
-            raise NoFeaturesInSliceError("Saw no features what-so-ever in new_coords {} for transcript {}".format(
-                new_coords, self.transcript.data
-            ))
-
+            raise NoFeaturesInSliceError("Saw no features what-so-ever in new_coords {} "
+                                         "for transcript {}".format(new_coords,
+                                                                    self.transcript.data))
         self._downstream_piece = None  # reset so the piece won't be saved for the next slice
 
     def get_rel_feature_position(self, feature, prev_feature, new_coords, is_plus_strand):
@@ -378,4 +361,15 @@ class TranscriptTrimmer(TranscriptInterpBase):
         self.session.add_all([downstream.data])
         self.session.commit()  # todo, figure out what the real rules are for committing, bc slower, but less buggy?
 
+
+class HandleMaker(geenuff.handlers.HandleMaker):
+    # redefine to get handlers from slicer, here
+    def _get_handler_type(self, old_data):
+        key = [(SuperLocusHandler, geenuff.orm.SuperLocus),
+               (TranscribedHandler, geenuff.orm.Transcribed),
+               (TranslatedHandler, geenuff.orm.Translated),
+               (TranscribedPieceHandler, geenuff.orm.TranscribedPiece),
+               (FeatureHandler, geenuff.orm.Feature)]
+
+        return self._get_paired_item(type(old_data), search_col=1, return_col=0, nested_list=key)
 
