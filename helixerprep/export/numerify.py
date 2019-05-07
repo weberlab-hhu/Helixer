@@ -7,9 +7,7 @@ from abc import ABC, abstractmethod
 import geenuff
 from geenuff.base.orm import Coordinate
 from geenuff.base.transcript_interp import TranscriptInterpBase
-from helixerprep.datas.annotations.slicer import CoordinateHandler
-from ..core import partitions
-from ..core import helpers
+from ..core import handlers, helpers
 
 
 # for now collapse everything to one vector (with or without pre-selection of primary transcript)
@@ -19,7 +17,7 @@ from ..core import helpers
 
 # general structuring
 # class defining data manipulation functions (Numerifier)
-#   takes a slice & returns a matrix of values;
+#   takes a coord & returns a matrix of values;
 #   and can transform matrix <-> flat;
 #   provides name
 #
@@ -51,41 +49,37 @@ class DataInterpretationError(Exception):
 
 
 class Numerifier(ABC):
-    def __init__(self, n_cols, coord_handler, is_plus_strand, dtype=np.float32):
+    def __init__(self, n_cols, coord_handler, is_plus_strand, max_len, dtype=np.float32):
         assert isinstance(n_cols, int)
-        assert isinstance(coord_handler, CoordinateHandler)
-        assert isinstance(is_plus_strand, bool)
         self.n_cols = n_cols
         self.coord_handler = coord_handler
         self.is_plus_strand = is_plus_strand
+        self.max_len = max_len
         self.dtype = dtype
         self.matrix = None
+        self._gen_steps()  # sets self.paired_steps
         super().__init__()
 
     @property
     def coordinate(self):
         return self.coord_handler.data  # todo, clean up
 
-    def slice_to_matrix(self):
-        self._unflipped_slice_to_matrix()
-        if not self.is_plus_strand:
-            self.matrix = np.flip(self.matrix, axis=0)  # invert direction
-        return self.matrix
-
     @abstractmethod
-    def _unflipped_slice_to_matrix(self):
+    def _unflipped_coord_to_matrix(self):
         pass
 
-    def slice_to_matrices(self, max_len):
+    def _gen_steps(self):
+        partitioner = Stepper(end=len(self.coordinate.sequence), by=self.max_len)
+        self.paired_steps = list(partitioner.step_to_end())
+        if not self.is_plus_strand:
+            self.paired_steps.reverse()
+
+    def coord_to_matrices(self):
         """This works only when each bp has it's own annotation In other cases
         (e.g. where transitions are encoded) this method must be overwritten
         """
-        self._unflipped_slice_to_matrix()
-        partitioner = partitions.Stepper(end=self.matrix.shape[0], by=max_len)
-        paired_steps = list(partitioner.step_to_end())
-        if not self.is_plus_strand:
-            paired_steps.reverse()
-        for prev, current in paired_steps:
+        self._unflipped_coord_to_matrix()
+        for prev, current in self.paired_steps:
             to_yield = self.matrix[prev:current]
             if self.is_plus_strand:
                 yield to_yield
@@ -98,11 +92,11 @@ class Numerifier(ABC):
 
 
 class SequenceNumerifier(Numerifier):
-    def __init__(self, coord_handler, is_plus_strand):
+    def __init__(self, coord_handler, is_plus_strand, max_len):
         super().__init__(n_cols=4, coord_handler=coord_handler,
-                         is_plus_strand=is_plus_strand)
+                         is_plus_strand=is_plus_strand, max_len=max_len)
 
-    def _unflipped_slice_to_matrix(self):
+    def _unflipped_coord_to_matrix(self):
         self._zero_matrix()
         for i, bp in enumerate(self.coordinate.sequence):
             self.matrix[i] = AMBIGUITY_DECODE[bp]
@@ -112,9 +106,9 @@ class SequenceNumerifier(Numerifier):
 
 
 class AnnotationNumerifier(Numerifier, ABC):
-    def __init__(self, n_cols, coord_handler, is_plus_strand):
+    def __init__(self, n_cols, coord_handler, is_plus_strand, max_len):
         Numerifier.__init__(self, n_cols=n_cols, coord_handler=coord_handler,
-                            is_plus_strand=is_plus_strand)
+                            is_plus_strand=is_plus_strand, max_len=max_len)
         ABC.__init__(self)
         self.transcribed_pieces = self._get_transcribed_pieces()
 
@@ -126,7 +120,7 @@ class AnnotationNumerifier(Numerifier, ABC):
                     pieces.add(piece)
         return pieces
 
-    def _unflipped_slice_to_matrix(self):
+    def _unflipped_coord_to_matrix(self):
         self._zero_matrix()
         for piece, transcribed_handler, super_locus_handler in self.transcribeds_with_handlers():
             t_interp = TranscriptLocalReader(transcribed_handler, super_locus=super_locus_handler)
@@ -153,9 +147,9 @@ class AnnotationNumerifier(Numerifier, ABC):
 
 # todo, break or mask on errors
 class BasePairAnnotationNumerifier(AnnotationNumerifier):
-    def __init__(self, coord_handler, is_plus_strand):
+    def __init__(self, coord_handler, is_plus_strand, max_len):
         super().__init__(n_cols=3, coord_handler=coord_handler,
-                         is_plus_strand=is_plus_strand)
+                         is_plus_strand=is_plus_strand, max_len=max_len)
 
     @staticmethod
     def class_labels(status):
@@ -191,9 +185,9 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
 
 
 class TransitionAnnotationNumerifier(AnnotationNumerifier):
-    def __init__(self, coord_handler, is_plus_strand):
+    def __init__(self, coord_handler, is_plus_strand, max_len):
         super().__init__(n_cols=12, coord_handler=coord_handler,
-                         is_plus_strand=is_plus_strand)
+                         is_plus_strand=is_plus_strand, max_len=max_len)
 
     def update_matrix(self, transcribed_piece, transcript_interpreter):
         transcript_interpreter.check_no_errors(transcribed_piece)
@@ -235,7 +229,7 @@ class TransitionAnnotationNumerifier(AnnotationNumerifier):
                     j += 1
         return out
 
-    def slice_to_matrices(self, coord_handler, max_len):
+    def coord_to_matrices(self, coord_handler):
         raise NotImplementedError  # todo!
 
 
@@ -256,19 +250,53 @@ class TranscriptLocalReader(TranscriptInterpBase):
             raise DataInterpretationError
 
 
-#### and now on to actual example gen
-class ExampleMaker(object):
-    def examples_from_coord(self, coord_handler, is_plus_strand, max_len):
-        anno_nummerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                                        is_plus_strand=is_plus_strand)
-        anno_gen = anno_nummerifier.slice_to_matrices(max_len=max_len)
-        seq_nummerifier = SequenceNumerifier(coord_handler=coord_handler,
-                                             is_plus_strand=is_plus_strand)
-        seq_gen = seq_nummerifier.slice_to_matrices(max_len=max_len)
+class CoordNumerifier(object):
+    """Combines the different Numerifiers which need to operate on the same Coordinate
+    to ensure consistent parameters.
+    """
+    def __init__(self, coord_handler, is_plus_strand, max_len):
+        assert isinstance(coord_handler, handlers.CoordinateHandler)
+        assert isinstance(is_plus_strand, bool)
+        assert isinstance(max_len, int) and max_len > 0
+        self.anno_numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
+                                                            is_plus_strand=is_plus_strand,
+                                                            max_len=max_len)
+        self.seq_numerifier = SequenceNumerifier(coord_handler=coord_handler,
+                                                 is_plus_strand=is_plus_strand,
+                                                 max_len=max_len)
+
+    def numerify(self):
+        anno_gen = self.anno_numerifier.coord_to_matrices()
+        seq_gen = self.seq_numerifier.coord_to_matrices()
         for anno in anno_gen:
             seq = next(seq_gen)
             out = {
-                'labels': anno.flatten(),
-                'input': seq.flatten(),
+                'labels': anno,
+                'input': seq,
             }
             yield out
+
+
+class Stepper(object):
+    def __init__(self, end, by):
+        self.at = 0
+        self.end = end
+        self.by = by
+
+    def step(self):
+        prev = self.at
+        # fits twice or more, just step
+        if prev + self.by * 2 <= self.end:
+            new = prev + self.by
+        # fits less than twice, take half way point (to avoid an end of just a few bp)
+        elif prev + self.by < self.end:
+            new = prev + (self.end - prev) // 2
+        # doesn't fit at all
+        else:
+            new = self.end
+        self.at = new
+        return prev, new
+
+    def step_to_end(self):
+        while self.at < self.end:
+            yield self.step()

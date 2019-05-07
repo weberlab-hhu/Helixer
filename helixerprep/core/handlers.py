@@ -1,8 +1,7 @@
 import geenuff
-import geenuff.transcript_interp.TranscriptInterpBase as TranscriptInterpBase
+from geenuff.base.transcript_interp import TranscriptInterpBase
 from geenuff.base.orm import Coordinate, Genome
 from helixerprep.core.orm import Mer
-from helixerprep.core.partitions import CoordinateGenerator, choose_set
 from helixerprep.core.helpers import MerCounter
 
 

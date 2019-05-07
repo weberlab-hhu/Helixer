@@ -1,6 +1,6 @@
 import argparse
 
-from helixerprep.export import ExportController
+from helixerprep.export.exporter import ExportController
 
 
 def main(args):

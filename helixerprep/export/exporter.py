@@ -7,13 +7,12 @@ from sqlalchemy.orm import sessionmaker
 import geenuff
 from geenuff.base.orm import Coordinate, Genome
 from geenuff.base.helpers import full_db_path
-from helixerprep.core.partitions import CoordinateGenerator, choose_set
-from .numerify import ExampleMaker
+from .numerify import CoordNumerifier
 from ..core.handlers import CoordinateHandler
 
 
 class ExportController(object):
-    def __init__(self, db_path_in=None, h5_path_out):
+    def __init__(self, db_path_in, h5_path_out):
         self.db_path_in = db_path_in
         self.h5_path_out = h5_path_out
         self._mk_session()
@@ -29,9 +28,12 @@ class ExportController(object):
         """
         chunks = []
         all_coords = self.session.query(Coordinate).all()
-        example_maker = ExampleMaker()
         for coord in all_coords:
-            chunks.append(list(example_maker.examples_from_coord(coord, True, chunk_size)))
+            for is_plus_strand in [True, False]:
+                coord_handler = CoordinateHandler(coord)
+                numerifier = CoordNumerifier(coord_handler, is_plus_strand, chunk_size)
+                data = numerifier.numerify()
+                chunks.append(list(data))
 
         # output to .h5
 
@@ -128,31 +130,3 @@ class ExportController(object):
             for piece in feature.data.transcribed_pieces:
                 super_loci.add(piece.transcribed.super_locus.handler)
         return super_loci
-
-    def reshuffle_train_dev_sets(self, genome, train_size, dev_size, seed):
-        """Reshuffles the train and dev annotation of processing sets for Coordinate individually.
-        Due to limitiation with the inheritance in Sqlalchemy, a is_slice flag could not
-        conveniently be added to the Coordinate class, which leads to much more complicated queries
-        used here.
-        """
-        import random
-        sliced_coord_id_query = self.session.query(CoordinateSet).with_entities(CoordinateSet.id)
-        main_coords = (
-            self.session.query(Coordinate)
-                .filter(Coordinate.genome == genome)
-                .filter(Coordinate.id.notin_(sliced_coord_id_query))
-                .all()
-        )
-        for main_coord in main_coords:
-            main_coord_handler = CoordinateHandler(main_coord)
-            sub_coords = main_coord_handler.get_slices(self.session, ['train', 'dev'])
-
-            random.seed(main_coord.sha1 + seed)
-            for sub_coord in sub_coords:
-                new_set = choose_set(train_size, dev_size)
-                while new_set == 'test':
-                    new_set = choose_set(train_size, dev_size)
-                sub_coord.processing_set = new_set
-        self.session.commit()
-
-
