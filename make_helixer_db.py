@@ -8,8 +8,8 @@ from sqlalchemy.orm import sessionmaker
 import geenuff
 from geenuff.base.helpers import full_db_path
 from geenuff.base.orm import Genome, Coordinate
-import helixerprep.datas.annotations.slicer as slicer
-from helixerprep.datas.annotations.slice_dbmods import Mer
+from helixerprep.core.orm import Mer
+from helixerprep.core.handlers import CoordinateHandler
 
 
 class MerController(object):
@@ -43,7 +43,7 @@ class MerController(object):
         coords_without_mers = self.session.query(Coordinate).\
                                   filter(Coordinate.id.notin_(all_mers)).all()
         for coord in coords_without_mers:
-            coord_handler = slicer.CoordinateHandler(coord)
+            coord_handler = CoordinateHandler(coord)
             coord_handler.add_mer_counts_to_db(min_k, max_k, self.session)
 
 
