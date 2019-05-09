@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 import geenuff
 from geenuff.tests.test_geenuff import (setup_data_handler,
-                                        setup_testable_super_locus, TransspliceDemoData)
+                                        setup_dummyloci_super_locus, TransspliceDemoData)
 from geenuff.applications.importer import ImportController
 from ..core import helpers
 from ..core.orm import Mer
@@ -37,7 +37,7 @@ def setup_dummy_db(request):
         pytest.exit('Tests need to be run from HelixerPrep/helixerprep directory')
     if os.path.exists(DUMMYLOCI_DB):
         os.remove(DUMMYLOCI_DB)
-    sl, controller = setup_testable_super_locus('sqlite:///' + DUMMYLOCI_DB)
+    sl, controller = setup_dummyloci_super_locus('sqlite:///' + DUMMYLOCI_DB)
     coordinate = controller.genome_handler.data.coordinates[0]
     sl.check_and_fix_structure(coordinate=coordinate, controller=controller)
     controller.insertion_queues.execute_so_far()
@@ -207,72 +207,18 @@ def test_intervaltree():
 """
 
 
-"""
-move to geenuff
-
-def test_order_features():
-    controller = construct_slice_controller()
-    sl = controller.super_loci[0]
-    transcript = [x for x in sl.data.transcribeds if x.given_name == 'y'][0]
-    transcripth = slicer.TranscribedHandler()
-    transcripth.add_data(transcript)
-    ti = slicer.TranscriptTrimmer(transcripth, super_locus=None, sess=controller.session,
-                                  core_queue=controller.core_queue)
-    assert len(transcript.transcribed_pieces) == 1
-    piece = transcript.transcribed_pieces[0]
-    # features expected to be ordered by increasing position (note: as they are in db)
-    ordered_starts = [0, 10, 100, 120]
-    features = ti.sorted_features(piece)
-    for f in features:
-        print(f)
-    assert [x.start for x in features] == ordered_starts
-    # force erroneous data
-    for feature in piece.features:
-        feature.is_plus_strand = False
-    piece.features[0].is_plus_strand = True
-    controller.session.add(piece.features[0])
-    controller.session.commit()
-    with pytest.raises(AssertionError):
-        ti.sorted_features(piece)
-    # todo, test s.t. on - strand? (or is this anyways redundant with geenuff?
-
-# todo, we don't actually need slicer for this, mv to test_geenuff
-def test_slicer_transition():
-    controller = construct_slice_controller()
-    sl = controller.super_loci[0]
-    transcript = [x for x in sl.data.transcribeds if x.given_name == 'y'][0]
-    transcripth = slicer.TranscribedHandler()
-    transcripth.add_data(transcript)
-    ti = slicer.TranscriptTrimmer(transcript=transcripth, super_locus=None, sess=controller.session,
-                                  core_queue=controller.core_queue)
-    transition_gen = ti.transition_5p_to_3p()
-    transitions = list(transition_gen)
-    assert len(transitions) == 4
-    pieces = [x[1] for x in transitions]
-    features = [x[0][0] for x in transitions]
-    #ordered_starts = [0, 10, 100, 110, 120, 200, 300, 400]
-    ordered_starts = [0, 10, 100, 120]
-    assert [x.start for x in features] == ordered_starts
-    expected_types = [geenuff.types.TRANSCRIBED, geenuff.types.CODING, geenuff.types.INTRON, geenuff.types.INTRON]
-    assert [x.type.value for x in features] == expected_types
-    assert all([x.position == 0 for x in pieces])
-
-"""
-
-
 class TransspliceDemoDataSlice(TransspliceDemoData):
     def __init__(self, sess, engine):
         super().__init__(sess)
         self.core_queue = slicer.CoreQueue(session=sess, engine=engine)
         self.genome = geenuff.orm.Genome()
         self.old_coor = geenuff.orm.Coordinate(genome=self.genome, seqid='a', start=1, end=2000)
-        # replace handlers with those from slicer
         self.slh = slicer.SuperLocusHandler(self.sl)
         self.scribedh = slicer.TranscribedHandler(self.scribed)
         self.scribedfliph = slicer.TranscribedHandler(self.scribedflip)
 
-        self.ti = slicer.TranscriptTrimmer(transcript=self.scribedh, super_locus=self.slh, sess=sess,
-                                           core_queue=self.core_queue)
+        self.ti = slicer.TranscriptTrimmer(transcript=self.scribedh, super_locus=self.slh,
+                                           sess=sess, core_queue=self.core_queue)
         self.tiflip = slicer.TranscriptTrimmer(transcript=self.scribedfliph, super_locus=self.slh, sess=sess,
                                                core_queue=self.core_queue)
 
