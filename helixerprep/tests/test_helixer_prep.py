@@ -5,15 +5,14 @@ import sqlalchemy
 from sqlalchemy.orm import sessionmaker
 
 import geenuff
-from geenuff.tests.test_geenuff import (setup_data_handler,
-                                        setup_dummyloci_super_locus, TransspliceDemoData)
+from geenuff.tests.test_geenuff import (setup_data_handler, setup_dummyloci_super_locus,
+                                        TransspliceDemoData)
 from geenuff.applications.importer import ImportController
 from ..core import helpers
 from ..core.orm import Mer
 from ..core.mers import MerController
 from ..export import numerify
 from ..export.exporter import ExportController, CoordinateHandler
-
 
 TMP_DB = 'testdata/tmp.db'
 DUMMYLOCI_DB = 'testdata/dummyloci.sqlite3'
@@ -147,7 +146,6 @@ def test_sequence_slicing():
     delta_len = abs((penultimate[3] - penultimate[2]) - (ultimate[3] - ultimate[2]))
     assert delta_len == 1 or delta_len == 0
 """
-
 """
 move to geenuff
 def test_copy_n_import():
@@ -170,7 +168,6 @@ def test_copy_n_import():
     # if I ever get to collapsing redundant features this will change
     assert len(all_features) == 12
 """
-
 """
 rm test and replace with feature by coordinate test for interval
 
@@ -217,9 +214,13 @@ class TransspliceDemoDataSlice(TransspliceDemoData):
         self.scribedh = slicer.TranscribedHandler(self.scribed)
         self.scribedfliph = slicer.TranscribedHandler(self.scribedflip)
 
-        self.ti = slicer.TranscriptTrimmer(transcript=self.scribedh, super_locus=self.slh,
-                                           sess=sess, core_queue=self.core_queue)
-        self.tiflip = slicer.TranscriptTrimmer(transcript=self.scribedfliph, super_locus=self.slh, sess=sess,
+        self.ti = slicer.TranscriptTrimmer(transcript=self.scribedh,
+                                           super_locus=self.slh,
+                                           sess=sess,
+                                           core_queue=self.core_queue)
+        self.tiflip = slicer.TranscriptTrimmer(transcript=self.scribedfliph,
+                                               super_locus=self.slh,
+                                               sess=sess,
                                                core_queue=self.core_queue)
 
 
@@ -234,24 +235,38 @@ class SimplestDemoData(object):
         # setup 1 transition (encoding e.g. a transcript split across a miss assembled scaffold...):
         # 2) scribedlong - [[CD<-],[->AB]] -> ABCD, -> two transcribed pieces: one forward, one backward
         self.sl, self.slh = setup_data_handler(slicer.SuperLocusHandler, geenuff.orm.SuperLocus)
-        self.scribedlong, self.scribedlongh = setup_data_handler(slicer.TranscribedHandler, geenuff.orm.Transcribed,
+        self.scribedlong, self.scribedlongh = setup_data_handler(slicer.TranscribedHandler,
+                                                                 geenuff.orm.Transcribed,
                                                                  super_locus=self.sl)
 
-        self.tilong = slicer.TranscriptTrimmer(transcript=self.scribedlongh, super_locus=self.slh, sess=sess,
+        self.tilong = slicer.TranscriptTrimmer(transcript=self.scribedlongh,
+                                               super_locus=self.slh,
+                                               sess=sess,
                                                core_queue=self.core_queue)
 
         self.pieceAB = geenuff.orm.TranscribedPiece(position=0)
         self.pieceCD = geenuff.orm.TranscribedPiece(position=1)
         self.scribedlong.transcribed_pieces = [self.pieceAB, self.pieceCD]
 
-        self.fAB = geenuff.orm.Feature(transcribed_pieces=[self.pieceAB], coordinate=self.old_coor, start=190, end=210,
-                                       start_is_biological_start=True, end_is_biological_end=False,
-                                       given_name='AB', is_plus_strand=True, type=geenuff.types.TRANSCRIBED)
+        self.fAB = geenuff.orm.Feature(transcribed_pieces=[self.pieceAB],
+                                       coordinate=self.old_coor,
+                                       start=190,
+                                       end=210,
+                                       start_is_biological_start=True,
+                                       end_is_biological_end=False,
+                                       given_name='AB',
+                                       is_plus_strand=True,
+                                       type=geenuff.types.TRANSCRIBED)
 
-        self.fCD = geenuff.orm.Feature(transcribed_pieces=[self.pieceCD], coordinate=self.old_coor,
-                                       is_plus_strand=False, start=110, end=90,
-                                       start_is_biological_start=False, end_is_biological_end=True,
-                                       type=geenuff.types.TRANSCRIBED, given_name='CD')
+        self.fCD = geenuff.orm.Feature(transcribed_pieces=[self.pieceCD],
+                                       coordinate=self.old_coor,
+                                       is_plus_strand=False,
+                                       start=110,
+                                       end=90,
+                                       start_is_biological_start=False,
+                                       end_is_biological_end=True,
+                                       type=geenuff.types.TRANSCRIBED,
+                                       given_name='CD')
 
         self.pieceAB.features.append(self.fAB)
         self.pieceCD.features.append(self.fCD)
@@ -331,7 +346,6 @@ def test_transition_unused_coordinates_detection():
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
 """
-
 """
 redo for numerify
 
@@ -401,6 +415,7 @@ def test_reslice_at_same_spot():
     controller.session.commit()
     assert old_len == len(controller.session.query(geenuff.orm.TranscribedPiece).all())
 """
+
 
 #### numerify ####
 def test_sequence_numerify():
@@ -496,13 +511,18 @@ def test_numerify_from_gr0():
 def setup_simpler_numerifier():
     sess, engine = mk_memory_session()
     genome = geenuff.orm.Genome()
-    coord, coord_handler = setup_data_handler(slicer.CoordinateHandler, geenuff.orm.Coordinate,
-                                              genome=genome, sequence='A' * 100,
-                                              start=0, end=100, seqid='a')
+    coord, coord_handler = setup_data_handler(slicer.CoordinateHandler,
+                                              geenuff.orm.Coordinate,
+                                              genome=genome,
+                                              sequence='A' * 100,
+                                              start=0,
+                                              end=100,
+                                              seqid='a')
     sl = geenuff.orm.SuperLocus()
     transcript = geenuff.orm.Transcribed(super_locus=sl)
     piece = geenuff.orm.TranscribedPiece(transcribed=transcript, position=0)
-    transcribed_feature = geenuff.orm.Feature(start=40, end=9,
+    transcribed_feature = geenuff.orm.Feature(start=40,
+                                              end=9,
                                               is_plus_strand=False,
                                               type=geenuff.types.TRANSCRIBED,
                                               start_is_biological_start=True,
@@ -513,6 +533,7 @@ def setup_simpler_numerifier():
     sess.add_all([genome, coord, sl, transcript, piece, transcribed_feature])
     sess.commit()
     return sess, coord_handler
+
 
 """
 fix slice to matrix
@@ -576,7 +597,6 @@ def test_live_slicing():
         assert np.array_equal(num_list[i][:27], np.full([27, 4], 0.25, dtype=np.float32))
 
 """
-
 """
 redo for CoordNumerify class
 
