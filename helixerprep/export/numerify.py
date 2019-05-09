@@ -105,12 +105,13 @@ class Numerifier(ABC):
         (e.g. where transitions are encoded) this method must be overwritten
         """
         self._unflipped_coord_to_matrix()
+        matrices = []
         for prev, current in self.paired_steps:
-            to_yield = self.matrix[prev:current]
-            if self.is_plus_strand:
-                yield to_yield
-            else:
-                yield np.flip(to_yield, axis=0)  # invert direction
+            matrix_slice = self.matrix[prev:current]
+            if not self.is_plus_strand:
+                matrix_slice = np.flip(matrix_slice, axis=0)  # invert direction
+            matrices.append(matrix_slice)
+        return matrices
 
     def _zero_matrix(self):
         full_shape = (len(self.coordinate.sequence), self.n_cols,)
@@ -242,11 +243,6 @@ class CoordNumerifier(object):
                                                  max_len=max_len)
 
     def numerify(self):
-        anno_gen = self.anno_numerifier.coord_to_matrices()
-        seq_gen = self.seq_numerifier.coord_to_matrices()
-        input_data, labels = [], []
-        for anno in anno_gen:
-            seq = next(seq_gen)
-            input_data.append(seq)
-            labels.append(anno)
+        input_data = self.seq_numerifier.coord_to_matrices()
+        labels = self.anno_numerifier.coord_to_matrices()
         return input_data, labels

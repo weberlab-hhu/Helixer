@@ -8,6 +8,7 @@ import geenuff
 from geenuff.tests.test_geenuff import (setup_data_handler, setup_dummyloci_super_locus,
                                         TransspliceDemoData)
 from geenuff.applications.importer import ImportController
+from geenuff.base.orm import Genome, Coordinate
 from ..core import helpers
 from ..core.orm import Mer
 from ..core.mers import MerController
@@ -37,7 +38,7 @@ def setup_dummy_db(request):
     if os.path.exists(DUMMYLOCI_DB):
         os.remove(DUMMYLOCI_DB)
     sl, controller = setup_dummyloci_super_locus('sqlite:///' + DUMMYLOCI_DB)
-    coordinate = controller.genome_handler.data.coordinates[0]
+    coordinate = controller.latest_genome_handler.data.coordinates[0]
     sl.check_and_fix_structure(coordinate=coordinate, controller=controller)
     controller.insertion_queues.execute_so_far()
 
@@ -52,7 +53,7 @@ def mk_memory_session(db_path='sqlite:///:memory:'):
 def memory_import_fasta(fasta_path):
     controller = ImportController(database_path='sqlite:///:memory:')
     controller.add_sequences(fasta_path)
-    coord = controller.genome_handler.data.coordinates[0]
+    coord = controller.latest_genome_handler.data.coordinates[0]
     coord_handler = CoordinateHandler(coord)
     return controller, coord_handler
 
@@ -85,10 +86,9 @@ def test_count2mers():
 def test_count_range_of_mers():
     seq = 'atatat'
 
-    coord_handler = slicer.CoordinateHandler()
-    genome = geenuff.orm.Genome()
-    coordinate = geenuff.orm.Coordinate(genome=genome, start=0, end=6, sequence=seq)
-    coord_handler.add_data(coordinate)
+    genome = Genome()
+    coordinate = Coordinate(genome=genome, start=0, end=6, sequence=seq)
+    coord_handler = CoordinateHandler(coordinate)
 
     all_mer_counters = coord_handler.count_mers(1, 6)
 
@@ -420,8 +420,10 @@ def test_reslice_at_same_spot():
 #### numerify ####
 def test_sequence_numerify():
     _, coord_handler = memory_import_fasta('testdata/tester.fa')
-    numerifier = numerify.SequenceNumerifier(coord_handler=coord_handler, is_plus_strand=True)
-    matrix = numerifier.slice_to_matrix()
+    numerifier = numerify.SequenceNumerifier(coord_handler=coord_handler,
+                                             is_plus_strand=True,
+                                             max_len=100)
+    matrix = numerifier.coord_to_matrices()[0]
     # ATATATAT
     x = [0., 1, 0, 0,
          0., 0, 1, 0]
@@ -634,23 +636,23 @@ def test_example_gen():
 #### partitions
 def test_stepper():
     # evenly divided
-    s = partitions.Stepper(50, 10)
+    s = numerify.Stepper(50, 10)
     strt_ends = list(s.step_to_end())
     assert len(strt_ends) == 5
     assert strt_ends[0] == (0, 10)
     assert strt_ends[-1] == (40, 50)
     # a bit short
-    s = partitions.Stepper(49, 10)
+    s = numerify.Stepper(49, 10)
     strt_ends = list(s.step_to_end())
     assert len(strt_ends) == 5
     assert strt_ends[-1] == (39, 49)
     # a bit long
-    s = partitions.Stepper(52, 10)
+    s = numerify.Stepper(52, 10)
     strt_ends = list(s.step_to_end())
     assert len(strt_ends) == 6
     assert strt_ends[-1] == (46, 52)
     # very short
-    s = partitions.Stepper(9, 10)
+    s = numerify.Stepper(9, 10)
     strt_ends = list(s.step_to_end())
     assert len(strt_ends) == 1
     assert strt_ends[-1] == (0, 9)
