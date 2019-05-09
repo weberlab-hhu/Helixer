@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pytest
+import deepdish as dd
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
 
@@ -8,10 +9,11 @@ import geenuff
 from geenuff.tests.test_geenuff import (setup_data_handler, setup_dummyloci_super_locus,
                                         TransspliceDemoData)
 from geenuff.applications.importer import ImportController
-from geenuff.base.orm import Genome, Coordinate
+from geenuff.base.orm import Genome, Coordinate, Transcribed, Feature
 from ..core import helpers
 from ..core.orm import Mer
 from ..core.mers import MerController
+from ..export import numerify
 from ..export.numerify import SequenceNumerifier, BasePairAnnotationNumerifier, Stepper
 from ..export.exporter import ExportController, CoordinateHandler
 
@@ -30,7 +32,7 @@ def mk_controllers(source_db, helixer_db=TMP_DB, h5_out=H5_OUT):
     return mer_controller, export_controller
 
 
-### preparation ###
+### preparation and breakdown ###
 @pytest.fixture(scope="session", autouse=True)
 def setup_dummy_db(request):
     if not os.getcwd().endswith('HelixerPrep/helixerprep'):
@@ -41,6 +43,14 @@ def setup_dummy_db(request):
     coordinate = controller.latest_genome_handler.data.coordinates[0]
     sl.check_and_fix_structure(coordinate=coordinate, controller=controller)
     controller.insertion_queues.execute_so_far()
+
+    # stuff after yield is going to be executed after all tests are run
+    yield None
+
+    # clean up tmp files
+    for p in [TMP_DB, H5_OUT]:
+        if os.path.exists(p):
+            os.remove(p)
 
 
 def mk_memory_session(db_path='sqlite:///:memory:'):
@@ -58,18 +68,26 @@ def memory_import_fasta(fasta_path):
     return controller, coord_handler
 
 
-def setup_dummyloci_for_numerify():
+def setup_dummyloci_for_numerify(simplify=False):
     _, controller = mk_controllers(DUMMYLOCI_DB)
     sess = controller.session
     coordinate = sess.query(geenuff.orm.Coordinate).first()
     coord_handler = CoordinateHandler(coordinate)
+
+    # remove erroneous transcripts and their childran
+    if simplify:
+        for t in ['x', 'z']:
+            transcript = sess.query(Transcribed).\
+                             filter(Transcribed.given_name == t).first()
+            rm_transcript_and_children(transcript, sess)
+
     return sess, controller, coord_handler
 
 
 def setup_simpler_numerifier():
     sess, engine = mk_memory_session()
     genome = geenuff.orm.Genome()
-    coord, coord_handler = setup_data_handler(slicer.CoordinateHandler,
+    coord, coord_handler = setup_data_handler(CoordinateHandler,
                                               geenuff.orm.Coordinate,
                                               genome=genome,
                                               sequence='A' * 100,
@@ -221,9 +239,47 @@ def test_short_sequence_numerify():
     assert np.array_equal(expect, matrix)
 
 
-def test_annotation_numerify():
-    # test correct exon/CDS stuff
-    pass
+def test_base_level_annotation_numerify():
+    sess, controller, coord_handler = setup_dummyloci_for_numerify(simplify=True)
+    numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
+                                              features=coord_handler.data.features,
+                                              is_plus_strand=True,
+                                              max_len=500)
+    nums = numerifier.coord_to_matrices()[0]
+    expect = np.zeros([405, 3], dtype=np.float32)
+    expect[0:400, 0] = 1.  # set genic/in raw transcript
+    expect[10:300, 1] = 1.  # set in transcribed
+    expect[100:110, 2] = 1.  # both introns
+    expect[120:200, 2] = 1.
+    assert np.array_equal(nums, expect)
+
+
+def test_numerify_from_gr0():
+    sess, controller, coord_handler = setup_dummyloci_for_numerify(simplify=True)
+    transcribed = sess.query(Feature).filter(
+        Feature.type == geenuff.types.OnSequence(geenuff.types.TRANSCRIBED)
+    ).all()
+    assert len(transcribed) == 1
+    transcribed = transcribed[0]
+    coord = coord_handler.data
+    # move whole region back by 5 (was 0)
+    transcribed.start = coord.start = 4
+    coord.sequence = coord.sequence[4:]
+
+    # and now once for ranges
+    numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
+                                              features=coord_handler.data.features,
+                                              is_plus_strand=True,
+                                              max_len=500)
+    nums = numerifier.coord_to_matrices()[0]
+    # as above (except TSS), then truncate
+    expect = np.zeros([405, 3], dtype=np.float32)
+    expect[4:400, 0] = 1.  # set genic/in raw transcript
+    expect[10:300, 1] = 1.  # set in transcribed
+    expect[100:110, 2] = 1.  # both introns
+    expect[120:200, 2] = 1.
+    expect = expect[4:, :]
+    assert np.array_equal(nums, expect)
 
 
 def test_sequence_slicing():
@@ -254,20 +310,76 @@ def test_sequence_slicing():
     assert np.array_equal(expect, anno_numerifier.error_mask)
 
 
+def test_minus_strand_numerify():
+    # setup a very basic -strand locus
+    sess, coord_handler = setup_simpler_numerifier()
+    numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
+                                              features=coord_handler.data.features,
+                                              is_plus_strand=True,
+                                              max_len=1000)
+    nums = numerifier.coord_to_matrices()[0]
+    # first, we should make sure the opposite strand is unmarked when empty
+    expect = np.zeros([100, 3], dtype=np.float32)
+    assert np.array_equal(nums, expect)
+
+    numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
+                                              features=coord_handler.data.features,
+                                              is_plus_strand=False,
+                                              max_len=1000)
+    # and now that we get the expect range on the minus strand,
+    # keeping in mind the 40 is inclusive, and the 9, not
+    nums = numerifier.coord_to_matrices()[0]
+
+    expect[10:41, 0] = 1.
+    expect = np.flip(expect, axis=0)
+    assert np.array_equal(nums, expect)
+
+    # sequences on minus strand
+    _, coord_handler = memory_import_fasta('testdata/biointerp_loci.fa')
+    numerifier = SequenceNumerifier(coord_handler=coord_handler,
+                                    is_plus_strand=False,
+                                    max_len=20000)
+    matrix = numerifier.coord_to_matrices()[0]
+    assert matrix.shape == (19900, 4,)
+
+    reverse_complement = helpers.reverse_complement(coord_handler.data.sequence)
+    expect = [numerify.AMBIGUITY_DECODE[bp] for bp in reverse_complement]
+    expect = np.vstack(expect)
+    assert np.array_equal(matrix, expect)
 
 
+def test_h5_gen():
+    sess, controller, coord_handler = setup_dummyloci_for_numerify(simplify=True)
+    controller.export(chunk_size=400, shuffle=False, seed='puma')
+
+    input_data = dd.io.load(H5_OUT, group='/input')
+    labels = dd.io.load(H5_OUT, group='/labels')
+    config = dd.io.load(H5_OUT, group='/config')
+
+    assert type(config) == dict
+
+    # prep anno
+    expect = np.zeros([405, 3], dtype=np.float32)
+    expect[0:400, 0] = 1.  # set genic/in raw transcript
+    expect[10:300, 1] = 1.  # set in transcribed
+    expect[100:110, 2] = 1.  # both introns
+    expect[120:200, 2] = 1.
+
+    # prep seq
+    seqexpect = np.full([405, 4], 0.25)
+
+    assert np.array_equal(input_data[0], seqexpect[:202])
+    assert np.array_equal(labels[0], expect[:202])
+
+    assert np.array_equal(input_data[1], seqexpect[202:])
+    assert np.array_equal(labels[1], expect[202:])
 
 
+###############################
+###############################
+###############################
 
-"""
-# redo for in-memory slicing
-
-#### slicer ####
-"""
-
-"""
-rm test and replace with feature by coordinate test for interval
-
+# rm test and replace with feature by coordinate test for interval
 def test_intervaltree():
     controller = construct_slice_controller()
     controller.fill_intervaltrees()
@@ -298,7 +410,6 @@ def test_intervaltree():
     assert len(starts) == 2
     errors = [x for x in features if x.data.type.value == geenuff.types.ERROR]
     assert len(errors) == 1
-"""
 
 
 class TransspliceDemoDataSlice(TransspliceDemoData):
@@ -374,9 +485,7 @@ class SimplestDemoData(object):
         self.slh.make_all_handlers()
 
 
-"""
-redo for numerify
-
+#redo for numerify
 def test_transition_unused_coordinates_detection():
     sess, engine = mk_memory_session()
     d = SimplestDemoData(sess, engine)
@@ -442,10 +551,8 @@ def test_transition_unused_coordinates_detection():
     d = SimplestDemoData(sess, engine)
     with pytest.raises(slicer.NoFeaturesInSliceError):
         d.tilong.modify4new_slice(new_coords=new_coords, is_plus_strand=False)
-"""
-"""
-redo for numerify
 
+# redo for numerify
 def test_slicing_featureless_slice_inside_locus():
     controller = construct_slice_controller()
     controller.fill_intervaltrees()
@@ -477,7 +584,6 @@ def test_slicing_featureless_slice_inside_locus():
         geenuff.types.TRANSCRIBED,
         geenuff.types.ERROR
     }
-"""
 
 
 def rm_transcript_and_children(transcript, sess):
@@ -489,9 +595,7 @@ def rm_transcript_and_children(transcript, sess):
     sess.commit()
 
 
-"""
-change to test edge case numerification (or do that in another test)
-
+# change to test edge case numerification (or do that in another test)
 def test_reslice_at_same_spot():
     controller = construct_slice_controller()
     slh = controller.super_loci[0]
@@ -511,113 +615,9 @@ def test_reslice_at_same_spot():
     controller._slice_annotations_1way(iter(slices), controller.get_one_genome(), is_plus_strand=True)
     controller.session.commit()
     assert old_len == len(controller.session.query(geenuff.orm.TranscribedPiece).all())
-"""
 
 
-#### numerify ####
-
-"""
-adapt for file saving
-
-def test_base_level_annotation_numerify():
-    sess, controller, coord_handler = setup_dummyloci_for_numerify()
-
-    numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                                       is_plus_strand=True)
-    with pytest.raises(numerify.DataInterpretationError):
-        numerifier.slice_to_matrix()
-
-    # simplify
-    transcriptx = sess.query(geenuff.orm.Transcribed).\
-                    filter(geenuff.orm.Transcribed.given_name == 'x').first()
-    transcriptz = sess.query(geenuff.orm.Transcribed).\
-                    filter(geenuff.orm.Transcribed.given_name == 'z').first()
-    rm_transcript_and_children(transcriptx, sess)
-    rm_transcript_and_children(transcriptz, sess)
-
-    transcribeds = sess.query(geenuff.orm.Transcribed).all()
-    print(transcribeds, ' <- transcribeds')
-
-    numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                                       is_plus_strand=True)
-    nums = numerifier.slice_to_matrix()
-    expect = np.zeros([405, 3], dtype=np.float32)
-    expect[0:400, 0] = 1.  # set genic/in raw transcript
-    expect[10:300, 1] = 1.  # set in transcribed
-    expect[100:110, 2] = 1.  # both introns
-    expect[120:200, 2] = 1.
-    assert np.array_equal(nums, expect)
-
-
-def test_numerify_from_gr0():
-    sess, controller, coord_handler = setup_dummyloci_for_numerify()
-    transcriptx = sess.query(geenuff.orm.Transcribed).\
-                      filter(geenuff.orm.Transcribed.given_name == 'x').first()
-    transcriptz = sess.query(geenuff.orm.Transcribed).\
-                      filter(geenuff.orm.Transcribed.given_name == 'z').first()
-    rm_transcript_and_children(transcriptx, sess)
-    rm_transcript_and_children(transcriptz, sess)
-
-    transcribed = sess.query(geenuff.orm.Feature).filter(
-        geenuff.orm.Feature.type == geenuff.types.OnSequence(geenuff.types.TRANSCRIBED)
-    ).all()
-    assert len(transcribed) == 1
-    transcribed = transcribed[0]
-    coord = coord_handler.data
-    # move whole region back by 5 (was 0)
-    transcribed.start = coord.start = 4
-    coord.sequence = coord.sequence[4:]
-
-    # and now once for ranges
-    numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                                       is_plus_strand=True)
-    nums = numerifier.slice_to_matrix()
-    # as above (except TSS), then truncate
-    expect = np.zeros([405, 3], dtype=np.float32)
-    expect[4:400, 0] = 1.  # set genic/in raw transcript
-    expect[10:300, 1] = 1.  # set in transcribed
-    expect[100:110, 2] = 1.  # both introns
-    expect[120:200, 2] = 1.
-    expect = expect[4:, :]
-    assert np.array_equal(nums, expect)
-"""
-
-
-"""
-fix slice to matrix
-
-def test_minus_strand_numerify():
-    # setup a very basic -strand locus
-    sess, coord_handler = setup_simpler_numerifier()
-    numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                                       is_plus_strand=True)
-    nums = numerifier.slice_to_matrix()
-    # first, we should make sure the opposite strand is unmarked when empty
-    expect = np.zeros([100, 3], dtype=np.float32)
-    assert np.array_equal(nums, expect)
-
-    numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                                       is_plus_strand=False)
-    # and now that we get the expect range on the minus strand,
-    # keeping in mind the 40 is inclusive, and the 9, not
-    nums = numerifier.slice_to_matrix()
-
-    expect[10:41, 0] = 1.
-    expect = np.flip(expect, axis=0)
-    assert np.array_equal(nums, expect)
-
-    # sequences on minus strand
-    _, coord_handler = memory_import_fasta('testdata/biointerp_loci.fa')
-    numerifier = numerify.SequenceNumerifier(coord_handler=coord_handler, is_plus_strand=False)
-    matrix = numerifier.slice_to_matrix()
-    assert matrix.shape == (19900, 4,)
-
-    reverse_complement = helpers.reverse_complement(coord_handler.data.sequence)
-    expect = [numerify.AMBIGUITY_DECODE[bp] for bp in reverse_complement]
-    expect = np.vstack(expect)
-    assert np.array_equal(matrix, expect)
-
-
+# fix slice to matrix
 def test_live_slicing():
     sess, coord_handler = setup_simpler_numerifier()
 
@@ -643,40 +643,3 @@ def test_live_slicing():
         assert np.array_equal(num_list[i], np.full([50, 4], 0.25, dtype=np.float32))
     for i in [7, 8]:  # for the last two, just care that they're about the expected size...
         assert np.array_equal(num_list[i][:27], np.full([27, 4], 0.25, dtype=np.float32))
-
-"""
-"""
-redo for CoordNumerify class
-
-def test_example_gen():
-    sess, controller, coord_handler = setup_dummyloci_for_numerify()
-    transcriptx = sess.query(geenuff.orm.Transcribed).\
-                      filter(geenuff.orm.Transcribed.given_name == 'x').first()
-    transcriptz = sess.query(geenuff.orm.Transcribed).\
-                      filter(geenuff.orm.Transcribed.given_name == 'z').first()
-    rm_transcript_and_children(transcriptx, sess)
-    rm_transcript_and_children(transcriptz, sess)
-
-    example_maker = numerify.ExampleMakerSeqMetaBP()
-    egen = example_maker.examples_from_slice(coord_handler, is_plus_strand=True, max_len=400)
-
-    # prep anno
-    expect = np.zeros([405, 3], dtype=np.float32)
-    expect[0:400, 0] = 1.  # set genic/in raw transcript
-    expect[10:300, 1] = 1.  # set in transcribed
-    expect[100:110, 2] = 1.  # both introns
-    expect[120:200, 2] = 1.
-    # prep seq
-    seqexpect = np.full([405, 4], 0.25)
-
-    step0 = next(egen)
-    assert np.array_equal(step0['input'].reshape([202, 4]), seqexpect[:202])
-    assert np.array_equal(step0['labels'].reshape([202, 3]), expect[:202])
-
-    step1 = next(egen)
-    assert np.array_equal(step1['input'].reshape([203, 4]), seqexpect[202:])
-    assert np.array_equal(step1['labels'].reshape([203, 3]), expect[202:])
-"""
-
-
-#### partitions
