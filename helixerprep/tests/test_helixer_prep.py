@@ -221,6 +221,11 @@ def test_short_sequence_numerify():
     assert np.array_equal(expect, matrix)
 
 
+def test_annotation_numerify():
+    # test correct exon/CDS stuff
+    pass
+
+
 def test_sequence_slicing():
     """Tests for coherent output when slicing the 405 bp long dummyloci.
     The correct divisions are already tested in the Stepper test.
@@ -237,8 +242,17 @@ def test_sequence_slicing():
                                                    max_len=100)
     seq_slices = seq_numerifier.coord_to_matrices()
     anno_slices = anno_numerifier.coord_to_matrices()
-    import pudb; pudb.set_trace()
     assert len(seq_slices) == len(anno_slices) == 5
+
+    # testing error masks
+    expect = np.zeros((405, ), dtype=np.int8)
+    # sequence error mask should be empty
+    assert np.array_equal(expect, seq_numerifier.error_mask)
+    # annotation error mask should reflect faulty exon/CDS ranges
+    expect[:111] = 1
+    expect[119:] = 1
+    assert np.array_equal(expect, anno_numerifier.error_mask)
+
 
 
 
