@@ -83,6 +83,7 @@ class Numerifier(ABC):
         self.max_len = max_len
         self.dtype = dtype
         self.matrix = None
+        self.error_mask = None
         self._gen_steps()  # sets self.paired_steps
         super().__init__()
 
@@ -114,8 +115,9 @@ class Numerifier(ABC):
         return matrices
 
     def _zero_matrix(self):
-        full_shape = (len(self.coordinate.sequence), self.n_cols,)
-        self.matrix = np.zeros(full_shape, self.dtype)
+        length = len(self.coordinate.sequence)
+        self.matrix = np.zeros((length, self.n_cols,), self.dtype)
+        self.error_mask = np.zeros((length,), np.int8)
 
 
 class SequenceNumerifier(Numerifier):
@@ -157,6 +159,7 @@ class AnnotationNumerifier(Numerifier, ABC):
         for piece, transcribed_handler, super_locus_handler in self.transcribeds_with_handlers():
             t_interp = TranscriptLocalReader(transcribed_handler, super_locus=super_locus_handler)
             self.update_matrix(piece, t_interp)
+            self.update_error_mask(piece, t_interp)
 
     def transcribeds_with_handlers(self):
         for piece in self._get_transcribed_pieces():
@@ -164,9 +167,24 @@ class AnnotationNumerifier(Numerifier, ABC):
             super_locus_handler = SuperLocusHandlerBase(piece.transcribed.super_locus)
             yield piece, transcribed_handler, super_locus_handler
 
+    def update_error_mask(self, piece, t_interp):
+        errors = t_interp.error_ranges()
+        piece_errors = t_interp.filter_to_piece(piece=piece, transcript_coordinates=errors)
+        for p in piece_errors:
+            self.error_mask[p.start:p.end] = 1
+
     @abstractmethod
     def update_matrix(self, transcribed_piece, transcript_interpreter):
         pass
+
+
+class TranscriptLocalReader(TranscriptInterpBase):
+    @staticmethod
+    def filter_to_piece(piece, transcript_coordinates):
+        # where transcript_coordinates should be a list of TranscriptCoordinate instances
+        for item in transcript_coordinates:
+            if item.piece_position == piece.position:
+                yield item
 
 
 # todo, break or mask on errors
@@ -185,8 +203,6 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
         return [float(x) for x in labels]
 
     def update_matrix(self, transcribed_piece, transcript_interpreter):
-        transcript_interpreter.check_no_errors(piece=transcribed_piece)
-
         for i_col, fn in self.col_fns(transcript_interpreter):
             ranges = transcript_interpreter.filter_to_piece(transcript_coordinates=fn(),
                                                             piece=transcribed_piece)
@@ -207,22 +223,6 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
                 (1, transcript_interpreter.translated_ranges),
                 (2, transcript_interpreter.intronic_ranges)]
 
-
-class TranscriptLocalReader(TranscriptInterpBase):
-    @staticmethod
-    def filter_to_piece(piece, transcript_coordinates):
-        # where transcript_coordinates should be a list of TranscriptCoordinate instances
-        for item in transcript_coordinates:
-            if item.piece_position == piece.position:
-                yield item
-
-    def check_no_errors(self, piece):
-        errors = self.error_ranges()
-        errors = self.filter_to_piece(piece=piece,
-                                      transcript_coordinates=errors)
-        errors = list(errors)
-        if errors:
-            raise DataInterpretationError
 
 
 class CoordNumerifier(object):

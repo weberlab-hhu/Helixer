@@ -12,7 +12,7 @@ from geenuff.base.orm import Genome, Coordinate
 from ..core import helpers
 from ..core.orm import Mer
 from ..core.mers import MerController
-from ..export import numerify
+from ..export.numerify import SequenceNumerifier, BasePairAnnotationNumerifier, Stepper
 from ..export.exporter import ExportController, CoordinateHandler
 
 TMP_DB = 'testdata/tmp.db'
@@ -56,6 +56,63 @@ def memory_import_fasta(fasta_path):
     coord = controller.latest_genome_handler.data.coordinates[0]
     coord_handler = CoordinateHandler(coord)
     return controller, coord_handler
+
+
+def setup_dummyloci_for_numerify():
+    _, controller = mk_controllers(DUMMYLOCI_DB)
+    sess = controller.session
+    coordinate = sess.query(geenuff.orm.Coordinate).first()
+    coord_handler = CoordinateHandler(coordinate)
+    return sess, controller, coord_handler
+
+
+def setup_simpler_numerifier():
+    sess, engine = mk_memory_session()
+    genome = geenuff.orm.Genome()
+    coord, coord_handler = setup_data_handler(slicer.CoordinateHandler,
+                                              geenuff.orm.Coordinate,
+                                              genome=genome,
+                                              sequence='A' * 100,
+                                              start=0,
+                                              end=100,
+                                              seqid='a')
+    sl = geenuff.orm.SuperLocus()
+    transcript = geenuff.orm.Transcribed(super_locus=sl)
+    piece = geenuff.orm.TranscribedPiece(transcribed=transcript, position=0)
+    transcribed_feature = geenuff.orm.Feature(start=40,
+                                              end=9,
+                                              is_plus_strand=False,
+                                              type=geenuff.types.TRANSCRIBED,
+                                              start_is_biological_start=True,
+                                              end_is_biological_end=True,
+                                              coordinate=coord)
+    piece.features = [transcribed_feature]
+
+    sess.add_all([genome, coord, sl, transcript, piece, transcribed_feature])
+    sess.commit()
+    return sess, coord_handler
+
+
+### db import from GeenuFF ###
+def test_copy_n_import():
+    _, controller = mk_controllers(source_db=DUMMYLOCI_DB)
+    super_loci = controller.session.query(geenuff.orm.SuperLocus).all()
+    assert len(super_loci) == 1
+    sl = super_loci[0]
+    assert len(sl.transcribeds) == 3
+    assert len(sl.translateds) == 3
+    all_features = []
+    for transcribed in sl.transcribeds:
+        assert len(transcribed.transcribed_pieces) == 1
+        piece = transcribed.transcribed_pieces[0]
+        for feature in piece.features:
+            all_features.append(feature)
+        print('{}: {}'.format(transcribed.given_name, [x.type.value for x in piece.features]))
+    for translated in sl.translateds:
+        print('{}: {}'.format(translated.given_name, [x.type.value for x in translated.features]))
+
+    # if I ever get to collapsing redundant features this will change
+    assert len(all_features) == 12
 
 
 ### sequences ###
@@ -126,48 +183,74 @@ def test_count_range_of_mers():
     assert counted['ATATAT'] == 1
 
 
+#### numerify ####
+def test_stepper():
+    # evenly divided
+    s = Stepper(50, 10)
+    strt_ends = list(s.step_to_end())
+    assert len(strt_ends) == 5
+    assert strt_ends[0] == (0, 10)
+    assert strt_ends[-1] == (40, 50)
+    # a bit short
+    s = Stepper(49, 10)
+    strt_ends = list(s.step_to_end())
+    assert len(strt_ends) == 5
+    assert strt_ends[-1] == (39, 49)
+    # a bit long
+    s = Stepper(52, 10)
+    strt_ends = list(s.step_to_end())
+    assert len(strt_ends) == 6
+    assert strt_ends[-1] == (46, 52)
+    # very short
+    s = Stepper(9, 10)
+    strt_ends = list(s.step_to_end())
+    assert len(strt_ends) == 1
+    assert strt_ends[-1] == (0, 9)
+
+
+def test_short_sequence_numerify():
+    _, coord_handler = memory_import_fasta('testdata/tester.fa')
+    numerifier = SequenceNumerifier(coord_handler=coord_handler,
+                                    is_plus_strand=True,
+                                    max_len=100)
+    matrix = numerifier.coord_to_matrices()[0]
+    # ATATATAT
+    x = [0., 1, 0, 0,
+         0., 0, 1, 0]
+    expect = np.array(x * 4).reshape((-1, 4))
+    assert np.array_equal(expect, matrix)
+
+
+def test_sequence_slicing():
+    """Tests for coherent output when slicing the 405 bp long dummyloci.
+    The correct divisions are already tested in the Stepper test.
+    The array format of the individual matrices are tested in
+    test_short_sequence_numerify().
+    """
+    sess, controller, coord_handler = setup_dummyloci_for_numerify()
+    seq_numerifier = SequenceNumerifier(coord_handler=coord_handler,
+                                        is_plus_strand=True,
+                                        max_len=100)
+    anno_numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
+                                                   features=coord_handler.data.features,
+                                                   is_plus_strand=True,
+                                                   max_len=100)
+    seq_slices = seq_numerifier.coord_to_matrices()
+    anno_slices = anno_numerifier.coord_to_matrices()
+    import pudb; pudb.set_trace()
+    assert len(seq_slices) == len(anno_slices) == 5
+
+
+
+
+
+
 """
 # redo for in-memory slicing
 
 #### slicer ####
-def test_sequence_slicing():
-    controller = construct_slice_controller(use_default_slices=False)
-    genome = controller.get_one_genome()
-    controller.gen_slices(genome, 0.8, 0.1, 100, "puma")
-
-    # all but the last two should be of max_len
-    for slice in controller.slices[:-2]:
-        assert len(''.join(slice[1])) == 100
-        assert slice[3] - slice[2] == 100
-
-    # the last two should split the remainder in half, therefore have a length difference of 0 or 1
-    penultimate = controller.slices[-2]
-    ultimate = controller.slices[-1]
-    delta_len = abs((penultimate[3] - penultimate[2]) - (ultimate[3] - ultimate[2]))
-    assert delta_len == 1 or delta_len == 0
 """
-"""
-move to geenuff
-def test_copy_n_import():
-    _, controller = mk_controllers(source_db=DUMMYLOCI_DB)
-    super_loci = controller.session.query(geenuff.orm.SuperLocus).all()
-    assert len(super_loci) == 1
-    sl = super_loci[0]
-    assert len(sl.transcribeds) == 3
-    assert len(sl.translateds) == 3
-    all_features = []
-    for transcribed in sl.transcribeds:
-        assert len(transcribed.transcribed_pieces) == 1
-        piece = transcribed.transcribed_pieces[0]
-        for feature in piece.features:
-            all_features.append(feature)
-        print('{}: {}'.format(transcribed.given_name, [x.type.value for x in piece.features]))
-    for translated in sl.translateds:
-        print('{}: {}'.format(translated.given_name, [x.type.value for x in translated.features]))
 
-    # if I ever get to collapsing redundant features this will change
-    assert len(all_features) == 12
-"""
 """
 rm test and replace with feature by coordinate test for interval
 
@@ -418,36 +501,12 @@ def test_reslice_at_same_spot():
 
 
 #### numerify ####
-def test_sequence_numerify():
-    _, coord_handler = memory_import_fasta('testdata/tester.fa')
-    numerifier = numerify.SequenceNumerifier(coord_handler=coord_handler,
-                                             is_plus_strand=True,
-                                             max_len=100)
-    matrix = numerifier.coord_to_matrices()[0]
-    # ATATATAT
-    x = [0., 1, 0, 0,
-         0., 0, 1, 0]
-    expect = np.array(x * 4).reshape((-1, 4))
-    assert np.array_equal(expect, matrix)
-
-
-def setup4numerify():
-    controller = construct_slice_controller()
-    # no need to modify, so can just load briefly
-    sess = controller.session
-
-    coordinate = sess.query(geenuff.orm.Coordinate).first()
-    coord_handler = slicer.CoordinateHandler()
-    coord_handler.add_data(coordinate)
-
-    return sess, controller, coord_handler
-
 
 """
 adapt for file saving
 
 def test_base_level_annotation_numerify():
-    sess, controller, coord_handler = setup4numerify()
+    sess, controller, coord_handler = setup_dummyloci_for_numerify()
 
     numerifier = numerify.BasePairAnnotationNumerifier(coord_handler=coord_handler,
                                                        is_plus_strand=True)
@@ -477,7 +536,7 @@ def test_base_level_annotation_numerify():
 
 
 def test_numerify_from_gr0():
-    sess, controller, coord_handler = setup4numerify()
+    sess, controller, coord_handler = setup_dummyloci_for_numerify()
     transcriptx = sess.query(geenuff.orm.Transcribed).\
                       filter(geenuff.orm.Transcribed.given_name == 'x').first()
     transcriptz = sess.query(geenuff.orm.Transcribed).\
@@ -508,33 +567,6 @@ def test_numerify_from_gr0():
     expect = expect[4:, :]
     assert np.array_equal(nums, expect)
 """
-
-
-def setup_simpler_numerifier():
-    sess, engine = mk_memory_session()
-    genome = geenuff.orm.Genome()
-    coord, coord_handler = setup_data_handler(slicer.CoordinateHandler,
-                                              geenuff.orm.Coordinate,
-                                              genome=genome,
-                                              sequence='A' * 100,
-                                              start=0,
-                                              end=100,
-                                              seqid='a')
-    sl = geenuff.orm.SuperLocus()
-    transcript = geenuff.orm.Transcribed(super_locus=sl)
-    piece = geenuff.orm.TranscribedPiece(transcribed=transcript, position=0)
-    transcribed_feature = geenuff.orm.Feature(start=40,
-                                              end=9,
-                                              is_plus_strand=False,
-                                              type=geenuff.types.TRANSCRIBED,
-                                              start_is_biological_start=True,
-                                              end_is_biological_end=True,
-                                              coordinate=coord)
-    piece.features = [transcribed_feature]
-
-    sess.add_all([genome, coord, sl, transcript, piece, transcribed_feature])
-    sess.commit()
-    return sess, coord_handler
 
 
 """
@@ -603,7 +635,7 @@ def test_live_slicing():
 redo for CoordNumerify class
 
 def test_example_gen():
-    sess, controller, coord_handler = setup4numerify()
+    sess, controller, coord_handler = setup_dummyloci_for_numerify()
     transcriptx = sess.query(geenuff.orm.Transcribed).\
                       filter(geenuff.orm.Transcribed.given_name == 'x').first()
     transcriptz = sess.query(geenuff.orm.Transcribed).\
@@ -634,25 +666,3 @@ def test_example_gen():
 
 
 #### partitions
-def test_stepper():
-    # evenly divided
-    s = numerify.Stepper(50, 10)
-    strt_ends = list(s.step_to_end())
-    assert len(strt_ends) == 5
-    assert strt_ends[0] == (0, 10)
-    assert strt_ends[-1] == (40, 50)
-    # a bit short
-    s = numerify.Stepper(49, 10)
-    strt_ends = list(s.step_to_end())
-    assert len(strt_ends) == 5
-    assert strt_ends[-1] == (39, 49)
-    # a bit long
-    s = numerify.Stepper(52, 10)
-    strt_ends = list(s.step_to_end())
-    assert len(strt_ends) == 6
-    assert strt_ends[-1] == (46, 52)
-    # very short
-    s = numerify.Stepper(9, 10)
-    strt_ends = list(s.step_to_end())
-    assert len(strt_ends) == 1
-    assert strt_ends[-1] == (0, 9)
