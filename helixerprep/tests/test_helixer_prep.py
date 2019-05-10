@@ -234,7 +234,7 @@ def test_short_sequence_numerify():
     numerifier = SequenceNumerifier(coord_handler=coord_handler,
                                     is_plus_strand=True,
                                     max_len=100)
-    matrix = numerifier.coord_to_matrices()[0]
+    matrix = numerifier.coord_to_matrices()[0][0]
     # ATATATAT
     x = [0., 1, 0, 0,
          0., 0, 1, 0]
@@ -248,7 +248,7 @@ def test_base_level_annotation_numerify():
                                               features=coord_handler.data.features,
                                               is_plus_strand=True,
                                               max_len=500)
-    nums = numerifier.coord_to_matrices()[0]
+    nums = numerifier.coord_to_matrices()[0][0]
     expect = np.zeros([405, 3], dtype=np.float32)
     expect[0:400, 0] = 1.  # set genic/in raw transcript
     expect[10:300, 1] = 1.  # set in transcribed
@@ -274,7 +274,7 @@ def test_numerify_from_gr0():
                                               features=coord_handler.data.features,
                                               is_plus_strand=True,
                                               max_len=500)
-    nums = numerifier.coord_to_matrices()[0]
+    nums = numerifier.coord_to_matrices()[0][0]
     # as above (except TSS), then truncate
     expect = np.zeros([405, 3], dtype=np.float32)
     expect[4:400, 0] = 1.  # set genic/in raw transcript
@@ -290,7 +290,7 @@ def test_sequence_slicing():
     seq_numerifier = SequenceNumerifier(coord_handler=coord_handler,
                                         is_plus_strand=True,
                                         max_len=50)
-    num_list = seq_numerifier.coord_to_matrices()
+    num_list = seq_numerifier.coord_to_matrices()[0]
     print([x.shape for x in num_list])
     # [(50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (27, 4), (28, 4)]
     assert len(num_list) == 9
@@ -315,9 +315,12 @@ def test_coherent_slicing():
                                                    features=coord_handler.data.features,
                                                    is_plus_strand=True,
                                                    max_len=100)
-    seq_slices = seq_numerifier.coord_to_matrices()
-    anno_slices = anno_numerifier.coord_to_matrices()
+    seq_slices = seq_numerifier.coord_to_matrices()[0]
+    anno_slices = anno_numerifier.coord_to_matrices()[0]
     assert len(seq_slices) == len(anno_slices) == 5
+
+    for s, a in zip(seq_slices, anno_slices):
+        assert s.shape[0] == a.shape[0]
 
     # testing error masks
     expect = np.zeros((405, ), dtype=np.int8)
@@ -336,7 +339,7 @@ def test_minus_strand_numerify():
                                               features=coord_handler.data.features,
                                               is_plus_strand=True,
                                               max_len=1000)
-    nums = numerifier.coord_to_matrices()[0]
+    nums = numerifier.coord_to_matrices()[0][0]
     # first, we should make sure the opposite strand is unmarked when empty
     expect = np.zeros([100, 3], dtype=np.float32)
     assert np.array_equal(nums, expect)
@@ -347,7 +350,7 @@ def test_minus_strand_numerify():
                                               max_len=1000)
     # and now that we get the expect range on the minus strand,
     # keeping in mind the 40 is inclusive, and the 9, not
-    nums = numerifier.coord_to_matrices()[0]
+    nums = numerifier.coord_to_matrices()[0][0]
 
     expect[10:41, 0] = 1.
     expect = np.flip(expect, axis=0)
@@ -358,7 +361,7 @@ def test_minus_strand_numerify():
                                               features=coord_handler.data.features,
                                               is_plus_strand=False,
                                               max_len=50)
-    num_list = numerifier.coord_to_matrices()
+    num_list = numerifier.coord_to_matrices()[0]
 
     expect = np.zeros([100, 3], dtype=np.float32)
     expect[10:41, 0] = 1.
@@ -371,7 +374,7 @@ def test_minus_strand_numerify():
     numerifier = SequenceNumerifier(coord_handler=coord_handler,
                                     is_plus_strand=False,
                                     max_len=20000)
-    matrix = numerifier.coord_to_matrices()[0]
+    matrix = numerifier.coord_to_matrices()[0][0]
     assert matrix.shape == (19900, 4,)
 
     reverse_complement = helpers.reverse_complement(coord_handler.data.sequence)
@@ -380,30 +383,46 @@ def test_minus_strand_numerify():
     assert np.array_equal(matrix, expect)
 
 
-def test_h5_gen():
-    sess, controller, coord_handler = setup_dummyloci_for_numerify(simplify=True)
+def test_coord_numerifier_and_h5_gen():
+    sess, controller, coord_handler = setup_dummyloci_for_numerify()
     controller.export(chunk_size=400, shuffle=False, seed='puma')
 
-    input_data = dd.io.load(H5_OUT, group='/input')
+    inputs = dd.io.load(H5_OUT, group='/inputs')
     labels = dd.io.load(H5_OUT, group='/labels')
+    label_masks = dd.io.load(H5_OUT, group='/label_masks')
     config = dd.io.load(H5_OUT, group='/config')
 
+    # two chunks for each strand
+    assert len(inputs) == len(labels) == len(label_masks) == 4
     assert type(config) == dict
 
-    # prep anno
-    expect = np.zeros([405, 3], dtype=np.float32)
-    expect[0:400, 0] = 1.  # set genic/in raw transcript
-    expect[10:300, 1] = 1.  # set in transcribed
-    expect[100:110, 2] = 1.  # both introns
-    expect[120:200, 2] = 1.
-
     # prep seq
-    seqexpect = np.full([405, 4], 0.25)
+    seq_expect = np.full([405, 4], 0.25)
 
-    assert np.array_equal(input_data[0], seqexpect[:202])
-    assert np.array_equal(labels[0], expect[:202])
+    # prep anno
+    label_expect = np.zeros([405, 3], dtype=np.float32)
+    label_expect[0:400, 0] = 1.  # set genic/in raw transcript
+    label_expect[10:300, 1] = 1.  # set in transcribed
+    label_expect[100:110, 2] = 1.  # both introns
+    label_expect[120:200, 2] = 1.
 
-    assert np.array_equal(input_data[1], seqexpect[202:])
-    assert np.array_equal(labels[1], expect[202:])
+    # prep anno mask
+    mask_expect = np.zeros((405, ), dtype=np.int8)
+    mask_expect[:111] = 1
+    mask_expect[119:] = 1
 
+    assert np.array_equal(inputs[0], seq_expect[:202])
+    assert np.array_equal(labels[0], label_expect[:202])
+    assert np.array_equal(label_masks[0], mask_expect[:202])
 
+    assert np.array_equal(inputs[1], seq_expect[202:])
+    assert np.array_equal(labels[1], label_expect[202:])
+    assert np.array_equal(label_masks[1], mask_expect[202:])
+
+    # test if the arrays for opposite strands are different
+    assert not np.array_equal(inputs[0], inputs[2])
+    assert not np.array_equal(inputs[1], inputs[3])
+    assert not np.array_equal(labels[0], labels[2])
+    assert not np.array_equal(labels[1], labels[3])
+    assert not np.array_equal(label_masks[0], label_masks[2])
+    assert not np.array_equal(label_masks[1], label_masks[3])

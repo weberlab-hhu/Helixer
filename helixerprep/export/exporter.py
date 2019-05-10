@@ -29,8 +29,9 @@ class ExportController(object):
         specified .h5 file.
         """
         data = {
-            'input': [],
+            'inputs': [],
             'labels': [],
+            'label_masks': [],
             'config': {
                 'chunk_size': chunk_size,
                 'shuffle': shuffle,
@@ -42,9 +43,9 @@ class ExportController(object):
             for is_plus_strand in [True, False]:
                 coord_handler = CoordinateHandler(coord)
                 numerifier = CoordNumerifier(coord_handler, is_plus_strand, chunk_size)
-                input_data, labels = numerifier.numerify()
-                data['input'] += input_data
-                data['labels'] += labels
+                coord_data = numerifier.numerify()
+                for key in ['inputs', 'labels', 'label_masks']:
+                    data[key] += coord_data[key]
 
         # only works if all arrays in the list are of the same size
         # data['input'] = np.array(data['input'])

@@ -106,13 +106,17 @@ class Numerifier(ABC):
         (e.g. where transitions are encoded) this method must be overwritten
         """
         self._unflipped_coord_to_matrix()
-        matrices = []
+        data = []
+        error_masks = []
         for prev, current in self.paired_steps:
-            matrix_slice = self.matrix[prev:current]
+            data_slice = self.matrix[prev:current]
+            error_mask_slice = self.error_mask[prev:current]
             if not self.is_plus_strand:
-                matrix_slice = np.flip(matrix_slice, axis=0)  # invert direction
-            matrices.append(matrix_slice)
-        return matrices
+                data_slice = np.flip(data_slice, axis=0)  # invert direction
+                error_mask_slice = np.flip(error_mask_slice, axis=0)
+            data.append(data_slice)
+            error_masks.append(error_mask_slice)
+        return data, error_masks
 
     def _zero_matrix(self):
         length = len(self.coordinate.sequence)
@@ -126,6 +130,7 @@ class SequenceNumerifier(Numerifier):
                          is_plus_strand=is_plus_strand, max_len=max_len)
 
     def _unflipped_coord_to_matrix(self):
+        """Does not alter the error mask unlike in AnnotationNumerifier"""
         self._zero_matrix()
         for i, bp in enumerate(self.coordinate.sequence):
             self.matrix[i] = AMBIGUITY_DECODE[bp]
@@ -243,6 +248,13 @@ class CoordNumerifier(object):
                                                  max_len=max_len)
 
     def numerify(self):
-        input_data = self.seq_numerifier.coord_to_matrices()
-        labels = self.anno_numerifier.coord_to_matrices()
-        return input_data, labels
+        inputs, input_masks = self.seq_numerifier.coord_to_matrices()
+        labels, label_masks = self.anno_numerifier.coord_to_matrices()
+
+        # do not output the input_masks yet as it is not used for anything
+        out = {
+            'inputs': inputs,
+            'label_masks': label_masks,
+            'labels': labels,
+        }
+        return out
