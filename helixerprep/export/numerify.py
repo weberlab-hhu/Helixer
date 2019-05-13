@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 
 import geenuff
 from geenuff.base.orm import Coordinate
+from geenuff.base import types
 from geenuff.base.transcript_interp import TranscriptInterpBase
 from geenuff.base.handlers import SuperLocusHandlerBase, TranscribedHandlerBase
 from ..core import handlers, helpers
@@ -84,6 +85,7 @@ class Numerifier(ABC):
         self.dtype = dtype
         self.matrix = None
         self.error_mask = None
+        self.paired_steps = None
         self._gen_steps()  # sets self.paired_steps
         super().__init__()
 
@@ -112,7 +114,8 @@ class Numerifier(ABC):
             data_slice = self.matrix[prev:current]
             error_mask_slice = self.error_mask[prev:current]
             if not self.is_plus_strand:
-                data_slice = np.flip(data_slice, axis=0)  # invert direction
+                # invert directions
+                data_slice = np.flip(data_slice, axis=0)
                 error_mask_slice = np.flip(error_mask_slice, axis=0)
             data.append(data_slice)
             error_masks.append(error_mask_slice)
@@ -150,50 +153,22 @@ class AnnotationNumerifier(Numerifier, ABC):
         ABC.__init__(self)
         self.features = features
 
-    # todo integrate into self.transcribeds_with_handlers and maybe use an orm core query
-    def _get_transcribed_pieces(self):
-        pieces = set()
-        for feature in self.features:
-            if feature.is_plus_strand == self.is_plus_strand:
-                for piece in feature.transcribed_pieces:
-                    pieces.add(piece)
-        return pieces
-
     def _unflipped_coord_to_matrix(self):
         self._zero_matrix()
-        for piece, transcribed_handler, super_locus_handler in self.transcribeds_with_handlers():
-            t_interp = TranscriptLocalReader(transcribed_handler, super_locus=super_locus_handler)
-            self.update_matrix(piece, t_interp)
-            self.update_error_mask(piece, t_interp)
-
-    def transcribeds_with_handlers(self):
-        for piece in self._get_transcribed_pieces():
-            transcribed_handler = TranscribedHandlerBase(piece.transcribed)
-            super_locus_handler = SuperLocusHandlerBase(piece.transcribed.super_locus)
-            yield piece, transcribed_handler, super_locus_handler
-
-    def update_error_mask(self, piece, t_interp):
-        errors = t_interp.error_ranges()
-        piece_errors = t_interp.filter_to_piece(piece=piece, transcript_coordinates=errors)
-        for p in piece_errors:
-            self.error_mask[p.start:p.end] = 1
+        self.update_matrix_and_error_mask()
 
     @abstractmethod
-    def update_matrix(self, transcribed_piece, transcript_interpreter):
+    def update_matrix_and_error_mask(self):
         pass
 
 
-class TranscriptLocalReader(TranscriptInterpBase):
-    @staticmethod
-    def filter_to_piece(piece, transcript_coordinates):
-        # where transcript_coordinates should be a list of TranscriptCoordinate instances
-        for item in transcript_coordinates:
-            if item.piece_position == piece.position:
-                yield item
-
-
-# todo, break or mask on errors
 class BasePairAnnotationNumerifier(AnnotationNumerifier):
+    feature_to_col = {
+        types.OnSequence.transcribed: 0,
+        types.OnSequence.coding: 1,
+        types.OnSequence.intron: 2,
+     }
+
     def __init__(self, coord_handler, features, is_plus_strand, max_len):
         super().__init__(n_cols=3, coord_handler=coord_handler, features=features,
                          is_plus_strand=is_plus_strand, max_len=max_len)
@@ -207,27 +182,18 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
         )
         return [float(x) for x in labels]
 
-    def update_matrix(self, transcribed_piece, transcript_interpreter):
-        for i_col, fn in self.col_fns(transcript_interpreter):
-            ranges = transcript_interpreter.filter_to_piece(transcript_coordinates=fn(),
-                                                            piece=transcribed_piece)
-            self._update_row(i_col, ranges)
-
-    def _update_row(self, i_col, ranges):
+    def update_matrix_and_error_mask(self):
         shift_by = self.coordinate.start
-        for a_range in ranges:  # todo, how to handle - strand??
-            start = a_range.start - shift_by
-            end = a_range.end - shift_by
+        for feature in self.features:
+            start = feature.start - shift_by
+            end = feature.end - shift_by
             if not self.is_plus_strand:
                 start, end = end + 1, start + 1
-            self.matrix[start:end, i_col] = 1
-
-    def col_fns(self, transcript_interpreter):
-        assert isinstance(transcript_interpreter, TranscriptInterpBase)
-        return [(0, transcript_interpreter.transcribed_ranges),
-                (1, transcript_interpreter.translated_ranges),
-                (2, transcript_interpreter.intronic_ranges)]
-
+            if feature.type in BasePairAnnotationNumerifier.feature_to_col.keys():
+                col = BasePairAnnotationNumerifier.feature_to_col[feature.type]
+                self.matrix[start:end, col] = 1
+            elif feature.type == types.OnSequence.error:
+                self.error_mask[start:end] = 1
 
 
 class CoordNumerifier(object):

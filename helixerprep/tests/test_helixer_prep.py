@@ -407,7 +407,7 @@ def test_coord_numerifier_and_h5_gen():
     label_expect[120:200, 2] = 1.
 
     # prep anno mask
-    mask_expect = np.zeros((405, ), dtype=np.int8)
+    mask_expect = np.zeros((405,), dtype=np.int8)
     mask_expect[:111] = 1
     mask_expect[119:] = 1
 
@@ -420,9 +420,10 @@ def test_coord_numerifier_and_h5_gen():
     assert np.array_equal(label_masks[1], mask_expect[202:])
 
     # test arrays of the opposite strand
+    # no annotations should be found
     seq_expect = np.full((405, 4), 0.25)
     label_expect = np.zeros((405, 3), dtype=np.float32)
-    mask_expect = np.zeros((405, ), dtype=np.int8)
+    mask_expect = np.zeros((405,), dtype=np.int8)
 
     assert np.array_equal(inputs[2], seq_expect[:203])
     assert np.array_equal(labels[2], label_expect[:203])
