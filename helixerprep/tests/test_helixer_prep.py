@@ -397,10 +397,10 @@ def test_coord_numerifier_and_h5_gen():
     assert type(config) == dict
 
     # prep seq
-    seq_expect = np.full([405, 4], 0.25)
+    seq_expect = np.full((405, 4), 0.25)
 
     # prep anno
-    label_expect = np.zeros([405, 3], dtype=np.float32)
+    label_expect = np.zeros((405, 3), dtype=np.float32)
     label_expect[0:400, 0] = 1.  # set genic/in raw transcript
     label_expect[10:300, 1] = 1.  # set in transcribed
     label_expect[100:110, 2] = 1.  # both introns
@@ -419,10 +419,15 @@ def test_coord_numerifier_and_h5_gen():
     assert np.array_equal(labels[1], label_expect[202:])
     assert np.array_equal(label_masks[1], mask_expect[202:])
 
-    # test if the arrays for opposite strands are different
-    assert not np.array_equal(inputs[0], inputs[2])
-    assert not np.array_equal(inputs[1], inputs[3])
-    assert not np.array_equal(labels[0], labels[2])
-    assert not np.array_equal(labels[1], labels[3])
-    assert not np.array_equal(label_masks[0], label_masks[2])
-    assert not np.array_equal(label_masks[1], label_masks[3])
+    # test arrays of the opposite strand
+    seq_expect = np.full((405, 4), 0.25)
+    label_expect = np.zeros((405, 3), dtype=np.float32)
+    mask_expect = np.zeros((405, ), dtype=np.int8)
+
+    assert np.array_equal(inputs[2], seq_expect[:203])
+    assert np.array_equal(labels[2], label_expect[:203])
+    assert np.array_equal(label_masks[2], mask_expect[:203])
+
+    assert np.array_equal(inputs[3], seq_expect[203:])
+    assert np.array_equal(labels[3], label_expect[203:])
+    assert np.array_equal(label_masks[3], mask_expect[203:])
