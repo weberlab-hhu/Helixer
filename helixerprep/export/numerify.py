@@ -173,15 +173,6 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
         super().__init__(n_cols=3, coord_handler=coord_handler, features=features,
                          is_plus_strand=is_plus_strand, max_len=max_len)
 
-    @staticmethod
-    def class_labels(status):
-        labels = (
-            status.genic,
-            status.in_translated_region,
-            status.in_intron or status.in_trans_intron,
-        )
-        return [float(x) for x in labels]
-
     def update_matrix_and_error_mask(self):
         shift_by = self.coordinate.start
         for feature in self.features:
@@ -194,6 +185,8 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
                 self.matrix[start:end, col] = 1
             elif feature.type == types.OnSequence.error:
                 self.error_mask[start:end] = 1
+            else:
+                raise ValueError('Unknown feature type found')
 
 
 class CoordNumerifier(object):
