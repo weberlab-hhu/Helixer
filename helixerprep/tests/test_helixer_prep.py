@@ -22,16 +22,6 @@ DUMMYLOCI_DB = 'testdata/dummyloci.sqlite3'
 H5_OUT = 'testdata/test.h5'
 
 
-### helper functions ###
-def mk_controllers(source_db, helixer_db=TMP_DB, h5_out=H5_OUT):
-    if os.path.exists(helixer_db):
-        os.remove(helixer_db)
-
-    mer_controller = MerController(source_db, helixer_db)
-    export_controller = ExportController(helixer_db, h5_out)
-    return mer_controller, export_controller
-
-
 ### preparation and breakdown ###
 @pytest.fixture(scope="session", autouse=True)
 def setup_dummy_db(request):
@@ -51,6 +41,16 @@ def setup_dummy_db(request):
     for p in [TMP_DB, H5_OUT]:
         if os.path.exists(p):
             os.remove(p)
+
+
+### helper functions ###
+def mk_controllers(source_db, helixer_db=TMP_DB, h5_out=H5_OUT):
+    if os.path.exists(helixer_db):
+        os.remove(helixer_db)
+
+    mer_controller = MerController(source_db, helixer_db)
+    export_controller = ExportController(helixer_db, h5_out)
+    return mer_controller, export_controller
 
 
 def mk_memory_session(db_path='sqlite:///:memory:'):
@@ -377,7 +377,7 @@ def test_minus_strand_numerify():
     matrix = numerifier.coord_to_matrices()[0][0]
     assert matrix.shape == (19900, 4,)
 
-    reverse_complement = helpers.reverse_complement(coord_handler.data.sequence)
+    reverse_complement = geenuff.base.helpers.reverse_complement(coord_handler.data.sequence)
     expect = [numerify.AMBIGUITY_DECODE[bp] for bp in reverse_complement]
     expect = np.vstack(expect)
     assert np.array_equal(matrix, expect)

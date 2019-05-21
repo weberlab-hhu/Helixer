@@ -62,27 +62,3 @@ class MerCounter(object):
             self.counts[tuple(self.current)] += 1
         except KeyError:
             self.counts[self.amb] += 1
-
-
-def mk_rc_key():
-    fw = "ACGTMRWSYKVHDBN"
-    rv = "TGCAKYWSRMBDHVN"
-    key = {}
-    for f, r in zip(fw, rv):
-        key[f] = r
-    return key
-
-
-# so one doesn't recalculate it for every call of revers_complement
-REV_COMPLEMENT_KEY = mk_rc_key()
-
-
-def reverse_complement(seq):
-    key = REV_COMPLEMENT_KEY
-    rc_seq = []
-    for base in reversed(seq):
-        try:
-            rc_seq.append(key[base])
-        except KeyError as e:
-            raise KeyError('{} caused by non DNA character {}'.format(e, base))
-    return rc_seq
