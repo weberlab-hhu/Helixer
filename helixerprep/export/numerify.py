@@ -1,20 +1,17 @@
 """convert cleaned-db schema to numeric values describing gene structure"""
 
 import numpy as np
-import copy
 from abc import ABC, abstractmethod
 
-import geenuff
-from geenuff.base.orm import Coordinate
 from geenuff.base import types
-from geenuff.base.transcript_interp import TranscriptInterpBase
-from geenuff.base.handlers import SuperLocusHandlerBase, TranscribedHandlerBase
-from ..core import handlers, helpers
+from ..core import handlers
 
 
 # for now collapse everything to one vector (with or without pre-selection of primary transcript)
 # 1x coding, utr, intron, intergenic (precedence on collapse and/or multi label)
-# 1x TSS, TTS, status-transcribed, start, stop, status-translated, don-splice, acc-splice, status intron (")
+# 1x TSS, TTS, status-transcribed, start, stop, status-translated, don-splice, acc-splice,
+# status intron (")
+#
 # both of the above + trans-splice separate from splicing
 
 # general structuring
@@ -45,6 +42,7 @@ AMBIGUITY_DECODE = {
     'B': [0.33, 0., 0.33, 0.33],
     'N': [0.25, 0.25, 0.25, 0.25]
 }
+
 
 class DataInterpretationError(Exception):
     pass
