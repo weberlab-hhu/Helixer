@@ -44,10 +44,6 @@ AMBIGUITY_DECODE = {
 }
 
 
-class DataInterpretationError(Exception):
-    pass
-
-
 class Stepper(object):
     def __init__(self, end, by):
         self.at = 0
@@ -166,6 +162,7 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
         types.OnSequence.coding: 1,
         types.OnSequence.intron: 2,
      }
+    error_type_values = [t.value for t in types.Errors]
 
     def __init__(self, coord_handler, features, is_plus_strand, max_len):
         super().__init__(n_cols=3, coord_handler=coord_handler, features=features,
@@ -181,7 +178,7 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
             if feature.type in BasePairAnnotationNumerifier.feature_to_col.keys():
                 col = BasePairAnnotationNumerifier.feature_to_col[feature.type]
                 self.matrix[start:end, col] = 1
-            elif feature.type == types.OnSequence.error:
+            elif feature.type.value in BasePairAnnotationNumerifier.error_type_values:
                 self.error_mask[start:end] = 1
             else:
                 raise ValueError('Unknown feature type found')

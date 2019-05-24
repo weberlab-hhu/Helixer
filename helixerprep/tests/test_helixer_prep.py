@@ -10,6 +10,7 @@ from geenuff.tests.test_geenuff import (setup_data_handler, setup_dummyloci_supe
                                         TransspliceDemoData)
 from geenuff.applications.importer import ImportController
 from geenuff.base.orm import Genome, Coordinate, Transcribed, Feature
+from geenuff.base.helpers import reverse_complement
 from ..core import helpers
 from ..core.orm import Mer
 from ..core.mers import MerController
@@ -29,9 +30,8 @@ def setup_dummy_db(request):
         pytest.exit('Tests need to be run from HelixerPrep/helixerprep directory')
     if os.path.exists(DUMMYLOCI_DB):
         os.remove(DUMMYLOCI_DB)
-    sl, controller = setup_dummyloci_super_locus('sqlite:///' + DUMMYLOCI_DB)
+    _, controller = setup_dummyloci_super_locus('sqlite:///' + DUMMYLOCI_DB)
     coordinate = controller.latest_genome_handler.data.coordinates[0]
-    sl.check_and_fix_structure(coordinate=coordinate, controller=controller)
     controller.insertion_queues.execute_so_far()
 
     # stuff after yield is going to be executed after all tests are run
@@ -133,7 +133,7 @@ def test_copy_n_import():
         print('{}: {}'.format(translated.given_name, [x.type.value for x in translated.features]))
 
     # if I ever get to collapsing redundant features this will change
-    assert len(all_features) == 12
+    assert len(all_features) == 9
 
 
 ### sequences ###
@@ -327,8 +327,8 @@ def test_coherent_slicing():
     # sequence error mask should be empty
     assert np.array_equal(expect, seq_numerifier.error_mask)
     # annotation error mask should reflect faulty exon/CDS ranges
-    expect[:111] = 1
-    expect[119:] = 1
+    expect[:110] = 1
+    expect[120:] = 1
     assert np.array_equal(expect, anno_numerifier.error_mask)
 
 
@@ -377,8 +377,8 @@ def test_minus_strand_numerify():
     matrix = numerifier.coord_to_matrices()[0][0]
     assert matrix.shape == (19900, 4,)
 
-    reverse_complement = geenuff.base.helpers.reverse_complement(coord_handler.data.sequence)
-    expect = [numerify.AMBIGUITY_DECODE[bp] for bp in reverse_complement]
+    seq_comp = reverse_complement(coord_handler.data.sequence)
+    expect = [numerify.AMBIGUITY_DECODE[bp] for bp in seq_comp]
     expect = np.vstack(expect)
     assert np.array_equal(matrix, expect)
 
@@ -408,8 +408,8 @@ def test_coord_numerifier_and_h5_gen():
 
     # prep anno mask
     mask_expect = np.zeros((405,), dtype=np.int8)
-    mask_expect[:111] = 1
-    mask_expect[119:] = 1
+    mask_expect[:110] = 1
+    mask_expect[120:] = 1
 
     assert np.array_equal(inputs[0], seq_expect[:202])
     assert np.array_equal(labels[0], label_expect[:202])
