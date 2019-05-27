@@ -6,10 +6,10 @@ import sqlalchemy
 from sqlalchemy.orm import sessionmaker
 
 import geenuff
-from geenuff.tests.test_geenuff import (setup_data_handler, setup_dummyloci_super_locus,
-                                        TransspliceDemoData)
+from geenuff.tests.test_geenuff import setup_data_handler, setup_dummyloci_super_locus
+
 from geenuff.applications.importer import ImportController
-from geenuff.base.orm import Genome, Coordinate, Transcribed, Feature
+from geenuff.base.orm import SuperLocus, Genome, Coordinate, Transcript, Feature
 from geenuff.base.helpers import reverse_complement
 from ..core import helpers
 from ..core.orm import Mer
@@ -31,7 +31,6 @@ def setup_dummy_db(request):
     if os.path.exists(DUMMYLOCI_DB):
         os.remove(DUMMYLOCI_DB)
     _, controller = setup_dummyloci_super_locus('sqlite:///' + DUMMYLOCI_DB)
-    coordinate = controller.latest_genome_handler.data.coordinates[0]
     controller.insertion_queues.execute_so_far()
 
     # stuff after yield is going to be executed after all tests are run
@@ -76,7 +75,7 @@ def setup_dummyloci_for_numerify(simplify=False):
 
     if simplify:
         for t in ['x', 'z']:
-            transcript = sess.query(Transcribed).filter(Transcribed.given_name == t).first()
+            transcript = sess.query(Transcript).filter(Transcript.given_name == t).first()
             # remove transcript and its children
             for piece in transcript.transcribed_pieces:
                 for feature in piece.features:
@@ -98,8 +97,8 @@ def setup_simpler_numerifier():
                                               end=100,
                                               seqid='a')
     sl = geenuff.orm.SuperLocus()
-    transcript = geenuff.orm.Transcribed(super_locus=sl)
-    piece = geenuff.orm.TranscribedPiece(transcribed=transcript, position=0)
+    transcript = geenuff.orm.Transcript(super_locus=sl)
+    piece = geenuff.orm.TranscriptPiece(transcribed=transcript, position=0)
     transcribed_feature = geenuff.orm.Feature(start=40,
                                               end=9,
                                               is_plus_strand=False,
@@ -117,9 +116,7 @@ def setup_simpler_numerifier():
 ### db import from GeenuFF ###
 def test_copy_n_import():
     _, controller = mk_controllers(source_db=DUMMYLOCI_DB)
-    super_loci = controller.session.query(geenuff.orm.SuperLocus).all()
-    assert len(super_loci) == 1
-    sl = super_loci[0]
+    sl = controller.session.query(SuperLocus).filter(SuperLocus.given_name=='gene0').one()
     assert len(sl.transcribeds) == 3
     assert len(sl.translateds) == 3
     all_features = []
