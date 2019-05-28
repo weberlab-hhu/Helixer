@@ -251,33 +251,6 @@ def test_base_level_annotation_numerify():
     assert np.array_equal(nums, expect)
 
 
-def test_numerify_from_gr0():
-    sess, controller, coord_handler = setup_case_1(simplify=True)
-    transcript = sess.query(Feature).filter(
-        Feature.type == geenuff.types.OnSequence(geenuff.types.TRANSCRIPT_FEATURE)).all()
-    assert len(transcript) == 1
-    transcript = transcript[0]
-    coord = coord_handler.data
-    # move whole region back by 5 (was 0)
-    transcript.start = coord.start = 4
-    coord.sequence = coord.sequence[4:]
-
-    # and now once for ranges
-    numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                              features=coord_handler.data.features,
-                                              is_plus_strand=True,
-                                              max_len=500)
-    nums = numerifier.coord_to_matrices()[0][0]
-    # as above (except TSS), then truncate
-    expect = np.zeros([405, 3], dtype=np.float32)
-    expect[4:400, 0] = 1.  # set genic/in raw transcript
-    expect[10:300, 1] = 1.  # set in transcript
-    expect[100:110, 2] = 1.  # both introns
-    expect[120:200, 2] = 1.
-    expect = expect[4:, :]
-    assert np.array_equal(nums, expect)
-
-
 def test_sequence_slicing():
     _, coord_handler = memory_import_fasta('testdata/dummyloci.fa')
     seq_numerifier = SequenceNumerifier(coord_handler=coord_handler,
