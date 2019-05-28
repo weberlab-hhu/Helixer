@@ -7,24 +7,6 @@ from geenuff.base import types
 from ..core import handlers
 
 
-# for now collapse everything to one vector (with or without pre-selection of primary transcript)
-# 1x coding, utr, intron, intergenic (precedence on collapse and/or multi label)
-# 1x TSS, TTS, status-transcribed, start, stop, status-translated, don-splice, acc-splice,
-# status intron (")
-#
-# both of the above + trans-splice separate from splicing
-
-# general structuring
-# class defining data manipulation functions (Numerifier)
-#   takes a coord & returns a matrix of values;
-#   and can transform matrix <-> flat;
-#   provides name
-#
-# class defining examples (ExampleMaker)
-#   makes x, y pairs of data (as .dict)
-#   handles processing of said data via calls to appropriate Numerifier
-
-
 AMBIGUITY_DECODE = {
     'C': [1., 0., 0., 0.],
     'A': [0., 1., 0., 0.],
@@ -158,7 +140,7 @@ class AnnotationNumerifier(Numerifier, ABC):
 
 class BasePairAnnotationNumerifier(AnnotationNumerifier):
     feature_to_col = {
-        types.OnSequence.transcribed: 0,
+        types.OnSequence.transcript_feature: 0,
         types.OnSequence.coding: 1,
         types.OnSequence.intron: 2,
      }

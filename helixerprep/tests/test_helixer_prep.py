@@ -9,10 +9,9 @@ import geenuff
 from geenuff.tests.test_geenuff import setup_data_handler, setup_dummyloci_super_locus
 
 from geenuff.applications.importer import ImportController
-from geenuff.base.orm import SuperLocus, Genome, Coordinate, Transcript, Feature
+from geenuff.base.orm import SuperLocus, Genome, Coordinate, Feature
 from geenuff.base.helpers import reverse_complement
 from ..core import helpers
-from ..core.orm import Mer
 from ..core.mers import MerController
 from ..export import numerify
 from ..export.numerify import SequenceNumerifier, BasePairAnnotationNumerifier, Stepper
@@ -62,28 +61,29 @@ def mk_memory_session(db_path='sqlite:///:memory:'):
 def memory_import_fasta(fasta_path):
     controller = ImportController(database_path='sqlite:///:memory:')
     controller.add_sequences(fasta_path)
-    coord = controller.latest_genome_handler.data.coordinates[0]
-    coord_handler = CoordinateHandler(coord)
-    return controller, coord_handler
+    coords = controller.session.query(Coordinate).order_by(Coordinate.id).all()
+    coord_hs = [CoordinateHandler(c) for c in coords]
+    return controller, coord_hs
 
 
-def setup_dummyloci_for_numerify(simplify=False):
+def setup_case_1(simplify=False):
     _, controller = mk_controllers(DUMMYLOCI_DB)
-    sess = controller.session
-    coordinate = sess.query(geenuff.orm.Coordinate).first()
+    session = controller.session
+    coordinate = session.query(geenuff.orm.Coordinate).first()
     coord_handler = CoordinateHandler(coordinate)
 
-    if simplify:
-        for t in ['x', 'z']:
-            transcript = sess.query(Transcript).filter(Transcript.given_name == t).first()
-            # remove transcript and its children
-            for piece in transcript.transcribed_pieces:
-                for feature in piece.features:
-                    sess.delete(feature)
-                sess.delete(piece)
-            sess.delete(transcript)
-        sess.commit()
-    return sess, controller, coord_handler
+    sl = session.query(SuperLocus).filter(SuperLocus.given_name == 'gene0').one()
+    features = []
+    for t in sl.transcripts:
+        if simplify:
+            if t.given_name == 'y1':
+                for p in t.transcript_pieces:
+                    features = p.features
+        else:
+            for p in t.transcript_pieces:
+                for f in p.features:
+                    features.append(f)
+    return session, controller, coord_handler, features
 
 
 def setup_simpler_numerifier():
@@ -98,17 +98,17 @@ def setup_simpler_numerifier():
                                               seqid='a')
     sl = geenuff.orm.SuperLocus()
     transcript = geenuff.orm.Transcript(super_locus=sl)
-    piece = geenuff.orm.TranscriptPiece(transcribed=transcript, position=0)
-    transcribed_feature = geenuff.orm.Feature(start=40,
-                                              end=9,
-                                              is_plus_strand=False,
-                                              type=geenuff.types.TRANSCRIBED,
-                                              start_is_biological_start=True,
-                                              end_is_biological_end=True,
-                                              coordinate=coord)
-    piece.features = [transcribed_feature]
+    piece = geenuff.orm.TranscriptPiece(transcript=transcript, position=0)
+    transcript_feature = geenuff.orm.Feature(start=40,
+                                             end=9,
+                                             is_plus_strand=False,
+                                             type=geenuff.types.TRANSCRIPT_FEATURE,
+                                             start_is_biological_start=True,
+                                             end_is_biological_end=True,
+                                             coordinate=coord)
+    piece.features = [transcript_feature]
 
-    sess.add_all([genome, coord, sl, transcript, piece, transcribed_feature])
+    sess.add_all([genome, coord, sl, transcript, piece, transcript_feature])
     sess.commit()
     return sess, coord_handler
 
@@ -116,18 +116,18 @@ def setup_simpler_numerifier():
 ### db import from GeenuFF ###
 def test_copy_n_import():
     _, controller = mk_controllers(source_db=DUMMYLOCI_DB)
-    sl = controller.session.query(SuperLocus).filter(SuperLocus.given_name=='gene0').one()
-    assert len(sl.transcribeds) == 3
-    assert len(sl.translateds) == 3
+    sl = controller.session.query(SuperLocus).filter(SuperLocus.given_name == 'gene0').one()
+    assert len(sl.transcripts) == 3
+    assert len(sl.proteins) == 3
     all_features = []
-    for transcribed in sl.transcribeds:
-        assert len(transcribed.transcribed_pieces) == 1
-        piece = transcribed.transcribed_pieces[0]
+    for transcript in sl.transcripts:
+        assert len(transcript.transcript_pieces) == 1
+        piece = transcript.transcript_pieces[0]
         for feature in piece.features:
             all_features.append(feature)
-        print('{}: {}'.format(transcribed.given_name, [x.type.value for x in piece.features]))
-    for translated in sl.translateds:
-        print('{}: {}'.format(translated.given_name, [x.type.value for x in translated.features]))
+        print('{}: {}'.format(transcript.given_name, [x.type.value for x in piece.features]))
+    for protein in sl.proteins:
+        print('{}: {}'.format(protein.given_name, [x.type.value for x in protein.features]))
 
     # if I ever get to collapsing redundant features this will change
     assert len(all_features) == 9
@@ -227,43 +227,39 @@ def test_stepper():
 
 
 def test_short_sequence_numerify():
-    _, coord_handler = memory_import_fasta('testdata/tester.fa')
-    numerifier = SequenceNumerifier(coord_handler=coord_handler,
-                                    is_plus_strand=True,
-                                    max_len=100)
+    _, coord_hs = memory_import_fasta('testdata/tester.fa')
+    numerifier = SequenceNumerifier(coord_handler=coord_hs[0], is_plus_strand=True, max_len=100)
     matrix = numerifier.coord_to_matrices()[0][0]
     # ATATATAT
-    x = [0., 1, 0, 0,
-         0., 0, 1, 0]
+    x = [0., 1, 0, 0, 0., 0, 1, 0]
     expect = np.array(x * 4).reshape((-1, 4))
     assert np.array_equal(expect, matrix)
 
 
 def test_base_level_annotation_numerify():
-    sess, controller, coord_handler = setup_dummyloci_for_numerify(simplify=True)
+    _, _, coord_handler, features = setup_case_1(simplify=True)
     numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                              features=coord_handler.data.features,
+                                              features=features,
                                               is_plus_strand=True,
-                                              max_len=500)
-    nums = numerifier.coord_to_matrices()[0][0]
+                                              max_len=5000)
+    nums = numerifier.coord_to_matrices()[0][0][:405]
     expect = np.zeros([405, 3], dtype=np.float32)
     expect[0:400, 0] = 1.  # set genic/in raw transcript
-    expect[10:300, 1] = 1.  # set in transcribed
-    expect[100:110, 2] = 1.  # both introns
+    expect[10:300, 1] = 1.  # set in transcript
+    expect[22:110, 2] = 1.  # both introns
     expect[120:200, 2] = 1.
     assert np.array_equal(nums, expect)
 
 
 def test_numerify_from_gr0():
-    sess, controller, coord_handler = setup_dummyloci_for_numerify(simplify=True)
-    transcribed = sess.query(Feature).filter(
-        Feature.type == geenuff.types.OnSequence(geenuff.types.TRANSCRIBED)
-    ).all()
-    assert len(transcribed) == 1
-    transcribed = transcribed[0]
+    sess, controller, coord_handler = setup_case_1(simplify=True)
+    transcript = sess.query(Feature).filter(
+        Feature.type == geenuff.types.OnSequence(geenuff.types.TRANSCRIPT_FEATURE)).all()
+    assert len(transcript) == 1
+    transcript = transcript[0]
     coord = coord_handler.data
     # move whole region back by 5 (was 0)
-    transcribed.start = coord.start = 4
+    transcript.start = coord.start = 4
     coord.sequence = coord.sequence[4:]
 
     # and now once for ranges
@@ -275,7 +271,7 @@ def test_numerify_from_gr0():
     # as above (except TSS), then truncate
     expect = np.zeros([405, 3], dtype=np.float32)
     expect[4:400, 0] = 1.  # set genic/in raw transcript
-    expect[10:300, 1] = 1.  # set in transcribed
+    expect[10:300, 1] = 1.  # set in transcript
     expect[100:110, 2] = 1.  # both introns
     expect[120:200, 2] = 1.
     expect = expect[4:, :]
@@ -304,7 +300,7 @@ def test_coherent_slicing():
     The array format of the individual matrices are tested in
     test_short_sequence_numerify().
     """
-    sess, controller, coord_handler = setup_dummyloci_for_numerify()
+    sess, controller, coord_handler = setup_case_1()
     seq_numerifier = SequenceNumerifier(coord_handler=coord_handler,
                                         is_plus_strand=True,
                                         max_len=100)
@@ -372,7 +368,10 @@ def test_minus_strand_numerify():
                                     is_plus_strand=False,
                                     max_len=20000)
     matrix = numerifier.coord_to_matrices()[0][0]
-    assert matrix.shape == (19900, 4,)
+    assert matrix.shape == (
+        19900,
+        4,
+    )
 
     seq_comp = reverse_complement(coord_handler.data.sequence)
     expect = [numerify.AMBIGUITY_DECODE[bp] for bp in seq_comp]
@@ -381,7 +380,7 @@ def test_minus_strand_numerify():
 
 
 def test_coord_numerifier_and_h5_gen():
-    sess, controller, coord_handler = setup_dummyloci_for_numerify()
+    sess, controller, coord_handler = setup_case_1()
     controller.export(chunk_size=400, shuffle=False, seed='puma')
 
     inputs = dd.io.load(H5_OUT, group='/inputs')
@@ -399,12 +398,12 @@ def test_coord_numerifier_and_h5_gen():
     # prep anno
     label_expect = np.zeros((405, 3), dtype=np.float32)
     label_expect[0:400, 0] = 1.  # set genic/in raw transcript
-    label_expect[10:300, 1] = 1.  # set in transcribed
+    label_expect[10:300, 1] = 1.  # set in transcript
     label_expect[100:110, 2] = 1.  # both introns
     label_expect[120:200, 2] = 1.
 
     # prep anno mask
-    mask_expect = np.zeros((405,), dtype=np.int8)
+    mask_expect = np.zeros((405, ), dtype=np.int8)
     mask_expect[:110] = 1
     mask_expect[120:] = 1
 
@@ -420,7 +419,7 @@ def test_coord_numerifier_and_h5_gen():
     # no annotations should be found
     seq_expect = np.full((405, 4), 0.25)
     label_expect = np.zeros((405, 3), dtype=np.float32)
-    mask_expect = np.zeros((405,), dtype=np.int8)
+    mask_expect = np.zeros((405, ), dtype=np.int8)
 
     assert np.array_equal(inputs[2], seq_expect[:203])
     assert np.array_equal(labels[2], label_expect[:203])
