@@ -9,7 +9,7 @@ import geenuff
 from geenuff.tests.test_geenuff import setup_data_handler, setup_dummyloci_super_locus
 
 from geenuff.applications.importer import ImportController
-from geenuff.base.orm import SuperLocus, Genome, Coordinate, Feature
+from geenuff.base.orm import SuperLocus, Genome, Coordinate
 from geenuff.base.helpers import reverse_complement
 from ..core import helpers
 from ..core.mers import MerController
@@ -251,9 +251,7 @@ def test_base_level_annotation_numerify():
 
 def test_sequence_slicing():
     _, coord_hs = memory_import_fasta('testdata/basic_sequences.fa')
-    seq_numerifier = SequenceNumerifier(coord_handler=coord_hs[0],
-                                        is_plus_strand=True,
-                                        max_len=50)
+    seq_numerifier = SequenceNumerifier(coord_handler=coord_hs[0], is_plus_strand=True, max_len=50)
     num_list = seq_numerifier.coord_to_matrices()[0]
     print([x.shape for x in num_list])
     # [(50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (27, 4), (28, 4)]
@@ -392,7 +390,6 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     inputs = dd.io.load(H5_OUT, group='/inputs')
     labels = dd.io.load(H5_OUT, group='/labels')
     label_masks = dd.io.load(H5_OUT, group='/label_masks')
-    config = dd.io.load(H5_OUT, group='/config')
 
     # coord 1: 10 per strand
     # coord 2: 9 per strand
