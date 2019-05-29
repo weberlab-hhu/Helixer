@@ -19,7 +19,7 @@ if __name__ == '__main__':
                           'the input database will be replaced.'))
 
     fasta_specific = parser.add_argument_group("Controlling the kmer generation:")
-    fasta_specific.add_argument('--min_k', help='minumum size kmer to calculate from sequence',
+    fasta_specific.add_argument('--min_k', help='minimum size kmer to calculate from sequence',
                                 default=0, type=int)
     fasta_specific.add_argument('--max_k', help='maximum size kmer to calculate from sequence',
                                 default=0, type=int)
