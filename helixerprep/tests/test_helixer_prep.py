@@ -14,7 +14,8 @@ from geenuff.base.helpers import reverse_complement
 from ..core import helpers
 from ..core.mers import MerController
 from ..export import numerify
-from ..export.numerify import SequenceNumerifier, BasePairAnnotationNumerifier, Stepper
+from ..export.numerify import (SequenceNumerifier, BasePairAnnotationNumerifier, Stepper,
+                               AMBIGUITY_DECODE)
 from ..export.exporter import ExportController, CoordinateHandler
 
 TMP_DB = 'testdata/tmp.db'
@@ -66,24 +67,12 @@ def memory_import_fasta(fasta_path):
     return controller, coord_hs
 
 
-def setup_case_1(simplify=False):
+def setup_dummyloci():
     _, controller = mk_controllers(DUMMYLOCI_DB)
     session = controller.session
     coordinate = session.query(geenuff.orm.Coordinate).first()
     coord_handler = CoordinateHandler(coordinate)
-
-    sl = session.query(SuperLocus).filter(SuperLocus.given_name == 'gene0').one()
-    features = []
-    for t in sl.transcripts:
-        if simplify:
-            if t.given_name == 'y1':
-                for p in t.transcript_pieces:
-                    features = p.features
-        else:
-            for p in t.transcript_pieces:
-                for f in p.features:
-                    features.append(f)
-    return session, controller, coord_handler, features
+    return session, controller, coord_handler
 
 
 def setup_simpler_numerifier():
@@ -227,33 +216,42 @@ def test_stepper():
 
 
 def test_short_sequence_numerify():
-    _, coord_hs = memory_import_fasta('testdata/tester.fa')
-    numerifier = SequenceNumerifier(coord_handler=coord_hs[0], is_plus_strand=True, max_len=100)
+    _, coord_hs = memory_import_fasta('testdata/basic_sequences.fa')
+    numerifier = SequenceNumerifier(coord_handler=coord_hs[3], is_plus_strand=True, max_len=100)
     matrix = numerifier.coord_to_matrices()[0][0]
     # ATATATAT
     x = [0., 1, 0, 0, 0., 0, 1, 0]
     expect = np.array(x * 4).reshape((-1, 4))
     assert np.array_equal(expect, matrix)
 
+    # on the minus strand
+    numerifier = SequenceNumerifier(coord_handler=coord_hs[3], is_plus_strand=False, max_len=100)
+    matrix = numerifier.coord_to_matrices()[0][0]
+
+    seq_comp = reverse_complement(coord_hs[3].data.sequence)
+    expect = [numerify.AMBIGUITY_DECODE[bp] for bp in seq_comp]
+    expect = np.vstack(expect)
+    assert np.array_equal(expect, matrix)
+
 
 def test_base_level_annotation_numerify():
-    _, _, coord_handler, features = setup_case_1(simplify=True)
+    _, _, coord_handler = setup_dummyloci()
     numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                              features=features,
+                                              features=coord_handler.data.features,
                                               is_plus_strand=True,
                                               max_len=5000)
     nums = numerifier.coord_to_matrices()[0][0][:405]
     expect = np.zeros([405, 3], dtype=np.float32)
     expect[0:400, 0] = 1.  # set genic/in raw transcript
-    expect[10:300, 1] = 1.  # set in transcript
-    expect[22:110, 2] = 1.  # both introns
+    expect[10:301, 1] = 1.  # set in transcript
+    expect[21:110, 2] = 1.  # both introns
     expect[120:200, 2] = 1.
     assert np.array_equal(nums, expect)
 
 
 def test_sequence_slicing():
-    _, coord_handler = memory_import_fasta('testdata/dummyloci.fa')
-    seq_numerifier = SequenceNumerifier(coord_handler=coord_handler,
+    _, coord_hs = memory_import_fasta('testdata/basic_sequences.fa')
+    seq_numerifier = SequenceNumerifier(coord_handler=coord_hs[0],
                                         is_plus_strand=True,
                                         max_len=50)
     num_list = seq_numerifier.coord_to_matrices()[0]
@@ -273,7 +271,7 @@ def test_coherent_slicing():
     The array format of the individual matrices are tested in
     test_short_sequence_numerify().
     """
-    sess, controller, coord_handler = setup_case_1()
+    _, _, coord_handler = setup_dummyloci()
     seq_numerifier = SequenceNumerifier(coord_handler=coord_handler,
                                         is_plus_strand=True,
                                         max_len=100)
@@ -283,24 +281,27 @@ def test_coherent_slicing():
                                                    max_len=100)
     seq_slices = seq_numerifier.coord_to_matrices()[0]
     anno_slices = anno_numerifier.coord_to_matrices()[0]
-    assert len(seq_slices) == len(anno_slices) == 5
+    assert len(seq_slices) == len(anno_slices) == 19
 
     for s, a in zip(seq_slices, anno_slices):
         assert s.shape[0] == a.shape[0]
 
-    # testing error masks
-    expect = np.zeros((405, ), dtype=np.int8)
+    # testing sequence error masks
+    expect = np.zeros((1801, ), dtype=np.int8)
     # sequence error mask should be empty
     assert np.array_equal(expect, seq_numerifier.error_mask)
-    # annotation error mask should reflect faulty exon/CDS ranges
+    # annotation error mask of test case 1 should reflect faulty exon/CDS ranges
+    assert anno_numerifier.error_mask.shape == expect.shape
     expect[:110] = 1
-    expect[120:] = 1
-    assert np.array_equal(expect, anno_numerifier.error_mask)
+    expect[120:499] = 1  # error from test case 1
+    expect[499:1099] = 1  # error from test case 2
+    # test equality for correct error ranges of first two test cases + some correct bases
+    assert np.array_equal(expect[:1150], anno_numerifier.error_mask[:1150])
 
 
 def test_minus_strand_numerify():
     # setup a very basic -strand locus
-    sess, coord_handler = setup_simpler_numerifier()
+    _, coord_handler = setup_simpler_numerifier()
     numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
                                               features=coord_handler.data.features,
                                               is_plus_strand=True,
@@ -335,25 +336,10 @@ def test_minus_strand_numerify():
     assert np.array_equal(num_list[0], np.flip(expect[50:100], axis=0))
     assert np.array_equal(num_list[1], np.flip(expect[0:50], axis=0))
 
-    # sequences on minus strand
-    _, coord_handler = memory_import_fasta('testdata/biointerp_loci.fa')
-    numerifier = SequenceNumerifier(coord_handler=coord_handler,
-                                    is_plus_strand=False,
-                                    max_len=20000)
-    matrix = numerifier.coord_to_matrices()[0][0]
-    assert matrix.shape == (
-        19900,
-        4,
-    )
 
-    seq_comp = reverse_complement(coord_handler.data.sequence)
-    expect = [numerify.AMBIGUITY_DECODE[bp] for bp in seq_comp]
-    expect = np.vstack(expect)
-    assert np.array_equal(matrix, expect)
-
-
-def test_coord_numerifier_and_h5_gen():
-    sess, controller, coord_handler = setup_case_1()
+def test_coord_numerifier_and_h5_gen_plus_strand():
+    _, controller, _ = setup_dummyloci()
+    # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=400, shuffle=False, seed='puma')
 
     inputs = dd.io.load(H5_OUT, group='/inputs')
@@ -361,43 +347,86 @@ def test_coord_numerifier_and_h5_gen():
     label_masks = dd.io.load(H5_OUT, group='/label_masks')
     config = dd.io.load(H5_OUT, group='/config')
 
-    # two chunks for each strand
-    assert len(inputs) == len(labels) == len(label_masks) == 4
+    # five chunks for each the two coordinates and *2 for each strand
+    assert len(inputs) == len(labels) == len(label_masks) == 20
     assert type(config) == dict
 
     # prep seq
     seq_expect = np.full((405, 4), 0.25)
+    # set start codon
+    seq_expect[10] = numerify.AMBIGUITY_DECODE['A']
+    seq_expect[11] = numerify.AMBIGUITY_DECODE['T']
+    seq_expect[12] = numerify.AMBIGUITY_DECODE['G']
+    # stop codons
+    seq_expect[117] = numerify.AMBIGUITY_DECODE['T']
+    seq_expect[118] = numerify.AMBIGUITY_DECODE['A']
+    seq_expect[119] = numerify.AMBIGUITY_DECODE['G']
+    seq_expect[298] = numerify.AMBIGUITY_DECODE['T']
+    seq_expect[299] = numerify.AMBIGUITY_DECODE['G']
+    seq_expect[300] = numerify.AMBIGUITY_DECODE['A']
+    assert np.array_equal(inputs[0], seq_expect[:400])
+    assert np.array_equal(inputs[1][:5], seq_expect[400:])
 
     # prep anno
     label_expect = np.zeros((405, 3), dtype=np.float32)
     label_expect[0:400, 0] = 1.  # set genic/in raw transcript
-    label_expect[10:300, 1] = 1.  # set in transcript
-    label_expect[100:110, 2] = 1.  # both introns
+    label_expect[10:301, 1] = 1.  # set in transcript
+    label_expect[21:110, 2] = 1.  # both introns
     label_expect[120:200, 2] = 1.
+    assert np.array_equal(labels[0], label_expect[:400])
+    assert np.array_equal(labels[1][:5], label_expect[400:])
 
     # prep anno mask
-    mask_expect = np.zeros((405, ), dtype=np.int8)
-    mask_expect[:110] = 1
-    mask_expect[120:] = 1
+    label_mask_expect = np.zeros((405, ), dtype=np.int8)
+    label_mask_expect[:110] = 1
+    label_mask_expect[120:] = 1
+    assert np.array_equal(label_masks[0], label_mask_expect[:400])
+    assert np.array_equal(label_masks[1][:5], label_mask_expect[400:])
 
-    assert np.array_equal(inputs[0], seq_expect[:202])
-    assert np.array_equal(labels[0], label_expect[:202])
-    assert np.array_equal(label_masks[0], mask_expect[:202])
 
-    assert np.array_equal(inputs[1], seq_expect[202:])
-    assert np.array_equal(labels[1], label_expect[202:])
-    assert np.array_equal(label_masks[1], mask_expect[202:])
+def test_coord_numerifier_and_h5_gen_minus_strand():
+    _, controller, _ = setup_dummyloci()
+    # dump the whole db in chunks into a .h5 file
+    controller.export(chunk_size=200, shuffle=False, seed='puma')
 
-    # test arrays of the opposite strand
-    # no annotations should be found
-    seq_expect = np.full((405, 4), 0.25)
-    label_expect = np.zeros((405, 3), dtype=np.float32)
-    mask_expect = np.zeros((405, ), dtype=np.int8)
+    inputs = dd.io.load(H5_OUT, group='/inputs')
+    labels = dd.io.load(H5_OUT, group='/labels')
+    label_masks = dd.io.load(H5_OUT, group='/label_masks')
+    config = dd.io.load(H5_OUT, group='/config')
 
-    assert np.array_equal(inputs[2], seq_expect[:203])
-    assert np.array_equal(labels[2], label_expect[:203])
-    assert np.array_equal(label_masks[2], mask_expect[:203])
+    # coord 1: 10 per strand
+    # coord 2: 9 per strand
+    assert len(inputs) == len(labels) == len(label_masks) == 38
 
-    assert np.array_equal(inputs[3], seq_expect[203:])
-    assert np.array_equal(labels[3], label_expect[203:])
-    assert np.array_equal(label_masks[3], mask_expect[203:])
+    # the last 9 inputs/labels should be for the 2nd coord and the minus strand
+    inputs = inputs[-9:]
+    labels = labels[-9:]
+    label_masks = label_masks[-9:]
+
+    seq_expect = np.full((1755, 4), 0.25)
+    # start codon
+    seq_expect[1729] = np.flip(AMBIGUITY_DECODE['T'])
+    seq_expect[1728] = np.flip(AMBIGUITY_DECODE['A'])
+    seq_expect[1727] = np.flip(AMBIGUITY_DECODE['C'])
+    # stop codon (other stop codon is intentionally missing in the test case)
+    seq_expect[1576] = np.flip(AMBIGUITY_DECODE['A'])
+    seq_expect[1575] = np.flip(AMBIGUITY_DECODE['T'])
+    seq_expect[1574] = np.flip(AMBIGUITY_DECODE['C'])
+    seq_expect = np.flip(seq_expect, axis=0)
+    assert np.array_equal(inputs[0], seq_expect[:178])
+    assert np.array_equal(inputs[1][:50], seq_expect[178:228])
+
+    label_expect = np.zeros((1755, 3), dtype=np.float32)
+    label_expect[1549:1750, 0] = 1.  # genic region
+    label_expect[1574:1730, 1] = 1.  # transcript (2 overlapping ones)
+    label_expect[1650:1719, 2] = 1.  # intron
+    label_expect = np.flip(label_expect, axis=0)
+    assert np.array_equal(labels[0], label_expect[:178])
+    assert np.array_equal(labels[1][:50], label_expect[178:228])
+
+    label_mask_expect = np.zeros((1755, ), dtype=np.int8)
+    label_mask_expect[1725:] = 1.
+    label_mask_expect[1549:1650] = 1.
+    label_mask_expect = np.flip(label_mask_expect)
+    assert np.array_equal(label_masks[0], label_mask_expect[:178])
+    assert np.array_equal(label_masks[1][:50], label_mask_expect[178:228])
