@@ -12,6 +12,7 @@ from geenuff.base.orm import SuperLocus, Genome, Coordinate
 from geenuff.base.helpers import reverse_complement
 from ..core import helpers
 from ..core.mers import MerController
+from ..core.orm import Mer
 from ..export import numerify
 from ..export.numerify import (SequenceNumerifier, BasePairAnnotationNumerifier, Stepper,
                                AMBIGUITY_DECODE)
@@ -123,7 +124,21 @@ def test_copy_n_import():
 
 
 ### sequences ###
-# testing: counting kmers
+def test_add_mers():
+    mer_controller, _ = mk_controllers(source_db=DUMMYLOCI_DB)
+    mer_controller.add_mers(1, 3)
+    query = mer_controller.session.query
+
+    coords = query(Coordinate).all()
+    for coord in coords:
+        mers = query(Mer).filter(Mer.coordinate==coord).filter(Mer.length==1).all()
+        assert len(mers) == 3
+        mers = query(Mer).filter(Mer.coordinate==coord).filter(Mer.length==2).all()
+        assert len(mers) == 11  # some mers can be their own reverse complement here
+        mers = query(Mer).filter(Mer.coordinate==coord).filter(Mer.length==3).all()
+        assert len(mers) == ((4 ** 3) / 2) + 1
+
+
 def test_count2mers():
     mc = helpers.MerCounter(2)
     sequence = 'AAAA'

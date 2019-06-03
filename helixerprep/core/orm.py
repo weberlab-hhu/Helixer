@@ -21,3 +21,11 @@ class Mer(orm.Base):
         CheckConstraint('count >= 0', name='check_count_gt_0'),
         CheckConstraint('length >= 1', name='check_length_gt_1'),
     )
+
+    def __repr__(self):
+        return '<Mer {}, coord_id: {}, seq: {}, count: {}, len: {}>'.format(self.id,
+                                                                            self.coordinate_id,
+                                                                            self.mer_sequence,
+                                                                            self.count,
+                                                                            self.length)
+
