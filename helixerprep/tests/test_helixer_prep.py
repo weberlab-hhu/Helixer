@@ -148,7 +148,7 @@ def test_count2mers():
 
 
 def test_count_range_of_mers():
-    seq = 'atatat'
+    seq = 'ATATAT'
 
     genome = Genome()
     coordinate = Coordinate(genome=genome, start=0, end=6, sequence=seq)

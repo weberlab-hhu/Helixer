@@ -16,51 +16,29 @@ class MerCounter(object):
         self.counts = {}
         # calculate all possible mers of this length, and set counter to 0
         for mer in itertools.product('ATCG', repeat=k):
-            mer = tuple(mer)
+            mer = ''.join(mer)
             self.counts[mer] = 0
         self.counts[self.amb] = 0
-        self.current = []
 
     def export(self):
-        pre_out = copy.deepcopy(self.counts)
+        out = copy.deepcopy(self.counts)
         for key in self.counts:
             if key != self.amb:
                 # collapse to cannonical kmers
-                rc_key = tuple(reverse_complement(key))
-                if key != min(key, rc_key):
-                    pre_out[rc_key] += pre_out[key]
-                    pre_out.pop(key)
-
-        # change tuples keys to strings
-        out = {}
-        for key in pre_out:
-            out[''.join(key)] = pre_out[key]
-
+                rc_key = ''.join(reverse_complement(key))
+                if key > rc_key:
+                    out[rc_key] += out[key]
+                    out.pop(key)
         return out
 
     def add_sequence(self, sequence):
-        # convenience fn for testing, but for efficiency use one loop through sequence for all MerCounters at once
-        for bp in sequence:
-            self.add_bp(bp)
+        # convenience fn for testing, but for efficiency use one loop through
+        # sequence for all MerCounters at once
+        for i in range(0, len(sequence) - (self.k - 1)):
+            self.add_count(sequence[i:i+self.k])
 
-    def add_bp(self, bp):
-        self.current.append(bp)
-        length = len(self.current)
-        # do nothing if we haven't yet reached 'mer length
-        if length < self.k:
-            pass
-        # simply count when we reach 'mer length
-        elif length == self.k:
-            self.count_current()
-        # drop oldest bp if we are over length, then count
-        elif length == self.k + 1:
-            self.current.pop(0)
-            self.count_current()
-        else:
-            raise ValueError("length of self.current should always be within 0 - (k+ 1), found {}".format(length))
-
-    def count_current(self):
+    def add_count(self, mer):
         try:
-            self.counts[tuple(self.current)] += 1
+            self.counts[mer] += 1
         except KeyError:
             self.counts[self.amb] += 1
