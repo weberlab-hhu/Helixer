@@ -1,12 +1,11 @@
 import os
+from shutil import copy
 import numpy as np
 import pytest
 import deepdish as dd
-import sqlalchemy
-from sqlalchemy.orm import sessionmaker
 
 import geenuff
-from geenuff.tests.test_geenuff import setup_data_handler, setup_dummyloci_super_locus
+from geenuff.tests.test_geenuff import setup_data_handler, mk_memory_session
 
 from geenuff.applications.importer import ImportController
 from geenuff.base.orm import SuperLocus, Genome, Coordinate
@@ -30,8 +29,16 @@ def setup_dummy_db(request):
         pytest.exit('Tests need to be run from HelixerPrep/helixerprep directory')
     if os.path.exists(DUMMYLOCI_DB):
         os.remove(DUMMYLOCI_DB)
-    _, controller = setup_dummyloci_super_locus('sqlite:///' + DUMMYLOCI_DB)
-    controller.insertion_queues.execute_so_far()
+
+    # make sure we have the same test data that Geenuff has
+    geenuff_test_folder = os.path.dirname(geenuff.__file__) + '/testdata/'
+    files = ['dummyloci.fa', 'dummyloci.gff', 'basic_sequences.fa']
+    for f in files:
+        copy(geenuff_test_folder + f, 'testdata/')
+
+    # setup dummyloci
+    controller = ImportController(database_path='sqlite:///' + DUMMYLOCI_DB)
+    controller.add_genome('testdata/dummyloci.fa', 'testdata/dummyloci.gff')
 
     # stuff after yield is going to be executed after all tests are run
     yield None
@@ -52,13 +59,6 @@ def mk_controllers(source_db, helixer_db=TMP_DB, h5_out=H5_OUT):
     return mer_controller, export_controller
 
 
-def mk_memory_session(db_path='sqlite:///:memory:'):
-    engine = sqlalchemy.create_engine(db_path, echo=False)
-    geenuff.orm.Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    return Session(), engine
-
-
 def memory_import_fasta(fasta_path):
     controller = ImportController(database_path='sqlite:///:memory:')
     controller.add_sequences(fasta_path)
@@ -76,7 +76,7 @@ def setup_dummyloci():
 
 
 def setup_simpler_numerifier():
-    sess, engine = mk_memory_session()
+    sess = mk_memory_session()
     genome = geenuff.orm.Genome()
     coord, coord_handler = setup_data_handler(CoordinateHandler,
                                               geenuff.orm.Coordinate,
@@ -346,6 +346,7 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
     config = dd.io.load(H5_OUT, group='/config')
 
     # five chunks for each the two coordinates and *2 for each strand
+    # also tests if we ignore the third coordinate, that does not have any annotations
     assert len(inputs) == len(labels) == len(label_masks) == 20
     assert type(config) == dict
 

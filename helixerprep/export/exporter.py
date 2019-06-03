@@ -1,13 +1,9 @@
-import os
-import numpy as np
-import intervaltree
 import deepdish as dd
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import geenuff
-from geenuff.base.orm import Coordinate, Genome
+from geenuff.base.orm import Coordinate
 from geenuff.base.helpers import full_db_path
 from .numerify import CoordNumerifier
 from ..core.handlers import CoordinateHandler
@@ -40,12 +36,13 @@ class ExportController(object):
         }
         all_coords = self.session.query(Coordinate).all()
         for coord in all_coords:
-            for is_plus_strand in [True, False]:
-                coord_handler = CoordinateHandler(coord)
-                numerifier = CoordNumerifier(coord_handler, is_plus_strand, chunk_size)
-                coord_data = numerifier.numerify()
-                for key in ['inputs', 'labels', 'label_masks']:
-                    data[key] += coord_data[key]
+            if coord.features:
+                for is_plus_strand in [True, False]:
+                    coord_handler = CoordinateHandler(coord)
+                    numerifier = CoordNumerifier(coord_handler, is_plus_strand, chunk_size)
+                    coord_data = numerifier.numerify()
+                    for key in ['inputs', 'labels', 'label_masks']:
+                        data[key] += coord_data[key]
 
         # only works if all arrays in the list are of the same size
         # data['input'] = np.array(data['input'])

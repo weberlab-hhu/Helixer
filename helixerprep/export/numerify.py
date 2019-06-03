@@ -1,6 +1,7 @@
 """convert cleaned-db schema to numeric values describing gene structure"""
 
 import numpy as np
+import logging
 from abc import ABC, abstractmethod
 
 from geenuff.base import types
@@ -175,6 +176,9 @@ class CoordNumerifier(object):
         assert isinstance(coord_handler, handlers.CoordinateHandler)
         assert isinstance(is_plus_strand, bool)
         assert isinstance(max_len, int) and max_len > 0
+        if not coord_handler.data.features:
+            logging.warning('Sequence {} has no annoations'.format(coord_handler.data.seqid))
+
         self.anno_numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
                                                             features=coord_handler.data.features,
                                                             is_plus_strand=is_plus_strand,
