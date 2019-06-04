@@ -16,7 +16,7 @@ from ..core.orm import Mer
 from ..export import numerify
 from ..export.numerify import (SequenceNumerifier, BasePairAnnotationNumerifier, Stepper,
                                AMBIGUITY_DECODE)
-from ..export.exporter import ExportController, CoordinateHandler
+from ..export.exporter import ExportController
 
 TMP_DB = 'testdata/tmp.db'
 DUMMYLOCI_DB = 'testdata/dummyloci.sqlite3'
@@ -64,29 +64,21 @@ def memory_import_fasta(fasta_path):
     controller = ImportController(database_path='sqlite:///:memory:')
     controller.add_sequences(fasta_path)
     coords = controller.session.query(Coordinate).order_by(Coordinate.id).all()
-    coord_hs = [CoordinateHandler(c) for c in coords]
-    return controller, coord_hs
+    return controller, coords
 
 
 def setup_dummyloci():
     _, controller = mk_controllers(DUMMYLOCI_DB)
     session = controller.session
-    coordinate = session.query(geenuff.orm.Coordinate).first()
-    coord_handler = CoordinateHandler(coordinate)
-    return session, controller, coord_handler
+    coordinate = session.query(Coordinate).first()
+    return session, controller, coordinate
 
 
 def setup_simpler_numerifier():
     sess = mk_memory_session()
-    genome = geenuff.orm.Genome()
-    coord, coord_handler = setup_data_handler(CoordinateHandler,
-                                              geenuff.orm.Coordinate,
-                                              genome=genome,
-                                              sequence='A' * 100,
-                                              start=0,
-                                              end=100,
-                                              seqid='a')
-    sl = geenuff.orm.SuperLocus()
+    genome = Genome()
+    coord = Coordinate(genome=genome, sequence='A' * 100, start=0, end=100, seqid='a')
+    sl = SuperLocus()
     transcript = geenuff.orm.Transcript(super_locus=sl)
     piece = geenuff.orm.TranscriptPiece(transcript=transcript, position=0)
     transcript_feature = geenuff.orm.Feature(start=40,
@@ -100,7 +92,7 @@ def setup_simpler_numerifier():
 
     sess.add_all([genome, coord, sl, transcript, piece, transcript_feature])
     sess.commit()
-    return sess, coord_handler
+    return sess, coord
 
 
 ### db import from GeenuFF ###
@@ -231,8 +223,8 @@ def test_stepper():
 
 
 def test_short_sequence_numerify():
-    _, coord_hs = memory_import_fasta('testdata/basic_sequences.fa')
-    numerifier = SequenceNumerifier(coord_handler=coord_hs[3], is_plus_strand=True, max_len=100)
+    _, coords = memory_import_fasta('testdata/basic_sequences.fa')
+    numerifier = SequenceNumerifier(coord=coords[3], is_plus_strand=True, max_len=100)
     matrix = numerifier.coord_to_matrices()[0][0]
     # ATATATAT
     x = [0., 1, 0, 0, 0., 0, 1, 0]
@@ -240,19 +232,19 @@ def test_short_sequence_numerify():
     assert np.array_equal(expect, matrix)
 
     # on the minus strand
-    numerifier = SequenceNumerifier(coord_handler=coord_hs[3], is_plus_strand=False, max_len=100)
+    numerifier = SequenceNumerifier(coord=coords[3], is_plus_strand=False, max_len=100)
     matrix = numerifier.coord_to_matrices()[0][0]
 
-    seq_comp = reverse_complement(coord_hs[3].data.sequence)
+    seq_comp = reverse_complement(coords[3].sequence)
     expect = [numerify.AMBIGUITY_DECODE[bp] for bp in seq_comp]
     expect = np.vstack(expect)
     assert np.array_equal(expect, matrix)
 
 
 def test_base_level_annotation_numerify():
-    _, _, coord_handler = setup_dummyloci()
-    numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                              features=coord_handler.data.features,
+    _, _, coord = setup_dummyloci()
+    numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                              features=coord.features,
                                               is_plus_strand=True,
                                               max_len=5000)
     nums = numerifier.coord_to_matrices()[0][0][:405]
@@ -265,8 +257,8 @@ def test_base_level_annotation_numerify():
 
 
 def test_sequence_slicing():
-    _, coord_hs = memory_import_fasta('testdata/basic_sequences.fa')
-    seq_numerifier = SequenceNumerifier(coord_handler=coord_hs[0], is_plus_strand=True, max_len=50)
+    _, coords = memory_import_fasta('testdata/basic_sequences.fa')
+    seq_numerifier = SequenceNumerifier(coord=coords[0], is_plus_strand=True, max_len=50)
     num_list = seq_numerifier.coord_to_matrices()[0]
     print([x.shape for x in num_list])
     # [(50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (27, 4), (28, 4)]
@@ -284,12 +276,12 @@ def test_coherent_slicing():
     The array format of the individual matrices are tested in
     test_short_sequence_numerify().
     """
-    _, _, coord_handler = setup_dummyloci()
-    seq_numerifier = SequenceNumerifier(coord_handler=coord_handler,
+    _, _, coord = setup_dummyloci()
+    seq_numerifier = SequenceNumerifier(coord=coord,
                                         is_plus_strand=True,
                                         max_len=100)
-    anno_numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                                   features=coord_handler.data.features,
+    anno_numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                                   features=coord.features,
                                                    is_plus_strand=True,
                                                    max_len=100)
     seq_slices = seq_numerifier.coord_to_matrices()[0]
@@ -314,9 +306,9 @@ def test_coherent_slicing():
 
 def test_minus_strand_numerify():
     # setup a very basic -strand locus
-    _, coord_handler = setup_simpler_numerifier()
-    numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                              features=coord_handler.data.features,
+    _, coord = setup_simpler_numerifier()
+    numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                              features=coord.features,
                                               is_plus_strand=True,
                                               max_len=1000)
     nums = numerifier.coord_to_matrices()[0][0]
@@ -324,8 +316,8 @@ def test_minus_strand_numerify():
     expect = np.zeros([100, 3], dtype=np.float32)
     assert np.array_equal(nums, expect)
 
-    numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                              features=coord_handler.data.features,
+    numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                              features=coord.features,
                                               is_plus_strand=False,
                                               max_len=1000)
     # and now that we get the expect range on the minus strand,
@@ -337,8 +329,8 @@ def test_minus_strand_numerify():
     assert np.array_equal(nums, expect)
 
     # minus strand and actual cutting
-    numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                              features=coord_handler.data.features,
+    numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                              features=coord.features,
                                               is_plus_strand=False,
                                               max_len=50)
     num_list = numerifier.coord_to_matrices()[0]

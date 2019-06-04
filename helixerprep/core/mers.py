@@ -1,4 +1,6 @@
 import os
+import multiprocessing
+import random
 from shutil import copyfile
 from sqlalchemy.orm import load_only
 from sqlalchemy import create_engine
@@ -8,7 +10,8 @@ import geenuff
 from geenuff.base.helpers import full_db_path
 from geenuff.base.orm import Coordinate
 from helixerprep.core.orm import Mer
-from helixerprep.core.handlers import CoordinateHandler
+from helixerprep.core.helpers import MerCounter
+
 
 class MerController(object):
     def __init__(self, db_path_in, db_path_out):
@@ -32,16 +35,43 @@ class MerController(object):
             geenuff.orm.Base.metadata.tables['mer'].create(self.engine)
         self.session = sessionmaker(bind=self.engine)()
 
-    def add_mers(self, min_k, max_k):
-        """Adds kmers in the specified range for all Coordinates that do not have an
-        entry in Mer of that length. Can not handle partial kmer addition
-        (e.g. adding kmers in a new range when some already exist for a Coordinate)
-        """
+    @staticmethod
+    def _count_mers(coord, min_k, max_k):
+        mer_counters = []
+        # setup all counters
+        for k in range(min_k, max_k + 1):
+            mer_counters.append(MerCounter(k))
+
+        # count all 'mers
+        for i in range(len(coord.sequence)):
+            for k in range(min_k, max_k + 1):
+                if i + 1 >= k:
+                    substr = coord.sequence[i-(k-1):i+1]
+                    mer_counters[k - 1].add_count(substr)
+        print('done with {}'.format(coord))
+        return coord, mer_counters
+
+    def add_mers(self, min_k, max_k, n_processes=8):
         all_mers = self.session.query(Mer).options(load_only('id')).all()
         coords_without_mers = self.session.query(Coordinate).\
                                   filter(Coordinate.id.notin_(all_mers)).all()
-        for coord in coords_without_mers:
-            coord_handler = CoordinateHandler(coord)
-            coord_handler.add_mer_counts_to_db(min_k, max_k, self.session)
+        random.shuffle(coords_without_mers)
+
+        input_data = [[c, min_k, max_k] for c in coords_without_mers]
+        with multiprocessing.Pool(processes=n_processes) as pool:
+            mer_counters = pool.starmap(MerController._count_mers, input_data)
+        self._add_mer_counters_to_db(mer_counters)
+
+    def _add_mer_counters_to_db(self, mer_counters_all_coords):
+        # convert to canonical and setup db entries
+        for coord, mer_counters in mer_counters_all_coords:
+            for mer_counter in mer_counters:
+                for mer_sequence, count in mer_counter.export().items():
+                    mer = Mer(coordinate_id=coord.id,
+                              mer_sequence=mer_sequence,
+                              count=count,
+                              length=mer_counter.k)
+                    self.session.add(mer)
+        self.session.commit()
 
 

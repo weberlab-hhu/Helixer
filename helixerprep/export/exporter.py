@@ -6,7 +6,6 @@ from sqlalchemy.orm import sessionmaker
 from geenuff.base.orm import Coordinate
 from geenuff.base.helpers import full_db_path
 from .numerify import CoordNumerifier
-from ..core.handlers import CoordinateHandler
 
 
 class ExportController(object):
@@ -38,8 +37,7 @@ class ExportController(object):
         for coord in all_coords:
             if coord.features:
                 for is_plus_strand in [True, False]:
-                    coord_handler = CoordinateHandler(coord)
-                    numerifier = CoordNumerifier(coord_handler, is_plus_strand, chunk_size)
+                    numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size)
                     coord_data = numerifier.numerify()
                     for key in ['inputs', 'labels', 'label_masks']:
                         data[key] += coord_data[key]

@@ -5,7 +5,6 @@ import logging
 from abc import ABC, abstractmethod
 
 from geenuff.base import types
-from ..core import handlers
 
 
 AMBIGUITY_DECODE = {
@@ -53,10 +52,10 @@ class Stepper(object):
 
 
 class Numerifier(ABC):
-    def __init__(self, n_cols, coord_handler, is_plus_strand, max_len, dtype=np.float32):
+    def __init__(self, n_cols, coord, is_plus_strand, max_len, dtype=np.float32):
         assert isinstance(n_cols, int)
         self.n_cols = n_cols
-        self.coord_handler = coord_handler
+        self.coord = coord
         self.is_plus_strand = is_plus_strand
         self.max_len = max_len
         self.dtype = dtype
@@ -66,16 +65,12 @@ class Numerifier(ABC):
         self._gen_steps()  # sets self.paired_steps
         super().__init__()
 
-    @property
-    def coordinate(self):
-        return self.coord_handler.data  # todo, clean up
-
     @abstractmethod
     def _unflipped_coord_to_matrix(self):
         pass
 
     def _gen_steps(self):
-        partitioner = Stepper(end=len(self.coordinate.sequence), by=self.max_len)
+        partitioner = Stepper(end=len(self.coord.sequence), by=self.max_len)
         self.paired_steps = list(partitioner.step_to_end())
         if not self.is_plus_strand:
             self.paired_steps.reverse()
@@ -99,20 +94,20 @@ class Numerifier(ABC):
         return data, error_masks
 
     def _zero_matrix(self):
-        length = len(self.coordinate.sequence)
+        length = len(self.coord.sequence)
         self.matrix = np.zeros((length, self.n_cols,), self.dtype)
         self.error_mask = np.zeros((length,), np.int8)
 
 
 class SequenceNumerifier(Numerifier):
-    def __init__(self, coord_handler, is_plus_strand, max_len):
-        super().__init__(n_cols=4, coord_handler=coord_handler,
+    def __init__(self, coord, is_plus_strand, max_len):
+        super().__init__(n_cols=4, coord=coord,
                          is_plus_strand=is_plus_strand, max_len=max_len)
 
     def _unflipped_coord_to_matrix(self):
         """Does not alter the error mask unlike in AnnotationNumerifier"""
         self._zero_matrix()
-        for i, bp in enumerate(self.coordinate.sequence):
+        for i, bp in enumerate(self.coord.sequence):
             self.matrix[i] = AMBIGUITY_DECODE[bp]
         if not self.is_plus_strand:
             self.matrix = np.flip(self.matrix, axis=1)  # invert base
@@ -124,8 +119,8 @@ class AnnotationNumerifier(Numerifier, ABC):
     fits the sequence length of the coordinate but only for the provided features.
     This is done to support alternative splicing in the future.
     """
-    def __init__(self, n_cols, coord_handler, features, is_plus_strand, max_len):
-        Numerifier.__init__(self, n_cols=n_cols, coord_handler=coord_handler,
+    def __init__(self, n_cols, coord, features, is_plus_strand, max_len):
+        Numerifier.__init__(self, n_cols=n_cols, coord=coord,
                             is_plus_strand=is_plus_strand, max_len=max_len)
         ABC.__init__(self)
         self.features = features
@@ -147,12 +142,12 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
      }
     error_type_values = [t.value for t in types.Errors]
 
-    def __init__(self, coord_handler, features, is_plus_strand, max_len):
-        super().__init__(n_cols=3, coord_handler=coord_handler, features=features,
+    def __init__(self, coord, features, is_plus_strand, max_len):
+        super().__init__(n_cols=3, coord=coord, features=features,
                          is_plus_strand=is_plus_strand, max_len=max_len)
 
     def update_matrix_and_error_mask(self):
-        shift_by = self.coordinate.start
+        shift_by = self.coord.start
         for feature in self.features:
             start = feature.start - shift_by
             end = feature.end - shift_by
@@ -172,18 +167,17 @@ class CoordNumerifier(object):
     to ensure consistent parameters.
     Currently just selects all Features of the given Coordinate.
     """
-    def __init__(self, coord_handler, is_plus_strand, max_len):
-        assert isinstance(coord_handler, handlers.CoordinateHandler)
+    def __init__(self, coord, is_plus_strand, max_len):
         assert isinstance(is_plus_strand, bool)
         assert isinstance(max_len, int) and max_len > 0
-        if not coord_handler.data.features:
-            logging.warning('Sequence {} has no annoations'.format(coord_handler.data.seqid))
+        if not coord.features:
+            logging.warning('Sequence {} has no annoations'.format(coord.seqid))
 
-        self.anno_numerifier = BasePairAnnotationNumerifier(coord_handler=coord_handler,
-                                                            features=coord_handler.data.features,
+        self.anno_numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                                            features=coord.features,
                                                             is_plus_strand=is_plus_strand,
                                                             max_len=max_len)
-        self.seq_numerifier = SequenceNumerifier(coord_handler=coord_handler,
+        self.seq_numerifier = SequenceNumerifier(coord=coord,
                                                  is_plus_strand=is_plus_strand,
                                                  max_len=max_len)
 
