@@ -44,11 +44,11 @@ class MerController(object):
 
         # count all 'mers
         for i in range(len(coord.sequence)):
-            for k in range(min_k, max_k + 1):
+            # count backwards to potentially benefit from some caching
+            for k in range(max_k, min_k - 1, -1):
                 if i + 1 >= k:
                     substr = coord.sequence[i-(k-1):i+1]
                     mer_counters[k - 1].add_count(substr)
-        print('done with {}'.format(coord))
         return coord, mer_counters
 
     def add_mers(self, min_k, max_k, n_processes=8):
