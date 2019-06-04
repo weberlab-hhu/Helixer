@@ -159,9 +159,7 @@ def test_count_range_of_mers():
 
     genome = Genome()
     coordinate = Coordinate(genome=genome, start=0, end=6, sequence=seq)
-    coord_handler = CoordinateHandler(coordinate)
-
-    all_mer_counters = coord_handler.count_mers(1, 6)
+    all_mer_counters = MerController._count_mers(coordinate, 1, 6)[1]
 
     assert len(all_mer_counters) == 6
 
