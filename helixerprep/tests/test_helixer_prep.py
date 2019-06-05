@@ -411,7 +411,11 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     seq_expect[1729] = np.flip(AMBIGUITY_DECODE['T'])
     seq_expect[1728] = np.flip(AMBIGUITY_DECODE['A'])
     seq_expect[1727] = np.flip(AMBIGUITY_DECODE['C'])
-    # stop codon (other stop codon is intentionally missing in the test case)
+    # stop codon of second transcript
+    seq_expect[1702] = np.flip(AMBIGUITY_DECODE['A'])
+    seq_expect[1701] = np.flip(AMBIGUITY_DECODE['T'])
+    seq_expect[1700] = np.flip(AMBIGUITY_DECODE['C'])
+    # stop codon of first transcript
     seq_expect[1576] = np.flip(AMBIGUITY_DECODE['A'])
     seq_expect[1575] = np.flip(AMBIGUITY_DECODE['T'])
     seq_expect[1574] = np.flip(AMBIGUITY_DECODE['C'])
@@ -422,7 +426,8 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     label_expect = np.zeros((1755, 3), dtype=np.float32)
     label_expect[1549:1750, 0] = 1.  # genic region
     label_expect[1574:1730, 1] = 1.  # transcript (2 overlapping ones)
-    label_expect[1650:1719, 2] = 1.  # intron
+    label_expect[1650:1719, 2] = 1.  # intron first transcript
+    label_expect[1600:1679, 2] = 1.  # intron second transcript
     label_expect = np.flip(label_expect, axis=0)
     assert np.array_equal(labels[0], label_expect[:178])
     assert np.array_equal(labels[1][:50], label_expect[178:228])

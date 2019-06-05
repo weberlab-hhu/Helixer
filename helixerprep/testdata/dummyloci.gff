@@ -95,7 +95,7 @@
 # test case 8: overlapping exons and missing start codon
 # gene is on the minus strand
 # the first transcript has overlapping exons (the first two) and a missing start codon
-# the second transcript is without errors and has no introns
+# the second transcript is without errors and has a non-coding exon
 2	manual	gene	1550	1750	.	-	.	ID=gene_overlapping_exons_missing_start
 2	manual	mRNA	1550	1750	.	-	.	ID=x8;Parent=gene_overlapping_exons_missing_start	
 2	manual	exon	1550	1600	.	-	.	ID=e0;Parent=x8
@@ -105,5 +105,6 @@
 2	manual	exon	1720	1750	.	-	.	ID=e2;Parent=x8
 2	manual	CDS	1720	1725	.	-	0	ID=c2;Parent=x;protein_id=x8.p
 2	manual	mRNA	1550	1750	.	-	.	ID=y8;Parent=gene_overlapping_exons_missing_start	
-2	manual	exon	1550	1750	.	-	.	ID=e3;Parent=y8
-2	manual	CDS	1575	1730	.	-	0	ID=c3;Parent=y;protein_id=y8.p
+2	manual	exon	1550	1600	.	-	.	ID=e3;Parent=y8
+2	manual	exon	1680	1750	.	-	.	ID=e4;Parent=y8
+2	manual	CDS	1701	1730	.	-	0	ID=c4;Parent=y;protein_id=y8.p
