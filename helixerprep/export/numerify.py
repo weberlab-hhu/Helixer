@@ -101,8 +101,8 @@ class Numerifier(ABC):
 
 class SequenceNumerifier(Numerifier):
     def __init__(self, coord, is_plus_strand, max_len):
-        super().__init__(n_cols=4, coord=coord,
-                         is_plus_strand=is_plus_strand, max_len=max_len)
+        super().__init__(n_cols=4, coord=coord, is_plus_strand=is_plus_strand,
+                         max_len=max_len, dtype=np.float16)
 
     def _unflipped_coord_to_matrix(self):
         """Does not alter the error mask unlike in AnnotationNumerifier"""
@@ -120,8 +120,8 @@ class AnnotationNumerifier(Numerifier, ABC):
     This is done to support alternative splicing in the future.
     """
     def __init__(self, n_cols, coord, features, is_plus_strand, max_len):
-        Numerifier.__init__(self, n_cols=n_cols, coord=coord,
-                            is_plus_strand=is_plus_strand, max_len=max_len)
+        Numerifier.__init__(self, n_cols=n_cols, coord=coord, is_plus_strand=is_plus_strand,
+                            max_len=max_len, dtype=np.int8)
         ABC.__init__(self)
         self.features = features
 

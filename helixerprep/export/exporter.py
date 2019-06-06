@@ -1,4 +1,5 @@
 import deepdish as dd
+from sklearn.utils import resample
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -18,31 +19,44 @@ class ExportController(object):
         self.engine = create_engine(full_db_path(self.db_path_in), echo=False)
         self.session = sessionmaker(bind=self.engine)()
 
-    def export(self, chunk_size, shuffle, seed):
+    def export(self, chunk_size, shuffle, seed, approx_file_size=100*2**20):
         """Fetches all Coordinates, calls on functions in numerify.py to split
-        and encode them and then saves the (possibly shuffled) sequences to the
-        specified .h5 file.
+        and encode them and then saves the sequences in possibly multiply files
+        of about the size of approx_file_size.
         """
-        data = {
-            'inputs': [],
-            'labels': [],
-            'label_masks': [],
-            'config': {
-                'chunk_size': chunk_size,
-                'shuffle': shuffle,
-                'seed': seed,
-            },
-        }
+        def get_empty_data_dict():
+            d = {
+                'inputs': [],
+                'labels': [],
+                'label_masks': [],
+                'config': {
+                    'chunk_size': chunk_size,
+                    'shuffle': shuffle,
+                    'seed': seed,
+                },
+            }
+            return d
+
+        file_chunk_count = 0
+        current_size = 0  # if this is > approx_file_size make new file chunk
+        data = get_empty_data_dict()
         all_coords = self.session.query(Coordinate).all()
+        print('{} coordinates choosen to numerify'.format(len(all_coords)))
         for coord in all_coords:
             if coord.features:
+                print('Numerifying {} of species {}'.format(coord, coord.genome.species))
                 for is_plus_strand in [True, False]:
                     numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size)
                     coord_data = numerifier.numerify()
                     for key in ['inputs', 'labels', 'label_masks']:
                         data[key] += coord_data[key]
-
-        # only works if all arrays in the list are of the same size
-        # data['input'] = np.array(data['input'])
-        # data['labels'] = np.array(data['labels'])
-        dd.io.save(self.h5_path_out, data, compression=None)
+                    current_size += coord.end
+                    # break data up in file chunks
+                    if current_size * 12 > approx_file_size:
+                        if shuffle:
+                            resample(data['inputs'], data['labels'], data['label_masks'], replace=True)
+                        dd.io.save(self.h5_path_out.split('.')[0] + str(file_chunk_count) + '.h5',
+                                   data, compression=None)
+                        data = get_empty_data_dict()
+                        file_chunk_count += 1
+                        current_size = 0
