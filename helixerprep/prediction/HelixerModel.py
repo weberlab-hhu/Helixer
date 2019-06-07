@@ -4,22 +4,15 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 from abc import ABC, abstractmethod
 import os
 import sys
-import h5py
 import argparse
 import itertools
-import numpy as np
-import subprocess
-import deepdish as dd
 import tensorflow as tf
+import numpy as np
+import deepdish as dd
 import matplotlib.pyplot as plt
 from pprint import pprint
 from sklearn.metrics import classification_report, confusion_matrix
-from keras.callbacks import (EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback)
-from keras.layers import (Input, Conv1D, Dense, Flatten,
-                          Dropout, Subtract, Concatenate, BatchNormalization,
-                          Activation)
-from keras.regularizers import l2
-from keras.models import load_model
+from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
 from keras import optimizers
 
 
