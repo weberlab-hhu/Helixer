@@ -4,6 +4,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 from abc import ABC, abstractmethod
 import os
 import sys
+import glob
 import h5py
 import argparse
 import itertools
@@ -29,10 +30,41 @@ class SaveEveryEpoch(Callback):
 
 
 class Generators(object):
-    def __init__(self, path):
-        self.path = path
+    """Provides the data generator for the training and validation. The generators
+    return data that has been padded to the length of the longest sample in a batch.
+    The sample weights are set to 0 for the padded bases (just as for annotation errors).
+    """
+    def __init__(self, data_base_path):
+        self.data_base_path = data_base_path
+        # this is not going to be the original order for > 10 files
+        self.data_files = glob.glob(self.data_base_path + '*.h5')
 
-    def gen_training_data(self, batch_size=2**10):
+    def gen_training_data(self, batch_size=2**2):
+        inputs, labels, label_masks = [], [], []
+        while True:
+            for f in self.data_files:
+                inputs += dd.io.load(f, group='/inputs')
+                labels += dd.io.load(f, group='/labels')
+                label_masks += dd.io.load(f, group='/label_masks')
+                if len(inputs) >= batch_size:
+                    # determine the length we pad every other sample to
+                    max_len = max([len(m) for m in label_masks[:batch_size])
+                    # arrays to go into the model
+                    X = np.zeros((batch_size, max_len, 4), dtype=inputs[0].dtype)
+                    y = np.zeros((batch_size, max_len, 3), dtype=labels[0].dtype)
+                    sample_weights = np.zeros((batch_size, max_len, 1), dtype=label_masks[0].dtype)
+                    # fill arrays with data
+                    for i in range(batch_size):
+                        X[i, :max_len, :] = inputs[i]
+                        y[i, :max_len, :] = labels[i]
+                        sample_weights[i, :max_len, :] = label_masks[i]
+                    # reset collected samples
+                    inputs = inputs[batch_size - 1:]
+                    labels = labels[batch_size - 1:]
+                    sample_weights = sample_weights[batch_size - 1:]
+                    yield (X, y, sample_weights)
+
+    def gen_validation_data(self, batch_size=2):
         while True:
             pass
 
@@ -44,7 +76,7 @@ class HelixerModel(ABC):
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         self.parser = argparse.ArgumentParser()
-        self.parser.add_argument('-d', '--dataset', type=str, default='data/data.h5')
+        self.parser.add_argument('-d', '--data_base_path', type=str, default='data/data')
         self.parser.add_argument('-p', '--patience', type=int, default=10)
         self.parser.add_argument('-sm', '--save-model-path', type=str, default='./best_model.h5')
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
@@ -168,14 +200,16 @@ class HelixerModel(ABC):
 
         self.compile_model(model)
 
-        model.fit(self.train_data,
-                  self.y_train,
-                  sample_weight=self.weights_train,
-                  validation_data=(self.test_data, self.y_test, self.weights_test),
-                  batch_size=self.batch_size,
-                  epochs=self.epochs,
-                  callbacks=self.generate_callbacks(num_run),
-                  verbose=True)
+        generators = Generators(self.data_base_path)
+        model.fit_generator(generator=generators.gen_training_data(self.batch_size),
+                            steps_per_epoch=5,  # todo read from config
+                            epochs=self.epochs,
+                            # validation_data=generators.gen_validation_data(self.batch_size),
+                            # validation_steps=1,
+                            callbacks=self.generate_callbacks(),
+                            use_multiprocessing=True,
+                            workers=4,
+                            verbose=True)
 
         best_val_acc = min(model.history.history['val_mean_absolute_error'])
         if self.nni:

@@ -13,7 +13,10 @@ class LSTMModel(HelixerModel):
         self.parse_args()
 
     def model(self):
-        pass
+        model = Sequential()
+        model.add(LSTM(self.units, return_sequences=True, input_shape=(None, 4)))
+        model.add(TimeDistributed(Dense(3, activation='sigmoid')))
+        return model
 
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
