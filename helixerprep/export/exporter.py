@@ -20,12 +20,11 @@ class ExportController(object):
         self.engine = create_engine(full_db_path(self.db_path_in), echo=False)
         self.session = sessionmaker(bind=self.engine)()
 
-    def export(self, chunk_size, shuffle, seed, approx_file_size=100 * 2**20):
+    def export(self, chunk_size, shuffle, seed, approx_file_size=100*2**20):
         """Fetches all Coordinates, calls on functions in numerify.py to split
         and encode them and then saves the sequences in possibly multiply files
         of about the size of approx_file_size.
         """
-
         def get_empty_data_dict():
             d = {
                 'inputs': [],
@@ -51,7 +50,7 @@ class ExportController(object):
         file_chunk_count = 0
         current_size = 0  # if this is > approx_file_size make new file chunk
         data = get_empty_data_dict()
-        all_coords = self.session.query(Coordinate).all()[-5:]
+        all_coords = self.session.query(Coordinate).all()
         print('{} coordinates choosen to numerify'.format(len(all_coords)))
         for coord in all_coords:
             if coord.features:
