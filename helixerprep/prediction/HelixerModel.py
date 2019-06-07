@@ -4,7 +4,6 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 from abc import ABC, abstractmethod
 import os
 import sys
-import glob
 import h5py
 import argparse
 import itertools
@@ -24,6 +23,10 @@ from keras.models import load_model
 from keras import optimizers
 
 
+def listdir_fullpath(d):
+    return [os.path.join(d, f) for f in os.listdir(d)]
+
+
 class SaveEveryEpoch(Callback):
     def on_epoch_end(self, epoch, _):
         self.model.save('model' + str(epoch) + '.h5')
@@ -34,30 +37,29 @@ class Generators(object):
     return data that has been padded to the length of the longest sample in a batch.
     The sample weights are set to 0 for the padded bases (just as for annotation errors).
     """
-    def __init__(self, data_base_path):
-        self.data_base_path = data_base_path
-        # this is not going to be the original order for > 10 files
-        self.data_files = glob.glob(self.data_base_path + '*.h5')
+    def __init__(self, data_dir):
+        self.data_dir = data_dir
 
     def gen_training_data(self, batch_size=2**2):
         inputs, labels, label_masks = [], [], []
         while True:
-            for f in self.data_files:
+            for f in listdir_fullpath(self.data_dir):
                 inputs += dd.io.load(f, group='/inputs')
                 labels += dd.io.load(f, group='/labels')
                 label_masks += dd.io.load(f, group='/label_masks')
                 if len(inputs) >= batch_size:
                     # determine the length we pad every other sample to
-                    max_len = max([len(m) for m in label_masks[:batch_size])
+                    max_len = max([len(m) for m in label_masks[:batch_size]])
                     # arrays to go into the model
                     X = np.zeros((batch_size, max_len, 4), dtype=inputs[0].dtype)
                     y = np.zeros((batch_size, max_len, 3), dtype=labels[0].dtype)
-                    sample_weights = np.zeros((batch_size, max_len, 1), dtype=label_masks[0].dtype)
+                    sample_weights = np.zeros((batch_size, max_len), dtype=label_masks[0].dtype)
                     # fill arrays with data
                     for i in range(batch_size):
-                        X[i, :max_len, :] = inputs[i]
-                        y[i, :max_len, :] = labels[i]
-                        sample_weights[i, :max_len, :] = label_masks[i]
+                        sample_len = len(inputs[i])
+                        X[i, :sample_len, :] = inputs[i]
+                        y[i, :sample_len, :] = labels[i]
+                        sample_weights[i, :sample_len] = label_masks[i]
                     # reset collected samples
                     inputs = inputs[batch_size - 1:]
                     labels = labels[batch_size - 1:]
@@ -76,12 +78,11 @@ class HelixerModel(ABC):
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         self.parser = argparse.ArgumentParser()
-        self.parser.add_argument('-d', '--data_base_path', type=str, default='data/data')
+        self.parser.add_argument('-d', '--data-dir', type=str, default='data/data')
         self.parser.add_argument('-p', '--patience', type=int, default=10)
         self.parser.add_argument('-sm', '--save-model-path', type=str, default='./best_model.h5')
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
-        self.parser.add_argument('-r', '--runs', type=int, default=1)
-        self.parser.add_argument('-bs', '--batch-size', type=int, default=32)
+        self.parser.add_argument('-bs', '--batch-size', type=int, default=8)
         self.parser.add_argument('-opt', '--optimizer', type=str, default='adam')
         self.parser.add_argument('-loss', '--loss', type=str, default='')
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
@@ -132,7 +133,8 @@ class HelixerModel(ABC):
             print()
             pprint(args)
 
-        self.config = dd.io.load(self.dataset, group='/config')
+        # the config is the same for all individual data files
+        self.config = dd.io.load(listdir_fullpath(self.data_dir)[0], group='/config')
         if self.verbose:
             print('\n Data config:')
             pprint(self.config)
@@ -174,7 +176,6 @@ class HelixerModel(ABC):
     def run(self):
         model = self.model()
 
-        print('\nRun ', num_run)
         if self.verbose:
             print(model.summary())
         else:
@@ -200,15 +201,15 @@ class HelixerModel(ABC):
 
         self.compile_model(model)
 
-        generators = Generators(self.data_base_path)
+        generators = Generators(self.data_dir)
         model.fit_generator(generator=generators.gen_training_data(self.batch_size),
                             steps_per_epoch=5,  # todo read from config
                             epochs=self.epochs,
                             # validation_data=generators.gen_validation_data(self.batch_size),
                             # validation_steps=1,
                             callbacks=self.generate_callbacks(),
-                            use_multiprocessing=True,
-                            workers=4,
+                            # use_multiprocessing=True,
+                            # workers=4,
                             verbose=True)
 
         best_val_acc = min(model.history.history['val_mean_absolute_error'])

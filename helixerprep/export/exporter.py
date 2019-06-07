@@ -45,7 +45,6 @@ class ExportController(object):
                 data['inputs'], data['labels'], data['label_masks'] = x, y, m
             dd.io.save(self.h5_path_out.split('.')[0] + str(file_chunk_count) + '.h5',
                        data, compression=None)
-            data = get_empty_data_dict()
 
         file_chunk_count = 0
         current_size = 0  # if this is > approx_file_size make new file chunk
@@ -61,10 +60,13 @@ class ExportController(object):
                     for key in ['inputs', 'labels', 'label_masks']:
                         data[key] += coord_data[key]
                     current_size += coord.end
-                    n_masked_bases += sum([np.count_nonzero(m) for m in coord_data['label_masks']])
+                    n_masked_bases += sum([len(m) - np.count_nonzero(m)
+                                           for m
+                                           in coord_data['label_masks']])
                     # break data up in file chunks
                     if current_size * 12 > approx_file_size:
                         save_data(data, file_chunk_count, shuffle)
+                        data = get_empty_data_dict()
                         file_chunk_count += 1
                         current_size = 0
                 masked_bases_percent = n_masked_bases / (coord.end * 2) * 100

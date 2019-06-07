@@ -2,7 +2,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from HelixerModel import MHCModel
+from keras.models import Sequential
+from keras.layers import LSTM, TimeDistributed, Dense
+from HelixerModel import HelixerModel
 
 
 class LSTMModel(HelixerModel):
@@ -20,7 +22,7 @@ class LSTMModel(HelixerModel):
 
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
-                      loss='categorical_crossentropy'
+                      loss='categorical_crossentropy',
                       metrics=['accuracy'])
 
     def plot_history(self, history):
