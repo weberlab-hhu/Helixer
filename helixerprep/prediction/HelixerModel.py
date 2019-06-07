@@ -61,9 +61,9 @@ class Generators(object):
                         y[i, :sample_len, :] = labels[i]
                         sample_weights[i, :sample_len] = label_masks[i]
                     # reset collected samples
-                    inputs = inputs[batch_size - 1:]
-                    labels = labels[batch_size - 1:]
-                    sample_weights = sample_weights[batch_size - 1:]
+                    inputs = inputs[batch_size:]
+                    labels = labels[batch_size:]
+                    label_masks = label_masks[batch_size:]
                     yield (X, y, sample_weights)
 
     def gen_validation_data(self, batch_size=2):

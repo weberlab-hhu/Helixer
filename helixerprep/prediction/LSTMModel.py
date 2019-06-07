@@ -23,6 +23,7 @@ class LSTMModel(HelixerModel):
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
                       loss='categorical_crossentropy',
+                      sample_weight_mode='temporal',
                       metrics=['accuracy'])
 
     def plot_history(self, history):
