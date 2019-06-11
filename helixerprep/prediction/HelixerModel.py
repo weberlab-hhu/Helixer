@@ -64,34 +64,30 @@ class Generators(object):
                     label_masks = label_masks[batch_size:]
                     yield (X[:, :10, :], y[:, :10, :], sample_weights[:, :10])
 
-    def gen_validation_data(self, batch_size=2):
+    def gen_validation_data(self):
         """Returns the first sequence in each file as validation set.
         Very redundant due to strange errors when trying to resolve the redundancy.
         """
         inputs, labels, label_masks = [], [], []
+        for f in listdir_fullpath(self.data_dir):
+            inputs.append(dd.io.load(f, group='/inputs')[0])
+            labels.append(dd.io.load(f, group='/labels')[0])
+            label_masks.append(dd.io.load(f, group='/label_masks')[0])
+        # determine the length we pad every other sample to
+        max_len = max([len(m) for m in label_masks])
+        # arrays to go into the model
+        n_seq = len(inputs)
+        X = np.zeros((n_seq, max_len, 4), dtype=inputs[0].dtype)
+        y = np.zeros((n_seq, max_len, 3), dtype=labels[0].dtype)
+        sample_weights = np.zeros((n_seq, max_len), dtype=label_masks[0].dtype)
+        # fill arrays with data
+        for i in range(n_seq):
+            sample_len = len(inputs[i])
+            X[i, :sample_len, :] = inputs[i]
+            y[i, :sample_len, :] = labels[i]
+            sample_weights[i, :sample_len] = label_masks[i]
         while True:
-            for f in listdir_fullpath(self.data_dir):
-                inputs.append(dd.io.load(f, group='/inputs')[0])
-                labels.append(dd.io.load(f, group='/labels')[0])
-                label_masks.append(dd.io.load(f, group='/label_masks')[0])
-                if len(inputs) >= batch_size:
-                    # determine the length we pad every other sample to
-                    max_len = max([len(m) for m in label_masks[:batch_size]])
-                    # arrays to go into the model
-                    X = np.zeros((batch_size, max_len, 4), dtype=inputs[0].dtype)
-                    y = np.zeros((batch_size, max_len, 3), dtype=labels[0].dtype)
-                    sample_weights = np.zeros((batch_size, max_len), dtype=label_masks[0].dtype)
-                    # fill arrays with data
-                    for i in range(batch_size):
-                        sample_len = len(inputs[i])
-                        X[i, :sample_len, :] = inputs[i]
-                        y[i, :sample_len, :] = labels[i]
-                        sample_weights[i, :sample_len] = label_masks[i]
-                    # reset collected samples
-                    inputs = inputs[batch_size:]
-                    labels = labels[batch_size:]
-                    label_masks = label_masks[batch_size:]
-                    yield (X[:, :1000, :], y[:, :1000, :], sample_weights[:, :1000])
+            yield (X[:, :10, :], y[:, :10, :], sample_weights[:, :10])
 
 
 class HelixerModel(ABC):
@@ -228,7 +224,7 @@ class HelixerModel(ABC):
         model.fit_generator(generator=generators.gen_training_data(self.batch_size),
                             steps_per_epoch=10,  # todo read from config
                             epochs=self.epochs,
-                            validation_data=generators.gen_validation_data(self.batch_size),
+                            validation_data=generators.gen_validation_data(),
                             validation_steps=1,
                             callbacks=self.generate_callbacks(),
                             # do not use without keras.utils.Sequence
