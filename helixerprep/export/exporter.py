@@ -58,7 +58,7 @@ class ExportController(object):
         n_chunks_total = 0  # total number of chunks
         current_size = 0  # if this is > approx_file_size make new file chunk
         data = get_empty_data_dict()
-        all_coords = self.session.query(Coordinate).all()
+        all_coords = self.session.query(Coordinate).all()[:10]
         print('{} coordinates choosen to numerify'.format(len(all_coords)))
         for i, coord in enumerate(all_coords):
             if coord.features:

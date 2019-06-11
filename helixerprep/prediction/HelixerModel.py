@@ -4,11 +4,12 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 from abc import ABC, abstractmethod
 import os
 import sys
+import random
 import argparse
 import itertools
-import tensorflow as tf
 import numpy as np
 import deepdish as dd
+import tensorflow as tf
 import matplotlib.pyplot as plt
 from pprint import pprint
 from sklearn.metrics import classification_report, confusion_matrix
@@ -29,6 +30,8 @@ class Generators(object):
     """Provides the data generator for the training and validation. The generators
     return data that has been padded to the length of the longest sample in a batch.
     The sample weights are set to 0 for the padded bases (just as for annotation errors).
+
+    Omits the first sequence in each file for validation.
     """
     def __init__(self, data_dir):
         self.data_dir = data_dir
@@ -36,10 +39,12 @@ class Generators(object):
     def gen_training_data(self, batch_size=2**2):
         inputs, labels, label_masks = [], [], []
         while True:
-            for f in listdir_fullpath(self.data_dir):
-                inputs += dd.io.load(f, group='/inputs')
-                labels += dd.io.load(f, group='/labels')
-                label_masks += dd.io.load(f, group='/label_masks')
+            files = listdir_fullpath(self.data_dir)
+            random.shuffle(files)
+            for f in files:
+                inputs += dd.io.load(f, group='/inputs')[1:]
+                labels += dd.io.load(f, group='/labels')[1:]
+                label_masks += dd.io.load(f, group='/label_masks')[1:]
                 if len(inputs) >= batch_size:
                     # determine the length we pad every other sample to
                     max_len = max([len(m) for m in label_masks[:batch_size]])
@@ -57,11 +62,36 @@ class Generators(object):
                     inputs = inputs[batch_size:]
                     labels = labels[batch_size:]
                     label_masks = label_masks[batch_size:]
-                    yield (X, y, sample_weights)
+                    yield (X[:, :10, :], y[:, :10, :], sample_weights[:, :10])
 
     def gen_validation_data(self, batch_size=2):
+        """Returns the first sequence in each file as validation set.
+        Very redundant due to strange errors when trying to resolve the redundancy.
+        """
+        inputs, labels, label_masks = [], [], []
         while True:
-            pass
+            for f in listdir_fullpath(self.data_dir):
+                inputs.append(dd.io.load(f, group='/inputs')[0])
+                labels.append(dd.io.load(f, group='/labels')[0])
+                label_masks.append(dd.io.load(f, group='/label_masks')[0])
+                if len(inputs) >= batch_size:
+                    # determine the length we pad every other sample to
+                    max_len = max([len(m) for m in label_masks[:batch_size]])
+                    # arrays to go into the model
+                    X = np.zeros((batch_size, max_len, 4), dtype=inputs[0].dtype)
+                    y = np.zeros((batch_size, max_len, 3), dtype=labels[0].dtype)
+                    sample_weights = np.zeros((batch_size, max_len), dtype=label_masks[0].dtype)
+                    # fill arrays with data
+                    for i in range(batch_size):
+                        sample_len = len(inputs[i])
+                        X[i, :sample_len, :] = inputs[i]
+                        y[i, :sample_len, :] = labels[i]
+                        sample_weights[i, :sample_len] = label_masks[i]
+                    # reset collected samples
+                    inputs = inputs[batch_size:]
+                    labels = labels[batch_size:]
+                    label_masks = label_masks[batch_size:]
+                    yield (X[:, :1000, :], y[:, :1000, :], sample_weights[:, :1000])
 
 
 class HelixerModel(ABC):
@@ -196,11 +226,12 @@ class HelixerModel(ABC):
 
         generators = Generators(self.data_dir)
         model.fit_generator(generator=generators.gen_training_data(self.batch_size),
-                            steps_per_epoch=5,  # todo read from config
+                            steps_per_epoch=10,  # todo read from config
                             epochs=self.epochs,
-                            # validation_data=generators.gen_validation_data(self.batch_size),
-                            # validation_steps=1,
+                            validation_data=generators.gen_validation_data(self.batch_size),
+                            validation_steps=1,
                             callbacks=self.generate_callbacks(),
+                            # do not use without keras.utils.Sequence
                             # use_multiprocessing=True,
                             # workers=4,
                             verbose=True)
