@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import deepdish as dd
 import sklearn
@@ -11,9 +12,13 @@ from .numerify import CoordNumerifier
 
 
 class ExportController(object):
-    def __init__(self, db_path_in, h5_path_out):
+    def __init__(self, db_path_in, out_dir):
         self.db_path_in = db_path_in
-        self.h5_path_out = h5_path_out
+        self.out_dir = out_dir
+        if not os.path.isdir(self.out_dir):
+            os.mkdir(self.out_dir)
+        elif os.listdir(self.out_dir):
+            print('WARNING: target dir {} not empty'.format(self.out_dir))
         self._mk_session()
 
     def _mk_session(self):
@@ -43,7 +48,7 @@ class ExportController(object):
                 x, y, m = data['inputs'], data['labels'], data['label_masks']
                 x, y, m = sklearn.utils.shuffle(x, y, m)
                 data['inputs'], data['labels'], data['label_masks'] = x, y, m
-            dd.io.save(self.h5_path_out.split('.')[0] + str(file_chunk_count) + '.h5',
+            dd.io.save(os.path.join(self.out_dir, 'data' + str(file_chunk_count) + '.h5'),
                        data, compression=None)
 
         file_chunk_count = 0

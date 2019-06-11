@@ -5,7 +5,7 @@ from helixerprep.export.exporter import ExportController
 
 
 def main(args):
-    controller = ExportController(args.db_path_in, args.h5_out)
+    controller = ExportController(args.db_path_in, args.out_dir)
     controller.export(chunk_size=args.chunk_size, shuffle=args.shuffle, seed=args.seed)
 
 
@@ -14,9 +14,7 @@ if __name__ == '__main__':
     io = parser.add_argument_group("Data input and output")
     io.add_argument('--db_path_in', type=str, required=True,
                     help=('Path to the Helixer SQLite input database.'))
-    io.add_argument('--h5_out', type=str, required=True,
-                    help=('Output path for encoded data. If not given only the enhanced database '
-                          'will be created.'))
+    io.add_argument('--out_dir', type=str, required=True, help='Output dir for encoded data files.')
 
     data = parser.add_argument_group("Data generation parameters")
     data.add_argument('--chunk_size', type=int, default=2000000,
