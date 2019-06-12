@@ -36,20 +36,20 @@ class Generators(object):
         self.data_dir = data_dir
 
     def gen_training_data(self, batch_size=2**2):
-        inputs, labels, label_masks = None, None, None
+        X, y, sample_weights = None, None, None
         while True:
             files = listdir_fullpath(self.data_dir)
             random.shuffle(files)
             for file_path in files:
                 f = np.load(file_path, allow_pickle=True)
-                if inputs is None:
+                if X is None:
                     X = f['X'][1:]
                     y = f['y'][1:]
                     sample_weights = f['sample_weights'][1:]
                 else:
-                    X = np.concatenate(X, f['X'][1:])
-                    y = np.concatenate(y, f['y'][1:])
-                    sample_weights = np.concatenate(sample_weights, f['sample_weights'][1:])
+                    X = np.concatenate((X, f['X'][1:]))
+                    y = np.concatenate((y, f['y'][1:]))
+                    sample_weights = np.concatenate((sample_weights, f['sample_weights'][1:]))
                 f.close()
                 while len(X) >= batch_size:
                     yield (
@@ -64,26 +64,19 @@ class Generators(object):
         """Returns the first sequence in each file as validation set.
         Very redundant due to strange errors when trying to resolve the redundancy.
         """
-        inputs, labels, label_masks = [], [], []
+        X, y, sample_weights = None, None, None
         for file_path in listdir_fullpath(self.data_dir):
-            f = h5py.File(file_path, 'r')
-            inputs.append(f['inputs'][0])
-            labels.append(f['labels'][0])
-            label_masks.append(f['label_masks'][0])
+            f = np.load(file_path, allow_pickle=True)
+            if X is None:
+                X = np.expand_dims(f['X'][0], axis=0)
+                y = np.expand_dims(f['y'][0], axis=0)
+                sample_weights = np.expand_dims(f['sample_weights'][0], axis=0)
+            else:
+                X = np.concatenate((X, np.expand_dims(f['X'][0], axis=0)))
+                y = np.concatenate((y, np.expand_dims(f['y'][0], axis=0)))
+                sample_weights = np.concatenate((sample_weights,
+                                                np.expand_dims(f['sample_weights'][0], axis=0)))
             f.close()
-        # determine the length we pad every other sample to
-        max_len = max([len(m) for m in label_masks])
-        # arrays to go into the model
-        n_seq = len(inputs)
-        X = np.zeros((n_seq, max_len, 4), dtype=inputs[0].dtype)
-        y = np.zeros((n_seq, max_len, 3), dtype=labels[0].dtype)
-        sample_weights = np.zeros((n_seq, max_len), dtype=label_masks[0].dtype)
-        # fill arrays with data
-        for i in range(n_seq):
-            sample_len = len(inputs[i])
-            X[i, :sample_len, :] = inputs[i]
-            y[i, :sample_len, :] = labels[i]
-            sample_weights[i, :sample_len] = label_masks[i]
         while True:
             yield (X[:, :10, :], y[:, :10, :], sample_weights[:, :10])
 
@@ -222,21 +215,21 @@ class HelixerModel(ABC):
 
         generators = Generators(self.data_dir)
         # run validation generator once first to avoid race conditions due to same file access
-        # val_gen = generators.gen_validation_data()
-        # next(val_gen)
+        val_gen = generators.gen_validation_data()
+        next(val_gen)
 
         model.fit_generator(generator=generators.gen_training_data(self.batch_size),
                             steps_per_epoch=10,  # todo read from config
                             epochs=self.epochs,
-                            # validation_data=val_gen,
-                            # validation_steps=1,
+                            validation_data=val_gen,
+                            validation_steps=1,
                             callbacks=self.generate_callbacks(),
                             # do not use without keras.utils.Sequence
                             # use_multiprocessing=True,
                             # workers=4,
                             verbose=True)
 
-        best_val_acc = min(model.history.history['val_mean_absolute_error'])
+        # best_val_acc = min(model.history.history['val_mean_absolute_error'])
         if self.nni:
             nni.report_final_result(best_val_acc)
 

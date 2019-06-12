@@ -9,6 +9,7 @@ helixerprep/testdata/dummyloci.sequence.sliced.json
 helixerprep/testdata/dummyloci_annotations.sqlitedb
 helixerprep/testdata/dummyloci.sqlite3
 helixerprep/testdata/tmp.db
+best_model.h5
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
