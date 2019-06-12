@@ -6,7 +6,9 @@ from helixerprep.export.exporter import ExportController
 
 def main(args):
     controller = ExportController(args.db_path_in, args.out_dir)
-    controller.export(chunk_size=args.chunk_size, shuffle_in_file=args.shuffle_in_file)
+    controller.export(chunk_size=args.chunk_size,
+                      shuffle_in_file=args.shuffle_in_file,
+                      zip_files=args.zip)
 
 
 if __name__ == '__main__':
@@ -22,5 +24,6 @@ if __name__ == '__main__':
     data.add_argument('--shuffle_in_file', action='store_true',
                       help=('Whether to shuffle the sequences inside each output file. '
                             '(Does no further shuffling'))
+    data.add_argument('--zip', action='store_true', help='Whether to zip the file chunks')
     args = parser.parse_args()
     main(args)

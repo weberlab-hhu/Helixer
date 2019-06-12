@@ -121,11 +121,18 @@ class HelixerModel(ABC):
 
         config = configparser.ConfigParser()
         config.read(os.path.join(self.data_dir, 'data_config.ini'))
+        config_dict = {}
+        for key, value in config['data'].items():
+            # we only have boolean and int config values at the moment
+            if value in ['True', 'False']:
+                config_dict[key] = config.getboolean('data', key)
+            else:
+                config_dict[key] = config.getint('data', key)
         if self.verbose:
             print('\n Data config:')
-            pprint(dict(config['data']))
+            pprint(config_dict)
             print()
-        self.__dict__.update(dict(config['data']))
+        self.__dict__.update(config_dict)
 
     def generate_callbacks(self):
         callbacks = [
@@ -190,11 +197,13 @@ class HelixerModel(ABC):
 
         generators = Generators(self.data_dir)
         # run validation generator once first to avoid race conditions due to same file access
+        print('\nstart loading validation data')
         val_gen = generators.gen_validation_data()
         next(val_gen)
+        print('validation data loaded\n')
 
         model.fit_generator(generator=generators.gen_training_data(self.batch_size),
-                            steps_per_epoch=10,  # todo read from config
+                            steps_per_epoch=(self.n_seq_total - self.n_files) // self.batch_size,
                             epochs=self.epochs,
                             validation_data=val_gen,
                             validation_steps=1,
@@ -204,7 +213,7 @@ class HelixerModel(ABC):
                             # workers=4,
                             verbose=True)
 
-        # best_val_acc = min(model.history.history['val_mean_absolute_error'])
+        best_val_acc = max(model.history.history['val_acc'])
         if self.nni:
             nni.report_final_result(best_val_acc)
 
@@ -212,4 +221,3 @@ class HelixerModel(ABC):
         # self.training_summary()
         # plot the collected history
         # self.plot_histor(collected_histories)
-

@@ -25,7 +25,7 @@ class ExportController(object):
         self.engine = create_engine(full_db_path(self.db_path_in), echo=False)
         self.session = sessionmaker(bind=self.engine)()
 
-    def export(self, chunk_size, shuffle_in_file, approx_file_size=100*2**20):
+    def export(self, chunk_size, shuffle_in_file, zip_files=False, approx_file_size=100*2**20):
         """Fetches all Coordinates, calls on functions in numerify.py to split
         and encode them and then saves the sequences in possibly multiply files
         of about the size of approx_file_size.
@@ -48,14 +48,17 @@ class ExportController(object):
                 X[j, :sample_len, :] = inputs[j]
                 y[j, :sample_len, :] = labels[j]
                 sample_weights[j, :sample_len] = label_masks[j]
-            np.savez(get_file_name(i), X=X, y=y, sample_weights=sample_weights)
+            if zip_files:
+                np.savez_compressed(get_file_name(i), X=X, y=y, sample_weights=sample_weights)
+            else:
+                np.savez(get_file_name(i), X=X, y=y, sample_weights=sample_weights)
             # print('saved {}.npz with {} sequences'.format(get_file_name(i), len(inputs)))
 
         n_file_chunks = 0
-        n_chunks_total = 0  # total number of chunks
+        n_seq_total = 0  # total number of individual sequences
         current_size = 0  # if this is > approx_file_size make new file chunk
         inputs, labels, label_masks = [], [], []
-        all_coords = self.session.query(Coordinate).all()
+        all_coords = self.session.query(Coordinate).all()[:5]
         print('{} coordinates chosen to numerify'.format(len(all_coords)))
         for i, coord in enumerate(all_coords):
             if coord.features:
@@ -69,7 +72,7 @@ class ExportController(object):
                     label_masks += coord_data['label_masks']
                     # keep track of variables
                     current_size += coord.end
-                    n_chunks_total += len(coord_data['inputs'])
+                    n_seq_total += len(coord_data['inputs'])
                     n_masked_bases += sum([len(m) - np.count_nonzero(m)
                                            for m
                                            in coord_data['label_masks']])
@@ -93,6 +96,7 @@ class ExportController(object):
             print(('Numerified the left over data with a base level '
                    'error rate of {:.2f}%').format(masked_bases_percent))
             save_data(n_file_chunks, inputs, labels, label_masks)
+            n_file_chunks += 1
         else:
             print('Skipping the left over data as it is empty')
 
@@ -100,8 +104,10 @@ class ExportController(object):
         config = configparser.ConfigParser()
         config.add_section('data')
         config.set('data', 'chunk_size', str(chunk_size))
-        config.set('data', 'n_chunks_total', str(n_chunks_total))
+        config.set('data', 'n_seq_total', str(n_seq_total))
+        config.set('data', 'n_files', str(n_file_chunks))
         config.set('data', 'shuffle_in_file', str(shuffle_in_file))
+        config.set('data', 'zipped', str(zip_files))
 
         config_file = open(os.path.join(self.out_dir, 'data_config.ini'), 'w')
         config.write(config_file)
