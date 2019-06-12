@@ -10,14 +10,11 @@ import itertools
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+import configparser
 from pprint import pprint
 from sklearn.metrics import classification_report, confusion_matrix
 from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
 from keras import optimizers
-
-
-def listdir_fullpath(d):
-    return [os.path.join(d, f) for f in os.listdir(d)]
 
 
 class SaveEveryEpoch(Callback):
@@ -37,10 +34,15 @@ class Generators(object):
     def __init__(self, data_dir):
         self.data_dir = data_dir
 
+    def data_file_paths(self):
+        return [os.path.join(self.data_dir, f)
+                for f in os.listdir(self.data_dir)
+                    if f != 'data_config.ini']
+
     def gen_training_data(self, batch_size=2**2):
         X, y, sample_weights = None, None, None
         while True:
-            files = listdir_fullpath(self.data_dir)
+            files = self.data_file_paths()
             random.shuffle(files)
             for file_path in files:
                 f = np.load(file_path, allow_pickle=True)
@@ -68,7 +70,7 @@ class Generators(object):
         Very redundant due to strange errors when trying to resolve the redundancy.
         """
         X, y, sample_weights = None, None, None
-        for file_path in listdir_fullpath(self.data_dir):
+        for file_path in self.data_file_paths():
             f = np.load(file_path, allow_pickle=True)
             if X is None:
                 X = np.expand_dims(f['X'][0], axis=0)
@@ -105,35 +107,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('-plot', '--plot', action='store_true')
         self.parser.add_argument('-nni', '--nni', action='store_true')
 
-    def _plot_confusion_matrix(self, cm,
-                               classes,
-                               normalize=False,
-                               title='Confusion matrix',
-                               output_name='confusion_matrix.png',
-                               cmap=plt.cm.Blues):
-        if normalize:
-            cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-
-        plt.figure(figsize=(14, 14), dpi=200)
-        plt.imshow(cm, interpolation='nearest', cmap=cmap)
-        plt.title(title)
-        tick_marks = np.arange(len(classes))
-        plt.xticks(tick_marks, classes, rotation=45)
-        plt.yticks(tick_marks, classes)
-
-        fmt = '.2f' if normalize else 'd'
-        thresh = cm.max() / 2.
-        for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-            plt.text(j, i, format(cm[i, j], fmt),
-                     horizontalalignment="center",
-                     color="white" if cm[i, j] > thresh else "black")
-
-        plt.ylabel('True label')
-        plt.xlabel('Predicted label')
-        plt.tight_layout()
-        plt.savefig(output_name)
-        print('confusion matrix saved to', output_name)
-
     def parse_args(self):
         args = vars(self.parser.parse_args())
         self.__dict__.update(args)
@@ -146,14 +119,13 @@ class HelixerModel(ABC):
             print()
             pprint(args)
 
-        # the config is the same for all individual data files
-        # f = h5py.File(listdir_fullpath(self.data_dir)[0])
-        # self.config = f['config'].attrs
-        # f.close()
+        config = configparser.ConfigParser()
+        config.read(os.path.join(self.data_dir, 'data_config.ini'))
         if self.verbose:
             print('\n Data config:')
-            pprint(self.config)
+            pprint(dict(config['data']))
             print()
+        self.__dict__.update(dict(config['data']))
 
     def generate_callbacks(self):
         callbacks = [
@@ -240,21 +212,4 @@ class HelixerModel(ABC):
         # self.training_summary()
         # plot the collected history
         # self.plot_histor(collected_histories)
-
-        # if the task is classification, print a classification report
-        # and save confusion matrix
-        """
-        if self.one_hot_labels:
-            model = load_model(self.save_model_path)
-            one_hot_predictions = model.predict(self.test_data)
-            y_pred = np.argmax(one_hot_predictions, axis=1)
-            y_true = np.argmax(self.y_test, axis=1)
-            report = classification_report(y_true,
-                                           y_pred,
-                                           target_names=self.class_names)
-            print(report)
-
-            cnf_matrix = confusion_matrix(y_true, y_pred)
-            self._plot_confusion_matrix(cnf_matrix, self.class_names, normalize=True)
-        """
 

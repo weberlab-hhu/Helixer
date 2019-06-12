@@ -18,7 +18,7 @@ class ExportController(object):
         if not os.path.isdir(self.out_dir):
             os.mkdir(self.out_dir)
         elif os.listdir(self.out_dir):
-            print('WARNING: target dir {} is not empty'.format(self.out_dir))
+            print('WARNING: target dir {} is not empty\n'.format(self.out_dir))
         self._mk_session()
 
     def _mk_session(self):
@@ -49,13 +49,14 @@ class ExportController(object):
                 y[j, :sample_len, :] = labels[j]
                 sample_weights[j, :sample_len] = label_masks[j]
             np.savez(get_file_name(i), X=X, y=y, sample_weights=sample_weights)
+            # print('saved {}.npz with {} sequences'.format(get_file_name(i), len(inputs)))
 
         n_file_chunks = 0
         n_chunks_total = 0  # total number of chunks
         current_size = 0  # if this is > approx_file_size make new file chunk
         inputs, labels, label_masks = [], [], []
         all_coords = self.session.query(Coordinate).all()
-        print('{} coordinates choosen to numerify'.format(len(all_coords)))
+        print('{} coordinates chosen to numerify'.format(len(all_coords)))
         for i, coord in enumerate(all_coords):
             if coord.features:
                 n_masked_bases = 0
@@ -68,13 +69,13 @@ class ExportController(object):
                     label_masks += coord_data['label_masks']
                     # keep track of variables
                     current_size += coord.end
-                    n_chunks_total += len(label_masks)
+                    n_chunks_total += len(coord_data['inputs'])
                     n_masked_bases += sum([len(m) - np.count_nonzero(m)
                                            for m
                                            in coord_data['label_masks']])
                     # break data up in file chunks
                     if current_size * 12 > approx_file_size:
-                        save_data(i, inputs, labels, label_masks)
+                        save_data(n_file_chunks, inputs, labels, label_masks)
                         inputs, labels, label_masks = [], [], []
                         n_file_chunks += 1
                         current_size = 0
@@ -105,4 +106,3 @@ class ExportController(object):
         config_file = open(os.path.join(self.out_dir, 'data_config.ini'), 'w')
         config.write(config_file)
         config_file.close()
-
