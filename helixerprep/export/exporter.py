@@ -1,7 +1,5 @@
 import os
-import h5py
 import numpy as np
-import deepdish as dd
 import sklearn
 
 from sqlalchemy import create_engine
@@ -31,33 +29,34 @@ class ExportController(object):
         and encode them and then saves the sequences in possibly multiply files
         of about the size of approx_file_size.
         """
-        def get_empty_data_dict():
-            d = {
-                'inputs': [],
-                'labels': [],
-                'label_masks': [],
-                'config': {
-                    'chunk_size': chunk_size,
-                    'shuffle': shuffle,
-                    'seed': seed,
-                },
-            }
-            return d
+        # 'chunk_size': chunk_size,
+        # 'shuffle': shuffle,
+        # 'seed': seed,
 
         def get_file_name(i):
-            return os.path.join(self.out_dir, 'data' + str(i) + '.h5')
+            return os.path.join(self.out_dir, 'data' + str(i))
 
-        def save_data(data, i, shuffle):
+        def save_data(i, inputs, labels, label_masks):
             if shuffle:
-                x, y, m = data['inputs'], data['labels'], data['label_masks']
-                x, y, m = sklearn.utils.shuffle(x, y, m)
-                data['inputs'], data['labels'], data['label_masks'] = x, y, m
-            dd.io.save(get_file_name(i), data, compression=None)
+                inputs, labels, label_masks = sklearn.utils.shuffle(inputs, labels, label_masks)
+            # zero-pad each sequence to chunk_size
+            # this is inefficient if there could be a batch with only sequences smaller than
+            # chunk_size, but taking care of that introduces a lot of extra complexity
+            n_seq = len(inputs)
+            X = np.zeros((n_seq, chunk_size, 4), dtype=inputs[0].dtype)
+            y = np.zeros((n_seq, chunk_size, 3), dtype=labels[0].dtype)
+            sample_weights = np.zeros((n_seq, chunk_size), dtype=label_masks[0].dtype)
+            for j in range(n_seq):
+                sample_len = len(inputs[j])
+                X[j, :sample_len, :] = inputs[j]
+                y[j, :sample_len, :] = labels[j]
+                sample_weights[j, :sample_len] = label_masks[j]
+            np.savez(get_file_name(i), X=X, y=y, sample_weights=sample_weights)
 
         n_file_chunks = 0
         n_chunks_total = 0  # total number of chunks
         current_size = 0  # if this is > approx_file_size make new file chunk
-        data = get_empty_data_dict()
+        inputs, labels, label_masks = [], [], []
         all_coords = self.session.query(Coordinate).all()[:10]
         print('{} coordinates choosen to numerify'.format(len(all_coords)))
         for i, coord in enumerate(all_coords):
@@ -66,17 +65,20 @@ class ExportController(object):
                 for is_plus_strand in [True, False]:
                     numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size)
                     coord_data = numerifier.numerify()
-                    for key in ['inputs', 'labels', 'label_masks']:
-                        data[key] += coord_data[key]
+                    # add data
+                    inputs += coord_data['inputs']
+                    labels += coord_data['labels']
+                    label_masks += coord_data['label_masks']
+                    # keep track of variables
                     current_size += coord.end
-                    n_chunks_total += len(data['label_masks'])
+                    n_chunks_total += len(label_masks)
                     n_masked_bases += sum([len(m) - np.count_nonzero(m)
                                            for m
                                            in coord_data['label_masks']])
                     # break data up in file chunks
                     if current_size * 12 > approx_file_size:
-                        save_data(data, n_file_chunks, shuffle)
-                        data = get_empty_data_dict()
+                        save_data(i, inputs, labels, label_masks)
+                        inputs, labels, label_masks = [], [], []
                         n_file_chunks += 1
                         current_size = 0
                 masked_bases_percent = n_masked_bases / (coord.end * 2) * 100
@@ -96,9 +98,4 @@ class ExportController(object):
         else:
             print('Skipping the left over data as it is empty')
 
-        # add the total n_chunks to the first file
-        file_name = get_file_name(0)
-        f = h5py.File(file_name, 'r+')
-        config = f['config'].attrs
-        config['n_chunks_total'] = n_chunks_total
-        f.close()
+        # write config file

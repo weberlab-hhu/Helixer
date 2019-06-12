@@ -8,7 +8,6 @@ import random
 import argparse
 import itertools
 import numpy as np
-import deepdish as dd
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from pprint import pprint
@@ -37,42 +36,41 @@ class Generators(object):
         self.data_dir = data_dir
 
     def gen_training_data(self, batch_size=2**2):
-        inputs, labels, label_masks = [], [], []
+        inputs, labels, label_masks = None, None, None
         while True:
             files = listdir_fullpath(self.data_dir)
             random.shuffle(files)
-            for f in files:
-                inputs += dd.io.load(f, group='/inputs')[1:]
-                labels += dd.io.load(f, group='/labels')[1:]
-                label_masks += dd.io.load(f, group='/label_masks')[1:]
-                if len(inputs) >= batch_size:
-                    # determine the length we pad every other sample to
-                    max_len = max([len(m) for m in label_masks[:batch_size]])
-                    # arrays to go into the model
-                    X = np.zeros((batch_size, max_len, 4), dtype=inputs[0].dtype)
-                    y = np.zeros((batch_size, max_len, 3), dtype=labels[0].dtype)
-                    sample_weights = np.zeros((batch_size, max_len), dtype=label_masks[0].dtype)
-                    # fill arrays with data
-                    for i in range(batch_size):
-                        sample_len = len(inputs[i])
-                        X[i, :sample_len, :] = inputs[i]
-                        y[i, :sample_len, :] = labels[i]
-                        sample_weights[i, :sample_len] = label_masks[i]
+            for file_path in files:
+                f = np.load(file_path, allow_pickle=True)
+                if inputs is None:
+                    X = f['X'][1:]
+                    y = f['y'][1:]
+                    sample_weights = f['sample_weights'][1:]
+                else:
+                    X = np.concatenate(X, f['X'][1:])
+                    y = np.concatenate(y, f['y'][1:])
+                    sample_weights = np.concatenate(sample_weights, f['sample_weights'][1:])
+                f.close()
+                while len(X) >= batch_size:
+                    yield (
+                        X[:batch_size, :10, :],
+                        y[:batch_size, :10, :],
+                        sample_weights[:batch_size, :10]
+                    )
                     # reset collected samples
-                    inputs = inputs[batch_size:]
-                    labels = labels[batch_size:]
-                    label_masks = label_masks[batch_size:]
-                    yield (X[:, :10, :], y[:, :10, :], sample_weights[:, :10])
+                    X, y, sample_weights = X[batch_size:], y[batch_size:], sample_weights[batch_size:]
 
     def gen_validation_data(self):
         """Returns the first sequence in each file as validation set.
         Very redundant due to strange errors when trying to resolve the redundancy.
         """
         inputs, labels, label_masks = [], [], []
-        for f in listdir_fullpath(self.data_dir):
-            inputs.append(dd.io.load(f, group='/inputs')[0])
-            labels.append(dd.io.load(f, group='/labels')[0])
-            label_masks.append(dd.io.load(f, group='/label_masks')[0])
+        for file_path in listdir_fullpath(self.data_dir):
+            f = h5py.File(file_path, 'r')
+            inputs.append(f['inputs'][0])
+            labels.append(f['labels'][0])
+            label_masks.append(f['label_masks'][0])
+            f.close()
         # determine the length we pad every other sample to
         max_len = max([len(m) for m in label_masks])
         # arrays to go into the model
@@ -153,7 +151,9 @@ class HelixerModel(ABC):
             pprint(args)
 
         # the config is the same for all individual data files
-        self.config = dd.io.load(listdir_fullpath(self.data_dir)[0], group='/config')
+        # f = h5py.File(listdir_fullpath(self.data_dir)[0])
+        # self.config = f['config'].attrs
+        # f.close()
         if self.verbose:
             print('\n Data config:')
             pprint(self.config)
@@ -221,11 +221,15 @@ class HelixerModel(ABC):
         self.compile_model(model)
 
         generators = Generators(self.data_dir)
+        # run validation generator once first to avoid race conditions due to same file access
+        # val_gen = generators.gen_validation_data()
+        # next(val_gen)
+
         model.fit_generator(generator=generators.gen_training_data(self.batch_size),
                             steps_per_epoch=10,  # todo read from config
                             epochs=self.epochs,
-                            validation_data=generators.gen_validation_data(),
-                            validation_steps=1,
+                            # validation_data=val_gen,
+                            # validation_steps=1,
                             callbacks=self.generate_callbacks(),
                             # do not use without keras.utils.Sequence
                             # use_multiprocessing=True,
