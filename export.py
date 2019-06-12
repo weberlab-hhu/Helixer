@@ -6,7 +6,7 @@ from helixerprep.export.exporter import ExportController
 
 def main(args):
     controller = ExportController(args.db_path_in, args.out_dir)
-    controller.export(chunk_size=args.chunk_size, shuffle=args.shuffle, seed=args.seed)
+    controller.export(chunk_size=args.chunk_size, shuffle_in_file=args.shuffle_in_file)
 
 
 if __name__ == '__main__':
@@ -19,11 +19,8 @@ if __name__ == '__main__':
     data = parser.add_argument_group("Data generation parameters")
     data.add_argument('--chunk_size', type=int, default=2000000,
                       help='Size of the chunks each genomic sequence gets cut into.')
-    data.add_argument('--shuffle', action='store_true',
-                      help='Whether to shuffle the sequences in the h5 output')
-    data.add_argument('--seed', default='puma',
-                      help=('random seed is md5sum(sequence) + this parameter; '
-                            'don\'t change without cause.'))
-
+    data.add_argument('--shuffle_in_file', action='store_true',
+                      help=('Whether to shuffle the sequences inside each output file. '
+                            '(Does no further shuffling'))
     args = parser.parse_args()
     main(args)

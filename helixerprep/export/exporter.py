@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import sklearn
+import configparser
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -24,20 +25,16 @@ class ExportController(object):
         self.engine = create_engine(full_db_path(self.db_path_in), echo=False)
         self.session = sessionmaker(bind=self.engine)()
 
-    def export(self, chunk_size, shuffle, seed, approx_file_size=100*2**20):
+    def export(self, chunk_size, shuffle_in_file, approx_file_size=100*2**20):
         """Fetches all Coordinates, calls on functions in numerify.py to split
         and encode them and then saves the sequences in possibly multiply files
         of about the size of approx_file_size.
         """
-        # 'chunk_size': chunk_size,
-        # 'shuffle': shuffle,
-        # 'seed': seed,
-
         def get_file_name(i):
             return os.path.join(self.out_dir, 'data' + str(i))
 
         def save_data(i, inputs, labels, label_masks):
-            if shuffle:
+            if shuffle_in_file:
                 inputs, labels, label_masks = sklearn.utils.shuffle(inputs, labels, label_masks)
             # zero-pad each sequence to chunk_size
             # this is inefficient if there could be a batch with only sequences smaller than
@@ -57,7 +54,7 @@ class ExportController(object):
         n_chunks_total = 0  # total number of chunks
         current_size = 0  # if this is > approx_file_size make new file chunk
         inputs, labels, label_masks = [], [], []
-        all_coords = self.session.query(Coordinate).all()[:10]
+        all_coords = self.session.query(Coordinate).all()
         print('{} coordinates choosen to numerify'.format(len(all_coords)))
         for i, coord in enumerate(all_coords):
             if coord.features:
@@ -94,8 +91,18 @@ class ExportController(object):
         if current_size > 0:
             print(('Numerified the left over data with a base level '
                    'error rate of {:.2f}%').format(masked_bases_percent))
-            save_data(data, n_file_chunks, shuffle)
+            save_data(n_file_chunks, inputs, labels, label_masks)
         else:
             print('Skipping the left over data as it is empty')
 
         # write config file
+        config = configparser.ConfigParser()
+        config.add_section('data')
+        config.set('data', 'chunk_size', str(chunk_size))
+        config.set('data', 'n_chunks_total', str(n_chunks_total))
+        config.set('data', 'shuffle_in_file', str(shuffle_in_file))
+
+        config_file = open(os.path.join(self.out_dir, 'data_config.ini'), 'w')
+        config.write(config_file)
+        config_file.close()
+

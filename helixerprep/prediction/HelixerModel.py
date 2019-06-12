@@ -24,6 +24,8 @@ class SaveEveryEpoch(Callback):
     def on_epoch_end(self, epoch, _):
         self.model.save('model' + str(epoch) + '.h5')
 
+# used for development
+TRUNCATE = 10000
 
 class Generators(object):
     """Provides the data generator for the training and validation. The generators
@@ -53,12 +55,13 @@ class Generators(object):
                 f.close()
                 while len(X) >= batch_size:
                     yield (
-                        X[:batch_size, :10, :],
-                        y[:batch_size, :10, :],
-                        sample_weights[:batch_size, :10]
+                        X[:batch_size, :TRUNCATE, :],
+                        y[:batch_size, :TRUNCATE, :],
+                        sample_weights[:batch_size, :TRUNCATE]
                     )
                     # reset collected samples
-                    X, y, sample_weights = X[batch_size:], y[batch_size:], sample_weights[batch_size:]
+                    X, y = X[batch_size:], y[batch_size:]
+                    sample_weights = sample_weights[batch_size:]
 
     def gen_validation_data(self):
         """Returns the first sequence in each file as validation set.
@@ -78,7 +81,7 @@ class Generators(object):
                                                 np.expand_dims(f['sample_weights'][0], axis=0)))
             f.close()
         while True:
-            yield (X[:, :10, :], y[:, :10, :], sample_weights[:, :10])
+            yield (X[:, :TRUNCATE, :], y[:, :TRUNCATE, :], sample_weights[:, :TRUNCATE])
 
 
 class HelixerModel(ABC):
@@ -156,14 +159,14 @@ class HelixerModel(ABC):
         callbacks = [
             History(),
             CSVLogger('history.log'),
-            EarlyStopping(monitor='val_loss', patience=self.patience),
+            # EarlyStopping(monitor='val_loss', patience=self.patience),
         ]
 
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch())
         else:
             checkpoint_cb = ModelCheckpoint(self.save_model_path,
-                                            monitor='val_loss',
+                                            monitor='val_acc',
                                             save_best_only=True,
                                             verbose=0)
             callbacks.append(checkpoint_cb)
