@@ -4,6 +4,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 from abc import ABC, abstractmethod
 import os
 import sys
+import h5py
 import random
 import argparse
 import itertools
@@ -22,53 +23,29 @@ class SaveEveryEpoch(Callback):
         self.model.save('model' + str(epoch) + '.h5')
 
 # used for development
-TRUNCATE = 10000
+TRUNCATE = 100
 
 class Generators(object):
-    """Provides the data generator for the training and validation. The generators
-    return data that has been padded to the length of the longest sample in a batch.
-    The sample weights are set to 0 for the padded bases (just as for annotation errors).
-
-    Omits the first sequence in each file for validation.
-    """
-    def __init__(self, data_dir):
-        self.data_dir = data_dir
-
-    def data_file_paths(self):
-        return [os.path.join(self.data_dir, f)
-                for f in os.listdir(self.data_dir)
-                    if f != 'data_config.ini']
-
-    def gen_training_data(self, batch_size=2**2):
-        X, y, sample_weights = None, None, None
+    def gen_training_data(self, file_path, batch_size=2**2):
+        f = h5py.File(file_path, 'r')
+        n_seq = f['/data/X'].shape[0]
+        X, y, sample_weights = [], [], []
         while True:
-            files = self.data_file_paths()
-            random.shuffle(files)
-            for file_path in files:
-                f = np.load(file_path, allow_pickle=True)
-                if X is None:
-                    X = f['X'][1:]
-                    y = f['y'][1:]
-                    sample_weights = f['sample_weights'][1:]
-                else:
-                    X = np.concatenate((X, f['X'][1:]))
-                    y = np.concatenate((y, f['y'][1:]))
-                    sample_weights = np.concatenate((sample_weights, f['sample_weights'][1:]))
-                f.close()
-                while len(X) >= batch_size:
+            seq_indexes = list(range(n_seq))
+            random.shuffle(seq_indexes)
+            for i in seq_indexes:
+                X.append(f['/data/X'][i])
+                y.append(f['/data/y'][i])
+                sample_weights.append(f['/data/sample_weights'][i])
+                while len(X) == batch_size:
                     yield (
-                        X[:batch_size, :TRUNCATE, :],
-                        y[:batch_size, :TRUNCATE, :],
-                        sample_weights[:batch_size, :TRUNCATE]
+                        np.stack(X, axis=0)[:, :TRUNCATE, :],
+                        np.stack(y, axis=0)[:, :TRUNCATE, :],
+                        np.stack(sample_weights, axis=0)[:, :TRUNCATE],
                     )
-                    # reset collected samples
-                    X, y = X[batch_size:], y[batch_size:]
-                    sample_weights = sample_weights[batch_size:]
+                    X, y, sample_weights = [], [], []
 
     def gen_validation_data(self):
-        """Returns the first sequence in each file as validation set.
-        Very redundant due to strange errors when trying to resolve the redundancy.
-        """
         X, y, sample_weights = None, None, None
         for file_path in self.data_file_paths():
             f = np.load(file_path, allow_pickle=True)
@@ -93,7 +70,7 @@ class HelixerModel(ABC):
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         self.parser = argparse.ArgumentParser()
-        self.parser.add_argument('-d', '--data-dir', type=str, default='data/data')
+        self.parser.add_argument('-d', '--data', type=str, default='data/data')
         self.parser.add_argument('-p', '--patience', type=int, default=10)
         self.parser.add_argument('-sm', '--save-model-path', type=str, default='./best_model.h5')
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
@@ -119,20 +96,19 @@ class HelixerModel(ABC):
             print()
             pprint(args)
 
-        config = configparser.ConfigParser()
-        config.read(os.path.join(self.data_dir, 'data_config.ini'))
-        config_dict = {}
-        for key, value in config['data'].items():
-            # we only have boolean and int config values at the moment
-            if value in ['True', 'False']:
-                config_dict[key] = config.getboolean('data', key)
-            else:
-                config_dict[key] = config.getint('data', key)
-        if self.verbose:
-            print('\n Data config:')
-            pprint(config_dict)
-            print()
-        self.__dict__.update(config_dict)
+        # config.read(os.path.join(self.data_dir, 'data_config.ini'))
+        # config_dict = {}
+        # for key, value in config['data'].items():
+            # # we only have boolean and int config values at the moment
+            # if value in ['True', 'False']:
+                # config_dict[key] = config.getboolean('data', key)
+            # else:
+                # config_dict[key] = config.getint('data', key)
+        # if self.verbose:
+            # print('\n Data config:')
+            # pprint(config_dict)
+            # print()
+        # self.__dict__.update(config_dict)
 
     def generate_callbacks(self):
         callbacks = [
@@ -195,18 +171,18 @@ class HelixerModel(ABC):
 
         self.compile_model(model)
 
-        generators = Generators(self.data_dir)
+        generators = Generators()
         # run validation generator once first to avoid race conditions due to same file access
-        print('\nstart loading validation data')
-        val_gen = generators.gen_validation_data()
-        next(val_gen)
-        print('validation data loaded\n')
+        # print('\nstart loading validation data')
+        # val_gen = generators.gen_validation_data()
+        # next(val_gen)
+        # print('validation data loaded\n')
 
-        model.fit_generator(generator=generators.gen_training_data(self.batch_size),
-                            steps_per_epoch=(self.n_seq_total - self.n_files) // self.batch_size,
+        model.fit_generator(generator=generators.gen_training_data(self.data, self.batch_size),
+                            steps_per_epoch=10,
                             epochs=self.epochs,
-                            validation_data=val_gen,
-                            validation_steps=1,
+                            # validation_data=val_gen,
+                            # validation_steps=1,
                             callbacks=self.generate_callbacks(),
                             # do not use without keras.utils.Sequence
                             # use_multiprocessing=True,
