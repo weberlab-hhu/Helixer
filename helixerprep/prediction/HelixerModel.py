@@ -64,8 +64,7 @@ class HelixerModel(ABC):
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         self.parser = argparse.ArgumentParser()
-        self.parser.add_argument('-d', '--data', required=True, type=str, default='')
-        self.parser.add_argument('-dval', '--val_data', type=str, default='')
+        self.parser.add_argument('-d', '--data_dir', required=True, type=str, default='')
         self.parser.add_argument('-p', '--patience', type=int, default=10)
         self.parser.add_argument('-sm', '--save-model-path', type=str, default='./best_model.h5')
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
@@ -92,13 +91,12 @@ class HelixerModel(ABC):
             pprint(args)
 
         if self.verbose:
-            f = h5py.File(self.data, 'r')
+            f = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
             print('\nTraining data shape: {}'.format(f['/data/X'].shape[:2]))
             f.close()
-            if self.val_data:
-                f = h5py.File(self.val_data, 'r')
-                print('Validation data shape: {}\n'.format(f['/data/X'].shape[:2]))
-                f.close()
+            f = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
+            print('Validation data shape: {}\n'.format(f['/data/X'].shape[:2]))
+            f.close()
             # print('\n Data config:')
             # pprint(config_dict)
             # print()
