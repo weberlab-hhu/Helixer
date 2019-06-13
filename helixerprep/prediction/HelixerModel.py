@@ -23,7 +23,7 @@ class SaveEveryEpoch(Callback):
         self.model.save('model' + str(epoch) + '.h5')
 
 # used for development
-TRUNCATE = 10000
+TRUNCATE = 50000
 
 class Generators(object):
     def __init__(self, h5_train, h5_val):

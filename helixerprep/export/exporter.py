@@ -18,7 +18,8 @@ class ExportController(object):
         if not os.path.isdir(data_dir):
             os.mkdir(data_dir)
         elif os.listdir(data_dir):
-            print('WARNING: directory not empty')
+            print('Output directory must be empty or not existing')
+            exit()
         self.h5_train = h5py.File(os.path.join(data_dir, 'training_data.h5'), 'w')
         self.h5_val = h5py.File(os.path.join(data_dir, 'validation_data.h5'), 'w')
         self._mk_session()
@@ -32,7 +33,6 @@ class ExportController(object):
         and encode them and then saves the sequences in possibly multiply files
         of about the size of approx_file_size.
         """
-
         def save_data(h5_file, inputs, labels, label_masks):
             # zero-pad each sequence to chunk_size
             # this is inefficient if there could be a batch with only sequences smaller than
@@ -98,7 +98,7 @@ class ExportController(object):
             return train_arrays, val_arrays
 
         n_seq_total = 0  # total number of individual sequences
-        all_coords = self.session.query(Coordinate).all()[25:]
+        all_coords = self.session.query(Coordinate).all()
         print('{} coordinates chosen to numerify'.format(len(all_coords)))
         for i, coord in enumerate(all_coords):
             if coord.features:
