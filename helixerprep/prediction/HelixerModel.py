@@ -26,13 +26,14 @@ class SaveEveryEpoch(Callback):
 TRUNCATE = 100
 
 class Generators(object):
-    def gen_training_data(self, file_path, batch_size=2**2):
+    def _gen_data(self, file_path, shuffle, batch_size=2**2):
         f = h5py.File(file_path, 'r')
         n_seq = f['/data/X'].shape[0]
         X, y, sample_weights = [], [], []
         while True:
             seq_indexes = list(range(n_seq))
-            random.shuffle(seq_indexes)
+            if shuffle:
+                random.shuffle(seq_indexes)
             for i in seq_indexes:
                 X.append(f['/data/X'][i])
                 y.append(f['/data/y'][i])
@@ -45,22 +46,15 @@ class Generators(object):
                     )
                     X, y, sample_weights = [], [], []
 
-    def gen_validation_data(self):
-        X, y, sample_weights = None, None, None
-        for file_path in self.data_file_paths():
-            f = np.load(file_path, allow_pickle=True)
-            if X is None:
-                X = np.expand_dims(f['X'][0], axis=0)
-                y = np.expand_dims(f['y'][0], axis=0)
-                sample_weights = np.expand_dims(f['sample_weights'][0], axis=0)
-            else:
-                X = np.concatenate((X, np.expand_dims(f['X'][0], axis=0)))
-                y = np.concatenate((y, np.expand_dims(f['y'][0], axis=0)))
-                sample_weights = np.concatenate((sample_weights,
-                                                np.expand_dims(f['sample_weights'][0], axis=0)))
-            f.close()
+    def gen_training_data(self, file_path, batch_size=2**2):
+        gen = self._gen_data(file_path, True, batch_size)
         while True:
-            yield (X[:, :TRUNCATE, :], y[:, :TRUNCATE, :], sample_weights[:, :TRUNCATE])
+            yield next(gen)
+
+    def gen_training_data(self, file_path, batch_size=2**2):
+        gen = self._gen_data(file_path, False, batch_size)
+        while True:
+            yield next(gen)
 
 
 class HelixerModel(ABC):
@@ -70,7 +64,8 @@ class HelixerModel(ABC):
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         self.parser = argparse.ArgumentParser()
-        self.parser.add_argument('-d', '--data', type=str, default='data/data')
+        self.parser.add_argument('-d', '--data', required=True, type=str, default='')
+        self.parser.add_argument('-dval', '--val_data', type=str, default='')
         self.parser.add_argument('-p', '--patience', type=int, default=10)
         self.parser.add_argument('-sm', '--save-model-path', type=str, default='./best_model.h5')
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
@@ -96,15 +91,14 @@ class HelixerModel(ABC):
             print()
             pprint(args)
 
-        # config.read(os.path.join(self.data_dir, 'data_config.ini'))
-        # config_dict = {}
-        # for key, value in config['data'].items():
-            # # we only have boolean and int config values at the moment
-            # if value in ['True', 'False']:
-                # config_dict[key] = config.getboolean('data', key)
-            # else:
-                # config_dict[key] = config.getint('data', key)
-        # if self.verbose:
+        if self.verbose:
+            f = h5py.File(self.data, 'r')
+            print('\nTraining data shape: {}'.format(f['/data/X'].shape[:2]))
+            f.close()
+            if self.val_data:
+                f = h5py.File(self.val_data, 'r')
+                print('Validation data shape: {}\n'.format(f['/data/X'].shape[:2]))
+                f.close()
             # print('\n Data config:')
             # pprint(config_dict)
             # print()
