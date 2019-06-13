@@ -23,21 +23,24 @@ class SaveEveryEpoch(Callback):
         self.model.save('model' + str(epoch) + '.h5')
 
 # used for development
-TRUNCATE = 100
+TRUNCATE = 10000
 
 class Generators(object):
-    def _gen_data(self, file_path, shuffle, batch_size=2**2):
-        f = h5py.File(file_path, 'r')
-        n_seq = f['/data/X'].shape[0]
+    def __init__(self, h5_train, h5_val):
+        self.h5_train = h5_train
+        self.h5_val = h5_val
+
+    def _gen_data(self, h5_file, shuffle, batch_size=2**2):
+        n_seq = h5_file['/data/X'].shape[0]
         X, y, sample_weights = [], [], []
         while True:
             seq_indexes = list(range(n_seq))
             if shuffle:
                 random.shuffle(seq_indexes)
             for i in seq_indexes:
-                X.append(f['/data/X'][i])
-                y.append(f['/data/y'][i])
-                sample_weights.append(f['/data/sample_weights'][i])
+                X.append(h5_file['/data/X'][i])
+                y.append(h5_file['/data/y'][i])
+                sample_weights.append(h5_file['/data/sample_weights'][i])
                 while len(X) == batch_size:
                     yield (
                         np.stack(X, axis=0)[:, :TRUNCATE, :],
@@ -46,13 +49,13 @@ class Generators(object):
                     )
                     X, y, sample_weights = [], [], []
 
-    def gen_training_data(self, file_path, batch_size=2**2):
-        gen = self._gen_data(file_path, True, batch_size)
+    def gen_training_data(self, batch_size=2**2):
+        gen = self._gen_data(self.h5_train, True, batch_size)
         while True:
             yield next(gen)
 
-    def gen_training_data(self, file_path, batch_size=2**2):
-        gen = self._gen_data(file_path, False, batch_size)
+    def gen_validation_data(self, batch_size=2**2):
+        gen = self._gen_data(self.h5_val, False, batch_size)
         while True:
             yield next(gen)
 
@@ -90,13 +93,13 @@ class HelixerModel(ABC):
             print()
             pprint(args)
 
+        self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
+        self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
+        self.train_shape = self.h5_train['/data/X'].shape
+        self.val_shape = self.h5_val['/data/X'].shape
         if self.verbose:
-            f = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
-            print('\nTraining data shape: {}'.format(f['/data/X'].shape[:2]))
-            f.close()
-            f = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
-            print('Validation data shape: {}\n'.format(f['/data/X'].shape[:2]))
-            f.close()
+            print('\nTraining data shape: {}'.format(self.train_shape[:2]))
+            print('Validation data shape: {}\n'.format(self.val_shape[:2]))
             # print('\n Data config:')
             # pprint(config_dict)
             # print()
@@ -163,18 +166,12 @@ class HelixerModel(ABC):
 
         self.compile_model(model)
 
-        generators = Generators()
-        # run validation generator once first to avoid race conditions due to same file access
-        # print('\nstart loading validation data')
-        # val_gen = generators.gen_validation_data()
-        # next(val_gen)
-        # print('validation data loaded\n')
-
-        model.fit_generator(generator=generators.gen_training_data(self.data, self.batch_size),
-                            steps_per_epoch=10,
+        generators = Generators(self.h5_train, self.h5_val)
+        model.fit_generator(generator=generators.gen_training_data(self.batch_size),
+                            steps_per_epoch=self.train_shape[0] // self.batch_size,
                             epochs=self.epochs,
-                            # validation_data=val_gen,
-                            # validation_steps=1,
+                            validation_data=generators.gen_validation_data(self.batch_size),
+                            validation_steps=self.val_shape[0] // self.batch_size,
                             callbacks=self.generate_callbacks(),
                             # do not use without keras.utils.Sequence
                             # use_multiprocessing=True,
@@ -184,6 +181,9 @@ class HelixerModel(ABC):
         best_val_acc = max(model.history.history['val_acc'])
         if self.nni:
             nni.report_final_result(best_val_acc)
+
+        self.h5_train.close()
+        self.h5_val.close()
 
         # print the overall summary
         # self.training_summary()

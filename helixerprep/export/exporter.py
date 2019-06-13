@@ -1,6 +1,6 @@
 import os
 import h5py
-from sklearn.model_selection import train_test_split
+import copy
 import numpy as np
 import random
 
@@ -15,7 +15,9 @@ from .numerify import CoordNumerifier
 class ExportController(object):
     def __init__(self, db_path_in, data_dir):
         self.db_path_in = db_path_in
-        if os.listdir(data_dir):
+        if not os.path.isdir(data_dir):
+            os.mkdir(data_dir)
+        elif os.listdir(data_dir):
             print('WARNING: directory not empty')
         self.h5_train = h5py.File(os.path.join(data_dir, 'training_data.h5'), 'w')
         self.h5_val = h5py.File(os.path.join(data_dir, 'validation_data.h5'), 'w')
@@ -80,8 +82,23 @@ class ExportController(object):
                 h5_file['/data/' + dset_key][old_len:] = data
             h5_file.flush()
 
+        def split_data(data_arrays, test_size=0.2):
+            """Basically does the same as sklearn.model_selection.train_test_split except
+            it does not always fill the test arrays with at least one element.
+            Expects the arrays to be in the order: inputs, labels, label_masks
+            """
+            train_arrays, val_arrays = [[], [], []], [[], [], []]
+            for i in range(len(data_arrays[0])):
+                if random.random() > test_size:
+                    for j in range(3):
+                        train_arrays[j].append(data_arrays[j][i])
+                else:
+                    for j in range(3):
+                        val_arrays[j].append(data_arrays[j][i])
+            return train_arrays, val_arrays
+
         n_seq_total = 0  # total number of individual sequences
-        all_coords = self.session.query(Coordinate).all()[:5]
+        all_coords = self.session.query(Coordinate).all()[25:]
         print('{} coordinates chosen to numerify'.format(len(all_coords)))
         for i, coord in enumerate(all_coords):
             if coord.features:
@@ -99,17 +116,17 @@ class ExportController(object):
                     n_masked_bases += sum(
                         [len(m) - np.count_nonzero(m) for m in coord_data['label_masks']])
                 # split and save
-                split_data = train_test_split(inputs, labels, label_masks, test_size=0.2,
-                                              random_state=seed)
-                save_data(self.h5_train, split_data[0], split_data[2], split_data[4])
-                save_data(self.h5_val, split_data[1], split_data[3], split_data[5])
+                train_data, val_data = split_data([inputs, labels, label_masks], test_size=0.2)
+                if train_data[0]:
+                    save_data(self.h5_train, *train_data)
+                if val_data[0]:
+                    save_data(self.h5_val, *val_data)
                 masked_bases_percent = n_masked_bases / (coord.end * 2) * 100
-                print(
-                    ('{}/{} Numerified {} of species {} with {} features '
-                     'and a base level error rate of {:.2f}%').format(i + 1, len(all_coords), coord,
-                                                                      coord.genome.species,
-                                                                      len(coord.features),
-                                                                      masked_bases_percent))
+                print(('{}/{} Numerified {} of species {} with {} features in {} chunks '
+                       '(train: {}, test: {}) and a base level error rate of {:.2f}%').format(
+                           i + 1, len(all_coords), coord, coord.genome.species, len(coord.features),
+                           len(coord_data['inputs'] * 2), len(train_data[0]), len(val_data[0]),
+                           masked_bases_percent))
             else:
                 print('{}/{} Skipping {} of species {} as it has no features'.format(
                     i + 1, len(all_coords), coord, coord.genome.species))
