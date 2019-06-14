@@ -1,0 +1,22 @@
+authorName: default
+experimentName: helixer_test
+trialConcurrency: 1
+maxExecDuration: 5h
+maxTrialNum: 10
+#choice: local, remote, pai
+trainingServicePlatform: local
+searchSpacePath: search_space.json
+#choice: true, false
+useAnnotation: false
+tuner:
+  #choice: TPE, Random, Anneal, Evolution, BatchTuner, BOHB
+  #SMAC (SMAC should be installed through nnictl)
+  builtinTunerName: TPE
+  classArgs:
+    #choice: maximize, minimize
+    optimize_mode: maximize
+trial:
+    # command: /home/felix/git/HelixerPrep/helixerprep/prediction/LSTMModel.py -v -d /home/felix/Desktop/h5_data -p 4
+  command: /home/felix/git/HelixerPrep/helixerprep/prediction/LSTMModel.py -v -d /home/felix/Desktop/h5_data -p 4 --nni -e 3
+  codeDir: .
+  gpuNum: 2

@@ -2,6 +2,7 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from abc import ABC, abstractmethod
+import nni
 import os
 import sys
 import h5py
@@ -19,11 +20,22 @@ from keras import optimizers
 
 
 class SaveEveryEpoch(Callback):
+    def __init__(self):
+        super(SaveEveryEpoch, self).__init__()
+
     def on_epoch_end(self, epoch, _):
         self.model.save('model' + str(epoch) + '.h5')
 
+
+class ReportIntermediateResult(Callback):
+    def __init__(self):
+        super(ReportIntermediateResult, self).__init__()
+
+    def on_epoch_end(self, epoch, logs=None):
+        nni.report_intermediate_result(logs['val_acc'])
+
 # used for development
-TRUNCATE = 50000
+TRUNCATE = 10
 
 class Generators(object):
     def __init__(self, h5_train, h5_val):
@@ -76,7 +88,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('-loss', '--loss', type=str, default='')
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
-        self.parser.add_argument('-see', '--save-every-epoch', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
         self.parser.add_argument('-plot', '--plot', action='store_true')
         self.parser.add_argument('-nni', '--nni', action='store_true')
@@ -86,7 +97,6 @@ class HelixerModel(ABC):
         self.__dict__.update(args)
 
         if self.nni:
-            import nni
             hyperopt_args = nni.get_next_parameter()
             self.__dict__.update(hyperopt_args)
         if self.verbose:
@@ -109,17 +119,11 @@ class HelixerModel(ABC):
         callbacks = [
             History(),
             CSVLogger('history.log'),
-            # EarlyStopping(monitor='val_loss', patience=self.patience),
+            EarlyStopping(monitor='val_acc', patience=self.patience, verbose=1),
+            ModelCheckpoint(self.save_model_path, monitor='val_acc', save_best_only=True, verbose=0)
         ]
-
-        if self.save_every_epoch:
-            callbacks.append(SaveEveryEpoch())
-        else:
-            checkpoint_cb = ModelCheckpoint(self.save_model_path,
-                                            monitor='val_acc',
-                                            save_best_only=True,
-                                            verbose=0)
-            callbacks.append(checkpoint_cb)
+        if self.nni:
+            callbacks.append(ReportIntermediateResult())
         return callbacks
 
     @abstractmethod
@@ -169,9 +173,11 @@ class HelixerModel(ABC):
         generators = Generators(self.h5_train, self.h5_val)
         model.fit_generator(generator=generators.gen_training_data(self.batch_size),
                             steps_per_epoch=self.train_shape[0] // self.batch_size,
+                            # steps_per_epoch=10,
                             epochs=self.epochs,
                             validation_data=generators.gen_validation_data(self.batch_size),
                             validation_steps=self.val_shape[0] // self.batch_size,
+                            # validation_steps=1,
                             callbacks=self.generate_callbacks(),
                             # do not use without keras.utils.Sequence
                             # use_multiprocessing=True,
