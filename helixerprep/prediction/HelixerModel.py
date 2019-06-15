@@ -17,6 +17,7 @@ from pprint import pprint
 from sklearn.metrics import classification_report, confusion_matrix
 from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
 from keras import optimizers
+from keras import backend as K
 
 
 class SaveEveryEpoch(Callback):
@@ -35,7 +36,7 @@ class ReportIntermediateResult(Callback):
         nni.report_intermediate_result(logs['val_acc'])
 
 # used for development
-TRUNCATE = 10
+TRUNCATE = 100000
 
 class Generators(object):
     def __init__(self, h5_train, h5_val):
@@ -75,8 +76,8 @@ class Generators(object):
 class HelixerModel(ABC):
 
     def __init__(self):
-        tf.logging.set_verbosity(tf.logging.ERROR)
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+        # tf.logging.set_verbosity(tf.logging.ERROR)
+        # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('-d', '--data_dir', required=True, type=str, default='')
@@ -126,6 +127,19 @@ class HelixerModel(ABC):
             callbacks.append(ReportIntermediateResult())
         return callbacks
 
+    def set_resources(self, n_cores=8, use_gpu=True, n_gpus=1):
+        if use_gpu:
+            device_count = {'CPU': n_cores, 'GPU': n_gpus}
+        else:
+            device_count = {'CPU': n_cores, 'GPU': 0}
+
+        config = tf.ConfigProto(intra_op_parallelism_threads=n_cores,
+                                inter_op_parallelism_threads=n_cores,
+                                allow_soft_placement=True,
+                                device_count=device_count)
+        session = tf.Session(config=config)
+        K.set_session(session)
+
     @abstractmethod
     def model(self):
         pass
@@ -143,6 +157,7 @@ class HelixerModel(ABC):
         pass
 
     def run(self):
+        self.set_resources(n_cores=48, use_gpu=True, n_gpus=2)
         model = self.model()
 
         if self.verbose:

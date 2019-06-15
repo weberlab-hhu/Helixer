@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from keras.models import Sequential
-from keras.layers import LSTM, TimeDistributed, Dense
+from keras.layers import CuDNNLSTM, TimeDistributed, Dense
 from HelixerModel import HelixerModel
 
 
@@ -16,8 +16,9 @@ class LSTMModel(HelixerModel):
 
     def model(self):
         model = Sequential()
-        model.add(LSTM(self.units, return_sequences=True, input_shape=(None, 4)))
-        model.add(TimeDistributed(Dense(3, activation='sigmoid')))
+        model.add(CuDNNLSTM(self.units, return_sequences=True, input_shape=(None, 4)))
+        # model.add(TimeDistributed(Dense(3, activation='sigmoid')))
+        model.add(Dense(3, activation='sigmoid'))
         return model
 
     def compile_model(self, model):
