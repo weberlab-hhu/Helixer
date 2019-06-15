@@ -16,7 +16,7 @@ tuner:
     #choice: maximize, minimize
     optimize_mode: maximize
 trial:
-    # command: /home/felix/git/HelixerPrep/helixerprep/prediction/LSTMModel.py -v -d /home/felix/Desktop/h5_data -p 4
-  command: /home/felix/git/HelixerPrep/helixerprep/prediction/LSTMModel.py -v -d /home/felix/Desktop/h5_data -p 4 --nni -e 3
+    # command: /home/felix/git/HelixerPrep/helixerprep/prediction/LSTMModel.py -v -d /home/felix/Desktop/h5_data -p 4 --nni -e 3
+  command: /home/felix-stiehler/git/HelixerPrep/helixerprep/prediction/LSTMModel.py -v -d /home/felix-stiehler/Desktop/h5_data_100K -p 3 --nni -e 10
   codeDir: .
   gpuNum: 2

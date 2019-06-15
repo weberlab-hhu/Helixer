@@ -5,7 +5,7 @@
     },
     "batch_size": {
         "_type": "choice",
-        "_value": [2, 4, 8]
+        "_value": [16, 32, 64]
     },
     "learning_rate": {
         "_type": "choice",

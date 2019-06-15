@@ -76,8 +76,8 @@ class Generators(object):
 class HelixerModel(ABC):
 
     def __init__(self):
-        # tf.logging.set_verbosity(tf.logging.ERROR)
-        # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+        tf.logging.set_verbosity(tf.logging.ERROR)
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('-d', '--data_dir', required=True, type=str, default='')
