@@ -110,13 +110,13 @@ class ExportController(object):
                     coord_data = numerifier.numerify()
                     # filter out sequences that are completely masked as error
                     valid_data = [s.any() for s in coord_data['label_masks']]
-                    filtered_inputs = list(compress(coord_data['inputs'], valid_data))
-                    filtered_labels = list(compress(coord_data['labels'], valid_data))
-                    filtered_label_masks = list(compress(coord_data['label_masks'], valid_data))
+                    coord_data['inputs'] = list(compress(coord_data['inputs'], valid_data))
+                    coord_data['labels'] = list(compress(coord_data['labels'], valid_data))
+                    coord_data['label_masks'] = list(compress(coord_data['label_masks'], valid_data))
                     # add data
-                    inputs += filtered_inputs
-                    labels += filtered_labels
-                    label_masks += filtered_label_masks
+                    inputs += coord_data['inputs']
+                    labels += coord_data['labels']
+                    label_masks += coord_data['label_masks']
                     # keep track of variables
                     n_seq_total += len(coord_data['inputs'])
                     n_masked_bases += sum(
