@@ -14,10 +14,23 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import configparser
 from pprint import pprint
+from functools import partial
 from sklearn.metrics import classification_report, confusion_matrix
 from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
 from keras import optimizers
 from keras import backend as K
+
+def get_col_accuracy_fn(col):
+    def col_accuracy(y_true, y_pred, col):
+        return K.cast(K.equal(y_true[:, :, col], K.round(y_pred[:, :, col])), K.floatx())
+    fn = partial(col_accuracy, col=col)
+    if col == 0:
+        fn.__name__ = 'acc_t'
+    elif col == 1:
+        fn.__name__ = 'acc_c'
+    elif col == 2:
+        fn.__name__ = 'acc_i'
+    return fn
 
 
 class SaveEveryEpoch(Callback):

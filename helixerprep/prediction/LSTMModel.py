@@ -3,8 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from keras.models import Sequential
-from keras.layers import CuDNNLSTM, TimeDistributed, Dense
-from HelixerModel import HelixerModel
+from keras.layers import LSTM, CuDNNLSTM, TimeDistributed, Dense
+from HelixerModel import HelixerModel, get_col_accuracy_fn
 
 
 class LSTMModel(HelixerModel):
@@ -17,6 +17,7 @@ class LSTMModel(HelixerModel):
     def model(self):
         model = Sequential()
         model.add(CuDNNLSTM(self.units, return_sequences=True, input_shape=(None, 4)))
+        # model.add(LSTM(self.units, return_sequences=True, input_shape=(None, 4)))
         # model.add(TimeDistributed(Dense(3, activation='sigmoid')))
         model.add(Dense(3, activation='sigmoid'))
         return model
@@ -25,7 +26,12 @@ class LSTMModel(HelixerModel):
         model.compile(optimizer=self.optimizer,
                       loss='binary_crossentropy',
                       sample_weight_mode='temporal',
-                      metrics=['accuracy'])
+                      metrics=[
+                          'accuracy',
+                          get_col_accuracy_fn(0),
+                          get_col_accuracy_fn(1),
+                          get_col_accuracy_fn(2),
+                      ])
 
     def plot_history(self, history):
         fig, axes = plt.subplots(len(histories),
