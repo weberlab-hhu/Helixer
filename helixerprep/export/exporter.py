@@ -3,6 +3,7 @@ import h5py
 import copy
 import numpy as np
 import random
+from itertools import compress
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -107,10 +108,15 @@ class ExportController(object):
                 for is_plus_strand in [True, False]:
                     numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size)
                     coord_data = numerifier.numerify()
+                    # filter out sequences that are completely masked as error
+                    valid_data = [s.any() for s in coord_data['label_masks']]
+                    filtered_inputs = list(compress(coord_data['inputs'], valid_data))
+                    filtered_labels = list(compress(coord_data['labels'], valid_data))
+                    filtered_label_masks = list(compress(coord_data['label_masks'], valid_data))
                     # add data
-                    inputs += coord_data['inputs']
-                    labels += coord_data['labels']
-                    label_masks += coord_data['label_masks']
+                    inputs += filtered_inputs
+                    labels += filtered_labels
+                    label_masks += filtered_label_masks
                     # keep track of variables
                     n_seq_total += len(coord_data['inputs'])
                     n_masked_bases += sum(
