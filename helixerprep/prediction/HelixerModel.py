@@ -33,10 +33,11 @@ class ReportIntermediateResult(Callback):
         super(ReportIntermediateResult, self).__init__()
 
     def on_epoch_end(self, epoch, logs=None):
-        nni.report_intermediate_result(logs['val_acc'])
+        nni.report_intermediate_result(logs['val_loss'])
 
 # used for development
 TRUNCATE = 100000
+# TRUNCATE = 100
 
 class Generators(object):
     def __init__(self, h5_train, h5_val):
@@ -199,9 +200,9 @@ class HelixerModel(ABC):
                             # workers=4,
                             verbose=True)
 
-        best_val_acc = max(model.history.history['val_acc'])
+        best_val_loss = min(model.history.history['val_loss'])
         if self.nni:
-            nni.report_final_result(best_val_acc)
+            nni.report_final_result(best_val_loss)
 
         self.h5_train.close()
         self.h5_val.close()
