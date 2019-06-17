@@ -98,7 +98,6 @@ class ExportController(object):
                         val_arrays[j].append(data_arrays[j][i])
             return train_arrays, val_arrays
 
-        n_seq_total = 0  # total number of individual sequences
         all_coords = self.session.query(Coordinate).all()
         print('{} coordinates chosen to numerify'.format(len(all_coords)))
         for i, coord in enumerate(all_coords):
@@ -108,6 +107,9 @@ class ExportController(object):
                 for is_plus_strand in [True, False]:
                     numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size)
                     coord_data = numerifier.numerify()
+                    # keep track of variables
+                    n_masked_bases += sum(
+                        [len(m) - np.count_nonzero(m) for m in coord_data['label_masks']])
                     # filter out sequences that are completely masked as error
                     valid_data = [s.any() for s in coord_data['label_masks']]
                     coord_data['inputs'] = list(compress(coord_data['inputs'], valid_data))
@@ -117,10 +119,6 @@ class ExportController(object):
                     inputs += coord_data['inputs']
                     labels += coord_data['labels']
                     label_masks += coord_data['label_masks']
-                    # keep track of variables
-                    n_seq_total += len(coord_data['inputs'])
-                    n_masked_bases += sum(
-                        [len(m) - np.count_nonzero(m) for m in coord_data['label_masks']])
                 # split and save
                 train_data, val_data = split_data([inputs, labels, label_masks], test_size=0.2)
                 if train_data[0]:
@@ -131,7 +129,7 @@ class ExportController(object):
                 print(('{}/{} Numerified {} of species {} with {} features in {} chunks '
                        '(train: {}, test: {}) and a base level error rate of {:.2f}%').format(
                            i + 1, len(all_coords), coord, coord.genome.species, len(coord.features),
-                           len(coord_data['inputs'] * 2), len(train_data[0]), len(val_data[0]),
+                           len(inputs), len(train_data[0]), len(val_data[0]),
                            masked_bases_percent))
             else:
                 print('{}/{} Skipping {} of species {} as it has no features'.format(
