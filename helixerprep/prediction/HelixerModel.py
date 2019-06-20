@@ -103,9 +103,13 @@ class HelixerModel(ABC):
         self.parser.add_argument('-loss', '--loss', type=str, default='')
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
-        self.parser.add_argument('-v', '--verbose', action='store_true')
+        self.parser.add_argument('-fp', '--float-precision', type=str, default='float32')
+        self.parser.add_argument('-gpus', '--gpus', type=int, default=1)
+        self.parser.add_argument('-cpus', '--cpus', type=int, default=8)
+        self.parser.add_argument('-only-cpu', '--only-cpu', action='store_true')
         self.parser.add_argument('-plot', '--plot', action='store_true')
         self.parser.add_argument('-nni', '--nni', action='store_true')
+        self.parser.add_argument('-v', '--verbose', action='store_true')
 
     def parse_args(self):
         args = vars(self.parser.parse_args())
@@ -141,14 +145,16 @@ class HelixerModel(ABC):
             callbacks.append(ReportIntermediateResult())
         return callbacks
 
-    def set_resources(self, n_cores=8, use_gpu=True, n_gpus=1):
-        if use_gpu:
-            device_count = {'CPU': n_cores, 'GPU': n_gpus}
-        else:
-            device_count = {'CPU': n_cores, 'GPU': 0}
+    def set_resources(self, n_cpus=8, use_gpu=True, n_gpus=1, fp_precision='float32'):
+        K.set_floatx(fp_precision)
 
-        config = tf.ConfigProto(intra_op_parallelism_threads=n_cores,
-                                inter_op_parallelism_threads=n_cores,
+        if use_gpu:
+            device_count = {'CPU': n_cpus, 'GPU': n_gpus}
+        else:
+            device_count = {'CPU': n_cpus, 'GPU': 0}
+
+        config = tf.ConfigProto(intra_op_parallelism_threads=n_cpus,
+                                inter_op_parallelism_threads=n_cpus,
                                 allow_soft_placement=True,
                                 device_count=device_count)
         session = tf.Session(config=config)
@@ -171,7 +177,10 @@ class HelixerModel(ABC):
         pass
 
     def run(self):
-        self.set_resources(n_cores=48, use_gpu=True, n_gpus=2)
+        self.set_resources(n_cpus=self.cpus,
+                           use_gpu=not self.only_cpu,
+                           n_gpus=self.gpus,
+                           fp_precision=self.float_precision)
         model = self.model()
 
         if self.verbose:
