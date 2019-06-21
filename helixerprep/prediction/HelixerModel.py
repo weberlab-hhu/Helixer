@@ -94,9 +94,10 @@ class HelixerModel(ABC):
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         self.parser = argparse.ArgumentParser()
-        self.parser.add_argument('-d', '--data_dir', default='')
+        self.parser.add_argument('-d', '--data_dir', type=str, default='')
         self.parser.add_argument('-p', '--patience', type=int, default=10)
         self.parser.add_argument('-sm', '--save-model-path', type=str, default='./best_model.h5')
+        self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
         self.parser.add_argument('-bs', '--batch-size', type=int, default=8)
         self.parser.add_argument('-opt', '--optimizer', type=str, default='adam')
@@ -139,7 +140,7 @@ class HelixerModel(ABC):
             History(),
             CSVLogger('history.log'),
             EarlyStopping(monitor='val_loss', patience=self.patience, verbose=1),
-            ModelCheckpoint(self.save_model_path, monitor='val_loss', save_best_only=True, verbose=0)
+            ModelCheckpoint(self.save_model_path, monitor='val_loss', save_best_only=True, verbose=1)
         ]
         if self.nni:
             callbacks.append(ReportIntermediateResult())
@@ -168,14 +169,6 @@ class HelixerModel(ABC):
     def compile_model(self, model):
         pass
 
-    @abstractmethod
-    def plot_history(self, history):
-        pass
-
-    @abstractmethod
-    def training_summary(self):
-        pass
-
     def run(self):
         self.set_resources(n_cpus=self.cpus,
                            use_gpu=not self.only_cpu,
@@ -194,42 +187,39 @@ class HelixerModel(ABC):
             print('Plotted to model.png')
             sys.exit()
 
-        if self.optimizer == 'adam':
-            self.optimizer = optimizers.Adam(lr=self.learning_rate,
-                                             clipnorm=self.clip_norm)
-        elif self.optimizer == 'rmsprop':
-            self.optimizer = optimizers.RMSprop(lr=self.learning_rate,
-                                                clipnorm=self.clip_norm)
-        elif self.optimizer == 'adagrad':
-            print('learning rate not changed from default for adagrad')
-            self.optimizer = optimizers.Adagrad(clipnorm=self.clip_norm)
-        else:
-            raise ValueError('Unknown Optimizer')
+        # we either train or predict
+        if not self.load_model_path:
+            if self.optimizer == 'adam':
+                self.optimizer = optimizers.Adam(lr=self.learning_rate,
+                                                 clipnorm=self.clip_norm)
+            elif self.optimizer == 'rmsprop':
+                self.optimizer = optimizers.RMSprop(lr=self.learning_rate,
+                                                    clipnorm=self.clip_norm)
+            elif self.optimizer == 'adagrad':
+                print('learning rate not changed from default for adagrad')
+                self.optimizer = optimizers.Adagrad(clipnorm=self.clip_norm)
+            else:
+                raise ValueError('Unknown Optimizer')
 
-        self.compile_model(model)
+            self.compile_model(model)
 
-        generators = Generators(self.h5_train, self.h5_val)
-        model.fit_generator(generator=generators.gen_training_data(self.batch_size),
-                            steps_per_epoch=self.train_shape[0] // self.batch_size,
-                            # steps_per_epoch=10,
-                            epochs=self.epochs,
-                            validation_data=generators.gen_validation_data(self.batch_size),
-                            validation_steps=self.val_shape[0] // self.batch_size,
-                            # validation_steps=1,
-                            callbacks=self.generate_callbacks(),
-                            # do not use without keras.utils.Sequence
-                            # use_multiprocessing=True,
-                            # workers=4,
-                            verbose=True)
+            generators = Generators(self.h5_train, self.h5_val)
+            model.fit_generator(generator=generators.gen_training_data(self.batch_size),
+                                steps_per_epoch=self.train_shape[0] // self.batch_size,
+                                # steps_per_epoch=10,
+                                epochs=self.epochs,
+                                validation_data=generators.gen_validation_data(self.batch_size),
+                                validation_steps=self.val_shape[0] // self.batch_size,
+                                # validation_steps=1,
+                                callbacks=self.generate_callbacks(),
+                                # do not use without keras.utils.Sequence
+                                # use_multiprocessing=True,
+                                # workers=4,
+                                verbose=True)
 
-        best_val_loss = min(model.history.history['val_loss'])
-        if self.nni:
-            nni.report_final_result(best_val_loss)
+            best_val_loss = min(model.history.history['val_loss'])
+            if self.nni:
+                nni.report_final_result(best_val_loss)
 
         self.h5_train.close()
         self.h5_val.close()
-
-        # print the overall summary
-        # self.training_summary()
-        # plot the collected history
-        # self.plot_histor(collected_histories)
