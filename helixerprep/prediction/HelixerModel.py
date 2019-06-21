@@ -224,12 +224,27 @@ class HelixerModel(ABC):
         # predict instead of train
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
+            if os.path.isfile(self.prediction_output_path):
+                print('{} already existing and will be overridden.'.format(
+                    self.prediction_output_path))
+
             self.h5_test = h5py.File(self.test_data, 'r')
             self.test_shape = self.h5_test['/data/X'].shape
             if self.verbose:
                 print('\nTest data shape: {}'.format(self.test_shape[:2]))
 
+            predictions = model.predict_generator(generator=self.gen_test_data(),
+                                                  # steps=self.test_shape[0] // self.batch_size,
+                                                  steps=2,
+                                                  verbose=True)
+
+            h5_model = h5py.File(self.load_model_path, 'r')
+            pred_out = h5py.File(self.prediction_output_path, 'w')
+            pred_out.create_dataset('/predictions', data=predictions, compression='lzf',
+                                    shuffle=True)
+            # add model config to predictions
+            pred_out.attrs['model_config'] = h5_model.attrs['model_config']
+
+            h5_model.close()
+            pred_out.close()
             self.h5_test.close()
-
-
-
