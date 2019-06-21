@@ -94,7 +94,7 @@ class HelixerModel(ABC):
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         self.parser = argparse.ArgumentParser()
-        self.parser.add_argument('-d', '--data_dir', required=True, type=str, default='')
+        self.parser.add_argument('-d', '--data_dir', default='')
         self.parser.add_argument('-p', '--patience', type=int, default=10)
         self.parser.add_argument('-sm', '--save-model-path', type=str, default='./best_model.h5')
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
@@ -138,8 +138,8 @@ class HelixerModel(ABC):
         callbacks = [
             History(),
             CSVLogger('history.log'),
-            EarlyStopping(monitor='val_acc', patience=self.patience, verbose=1),
-            ModelCheckpoint(self.save_model_path, monitor='val_acc', save_best_only=True, verbose=0)
+            EarlyStopping(monitor='val_loss', patience=self.patience, verbose=1),
+            ModelCheckpoint(self.save_model_path, monitor='val_loss', save_best_only=True, verbose=0)
         ]
         if self.nni:
             callbacks.append(ReportIntermediateResult())
