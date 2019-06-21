@@ -48,44 +48,6 @@ class ReportIntermediateResult(Callback):
     def on_epoch_end(self, epoch, logs=None):
         nni.report_intermediate_result(logs['val_loss'])
 
-# used for development
-TRUNCATE = 100000
-# TRUNCATE = 100
-
-class Generators(object):
-    def __init__(self, h5_train, h5_val):
-        self.h5_train = h5_train
-        self.h5_val = h5_val
-
-    def _gen_data(self, h5_file, shuffle, batch_size=2**2):
-        n_seq = h5_file['/data/X'].shape[0]
-        X, y, sample_weights = [], [], []
-        while True:
-            seq_indexes = list(range(n_seq))
-            if shuffle:
-                random.shuffle(seq_indexes)
-            for i in seq_indexes:
-                X.append(h5_file['/data/X'][i])
-                y.append(h5_file['/data/y'][i])
-                sample_weights.append(h5_file['/data/sample_weights'][i])
-                while len(X) == batch_size:
-                    yield (
-                        np.stack(X, axis=0)[:, :TRUNCATE, :],
-                        np.stack(y, axis=0)[:, :TRUNCATE, :],
-                        np.stack(sample_weights, axis=0)[:, :TRUNCATE],
-                    )
-                    X, y, sample_weights = [], [], []
-
-    def gen_training_data(self, batch_size=2**2):
-        gen = self._gen_data(self.h5_train, True, batch_size)
-        while True:
-            yield next(gen)
-
-    def gen_validation_data(self, batch_size=2**2):
-        gen = self._gen_data(self.h5_val, False, batch_size)
-        while True:
-            yield next(gen)
-
 
 class HelixerModel(ABC):
 
@@ -95,19 +57,25 @@ class HelixerModel(ABC):
 
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('-d', '--data_dir', type=str, default='')
-        self.parser.add_argument('-p', '--patience', type=int, default=10)
         self.parser.add_argument('-sm', '--save-model-path', type=str, default='./best_model.h5')
-        self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
+        # training params
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
+        self.parser.add_argument('-p', '--patience', type=int, default=10)
         self.parser.add_argument('-bs', '--batch-size', type=int, default=8)
         self.parser.add_argument('-opt', '--optimizer', type=str, default='adam')
         self.parser.add_argument('-loss', '--loss', type=str, default='')
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
+        # testing
+        self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
+        self.parser.add_argument('-td', '--test-data', type=str, default='')
+        self.parser.add_argument('-po', '--prediction-output-path', type=str, default='predictions.h5')
+        # resources
         self.parser.add_argument('-fp', '--float-precision', type=str, default='float32')
         self.parser.add_argument('-gpus', '--gpus', type=int, default=1)
         self.parser.add_argument('-cpus', '--cpus', type=int, default=8)
         self.parser.add_argument('-only-cpu', '--only-cpu', action='store_true')
+        # misc flags
         self.parser.add_argument('-plot', '--plot', action='store_true')
         self.parser.add_argument('-nni', '--nni', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
@@ -122,18 +90,6 @@ class HelixerModel(ABC):
         if self.verbose:
             print()
             pprint(args)
-
-        self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
-        self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
-        self.train_shape = self.h5_train['/data/X'].shape
-        self.val_shape = self.h5_val['/data/X'].shape
-        if self.verbose:
-            print('\nTraining data shape: {}'.format(self.train_shape[:2]))
-            print('Validation data shape: {}\n'.format(self.val_shape[:2]))
-            # print('\n Data config:')
-            # pprint(config_dict)
-            # print()
-        # self.__dict__.update(config_dict)
 
     def generate_callbacks(self):
         callbacks = [
@@ -160,6 +116,40 @@ class HelixerModel(ABC):
                                 device_count=device_count)
         session = tf.Session(config=config)
         K.set_session(session)
+
+    def _gen_data(self, h5_file, shuffle):
+        n_seq = h5_file['/data/X'].shape[0]
+        X, y, sample_weights = [], [], []
+        while True:
+            seq_indexes = list(range(n_seq))
+            if shuffle:
+                random.shuffle(seq_indexes)
+            for i in seq_indexes:
+                X.append(h5_file['/data/X'][i])
+                y.append(h5_file['/data/y'][i])
+                sample_weights.append(h5_file['/data/sample_weights'][i])
+                while len(X) == self.batch_size:
+                    yield (
+                        np.stack(X, axis=0),
+                        np.stack(y, axis=0),
+                        np.stack(sample_weights, axis=0)
+                    )
+                    X, y, sample_weights = [], [], []
+
+    def gen_training_data(self):
+        gen = self._gen_data(self.h5_train, True)
+        while True:
+            yield next(gen)
+
+    def gen_validation_data(self):
+        gen = self._gen_data(self.h5_val, False)
+        while True:
+            yield next(gen)
+
+    def gen_test_data(self):
+        gen = self._gen_data(self.h5_test, False)
+        while True:
+            yield next(gen)
 
     @abstractmethod
     def model(self):
@@ -189,6 +179,14 @@ class HelixerModel(ABC):
 
         # we either train or predict
         if not self.load_model_path:
+            self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
+            self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
+            self.train_shape = self.h5_train['/data/X'].shape
+            self.val_shape = self.h5_val['/data/X'].shape
+            if self.verbose:
+                print('\nTraining data shape: {}'.format(self.train_shape[:2]))
+                print('Validation data shape: {}\n'.format(self.val_shape[:2]))
+
             if self.optimizer == 'adam':
                 self.optimizer = optimizers.Adam(lr=self.learning_rate,
                                                  clipnorm=self.clip_norm)
@@ -203,12 +201,11 @@ class HelixerModel(ABC):
 
             self.compile_model(model)
 
-            generators = Generators(self.h5_train, self.h5_val)
-            model.fit_generator(generator=generators.gen_training_data(self.batch_size),
+            model.fit_generator(generator=self.gen_training_data(),
                                 steps_per_epoch=self.train_shape[0] // self.batch_size,
                                 # steps_per_epoch=10,
                                 epochs=self.epochs,
-                                validation_data=generators.gen_validation_data(self.batch_size),
+                                validation_data=self.gen_validation_data(),
                                 validation_steps=self.val_shape[0] // self.batch_size,
                                 # validation_steps=1,
                                 callbacks=self.generate_callbacks(),
@@ -221,5 +218,18 @@ class HelixerModel(ABC):
             if self.nni:
                 nni.report_final_result(best_val_loss)
 
-        self.h5_train.close()
-        self.h5_val.close()
+            self.h5_train.close()
+            self.h5_val.close()
+
+        # predict instead of train
+        else:
+            assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
+            self.h5_test = h5py.File(self.test_data, 'r')
+            self.test_shape = self.h5_test['/data/X'].shape
+            if self.verbose:
+                print('\nTest data shape: {}'.format(self.test_shape[:2]))
+
+            self.h5_test.close()
+
+
+
