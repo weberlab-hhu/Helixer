@@ -1,7 +1,4 @@
 #! /usr/bin/env python3
-import numpy as np
-import matplotlib.pyplot as plt
-
 from keras.models import Sequential
 from keras.layers import LSTM, CuDNNLSTM, TimeDistributed, Dense
 from HelixerModel import HelixerModel, get_col_accuracy_fn

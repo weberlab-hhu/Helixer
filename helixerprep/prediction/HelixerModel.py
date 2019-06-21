@@ -8,17 +8,14 @@ import sys
 import h5py
 import random
 import argparse
-import itertools
 import numpy as np
 import tensorflow as tf
-import matplotlib.pyplot as plt
-import configparser
 from pprint import pprint
 from functools import partial
-from sklearn.metrics import classification_report, confusion_matrix
 from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
 from keras import optimizers
 from keras import backend as K
+
 
 def get_col_accuracy_fn(col):
     def col_accuracy(y_true, y_pred, col):
