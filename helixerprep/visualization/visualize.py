@@ -41,15 +41,17 @@ class Visualization():
         self.errors = np.abs(self.labels - self.predictions)
 
         self.label_masks = np.array(h5_data['/data/sample_weights'][:TRUNCATE]).ravel()
+        self.label_masks = np.repeat(self.label_masks[:, np.newaxis], 3, axis=1)
+        self.label_masks = ([1] - self.label_masks).astype(bool)
 
         fig = Figure(figsize=(self.HEATMAP_SIZE_X/self.DPI, self.HEATMAP_SIZE_Y/self.DPI), dpi=self.DPI)
         ax = fig.add_subplot(111)
-        import pudb; pudb.set_trace()
-        ax = seaborn.heatmap(self.errors[:self.BASE_COUNT_X].T,
+        ax = seaborn.heatmap(self.errors[3000:3000+self.BASE_COUNT_X].T,
                              cmap='RdYlGn_r',
                              center=0.5,
                              square=True,
                              cbar=False,
+                             mask=self.label_masks[3000:3000+self.BASE_COUNT_X].T,
                              xticklabels=False,
                              yticklabels=False,
                              ax=ax)
