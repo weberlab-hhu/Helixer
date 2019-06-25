@@ -2,31 +2,56 @@
 import h5py
 import numpy as np
 import tkinter as tk
+import seaborn
 import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
 from matplotlib.figure import Figure
 
 class Visualization():
-    MARGIN_X = 100
+    PIXEL_SIZE = 20
+    MARGIN_X = 50
     MARGIN_BOTTOM = 100
     HEATMAP_SIZE_X = 1800 - (2 * MARGIN_X)
-    HEATMAP_SIZE_Y = HEATMAP_SIZE_X // (16 / 9) - MARGIN_BOTTOM
-    PIXEL_SIZE = 20
+    HEATMAP_SIZE_Y = PIXEL_SIZE * 3
     BASE_COUNT_X = HEATMAP_SIZE_X // PIXEL_SIZE
+    DPI = 96  # monitor specific
 
     def __init__(self, root, data_path, predictions_path):
         self.root = root
-        self.h5_data = h5py.File(data_path, 'r')
-        self.h5_predictions = h5py.File(predictions_path, 'r')
 
+        # set up GUI
         self.frame = tk.Frame(self.root)
         self.frame.pack()
 
-        f = Figure(figsize=(5,5), dpi=100)
-        a = f.add_subplot(111)
-        a.plot([1,2,3,4,5,6,7,8],[5,6,1,3,8,9,3,5])
+        # only for developement
+        TRUNCATE = 8
 
-        canvas = FigureCanvasTkAgg(f, self.root)
+        # load data
+        h5_data = h5py.File(data_path, 'r')
+        h5_predictions = h5py.File(predictions_path, 'r')
+
+        self.labels = np.array(h5_data['/data/y'][:TRUNCATE])
+        shape = self.labels.shape
+        self.labels = self.labels.reshape((shape[0] * shape[1], shape[2]))
+        # np.swapaxes(self.labels, 0, 1)
+
+        self.predictions = np.array(h5_predictions['/predictions'][:TRUNCATE])
+        shape = self.predictions.shape
+        self.predictions = self.predictions.reshape((shape[0] * shape[1], shape[2]))
+        # np.swapaxes(self.predictions, 0, 1)
+
+        self.label_masks = np.array(h5_data['/data/sample_weights'][:TRUNCATE]).ravel()
+
+        fig = Figure(figsize=(self.HEATMAP_SIZE_X/self.DPI, self.HEATMAP_SIZE_Y/self.DPI), dpi=self.DPI)
+        ax = fig.add_subplot(111)
+        ax = seaborn.heatmap(self.predictions[:self.BASE_COUNT_X].T,
+                             square=True,
+                             cbar=False,
+                             xticklabels=False,
+                             yticklabels=False,
+                             ax=ax)
+
+        canvas = FigureCanvasTkAgg(fig, self.root)
         canvas.show()
         canvas.get_tk_widget().pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
 
