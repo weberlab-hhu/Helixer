@@ -26,13 +26,17 @@ class Visualization():
         # only for developement
         TRUNCATE = 8
 
-        # load data
+        # load and transform data
         h5_data = h5py.File(data_path, 'r')
         h5_predictions = h5py.File(predictions_path, 'r')
 
         self.labels = np.array(h5_data['/data/y'][:TRUNCATE])
         shape = self.labels.shape
         self.labels = self.labels.reshape((shape[0] * shape[1], shape[2]))
+
+        self.labels_str = self.labels.astype(str)
+        self.labels_str[self.labels_str == '0'] = ''
+        self.labels_str[self.labels_str == '1'] = '-'
 
         self.predictions = np.array(h5_predictions['/predictions'][:TRUNCATE])
         shape = self.predictions.shape
@@ -51,7 +55,10 @@ class Visualization():
                              center=0.5,
                              square=True,
                              cbar=False,
-                             mask=self.label_masks[3000:3000+self.BASE_COUNT_X].T,
+                             mask=self.label_masks[2990:2990+self.BASE_COUNT_X].T,
+                             annot=self.labels_str[2990:2990+self.BASE_COUNT_X].T,
+                             fmt='',
+                             annot_kws={'fontweight': 'bold'},
                              xticklabels=False,
                              yticklabels=False,
                              ax=ax)
