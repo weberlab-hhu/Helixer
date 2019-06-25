@@ -19,6 +19,7 @@ class Visualization():
     def __init__(self, root, data_path, predictions_path):
         self.root = root
         self.offset = 0  # of the data
+        self.seq_index = 0
 
         # set up GUI
         self.frame = tk.Frame(self.root)
@@ -35,6 +36,9 @@ class Visualization():
         self.offset_label = tk.Label(self.frame, text=self.offset)
         self.offset_label.pack(side='bottom')
 
+        self.seq_index_label = tk.Label(self.frame, text=0)
+        self.seq_index_label.pack(side='bottom')
+
         # only for developement
         TRUNCATE = 8
 
@@ -43,6 +47,8 @@ class Visualization():
         h5_predictions = h5py.File(predictions_path, 'r')
 
         self.labels = np.array(h5_data['/data/y'][:TRUNCATE])
+        # save chunk length
+        self.chunk_len = self.labels.shape[1]
         shape = self.labels.shape
         self.labels = self.labels.reshape((shape[0] * shape[1], shape[2]))
 
@@ -86,15 +92,20 @@ class Visualization():
 
     def next(self, event):
         self.offset += self.BASE_COUNT_X
+        if self.offset // self.chunk_len > self.seq_index:
+            self.seq_index = self.offset // self.chunk_len
         self.redraw()
 
     def previous(self, event):
         self.offset -= self.BASE_COUNT_X
+        if self.offset // self.chunk_len < self.seq_index:
+            self.seq_index = self.offset // self.chunk_len
         self.redraw()
 
     def redraw(self):
         self.draw_current_heatmap()
         self.offset_label.config(text=str(self.offset))
+        self.seq_index_label.config(text=str(self.seq_index))
 
 
 if __name__ == '__main__':
