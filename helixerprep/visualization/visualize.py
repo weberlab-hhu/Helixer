@@ -18,10 +18,22 @@ class Visualization():
 
     def __init__(self, root, data_path, predictions_path):
         self.root = root
+        self.offset = 0  # of the data
 
         # set up GUI
         self.frame = tk.Frame(self.root)
         self.frame.pack()
+
+        self.next_button = tk.Button(self.frame, text='next')
+        self.next_button.bind('<ButtonPress-1>', self.next)
+        self.next_button.pack(side='left')
+
+        self.previous_button = tk.Button(self.frame, text='previous')
+        self.previous_button.bind('<ButtonPress-1>', self.previous)
+        self.previous_button.pack(side='left')
+
+        self.offset_label = tk.Label(self.frame, text=self.offset)
+        self.offset_label.pack(side='bottom')
 
         # only for developement
         TRUNCATE = 8
@@ -49,31 +61,40 @@ class Visualization():
         self.label_masks = ([1] - self.label_masks).astype(bool)
 
         fig = Figure(figsize=(self.HEATMAP_SIZE_X/self.DPI, self.HEATMAP_SIZE_Y/self.DPI), dpi=self.DPI)
-        ax = fig.add_subplot(111)
-        ax = seaborn.heatmap(self.errors[3000:3000+self.BASE_COUNT_X].T,
-                             cmap='RdYlGn_r',
-                             center=0.5,
-                             square=True,
-                             cbar=False,
-                             mask=self.label_masks[2990:2990+self.BASE_COUNT_X].T,
-                             annot=self.labels_str[2990:2990+self.BASE_COUNT_X].T,
-                             fmt='',
-                             annot_kws={'fontweight': 'bold'},
-                             xticklabels=False,
-                             yticklabels=False,
-                             ax=ax)
+        self.ax = fig.add_subplot(111)
+        self.canvas = FigureCanvasTkAgg(fig, self.root)
+        self.canvas.show()
+        self.canvas.get_tk_widget().pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
 
-        canvas = FigureCanvasTkAgg(fig, self.root)
-        canvas.show()
-        canvas.get_tk_widget().pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
+        self.draw_current_heatmap()
 
-        # GUI elements
-        # self.show_pred_button = tk.Button(self.frame, text='Show Pred')
-        # self.show_pred_button.bind('<ButtonPress-1>', self.show_pred)
-        # self.show_pred_button.pack(side='left')
+    def draw_current_heatmap(self):
+        self.ax.clear()
+        seaborn.heatmap(self.errors[self.offset:self.offset+self.BASE_COUNT_X].T,
+                        cmap='RdYlGn_r',
+                        center=0.5,
+                        square=True,
+                        cbar=False,
+                        mask=self.label_masks[self.offset:self.offset+self.BASE_COUNT_X].T,
+                        annot=self.labels_str[self.offset:self.offset+self.BASE_COUNT_X].T,
+                        fmt='',
+                        annot_kws={'fontweight': 'bold'},
+                        xticklabels=False,
+                        yticklabels=False,
+                        ax=self.ax)
+        self.canvas.draw()
 
-        # self.text = tk.Label(self.frame, text=0)
-        # self.text.pack(side='bottom')
+    def next(self, event):
+        self.offset += self.BASE_COUNT_X
+        self.redraw()
+
+    def previous(self, event):
+        self.offset -= self.BASE_COUNT_X
+        self.redraw()
+
+    def redraw(self):
+        self.draw_current_heatmap()
+        self.offset_label.config(text=str(self.offset))
 
 
 if __name__ == '__main__':
