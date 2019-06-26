@@ -52,8 +52,6 @@ class Visualization():
         self.seq_offset_input.grid(row=2, column=1)
         self.seq_offset_button.grid(row=2, column=2)
 
-
-
         # only for developement
         TRUNCATE = 8
 
@@ -82,7 +80,8 @@ class Visualization():
         self.label_masks = np.repeat(self.label_masks[:, np.newaxis], 3, axis=1)
         self.label_masks = ([1] - self.label_masks).astype(bool)
 
-        fig = Figure(figsize=(self.HEATMAP_SIZE_X/self.DPI, self.HEATMAP_SIZE_Y/self.DPI), dpi=self.DPI)
+        import pudb; pudb.set_trace()
+        fig = Figure(figsize=(self.HEATMAP_SIZE_X/self.DPI, (self.HEATMAP_SIZE_Y + 100)/self.DPI), dpi=self.DPI)
         self.ax = fig.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(fig, self.root)
         self.canvas.draw()
@@ -93,7 +92,9 @@ class Visualization():
     def draw_current_heatmap(self):
         self.ax.clear()
         seaborn.heatmap(self.errors[self.offset:self.offset+self.BASE_COUNT_X].T,
-                        cmap='RdYlGn_r',
+                        vmin=0,
+                        vmax=1,
+                        cmap='bwr',
                         center=0.5,
                         square=True,
                         cbar=False,
