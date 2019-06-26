@@ -4,6 +4,7 @@ import numpy as np
 import tkinter as tk
 import seaborn
 import matplotlib
+import argparse
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
@@ -19,7 +20,7 @@ class Visualization():
     HEATMAP_SIZE_Y = PIXEL_SIZE * 3
     DPI = 96  # monitor specific
 
-    def __init__(self, root, data_path, predictions_path):
+    def __init__(self, root, args):
         self.root = root
         self.offset = 0  # of the data
         self.seq_index = 0
@@ -56,14 +57,11 @@ class Visualization():
         TRUNCATE = 8
 
         # load and transform data
-        h5_data = h5py.File(data_path, 'r')
-        h5_predictions = h5py.File(predictions_path, 'r')
+        h5_data = h5py.File(args.test_data, 'r')
+        h5_predictions = h5py.File(args.predictions, 'r')
 
         self.labels = np.array(h5_data['/data/y'][:TRUNCATE])
         shape = self.labels.shape
-        # save n_seq and chunk_len
-        self.n_seq = shape[0]
-        self.chunk_len = shape[1]
         self.labels = self.labels.reshape((shape[0] * shape[1], shape[2]))
 
         self.labels_str = self.labels.astype(str)
@@ -72,6 +70,10 @@ class Visualization():
 
         self.predictions = np.array(h5_predictions['/predictions'][:TRUNCATE])
         shape = self.predictions.shape
+        # save n_seq and chunk_len from predictions as there are likely a tiny bit fewer
+        # than labels, due to the data generator in keras
+        self.n_seq = shape[0]
+        self.chunk_len = shape[1]
         self.predictions = self.predictions.reshape((shape[0] * shape[1], shape[2]))
 
         self.errors = np.abs(self.labels - self.predictions)
@@ -80,7 +82,6 @@ class Visualization():
         self.label_masks = np.repeat(self.label_masks[:, np.newaxis], 3, axis=1)
         self.label_masks = ([1] - self.label_masks).astype(bool)
 
-        import pudb; pudb.set_trace()
         fig = Figure(figsize=(self.HEATMAP_SIZE_X/self.DPI, (self.HEATMAP_SIZE_Y + 100)/self.DPI), dpi=self.DPI)
         self.ax = fig.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(fig, self.root)
@@ -92,8 +93,8 @@ class Visualization():
     def draw_current_heatmap(self):
         self.ax.clear()
         seaborn.heatmap(self.errors[self.offset:self.offset+self.BASE_COUNT_X].T,
-                        vmin=0,
-                        vmax=1,
+                        vmin=0 + args.colorbar_offset,
+                        vmax=1 - args.colorbar_offset,
                         cmap='bwr',
                         center=0.5,
                         square=True,
@@ -145,12 +146,14 @@ class Visualization():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--test-data', type=str, default='', required=True)
+    parser.add_argument('-p', '--predictions', type=str, default='', required=True)
+    # how to narrow down the vmin/vmax args of the heatmap as predictions are very close to 0
+    parser.add_argument('-cbo', '--colorbar-offset', type=float, default=0.2)
+    args = parser.parse_args()
+
     root = tk.Tk()
-    root.title('root')
-
-    vis = Visualization(root,
-                        data_path='/home/felix/Desktop/h5_data_1K/validation_data.h5',
-                        predictions_path='/home/felix/git/HelixerPrep/helixerprep/prediction/predictions.h5')
-
+    root.title('Helixer Visualization')
+    vis = Visualization(root, args)
     root.mainloop()
-
