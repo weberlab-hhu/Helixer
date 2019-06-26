@@ -231,8 +231,8 @@ class HelixerModel(ABC):
                 print('\nTest data shape: {}'.format(self.test_shape[:2]))
 
             predictions = model.predict_generator(generator=self.gen_test_data(),
-                                                  # steps=self.test_shape[0] // self.batch_size,
-                                                  steps=2,
+                                                  steps=self.test_shape[0] // self.batch_size,
+                                                  # steps=2,
                                                   verbose=True)
 
             h5_model = h5py.File(self.load_model_path, 'r')
