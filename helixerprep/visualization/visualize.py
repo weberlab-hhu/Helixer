@@ -62,12 +62,20 @@ class Visualization():
 
         assert self.chunk_len % self.BASE_COUNT_SCREEN == 0
 
-        fig = Figure(figsize=(self.HEATMAP_SIZE_X/self.DPI, self.HEATMAP_SIZE_Y/self.DPI),
+        fig_main = Figure(figsize=(self.HEATMAP_SIZE_X / self.DPI, self.HEATMAP_SIZE_Y / self.DPI),
                      dpi=self.DPI)
-        self.ax = fig.add_subplot(111)
-        self.canvas = FigureCanvasTkAgg(fig, self.root)
-        self.canvas.draw()
-        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self.ax_main = fig_main.add_subplot(111)
+        self.canvas_main = FigureCanvasTkAgg(fig_main, self.root)
+        self.canvas_main.draw()
+        self.canvas_main.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        fig_summary = Figure(figsize=(self.HEATMAP_SIZE_X / self.DPI,
+                                      self.HEATMAP_SIZE_X * 3/ self.DPI),
+                     dpi=self.DPI)
+        self.ax_summary = fig_summary.add_subplot(111)
+        self.canvas_summary = FigureCanvasTkAgg(fig_summary, self.root)
+        # self.canvas_summary.draw()
+        # self.canvas_summary.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         self.redraw()
 
@@ -108,8 +116,8 @@ class Visualization():
         self.labels_str[self.labels_str == '0'] = ''
         self.labels_str[self.labels_str == '1'] = '-'
 
-    def draw_heatmap(self):
-        self.ax.clear()
+    def draw_main_heatmap(self):
+        self.ax_main.clear()
         # massively speeds up painting
         if np.all(self.labels_str == ''):
             self.labels_str = False
@@ -126,22 +134,47 @@ class Visualization():
                         annot_kws={'fontweight': 'bold'},
                         xticklabels=False,
                         yticklabels=False,
-                        ax=self.ax)
-        self.canvas.draw()
+                        ax=self.ax_main)
+        self.canvas_main.draw()
+
+    def draw_summary_heatmap(self):
+        pass
+        # take masking into account
+        """
+        self.ax_summary.clear()
+        seaborn.heatmap(self.errors,
+                        vmin=0 + args.colorbar_offset,
+                        vmax=1 - args.colorbar_offset,
+                        cmap='bwr',
+                        center=0.5,
+                        square=True,
+                        cbar=False,
+                        mask=self.label_masks,
+                        annot=self.labels_str,
+                        fmt='',
+                        annot_kws={'fontweight': 'bold'},
+                        xticklabels=False,
+                        yticklabels=False,
+                        ax=self.ax_main)
+        self.canvas_main.draw()
+        """
 
     def next(self, event):
         self.offset = (self.offset + self.BASE_COUNT_SCREEN) % self.chunk_len
         if self.offset < self.BASE_COUNT_SCREEN:
             self.seq_index += 1
-        self.redraw()
+            self.redraw(changed_seq=True)
+        else:
+            self.redraw(changed_seq=False)
 
     def previous(self, event):
         if self.offset < self.BASE_COUNT_SCREEN:
             self.offset = self.chunk_len + self.offset - self.BASE_COUNT_SCREEN
             self.seq_index -= 1
+            self.redraw(changed_seq=True)
         else:
             self.offset -= self.BASE_COUNT_SCREEN
-        self.redraw()
+            self.redraw(changed_seq=False)
 
     def go_seq_index(self, event):
         new_seq_index = int(self.seq_index_input.get())
@@ -157,11 +190,13 @@ class Visualization():
             self.offset = new_seq_offset
             self.redraw()
 
-    def redraw(self):
+    def redraw(self, changed_seq=False):
         self.seq_offset_label.config(text=str('base: {}/{}'.format(self.offset, self.chunk_len - 1)))
         self.seq_index_label.config(text=str('seq: {}/{}'.format(self.seq_index, self.n_seq - 1)))
         self.load_sequence()
-        self.draw_heatmap()
+        self.draw_main_heatmap()
+        if changed_seq:
+            self.draw_summary_heatmap()
 
 
 if __name__ == '__main__':
