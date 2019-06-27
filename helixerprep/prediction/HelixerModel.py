@@ -15,6 +15,7 @@ from functools import partial
 from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
 from keras import optimizers
 from keras import backend as K
+from keras.models import load_model
 
 
 def get_col_accuracy_fn(col):
@@ -67,6 +68,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
         self.parser.add_argument('-po', '--prediction-output-path', type=str, default='predictions.h5')
+        self.parser.add_argument('-ev', '--eval', action='store_true')
         # resources
         self.parser.add_argument('-fp', '--float-precision', type=str, default='float32')
         self.parser.add_argument('-gpus', '--gpus', type=int, default=1)
@@ -161,21 +163,21 @@ class HelixerModel(ABC):
                            use_gpu=not self.only_cpu,
                            n_gpus=self.gpus,
                            fp_precision=self.float_precision)
-        model = self.model()
-
-        if self.verbose:
-            print(model.summary())
-        else:
-            print('Total params: {:,}'.format(model.count_params()))
-
-        if self.plot:
-            from keras.utils import plot_model
-            plot_model(model, to_file='model.png')
-            print('Plotted to model.png')
-            sys.exit()
-
         # we either train or predict
         if not self.load_model_path:
+            model = self.model()
+
+            if self.verbose:
+                print(model.summary())
+            else:
+                print('Total params: {:,}'.format(model.count_params()))
+
+            if self.plot:
+                from keras.utils import plot_model
+                plot_model(model, to_file='model.png')
+                print('Plotted to model.png')
+                sys.exit()
+
             self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
             self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
             self.train_shape = self.h5_train['/data/X'].shape
@@ -230,18 +232,31 @@ class HelixerModel(ABC):
             if self.verbose:
                 print('\nTest data shape: {}'.format(self.test_shape[:2]))
 
-            predictions = model.predict_generator(generator=self.gen_test_data(),
-                                                  steps=self.test_shape[0] // self.batch_size,
-                                                  # steps=2,
-                                                  verbose=True)
+            model = load_model(self.load_model_path, custom_objects = {
+                'acc_t': get_col_accuracy_fn(0),
+                'acc_c': get_col_accuracy_fn(1),
+                'acc_i': get_col_accuracy_fn(2)
+            })
 
-            h5_model = h5py.File(self.load_model_path, 'r')
-            pred_out = h5py.File(self.prediction_output_path, 'w')
-            pred_out.create_dataset('/predictions', data=predictions, compression='lzf',
-                                    shuffle=True)
-            # add model config to predictions
-            pred_out.attrs['model_config'] = h5_model.attrs['model_config']
+            if self.eval:
+                model.evaluate_generator(generator=self.gen_test_data(),
+                                         steps=self.test_shape[0] // self.batch_size,
+                                         # steps=2,
+                                         verbose=True)
+            else:
+                predictions = model.predict_generator(generator=self.gen_test_data(),
+                                                      steps=self.test_shape[0] // self.batch_size,
+                                                      # steps=2,
+                                                      verbose=True)
+                predictions = predictions.astype(np.float32)  # in case of predicting with float64
 
-            h5_model.close()
-            pred_out.close()
+                h5_model = h5py.File(self.load_model_path, 'r')
+                pred_out = h5py.File(self.prediction_output_path, 'w')
+                pred_out.create_dataset('/predictions', data=predictions, compression='lzf',
+                                        shuffle=True)
+                # add model config to predictions
+                pred_out.attrs['model_config'] = h5_model.attrs['model_config']
+                pred_out.close()
+                h5_model.close()
+
             self.h5_test.close()
