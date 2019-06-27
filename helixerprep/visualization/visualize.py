@@ -74,10 +74,11 @@ class Visualization():
     def load_sequence(self):
         """loads data for the heatmap and inputs dummy data that serves as margin"""
         def add_dummy_data(dset, new_dset):
+            # insert valid data at every second row
             new_dset[0::2,:] = dset.reshape((self.args.n_rows, self.BASE_COUNT_X, 3))
             # reshape back to properly display in heatmap
-            new_dset = new_dset.reshape(((self.args.n_rows * 2 - 1) * self.BASE_COUNT_X, 3))
-            new_dset = new_dset.reshape((self.BASE_COUNT_X, (self.args.n_rows * 2 - 1) * 3))
+            new_dset = np.swapaxes(new_dset, 1, 2)
+            new_dset = new_dset.reshape((self.args.n_rows * 2 - 1) * 3, self.BASE_COUNT_X)
             return new_dset
 
         off = self.offset
@@ -165,7 +166,7 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--test-data', type=str, default='', required=True)
     parser.add_argument('-p', '--predictions', type=str, default='', required=True)
     # how to narrow down the vmin/vmax args of the heatmap as predictions are very close to 0
-    parser.add_argument('-r', '--n-rows', type=int, default=5)
+    parser.add_argument('-r', '--n-rows', type=int, default=10)
     # parser.add_argument('-rm', '--row-margin', type=int, default=2)
     parser.add_argument('-cbo', '--colorbar-offset', type=float, default=0.2)
     args = parser.parse_args()
