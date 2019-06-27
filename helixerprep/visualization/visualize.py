@@ -110,6 +110,9 @@ class Visualization():
 
     def draw_heatmap(self):
         self.ax.clear()
+        # massively speeds up painting
+        if np.all(self.labels_str == ''):
+            self.labels_str = False
         seaborn.heatmap(self.errors,
                         vmin=0 + args.colorbar_offset,
                         vmax=1 - args.colorbar_offset,
@@ -165,9 +168,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--test-data', type=str, default='', required=True)
     parser.add_argument('-p', '--predictions', type=str, default='', required=True)
+    parser.add_argument('-r', '--n-rows', type=int, default=2)
     # how to narrow down the vmin/vmax args of the heatmap as predictions are very close to 0
-    parser.add_argument('-r', '--n-rows', type=int, default=10)
-    # parser.add_argument('-rm', '--row-margin', type=int, default=2)
     parser.add_argument('-cbo', '--colorbar-offset', type=float, default=0.2)
     args = parser.parse_args()
 
