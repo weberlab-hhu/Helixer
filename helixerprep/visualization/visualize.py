@@ -214,9 +214,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--test-data', type=str, default='', required=True)
     parser.add_argument('-p', '--predictions', type=str, default='', required=True)
-    parser.add_argument('-r', '--n-rows', type=int, default=2)
+    parser.add_argument('-r', '--n-rows', type=int, default=5)
     # how to narrow down the vmin/vmax args of the heatmap as predictions are very close to 0
-    parser.add_argument('-cbo', '--colorbar-offset', type=float, default=0.2)
+    parser.add_argument('-cbo', '--colorbar-offset', type=float, default=0.0)
     args = parser.parse_args()
 
     root = tk.Tk()

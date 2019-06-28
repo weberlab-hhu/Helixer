@@ -8,7 +8,7 @@ from itertools import compress
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from geenuff.base.orm import Coordinate
+from geenuff.base.orm import Coordinate, Genome
 from geenuff.base.helpers import full_db_path
 from .numerify import CoordNumerifier
 
@@ -35,11 +35,7 @@ class ExportController(object):
         self.engine = create_engine(full_db_path(self.db_path_in), echo=False)
         self.session = sessionmaker(bind=self.engine)()
 
-    def export(self, chunk_size, seed=42):
-        """Fetches all Coordinates, calls on functions in numerify.py to split
-        and encode them and then saves the sequences in possibly multiply files
-        of about the size of approx_file_size.
-        """
+    def export(self, chunk_size, genomes=''):
         def save_data(h5_file, inputs, labels, label_masks):
             # zero-pad each sequence to chunk_size
             # this is inefficient if there could be a batch with only sequences smaller than
@@ -104,7 +100,15 @@ class ExportController(object):
                         val_arrays[j].append(data_arrays[j][i])
             return train_arrays, val_arrays
 
-        all_coords = self.session.query(Coordinate).all()
+        if genomes:
+            print('Selecting the following genomes: {}'.format(genomes))
+            all_coords = (self.session.query(Coordinate)
+                         .join(Genome, Genome.id == Coordinate.genome_id)
+                         .filter(Genome.species.in_(genomes))
+                         .all())
+        else:
+            print('Selecting all genomes from {}'.format(self.db_path_in))
+            all_coords = self.session.query(Coordinate).all()
         print('{} coordinates chosen to numerify'.format(len(all_coords)))
         for i, coord in enumerate(all_coords):
             if coord.features:
