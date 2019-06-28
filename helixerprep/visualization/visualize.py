@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 import h5py
+import random
 import numpy as np
 import tkinter as tk
 import seaborn
@@ -40,9 +41,12 @@ class Visualization():
         self.seq_index_input = tk.Entry(self.frame, width=6)
         self.seq_index_button = tk.Button(self.frame, text='go')
         self.seq_index_button.bind('<ButtonPress-1>', self.go_seq_index)
+        self.seq_index_random_button = tk.Button(self.frame, text='random')
+        self.seq_index_random_button.bind('<ButtonPress-1>', self.go_seq_index_random)
         self.seq_index_label.grid(row=1, column=0)
         self.seq_index_input.grid(row=1, column=1)
         self.seq_index_button.grid(row=1, column=2)
+        self.seq_index_random_button.grid(row=1, column=3)
 
         self.seq_offset_label = tk.Label(self.frame)
         self.seq_offset_input = tk.Entry(self.frame, width=6)
@@ -176,12 +180,19 @@ class Visualization():
             self.offset -= self.BASE_COUNT_SCREEN
             self.redraw(changed_seq=False)
 
-    def go_seq_index(self, event):
-        new_seq_index = int(self.seq_index_input.get())
+    def load_seq_index(self, new_seq_index):
         if new_seq_index <= self.n_seq:
             self.seq_index = new_seq_index
             self.offset = 0
             self.redraw()
+
+    def go_seq_index(self, event):
+        new_seq_index = int(self.seq_index_input.get())
+        self.load_seq_index(new_seq_index)
+
+    def go_seq_index_random(self, event):
+        random_seq_index = random.randint(0, self.n_seq)
+        self.load_seq_index(random_seq_index)
 
     def go_seq_offset(self, event):
         """offset here is within a sequence, as it appears to the user"""
