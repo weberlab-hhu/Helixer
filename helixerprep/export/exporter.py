@@ -14,15 +14,21 @@ from .numerify import CoordNumerifier
 
 
 class ExportController(object):
-    def __init__(self, db_path_in, data_dir):
+    def __init__(self, db_path_in, data_dir, only_test_set=False):
         self.db_path_in = db_path_in
+        self.only_test_set = only_test_set
         if not os.path.isdir(data_dir):
             os.mkdir(data_dir)
         elif os.listdir(data_dir):
             print('Output directory must be empty or not existing')
             exit()
-        self.h5_train = h5py.File(os.path.join(data_dir, 'training_data.h5'), 'w')
-        self.h5_val = h5py.File(os.path.join(data_dir, 'validation_data.h5'), 'w')
+        if self.only_test_set:
+            print('Exporting all data into test_data.h5')
+            self.h5_test = h5py.File(os.path.join(data_dir, 'test_data.h5'), 'w')
+        else:
+            print('Exporting all data into test_data.h5')
+            self.h5_train = h5py.File(os.path.join(data_dir, 'training_data.h5'), 'w')
+            self.h5_val = h5py.File(os.path.join(data_dir, 'validation_data.h5'), 'w')
         self._mk_session()
 
     def _mk_session(self):
@@ -119,20 +125,31 @@ class ExportController(object):
                     inputs += coord_data['inputs']
                     labels += coord_data['labels']
                     label_masks += coord_data['label_masks']
-                # split and save
-                train_data, val_data = split_data([inputs, labels, label_masks], test_size=0.2)
-                if train_data[0]:
-                    save_data(self.h5_train, *train_data)
-                if val_data[0]:
-                    save_data(self.h5_val, *val_data)
                 masked_bases_percent = n_masked_bases / (coord.end * 2) * 100
-                print(('{}/{} Numerified {} of species {} with {} features in {} chunks '
-                       '(train: {}, test: {}) and a base level error rate of {:.2f}%').format(
-                           i + 1, len(all_coords), coord, coord.genome.species, len(coord.features),
-                           len(inputs), len(train_data[0]), len(val_data[0]),
-                           masked_bases_percent))
+                # no need to split
+                if self.only_test_set:
+                    save_data(self.h5_test, inputs, labels, label_masks)
+                    print(('{}/{} Numerified {} of species {} with {} features in {} chunks '
+                           'and a base level error rate of {:.2f}%').format(
+                               i + 1, len(all_coords), coord, coord.genome.species,
+                               len(coord.features), len(inputs), masked_bases_percent))
+                else:
+                    # split and save
+                    train_data, val_data = split_data([inputs, labels, label_masks], test_size=0.2)
+                    if train_data[0]:
+                        save_data(self.h5_train, *train_data)
+                    if val_data[0]:
+                        save_data(self.h5_val, *val_data)
+                    print(('{}/{} Numerified {} of species {} with {} features in {} chunks '
+                           '(train: {}, test: {}) and a base level error rate of {:.2f}%').format(
+                               i + 1, len(all_coords), coord, coord.genome.species,
+                               len(coord.features), len(inputs), len(train_data[0]),
+                               len(val_data[0]), masked_bases_percent))
             else:
                 print('{}/{} Skipping {} of species {} as it has no features'.format(
                     i + 1, len(all_coords), coord, coord.genome.species))
-        self.h5_train.close()
-        self.h5_val.close()
+        if self.only_test_set:
+            self.h5_test.close()
+        else:
+            self.h5_train.close()
+            self.h5_val.close()
