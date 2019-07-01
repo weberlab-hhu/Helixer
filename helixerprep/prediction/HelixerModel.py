@@ -86,6 +86,7 @@ class HelixerModel(ABC):
         if self.nni:
             hyperopt_args = nni.get_next_parameter()
             self.__dict__.update(hyperopt_args)
+            args.update(hyperopt_args)
         if self.verbose:
             print()
             pprint(args)
