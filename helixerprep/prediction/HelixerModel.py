@@ -223,9 +223,7 @@ class HelixerModel(ABC):
         # predict instead of train
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
-            if os.path.isfile(self.prediction_output_path):
-                print('{} already existing and will be overridden.'.format(
-                    self.prediction_output_path))
+            assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
 
             self.h5_test = h5py.File(self.test_data, 'r')
             self.test_shape = self.h5_test['/data/X'].shape
@@ -239,11 +237,17 @@ class HelixerModel(ABC):
             })
 
             if self.eval:
-                model.evaluate_generator(generator=self.gen_test_data(),
-                                         steps=self.test_shape[0] // self.batch_size,
-                                         # steps=2,
-                                         verbose=True)
+                metrics = model.evaluate_generator(generator=self.gen_test_data(),
+                                                   steps=self.test_shape[0] // self.batch_size,
+                                                   # steps=2,
+                                                   verbose=True)
+                metrics_names = model.metrics_names
+                print({z[0]: z[1] for z in zip(metrics_names, metrics)})
             else:
+                if os.path.isfile(self.prediction_output_path):
+                    print('{} already existing and will be overridden.'.format(
+                        self.prediction_output_path
+                    ))
                 predictions = model.predict_generator(generator=self.gen_test_data(),
                                                       steps=self.test_shape[0] // self.batch_size,
                                                       # steps=2,
