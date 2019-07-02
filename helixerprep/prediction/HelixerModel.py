@@ -130,7 +130,7 @@ class HelixerModel(ABC):
                 y.append(h5_file['/data/y'][i])
                 # apply intergenic sample weight value
                 raw_sw = h5_file['/data/sample_weights'][i]
-                genic_weight = X[-1][:, 0] + self.intergenic_sample_weight * (1- X[-1][:, 0])
+                genic_weight = X[-1][:, 0] + self.intergenic_sample_weight * (1 - X[-1][:, 0])
                 sample_weights.append(raw_sw * genic_weight)  # still set error as 0 weight
                 if len(X) == self.batch_size:
                     yield (
@@ -207,7 +207,7 @@ class HelixerModel(ABC):
 
             model.fit_generator(generator=self.gen_training_data(),
                                 steps_per_epoch=self.train_shape[0] // self.batch_size,
-                                # steps_per_epoch=10,
+                                # steps_per_epoch=1,
                                 epochs=self.epochs,
                                 validation_data=self.gen_validation_data(),
                                 validation_steps=self.val_shape[0] // self.batch_size,
