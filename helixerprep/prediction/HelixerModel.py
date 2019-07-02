@@ -64,6 +64,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-loss', '--loss', type=str, default='')
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
+        self.parser.add_argument('-igsw', '--intergenic-sample-weight', type=float, default=1)
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -127,8 +128,11 @@ class HelixerModel(ABC):
             for i in seq_indexes:
                 X.append(h5_file['/data/X'][i])
                 y.append(h5_file['/data/y'][i])
-                sample_weights.append(h5_file['/data/sample_weights'][i])
-                while len(X) == self.batch_size:
+                # apply intergenic sample weight value
+                raw_sw = h5_file['/data/sample_weights'][i]
+                genic_weight = X[-1][:, 0] + self.intergenic_sample_weight * (1- X[-1][:, 0])
+                sample_weights.append(raw_sw * genic_weight)  # still set error as 0 weight
+                if len(X) == self.batch_size:
                     yield (
                         np.stack(X, axis=0),
                         np.stack(y, axis=0),
