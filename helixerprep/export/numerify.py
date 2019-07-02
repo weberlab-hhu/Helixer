@@ -96,7 +96,8 @@ class Numerifier(ABC):
     def _zero_matrix(self):
         length = len(self.coord.sequence)
         self.matrix = np.zeros((length, self.n_cols,), self.dtype)
-        self.error_mask = np.zeros((length,), np.int8)
+        # 0 means error so this can be used directly as sample weight later on
+        self.error_mask = np.ones((length,), np.int8)
 
 
 class SequenceNumerifier(Numerifier):
@@ -157,7 +158,7 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
                 col = BasePairAnnotationNumerifier.feature_to_col[feature.type]
                 self.matrix[start:end, col] = 1
             elif feature.type.value in BasePairAnnotationNumerifier.error_type_values:
-                self.error_mask[start:end] = 1
+                self.error_mask[start:end] = 0
             else:
                 raise ValueError('Unknown feature type found')
 
