@@ -129,7 +129,7 @@ class ExportController(object):
                     inputs += coord_data['inputs']
                     labels += coord_data['labels']
                     label_masks += coord_data['label_masks']
-                masked_bases_percent = n_masked_bases / (coord.end * 2) * 100
+                masked_bases_percent = n_masked_bases / (coord.length * 2) * 100
                 # no need to split
                 if self.only_test_set:
                     save_data(self.h5_test, inputs, labels, label_masks)

@@ -2,7 +2,7 @@ import os
 from shutil import copy
 import numpy as np
 import pytest
-import deepdish as dd
+import h5py
 
 import geenuff
 from geenuff.tests.test_geenuff import setup_data_handler, mk_memory_session
@@ -20,7 +20,8 @@ from ..export.exporter import ExportController
 
 TMP_DB = 'testdata/tmp.db'
 DUMMYLOCI_DB = 'testdata/dummyloci.sqlite3'
-H5_OUT = 'testdata/test.h5'
+H5_OUT_FOLDER = 'testdata/numerify_test_out/'
+H5_OUT_FILE = H5_OUT_FOLDER + 'test_data.h5'
 
 
 ### preparation and breakdown ###
@@ -41,22 +42,28 @@ def setup_dummy_db(request):
     controller = ImportController(database_path='sqlite:///' + DUMMYLOCI_DB)
     controller.add_genome('testdata/dummyloci.fa', 'testdata/dummyloci.gff')
 
+    # make tmp folder
+    if not os.path.exists(H5_OUT_FOLDER):
+        os.mkdir(H5_OUT_FOLDER)
+
     # stuff after yield is going to be executed after all tests are run
     yield None
 
     # clean up tmp files
-    for p in [TMP_DB, H5_OUT]:
+    for p in [TMP_DB] + [H5_OUT_FOLDER + f for f in os.listdir(H5_OUT_FOLDER)]:
         if os.path.exists(p):
             os.remove(p)
+    os.rmdir(H5_OUT_FOLDER)
 
 
 ### helper functions ###
-def mk_controllers(source_db, helixer_db=TMP_DB, h5_out=H5_OUT):
-    if os.path.exists(helixer_db):
-        os.remove(helixer_db)
+def mk_controllers(source_db, helixer_db=TMP_DB, h5_out=H5_OUT_FOLDER, only_test_set=True):
+    for p in [helixer_db] + [h5_out + f for f in os.listdir(h5_out)]:
+        if os.path.exists(p):
+            os.remove(p)
 
     mer_controller = MerController(source_db, helixer_db)
-    export_controller = ExportController(helixer_db, h5_out)
+    export_controller = ExportController(helixer_db, h5_out, only_test_set=only_test_set)
     return mer_controller, export_controller
 
 
@@ -67,17 +74,17 @@ def memory_import_fasta(fasta_path):
     return controller, coords
 
 
-def setup_dummyloci():
-    _, controller = mk_controllers(DUMMYLOCI_DB)
-    session = controller.session
+def setup_dummyloci(only_test_set=True):
+    _, export_controller = mk_controllers(DUMMYLOCI_DB, only_test_set=only_test_set)
+    session = export_controller.session
     coordinate = session.query(Coordinate).first()
-    return session, controller, coordinate
+    return session, export_controller, coordinate
 
 
 def setup_simpler_numerifier():
     sess = mk_memory_session()
     genome = Genome()
-    coord = Coordinate(genome=genome, sequence='A' * 100, start=0, end=100, seqid='a')
+    coord = Coordinate(genome=genome, sequence='A' * 100, length=100, seqid='a')
     sl = SuperLocus()
     transcript = geenuff.orm.Transcript(super_locus=sl)
     piece = geenuff.orm.TranscriptPiece(transcript=transcript, position=0)
@@ -158,7 +165,7 @@ def test_count_range_of_mers():
     seq = 'ATATAT'
 
     genome = Genome()
-    coordinate = Coordinate(genome=genome, start=0, end=6, sequence=seq)
+    coordinate = Coordinate(genome=genome, length=6, sequence=seq)
     all_mer_counters = MerController._count_mers(coordinate, 1, 6)[1]
 
     assert len(all_mer_counters) == 6
@@ -290,14 +297,14 @@ def test_coherent_slicing():
         assert s.shape[0] == a.shape[0]
 
     # testing sequence error masks
-    expect = np.zeros((1801, ), dtype=np.int8)
+    expect = np.ones((1801, ), dtype=np.int8)
     # sequence error mask should be empty
     assert np.array_equal(expect, seq_numerifier.error_mask)
     # annotation error mask of test case 1 should reflect faulty exon/CDS ranges
     assert anno_numerifier.error_mask.shape == expect.shape
-    expect[:110] = 1
-    expect[120:499] = 1  # error from test case 1
-    expect[499:1099] = 1  # error from test case 2
+    expect[:110] = 0
+    expect[120:499] = 0  # error from test case 1
+    expect[499:1099] = 0  # error from test case 2
     # test equality for correct error ranges of first two test cases + some correct bases
     assert np.array_equal(expect[:1150], anno_numerifier.error_mask[:1150])
 
@@ -343,17 +350,17 @@ def test_minus_strand_numerify():
 def test_coord_numerifier_and_h5_gen_plus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=400, shuffle=False, seed='puma')
+    controller.export(chunk_size=400)
 
-    inputs = dd.io.load(H5_OUT, group='/inputs')
-    labels = dd.io.load(H5_OUT, group='/labels')
-    label_masks = dd.io.load(H5_OUT, group='/label_masks')
-    config = dd.io.load(H5_OUT, group='/config')
+    f = h5py.File(H5_OUT_FILE, 'r')
+    inputs = f['/data/X']
+    labels = f['/data/y']
+    label_masks = f['/data/sample_weights']
 
-    # five chunks for each the two coordinates and *2 for each strand
+    # five chunks for each the two coordinates and *2 for each strand and -4 for
+    # completely erroneous sequences
     # also tests if we ignore the third coordinate, that does not have any annotations
-    assert len(inputs) == len(labels) == len(label_masks) == 20
-    assert type(config) == dict
+    assert len(inputs) == len(labels) == len(label_masks) == 16
 
     # prep seq
     seq_expect = np.full((405, 4), 0.25)
@@ -372,7 +379,7 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
     assert np.array_equal(inputs[1][:5], seq_expect[400:])
 
     # prep anno
-    label_expect = np.zeros((405, 3), dtype=np.float32)
+    label_expect = np.zeros((405, 3), dtype=np.float16)
     label_expect[0:400, 0] = 1.  # set genic/in raw transcript
     label_expect[10:301, 1] = 1.  # set in transcript
     label_expect[21:110, 2] = 1.  # both introns
@@ -381,9 +388,9 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
     assert np.array_equal(labels[1][:5], label_expect[400:])
 
     # prep anno mask
-    label_mask_expect = np.zeros((405, ), dtype=np.int8)
-    label_mask_expect[:110] = 1
-    label_mask_expect[120:] = 1
+    label_mask_expect = np.ones((405, ), dtype=np.int8)
+    label_mask_expect[:110] = 0
+    label_mask_expect[120:] = 0
     assert np.array_equal(label_masks[0], label_mask_expect[:400])
     assert np.array_equal(label_masks[1][:5], label_mask_expect[400:])
 
@@ -391,50 +398,59 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
 def test_coord_numerifier_and_h5_gen_minus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=200, shuffle=False, seed='puma')
+    controller.export(chunk_size=200)
 
-    inputs = dd.io.load(H5_OUT, group='/inputs')
-    labels = dd.io.load(H5_OUT, group='/labels')
-    label_masks = dd.io.load(H5_OUT, group='/label_masks')
+    f = h5py.File(H5_OUT_FILE, 'r')
+    inputs = f['/data/X']
+    labels = f['/data/y']
+    label_masks = f['/data/sample_weights']
 
-    # coord 1: 10 per strand
-    # coord 2: 9 per strand
-    assert len(inputs) == len(labels) == len(label_masks) == 38
+    assert len(inputs) == len(labels) == len(label_masks) == 27
 
-    # the last 9 inputs/labels should be for the 2nd coord and the minus strand
-    inputs = inputs[-9:]
-    labels = labels[-9:]
-    label_masks = label_masks[-9:]
+    # the last 5 inputs/labels should be for the 2nd coord and the minus strand
+    # orginally there where 9 but 4 were tossed out due to be fully erroneous
+    # all the sequences are also 0-padded
+    inputs = inputs[-5:]
+    labels = labels[-5:]
+    label_masks = label_masks[-5:]
 
-    seq_expect = np.full((1755, 4), 0.25)
+    seq_expect = np.full((955, 4), 0.25)
     # start codon
-    seq_expect[1729] = np.flip(AMBIGUITY_DECODE['T'])
-    seq_expect[1728] = np.flip(AMBIGUITY_DECODE['A'])
-    seq_expect[1727] = np.flip(AMBIGUITY_DECODE['C'])
+    seq_expect[929] = np.flip(AMBIGUITY_DECODE['T'])
+    seq_expect[928] = np.flip(AMBIGUITY_DECODE['A'])
+    seq_expect[927] = np.flip(AMBIGUITY_DECODE['C'])
     # stop codon of second transcript
-    seq_expect[1702] = np.flip(AMBIGUITY_DECODE['A'])
-    seq_expect[1701] = np.flip(AMBIGUITY_DECODE['T'])
-    seq_expect[1700] = np.flip(AMBIGUITY_DECODE['C'])
+    seq_expect[902] = np.flip(AMBIGUITY_DECODE['A'])
+    seq_expect[901] = np.flip(AMBIGUITY_DECODE['T'])
+    seq_expect[900] = np.flip(AMBIGUITY_DECODE['C'])
     # stop codon of first transcript
-    seq_expect[1576] = np.flip(AMBIGUITY_DECODE['A'])
-    seq_expect[1575] = np.flip(AMBIGUITY_DECODE['T'])
-    seq_expect[1574] = np.flip(AMBIGUITY_DECODE['C'])
+    seq_expect[776] = np.flip(AMBIGUITY_DECODE['A'])
+    seq_expect[775] = np.flip(AMBIGUITY_DECODE['T'])
+    seq_expect[774] = np.flip(AMBIGUITY_DECODE['C'])
+    # flip as the sequence is read 5p to 3p
     seq_expect = np.flip(seq_expect, axis=0)
-    assert np.array_equal(inputs[0], seq_expect[:178])
-    assert np.array_equal(inputs[1][:50], seq_expect[178:228])
+    # insert 0-padding
+    seq_expect = np.insert(seq_expect, 178, np.zeros((22, 4)), axis=0)
+    seq_expect = np.insert(seq_expect, 200 + 177, np.zeros((23, 4)), axis=0)
+    assert np.array_equal(inputs[0], seq_expect[:200])
+    assert np.array_equal(inputs[1][:50], seq_expect[200:250])
 
-    label_expect = np.zeros((1755, 3), dtype=np.float32)
-    label_expect[1549:1750, 0] = 1.  # genic region
-    label_expect[1574:1730, 1] = 1.  # transcript (2 overlapping ones)
-    label_expect[1650:1719, 2] = 1.  # intron first transcript
-    label_expect[1600:1679, 2] = 1.  # intron second transcript
+    label_expect = np.zeros((955, 3), dtype=np.float16)
+    label_expect[749:950, 0] = 1.  # genic region
+    label_expect[774:930, 1] = 1.  # transcript (2 overlapping ones)
+    label_expect[850:919, 2] = 1.  # intron first transcript
+    label_expect[800:879, 2] = 1.  # intron second transcript
     label_expect = np.flip(label_expect, axis=0)
-    assert np.array_equal(labels[0], label_expect[:178])
-    assert np.array_equal(labels[1][:50], label_expect[178:228])
+    label_expect = np.insert(label_expect, 178, np.zeros((22, 3)), axis=0)
+    label_expect = np.insert(label_expect, 200 + 177, np.zeros((23, 3)), axis=0)
+    assert np.array_equal(labels[0], label_expect[:200])
+    assert np.array_equal(labels[1][:50], label_expect[200:250])
 
-    label_mask_expect = np.zeros((1755, ), dtype=np.int8)
-    label_mask_expect[1725:] = 1.
-    label_mask_expect[1549:1650] = 1.
+    label_mask_expect = np.ones((955, ), dtype=np.int8)
+    label_mask_expect[925:] = 0
+    label_mask_expect[749:850] = 0
     label_mask_expect = np.flip(label_mask_expect)
-    assert np.array_equal(label_masks[0], label_mask_expect[:178])
-    assert np.array_equal(label_masks[1][:50], label_mask_expect[178:228])
+    label_mask_expect = np.insert(label_mask_expect, 178, np.zeros((22,)), axis=0)
+    label_mask_expect = np.insert(label_mask_expect, 200 + 177, np.zeros((23,)), axis=0)
+    assert np.array_equal(label_masks[0], label_mask_expect[:200])
+    assert np.array_equal(label_masks[1][:50], label_mask_expect[200:250])

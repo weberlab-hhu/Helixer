@@ -148,10 +148,9 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
                          is_plus_strand=is_plus_strand, max_len=max_len)
 
     def update_matrix_and_error_mask(self):
-        shift_by = self.coord.start
         for feature in self.features:
-            start = feature.start - shift_by
-            end = feature.end - shift_by
+            start = feature.start
+            end = feature.end
             if not self.is_plus_strand:
                 start, end = end + 1, start + 1
             if feature.type in BasePairAnnotationNumerifier.feature_to_col.keys():
