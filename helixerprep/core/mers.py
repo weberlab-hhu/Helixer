@@ -51,16 +51,23 @@ class MerController(object):
                     mer_counters[k - 1].add_count(substr)
         return coord, mer_counters
 
-    def add_mers(self, min_k, max_k, n_processes=8):
+    def add_mers(self, min_k, max_k, n_processes=8, limit=10000):
+        # load 'limit' coordinates at once into memory
+        # passing the session to the worker does not work as it is not pickleable
         all_mers = self.session.query(Mer).options(load_only('id')).all()
-        coords_without_mers = self.session.query(Coordinate).\
-                                  filter(Coordinate.id.notin_(all_mers)).all()
-        random.shuffle(coords_without_mers)
+        n_coords_without_mers = self.session.query(Coordinate).\
+                                    filter(Coordinate.id.notin_(all_mers)).count()
+        for offset in range(0, n_coords_without_mers, limit):
+            coords_without_mers = self.session.query(Coordinate).\
+                                      filter(Coordinate.id.notin_(all_mers)).\
+                                      limit(limit).offset(offset).all()
+            random.shuffle(coords_without_mers)
 
-        input_data = [[c, min_k, max_k] for c in coords_without_mers]
-        with multiprocessing.Pool(processes=n_processes) as pool:
-            mer_counters = pool.starmap(MerController._count_mers, input_data)
-        self._add_mer_counters_to_db(mer_counters)
+            input_data = [[c, min_k, max_k] for c in coords_without_mers]
+            with multiprocessing.Pool(processes=n_processes) as pool:
+                mer_counters = pool.starmap(MerController._count_mers, input_data)
+            self._add_mer_counters_to_db(mer_counters)
+            print('kmers added: {}/{}'.format(offset + limit, n_coords_without_mers))
 
     def _add_mer_counters_to_db(self, mer_counters_all_coords):
         # convert to canonical and setup db entries
@@ -73,5 +80,3 @@ class MerController(object):
                               length=mer_counter.k)
                     self.session.add(mer)
         self.session.commit()
-
-

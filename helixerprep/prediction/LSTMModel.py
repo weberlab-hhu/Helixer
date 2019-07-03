@@ -15,17 +15,21 @@ class LSTMModel(HelixerModel):
     def model(self):
         model = Sequential()
         if self.bidirectional:
-            model.add(Bidirectional(
-                CuDNNLSTM(self.units, return_sequences=True, input_shape=(None, 4)),
-                input_shape=(None, 4)
-            ))
-            # model.add(Bidirectional(
-                # LSTM(self.units, return_sequences=True, input_shape=(None, 4)),
-                # input_shape=(None, 4)
-            # ))
+            if self.only_cpu:
+                model.add(Bidirectional(
+                    LSTM(self.units, return_sequences=True, input_shape=(None, 4)),
+                    input_shape=(None, 4)
+                ))
+            else:
+                model.add(Bidirectional(
+                    CuDNNLSTM(self.units, return_sequences=True, input_shape=(None, 4)),
+                    input_shape=(None, 4)
+                ))
         else:
-            model.add(CuDNNLSTM(self.units, return_sequences=True, input_shape=(None, 4)))
-            # model.add(LSTM(self.units, return_sequences=True, input_shape=(None, 4)))
+            if self.only_cpu:
+                model.add(LSTM(self.units, return_sequences=True, input_shape=(None, 4)))
+            else:
+                model.add(CuDNNLSTM(self.units, return_sequences=True, input_shape=(None, 4)))
             # model.add(TimeDistributed(Dense(3, activation='sigmoid')))
         model.add(Dense(3, activation='sigmoid'))
         return model

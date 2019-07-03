@@ -13,23 +13,23 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     io = parser.add_argument_group("Data input and output")
-    io.add_argument('--db_path_in', type=str, required=True,
+    io.add_argument('--db-path-in', type=str, required=True,
                     help=('Path to the GeenuFF SQLite input database.'))
-    io.add_argument('--db_path_out', type=str, default='',
+    io.add_argument('--db-path-out', type=str, default='',
                     help=('Output path of the new Helixer SQLite database. If not provided '
                           'the input database will be replaced.'))
 
     fasta_specific = parser.add_argument_group("Controlling the kmer generation:")
-    fasta_specific.add_argument('--min_k', help='minimum size kmer to calculate from sequence',
+    fasta_specific.add_argument('--min-k', help='minimum size kmer to calculate from sequence',
                                 default=0, type=int)
-    fasta_specific.add_argument('--max_k', help='maximum size kmer to calculate from sequence',
+    fasta_specific.add_argument('--max-k', help='maximum size kmer to calculate from sequence',
                                 default=0, type=int)
 
     args = parser.parse_args()
 
-    assert args.min_k <= args.max_k, 'min_k can not be greater than max_k'
+    assert args.min_k <= args.max_k, 'min-k can not be greater than max-k'
     if args.max_k > 0 and args.min_k == 0:
         args.min_k = 1
-        print('min_k parameter set to 1')
+        print('min-k parameter set to 1')
 
     main(args)
