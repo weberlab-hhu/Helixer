@@ -16,6 +16,7 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, 
 from keras import optimizers
 from keras import backend as K
 from keras.models import load_model
+from keras.utils import multi_gpu_model
 
 
 def get_col_accuracy_fn(col):
@@ -103,20 +104,19 @@ class HelixerModel(ABC):
             callbacks.append(ReportIntermediateResult())
         return callbacks
 
-    def set_resources(self, n_cpus=8, use_gpu=True, n_gpus=1, fp_precision='float32'):
-        K.set_floatx(fp_precision)
-
-        if use_gpu:
-            device_count = {'CPU': n_cpus, 'GPU': n_gpus}
-        else:
-            device_count = {'CPU': n_cpus, 'GPU': 0}
-
-        config = tf.ConfigProto(intra_op_parallelism_threads=n_cpus,
-                                inter_op_parallelism_threads=n_cpus,
-                                allow_soft_placement=True,
-                                device_count=device_count)
-        session = tf.Session(config=config)
-        K.set_session(session)
+    def set_resources(self, model):
+        K.set_floatx(self.float_precision)
+        if self.only_cpu:
+            device_count = {'CPU': self.cpus, 'GPU': 0}
+            config = tf.ConfigProto(intra_op_parallelism_threads=self.cpus,
+                                    inter_op_parallelism_threads=self.cpus,
+                                    allow_soft_placement=True,
+                                    device_count=device_count)
+            session = tf.Session(config=config)
+            K.set_session(session)
+        elif self.gpus >= 2:
+            model = multi_gpu_model(model, gpus=self.gpus)
+        return model
 
     def _gen_data(self, h5_file, shuffle):
         n_seq = h5_file['/data/X'].shape[0]
@@ -164,13 +164,10 @@ class HelixerModel(ABC):
         pass
 
     def run(self):
-        self.set_resources(n_cpus=self.cpus,
-                           use_gpu=not self.only_cpu,
-                           n_gpus=self.gpus,
-                           fp_precision=self.float_precision)
         # we either train or predict
         if not self.load_model_path:
             model = self.model()
+            model = self.set_resources(model)
 
             if self.verbose:
                 print(model.summary())
@@ -240,6 +237,7 @@ class HelixerModel(ABC):
                 'acc_c': get_col_accuracy_fn(1),
                 'acc_i': get_col_accuracy_fn(2)
             })
+            model = self.set_resources(model)
 
             if self.eval:
                 metrics = model.evaluate_generator(generator=self.gen_test_data(),
