@@ -70,7 +70,7 @@ class Numerifier(ABC):
         pass
 
     def _gen_steps(self):
-        partitioner = Stepper(end=len(self.coord.sequence), by=self.max_len)
+        partitioner = Stepper(end=self.coord.length), by=self.max_len)
         self.paired_steps = list(partitioner.step_to_end())
         if not self.is_plus_strand:
             self.paired_steps.reverse()
