@@ -170,4 +170,4 @@ class ExportController(object):
             else:
                 print('{}/{} Skipping {} of species {} as it has no features'.format(
                     i + 1, len(all_coords), coord, coord.genome.species))
-        self.close_files()
+        self._close_files()
