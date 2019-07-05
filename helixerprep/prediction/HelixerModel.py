@@ -104,7 +104,7 @@ class HelixerModel(ABC):
             callbacks.append(ReportIntermediateResult())
         return callbacks
 
-    def set_resources(self, model):
+    def set_resources(self):
         K.set_floatx(self.float_precision)
         if self.only_cpu:
             device_count = {'CPU': self.cpus, 'GPU': 0}
@@ -114,9 +114,6 @@ class HelixerModel(ABC):
                                     device_count=device_count)
             session = tf.Session(config=config)
             K.set_session(session)
-        elif self.gpus >= 2:
-            model = multi_gpu_model(model, gpus=self.gpus)
-        return model
 
     def _gen_data(self, h5_file, shuffle):
         n_seq = h5_file['/data/X'].shape[0]
@@ -164,10 +161,12 @@ class HelixerModel(ABC):
         pass
 
     def run(self):
+        self.set_resources()
         # we either train or predict
         if not self.load_model_path:
             model = self.model()
-            model = self.set_resources(model)
+            if not self.only_cpu and self.gpus >= 2:
+                model = multi_gpu_model(model, gpus=self.gpus)
 
             if self.verbose:
                 print(model.summary())
@@ -237,8 +236,6 @@ class HelixerModel(ABC):
                 'acc_c': get_col_accuracy_fn(1),
                 'acc_i': get_col_accuracy_fn(2)
             })
-            model = self.set_resources(model)
-
             if self.eval:
                 metrics = model.evaluate_generator(generator=self.gen_test_data(),
                                                    steps=self.test_shape[0] // self.batch_size,
