@@ -66,6 +66,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
         self.parser.add_argument('-igsw', '--intergenic-sample-weight', type=float, default=1)
+        self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -115,7 +116,7 @@ class HelixerModel(ABC):
             session = tf.Session(config=config)
             K.set_session(session)
 
-    def _gen_data(self, h5_file, shuffle):
+    def _gen_data(self, h5_file, shuffle, exclude_erroneous_seqs=False):
         n_seq = h5_file['/data/X'].shape[0]
         X, y, sample_weights = [], [], []
         while True:
@@ -123,10 +124,12 @@ class HelixerModel(ABC):
             if shuffle:
                 random.shuffle(seq_indexes)
             for i in seq_indexes:
+                raw_sw = h5_file['/data/sample_weights'][i]
+                if exclude_erroneous_seqs and np.any(raw_sw == 0):
+                    continue
                 X.append(h5_file['/data/X'][i])
                 y.append(h5_file['/data/y'][i])
                 # apply intergenic sample weight value
-                raw_sw = h5_file['/data/sample_weights'][i]
                 genic_weight = X[-1][:, 0] + self.intergenic_sample_weight * (1 - X[-1][:, 0])
                 sample_weights.append(raw_sw * genic_weight)  # still set error as 0 weight
                 if len(X) == self.batch_size:
@@ -138,17 +141,17 @@ class HelixerModel(ABC):
                     X, y, sample_weights = [], [], []
 
     def gen_training_data(self):
-        gen = self._gen_data(self.h5_train, True)
+        gen = self._gen_data(self.h5_train, shuffle=True, exclude_erroneous_seqs=self.exclude_errors)
         while True:
             yield next(gen)
 
     def gen_validation_data(self):
-        gen = self._gen_data(self.h5_val, False)
+        gen = self._gen_data(self.h5_val, shuffle=False, exclude_erroneous_seqs=self.exclude_errors)
         while True:
             yield next(gen)
 
     def gen_test_data(self):
-        gen = self._gen_data(self.h5_test, False)
+        gen = self._gen_data(self.h5_test, shuffle=False, exclude_erroneous_seqs=self.exclude_errors)
         while True:
             yield next(gen)
 
