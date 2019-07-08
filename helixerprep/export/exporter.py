@@ -8,7 +8,7 @@ from itertools import compress
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from geenuff.base.orm import Coordinate, Genome
+from geenuff.base.orm import Coordinate, Genome, Feature
 from geenuff.base.helpers import full_db_path
 from .numerify import CoordNumerifier
 
@@ -121,9 +121,11 @@ class ExportController(object):
     def _fetch_coords(self, genomes):
         if genomes:
             print('Selecting the following genomes: {}'.format(genomes))
+            coords_with_features = self.session.query(Feature.coordinate_id).distinct()
             all_coords = (self.session.query(Coordinate)
                          .join(Genome, Genome.id == Coordinate.genome_id)
                          .filter(Genome.species.in_(genomes))
+                         .filter(Coordinate.id.in_(coords_with_features))
                          .all())
         else:
             print('Selecting all genomes from {}'.format(self.db_path_in))
@@ -145,48 +147,44 @@ class ExportController(object):
         print('{} coordinates chosen to numerify'.format(len(all_coords)))
 
         for i, coord in enumerate(all_coords):
-            if coord.features:
-                inputs, labels, label_masks = [], [], []
-                n_masked_bases = 0
-                for is_plus_strand in [True, False]:
-                    numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size)
-                    coord_data = numerifier.numerify()
-                    # keep track of variables
-                    n_masked_bases += sum(
-                        [len(m) - np.count_nonzero(m) for m in coord_data['label_masks']])
-                    # filter out sequences that are completely masked as error
-                    valid_data = [s.any() for s in coord_data['label_masks']]
-                    coord_data['inputs'] = list(compress(coord_data['inputs'], valid_data))
-                    coord_data['labels'] = list(compress(coord_data['labels'], valid_data))
-                    coord_data['label_masks'] = list(compress(coord_data['label_masks'], valid_data))
-                    # add data
-                    inputs += coord_data['inputs']
-                    labels += coord_data['labels']
-                    label_masks += coord_data['label_masks']
+            inputs, labels, label_masks = [], [], []
+            n_masked_bases = 0
+            for is_plus_strand in [True, False]:
+                numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size)
+                coord_data = numerifier.numerify()
+                # keep track of variables
+                n_masked_bases += sum(
+                    [len(m) - np.count_nonzero(m) for m in coord_data['label_masks']])
+                # filter out sequences that are completely masked as error
+                valid_data = [s.any() for s in coord_data['label_masks']]
+                coord_data['inputs'] = list(compress(coord_data['inputs'], valid_data))
+                coord_data['labels'] = list(compress(coord_data['labels'], valid_data))
+                coord_data['label_masks'] = list(compress(coord_data['label_masks'], valid_data))
+                # add data
+                inputs += coord_data['inputs']
+                labels += coord_data['labels']
+                label_masks += coord_data['label_masks']
 
-                masked_bases_percent = n_masked_bases / (coord.length * 2) * 100
-                # no need to split
-                if self.only_test_set:
-                    self._save_data(self.h5_test, inputs, labels, label_masks, chunk_size,
-                                    timestep_len)
-                    print(('{}/{} Numerified {} of species {} with {} features in {} chunks '
-                           'and a base level error rate of {:.2f}%').format(
-                               i + 1, len(all_coords), coord, coord.genome.species,
-                               len(coord.features), len(inputs), masked_bases_percent))
-                else:
-                    # split and save
-                    train_data, val_data = self._split_data([inputs, labels, label_masks],
-                                                            test_size=0.2)
-                    if train_data[0]:
-                        self._save_data(self.h5_train, *train_data, chunk_size, timestep_len)
-                    if val_data[0]:
-                        self._save_data(self.h5_val, *val_data, chunk_size, timestep_len)
-                    print(('{}/{} Numerified {} of species {} with {} features in {} chunks '
-                           '(train: {}, test: {}) and a base level error rate of {:.2f}%').format(
-                               i + 1, len(all_coords), coord, coord.genome.species,
-                               len(coord.features), len(inputs), len(train_data[0]),
-                               len(val_data[0]), masked_bases_percent))
+            masked_bases_percent = n_masked_bases / (coord.length * 2) * 100
+            # no need to split
+            if self.only_test_set:
+                self._save_data(self.h5_test, inputs, labels, label_masks, chunk_size,
+                                timestep_len)
+                print(('{}/{} Numerified {} of species {} with {} features in {} chunks '
+                       'and a base level error rate of {:.2f}%').format(
+                           i + 1, len(all_coords), coord, coord.genome.species,
+                           len(coord.features), len(inputs), masked_bases_percent))
             else:
-                print('{}/{} Skipping {} of species {} as it has no features'.format(
-                    i + 1, len(all_coords), coord, coord.genome.species))
+                # split and save
+                train_data, val_data = self._split_data([inputs, labels, label_masks],
+                                                        test_size=0.2)
+                if train_data[0]:
+                    self._save_data(self.h5_train, *train_data, chunk_size, timestep_len)
+                if val_data[0]:
+                    self._save_data(self.h5_val, *val_data, chunk_size, timestep_len)
+                print(('{}/{} Numerified {} of species {} with {} features in {} chunks '
+                       '(train: {}, test: {}) and a base level error rate of {:.2f}%').format(
+                           i + 1, len(all_coords), coord, coord.genome.species,
+                           len(coord.features), len(inputs), len(train_data[0]),
+                           len(val_data[0]), masked_bases_percent))
         self._close_files()

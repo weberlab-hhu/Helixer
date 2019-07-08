@@ -131,7 +131,7 @@ class HelixerModel(ABC):
                 y.append(h5_file['/data/y'][i])
                 # apply intergenic sample weight value
                 genic_weight = X[-1][:, 0] + self.intergenic_sample_weight * (1 - X[-1][:, 0])
-                sample_weights.append(raw_sw * genic_weight)  # still set error as 0 weight
+                sample_weights.append(raw_sw * genic_weight)  # always set error as 0 weight
                 if len(X) == self.batch_size:
                     yield (
                         np.stack(X, axis=0),
