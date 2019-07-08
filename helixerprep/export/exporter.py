@@ -157,7 +157,7 @@ class ExportController(object):
                                len(coord.features), len(inputs), masked_bases_percent))
                 else:
                     # split and save
-                    train_data, val_data = _split_data([inputs, labels, label_masks], test_size=0.2)
+                    train_data, val_data = self._split_data([inputs, labels, label_masks], test_size=0.2)
                     if train_data[0]:
                         self._save_data(self.h5_train, *train_data, chunk_size, timestep_len)
                     if val_data[0]:
@@ -170,4 +170,4 @@ class ExportController(object):
             else:
                 print('{}/{} Skipping {} of species {} as it has no features'.format(
                     i + 1, len(all_coords), coord, coord.genome.species))
-        self.close_files()
+        self._close_files()
