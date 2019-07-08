@@ -51,6 +51,17 @@ class ExportController(object):
                     val_arrays[j].append(data_arrays[j][i])
         return train_arrays, val_arrays
 
+    def _add_config_to_data_files(self, genomes):
+        """Adds all data config params, except n_fully_correct_seqs, which is set in _save_data()"""
+        if self.only_test_set:
+            self.h5_test.attrs['genomes'] = ', '.join(genomes)
+            self.h5_test.attrs['split_type'] = 'test'
+        else:
+            self.h5_train.attrs['genomes'] = ', '.join(genomes)
+            self.h5_train.attrs['split_type'] = 'train'
+            self.h5_val.attrs['genomes'] = ', '.join(genomes)
+            self.h5_val.attrs['split_type'] = 'dev'
+
     def _save_data(self, h5_file, inputs, labels, label_masks, chunk_size, timestep_len):
         # zero-pad each sequence to chunk_size
         # this is inefficient if there could be a batch with only sequences smaller than
@@ -98,6 +109,13 @@ class ExportController(object):
         # add new data
         for dset_key, data in zip(dset_keys, [X, y, sample_weights]):
             h5_file['/data/' + dset_key][old_len:] = data
+
+        # update n_fully_correct_seqs attr
+        n_good_seqs = n_seq - np.count_nonzero(np.any(sample_weights == 0, axis=1))
+        if 'n_fully_correct_seqs' in h5_file.attrs:
+            h5_file.attrs['n_fully_correct_seqs'] += n_good_seqs
+        else:
+            h5_file.attrs['n_fully_correct_seqs'] = n_good_seqs
         h5_file.flush()
 
     def _fetch_coords(self, genomes):
@@ -157,7 +175,8 @@ class ExportController(object):
                                len(coord.features), len(inputs), masked_bases_percent))
                 else:
                     # split and save
-                    train_data, val_data = _split_data([inputs, labels, label_masks], test_size=0.2)
+                    train_data, val_data = self._split_data([inputs, labels, label_masks],
+                                                            test_size=0.2)
                     if train_data[0]:
                         self._save_data(self.h5_train, *train_data, chunk_size, timestep_len)
                     if val_data[0]:

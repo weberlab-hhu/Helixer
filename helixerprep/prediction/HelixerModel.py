@@ -204,12 +204,20 @@ class HelixerModel(ABC):
 
             self.compile_model(model)
 
+            if self.exclude_errors:
+                # load from attr so we don't have to load the whole sample weight array in memory
+                n_train_seqs = self.h5_train.attrs['n_fully_correct_seqs']
+                n_val_seqs = self.h5_val.attrs['n_fully_correct_seqs']
+            else:
+                n_train_seqs = self.train_shape[0]
+                n_val_seqs = self.val_shape[0]
+
             model.fit_generator(generator=self.gen_training_data(),
-                                steps_per_epoch=self.train_shape[0] // self.batch_size,
+                                steps_per_epoch=n_train_seqs // self.batch_size,
                                 # steps_per_epoch=1,
                                 epochs=self.epochs,
                                 validation_data=self.gen_validation_data(),
-                                validation_steps=self.val_shape[0] // self.batch_size,
+                                validation_steps=n_val_seqs // self.batch_size,
                                 # validation_steps=1,
                                 callbacks=self.generate_callbacks(),
                                 # do not use without keras.utils.Sequence
