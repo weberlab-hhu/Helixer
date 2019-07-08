@@ -66,6 +66,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
         self.parser.add_argument('-igsw', '--intergenic-sample-weight', type=float, default=1)
+        self.parser.add_argument('-ic', '--intergenic-chance', type=float, default=0.1)
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
@@ -163,6 +164,46 @@ class HelixerModel(ABC):
     def compile_model(self, model):
         pass
 
+    def set_optimizer(self):
+        if self.optimizer == 'adam':
+            self.optimizer = optimizers.Adam(lr=self.learning_rate,
+                                             clipnorm=self.clip_norm)
+        elif self.optimizer == 'rmsprop':
+            self.optimizer = optimizers.RMSprop(lr=self.learning_rate,
+                                                clipnorm=self.clip_norm)
+        elif self.optimizer == 'adagrad':
+            print('learning rate not changed from default for adagrad')
+            self.optimizer = optimizers.Adagrad(clipnorm=self.clip_norm)
+        else:
+            raise ValueError('Unknown Optimizer')
+
+    def open_data_files(self):
+        self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
+        self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
+        self.train_shape = self.h5_train['/data/X'].shape
+        self.val_shape = self.h5_val['/data/X'].shape
+
+        if self.exclude_errors:
+            # load from attr so we don't have to load the whole sample weight array in memory
+            self.n_train_seqs = self.h5_train.attrs['n_fully_correct_seqs']
+            self.n_val_seqs = self.h5_val.attrs['n_fully_correct_seqs']
+        else:
+            self.n_train_seqs = self.train_shape[0]
+            self.n_val_seqs = self.val_shape[0]
+
+        self.n_intergenic_train_seqs = self.h5_train.attrs['n_intergenic_seqs']
+        self.n_intergenic_val_seqs = self.h5_val.attrs['n_intergenic_seqs']
+
+        if self.verbose:
+            print('\nTraining data shape: {}'.format(self.train_shape[:2]))
+            print('Validation data shape: {}'.format(self.val_shape[:2]))
+            print('Intergenic train/val seqs: {:.2f}% / {:.2f}%'.format(
+                self.n_intergenic_train_seqs / self.n_train_seqs * 100,
+                self.n_intergenic_val_seqs / self.n_val_seqs* 100))
+            print('Fully correct train/val seqs: {:.2f}% / {:.2f}%\n'.format(
+                self.h5_train.attrs['n_fully_correct_seqs'] / self.train_shape[0] * 100,
+                self.h5_val.attrs['n_fully_correct_seqs'] / self.val_shape[0] * 100))
+
     def run(self):
         self.set_resources()
         # we either train or predict
@@ -182,47 +223,18 @@ class HelixerModel(ABC):
                 print('Plotted to model.png')
                 sys.exit()
 
-            self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
-            self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
-            self.train_shape = self.h5_train['/data/X'].shape
-            self.val_shape = self.h5_val['/data/X'].shape
-            if self.verbose:
-                print('\nTraining data shape: {}'.format(self.train_shape[:2]))
-                print('Validation data shape: {}\n'.format(self.val_shape[:2]))
-
-            if self.optimizer == 'adam':
-                self.optimizer = optimizers.Adam(lr=self.learning_rate,
-                                                 clipnorm=self.clip_norm)
-            elif self.optimizer == 'rmsprop':
-                self.optimizer = optimizers.RMSprop(lr=self.learning_rate,
-                                                    clipnorm=self.clip_norm)
-            elif self.optimizer == 'adagrad':
-                print('learning rate not changed from default for adagrad')
-                self.optimizer = optimizers.Adagrad(clipnorm=self.clip_norm)
-            else:
-                raise ValueError('Unknown Optimizer')
-
+            self.open_data_files()
+            self.set_optimizer()
             self.compile_model(model)
 
-            if self.exclude_errors:
-                # load from attr so we don't have to load the whole sample weight array in memory
-                n_train_seqs = self.h5_train.attrs['n_fully_correct_seqs']
-                n_val_seqs = self.h5_val.attrs['n_fully_correct_seqs']
-            else:
-                n_train_seqs = self.train_shape[0]
-                n_val_seqs = self.val_shape[0]
-
             model.fit_generator(generator=self.gen_training_data(),
-                                steps_per_epoch=n_train_seqs // self.batch_size,
+                                steps_per_epoch=self.n_train_seqs // self.batch_size,
                                 # steps_per_epoch=1,
                                 epochs=self.epochs,
                                 validation_data=self.gen_validation_data(),
-                                validation_steps=n_val_seqs // self.batch_size,
+                                validation_steps=self.n_val_seqs // self.batch_size,
                                 # validation_steps=1,
                                 callbacks=self.generate_callbacks(),
-                                # do not use without keras.utils.Sequence
-                                # use_multiprocessing=True,
-                                # workers=4,
                                 verbose=True)
 
             best_val_loss = min(model.history.history['val_loss'])

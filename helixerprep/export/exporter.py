@@ -110,12 +110,15 @@ class ExportController(object):
         for dset_key, data in zip(dset_keys, [X, y, sample_weights]):
             h5_file['/data/' + dset_key][old_len:] = data
 
-        # update n_fully_correct_seqs attr
+        # update n_fully_correct_seqs and n_intergenic_seqs attrs
         n_good_seqs = n_seq - np.count_nonzero(np.any(sample_weights == 0, axis=1))
-        if 'n_fully_correct_seqs' in h5_file.attrs:
+        n_intergenic_seqs = np.count_nonzero(np.all(y == 0, axis=(1, 2)))
+        if h5_file.attrs:
             h5_file.attrs['n_fully_correct_seqs'] += n_good_seqs
+            h5_file.attrs['n_intergenic_seqs'] += n_intergenic_seqs
         else:
             h5_file.attrs['n_fully_correct_seqs'] = n_good_seqs
+            h5_file.attrs['n_intergenic_seqs'] = n_intergenic_seqs
         h5_file.flush()
 
     def _fetch_coords(self, genomes):
