@@ -20,7 +20,7 @@ class CNNModel(HelixerModel):
         model = Sequential()
         model.add(Conv1D(filters=self.filter_depth,
                          kernel_size=self.kernel_size,
-                         input_shape=(2000, 4),
+                         input_shape=(self.train_shape[1], 4),
                          padding="same",
                          activation="relu"))
         # -2 because first and last have different dimensions
@@ -48,7 +48,7 @@ class CNNModel(HelixerModel):
                           get_col_accuracy_fn(2),
                       ])
 
-    def _gen_data(self, h5_file, shuffle):
+    def _gen_data(self, h5_file, shuffle, exclude_erroneous_seqs=False, sample_intergenic=False):
         n_seq = h5_file['/data/X'].shape[0]
         X, y = [], []
         while True:

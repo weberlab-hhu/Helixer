@@ -1,4 +1,6 @@
 #! /usr/bin/env python3
+import random
+import numpy as np
 from keras.models import Sequential
 from keras.layers import LSTM, CuDNNLSTM, TimeDistributed, Dense, Bidirectional
 from HelixerModel import HelixerModel, get_col_accuracy_fn
@@ -61,6 +63,32 @@ class LSTMModel(HelixerModel):
                           get_col_accuracy_fn(2),
                       ])
 
+    def _gen_data(self, h5_file, shuffle, exclude_erroneous_seqs=False, sample_intergenic=False):
+        n_seq = h5_file['/data/X'].shape[0]
+        X, y, sample_weights = [], [], []
+        while True:
+            seq_indexes = list(range(n_seq))
+            if shuffle:
+                random.shuffle(seq_indexes)
+            for i in seq_indexes:
+                raw_sw = h5_file['/data/sample_weights'][i]
+                if exclude_erroneous_seqs and np.any(raw_sw == 0):
+                    continue
+                if sample_intergenic and self.intergenic_chance < 1.0 and np.all(y == 0):
+                    if random.random() > self.intergenic_chance:
+                        continue
+                X.append(h5_file['/data/X'][i])
+                y.append(h5_file['/data/y'][i])
+                # apply intergenic sample weight value
+                genic_weight = X[-1][:, 0] + self.intergenic_sample_weight * (1 - X[-1][:, 0])
+                sample_weights.append(raw_sw * genic_weight)  # always set error as 0 weight
+                if len(X) == self.batch_size:
+                    yield (
+                        np.stack(X, axis=0),
+                        np.stack(y, axis=0),
+                        np.stack(sample_weights, axis=0)
+                    )
+                    X, y, sample_weights = [], [], []
 
 if __name__ == '__main__':
     model = LSTMModel()

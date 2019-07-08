@@ -66,7 +66,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
         self.parser.add_argument('-igsw', '--intergenic-sample-weight', type=float, default=1)
-        self.parser.add_argument('-ic', '--intergenic-chance', type=float, default=0.1)
+        self.parser.add_argument('-ic', '--intergenic-chance', type=float, default=1.0)
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
@@ -117,42 +117,25 @@ class HelixerModel(ABC):
             session = tf.Session(config=config)
             K.set_session(session)
 
-    def _gen_data(self, h5_file, shuffle, exclude_erroneous_seqs=False):
-        n_seq = h5_file['/data/X'].shape[0]
-        X, y, sample_weights = [], [], []
-        while True:
-            seq_indexes = list(range(n_seq))
-            if shuffle:
-                random.shuffle(seq_indexes)
-            for i in seq_indexes:
-                raw_sw = h5_file['/data/sample_weights'][i]
-                if exclude_erroneous_seqs and np.any(raw_sw == 0):
-                    continue
-                X.append(h5_file['/data/X'][i])
-                y.append(h5_file['/data/y'][i])
-                # apply intergenic sample weight value
-                genic_weight = X[-1][:, 0] + self.intergenic_sample_weight * (1 - X[-1][:, 0])
-                sample_weights.append(raw_sw * genic_weight)  # always set error as 0 weight
-                if len(X) == self.batch_size:
-                    yield (
-                        np.stack(X, axis=0),
-                        np.stack(y, axis=0),
-                        np.stack(sample_weights, axis=0)
-                    )
-                    X, y, sample_weights = [], [], []
+    @abstractmethod
+    def _gen_data(self, h5_file, shuffle, exclude_erroneous_seqs=False, sample_intergenic=False):
+        pass
 
     def gen_training_data(self):
-        gen = self._gen_data(self.h5_train, shuffle=True, exclude_erroneous_seqs=self.exclude_errors)
+        gen = self._gen_data(self.h5_train, shuffle=True, exclude_erroneous_seqs=self.exclude_errors,
+                             sample_intergenic=True)
         while True:
             yield next(gen)
 
     def gen_validation_data(self):
-        gen = self._gen_data(self.h5_val, shuffle=False, exclude_erroneous_seqs=self.exclude_errors)
+        gen = self._gen_data(self.h5_val, shuffle=False, exclude_erroneous_seqs=self.exclude_errors,
+                             sample_intergenic=False)
         while True:
             yield next(gen)
 
     def gen_test_data(self):
-        gen = self._gen_data(self.h5_test, shuffle=False, exclude_erroneous_seqs=self.exclude_errors)
+        gen = self._gen_data(self.h5_test, shuffle=False, exclude_erroneous_seqs=self.exclude_errors,
+                             sample_intergenic=False)
         while True:
             yield next(gen)
 
@@ -185,11 +168,19 @@ class HelixerModel(ABC):
 
         if self.exclude_errors:
             # load from attr so we don't have to load the whole sample weight array in memory
-            self.n_train_seqs = self.h5_train.attrs['n_fully_correct_seqs']
-            self.n_val_seqs = self.h5_val.attrs['n_fully_correct_seqs']
+            n_train_seqs_with_intergenic = self.h5_train.attrs['n_fully_correct_seqs']
+            n_val_seqs_with_intergenic = self.h5_val.attrs['n_fully_correct_seqs']
         else:
-            self.n_train_seqs = self.train_shape[0]
-            self.n_val_seqs = self.val_shape[0]
+            n_train_seqs_with_intergenic = self.train_shape[0]
+            n_val_seqs_with_intergenic = self.val_shape[0]
+
+        if self.intergenic_chance < 1.0:
+            # FIX ME wrong calculation
+            self.n_train_seqs = int(n_train_seqs_with_intergenic * self.intergenic_chance)
+            self.n_val_seqs = int(n_val_seqs_with_intergenic * self.intergenic_chance)
+        else:
+            self.n_train_seqs = n_train_seqs_with_intergenic
+            self.n_val_seqs = n_val_seqs_with_intergenic
 
         self.n_intergenic_train_seqs = self.h5_train.attrs['n_intergenic_seqs']
         self.n_intergenic_val_seqs = self.h5_val.attrs['n_intergenic_seqs']
@@ -197,9 +188,11 @@ class HelixerModel(ABC):
         if self.verbose:
             print('\nTraining data shape: {}'.format(self.train_shape[:2]))
             print('Validation data shape: {}'.format(self.val_shape[:2]))
-            print('Intergenic train/val seqs: {:.2f}% / {:.2f}%'.format(
-                self.n_intergenic_train_seqs / self.n_train_seqs * 100,
-                self.n_intergenic_val_seqs / self.n_val_seqs* 100))
+            print('\nTotal est. training sequences: {}'.format(self.n_train_seqs))
+            print('Total est. val sequences: {}'.format(self.n_val_seqs))
+            print('\nIntergenic train/val seqs: {:.2f}% / {:.2f}%'.format(
+                self.n_intergenic_train_seqs / n_train_seqs_with_intergenic * 100,
+                self.n_intergenic_val_seqs / n_val_seqs_with_intergenic * 100))
             print('Fully correct train/val seqs: {:.2f}% / {:.2f}%\n'.format(
                 self.h5_train.attrs['n_fully_correct_seqs'] / self.train_shape[0] * 100,
                 self.h5_val.attrs['n_fully_correct_seqs'] / self.val_shape[0] * 100))
@@ -208,6 +201,8 @@ class HelixerModel(ABC):
         self.set_resources()
         # we either train or predict
         if not self.load_model_path:
+            self.open_data_files()
+
             model = self.model()
             if not self.only_cpu and self.gpus >= 2:
                 model = multi_gpu_model(model, gpus=self.gpus)
@@ -223,7 +218,6 @@ class HelixerModel(ABC):
                 print('Plotted to model.png')
                 sys.exit()
 
-            self.open_data_files()
             self.set_optimizer()
             self.compile_model(model)
 
