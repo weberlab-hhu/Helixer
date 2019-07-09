@@ -128,8 +128,11 @@ class HelixerModel(ABC):
             yield next(gen)
 
     def gen_validation_data(self):
+        # reasons for the parameter setup of the generator: no need to shuffle, when we exclude
+        # errorneous seqs during training we should do it here and we probably also want to
+        # only validate on intergenic samples so train and val loss stay comparrable
         gen = self._gen_data(self.h5_val, shuffle=False, exclude_erroneous_seqs=self.exclude_errors,
-                             sample_intergenic=False)
+                             sample_intergenic=True)
         while True:
             yield next(gen)
 
