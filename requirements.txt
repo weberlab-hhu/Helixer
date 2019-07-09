@@ -6,3 +6,4 @@ geenuff
 numpy
 tensorflow
 nni
+seaborn
