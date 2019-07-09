@@ -75,9 +75,11 @@ class ExportController(object):
             X[j, :sample_len, :] = inputs[j]
             y[j, :sample_len, :] = labels[j]
             sample_weights[j, :sample_len] = label_masks[j]
+        err_samples = np.any(sample_weights == 0, axis=1)
+        fully_intergenic_samples = np.all(y[:, :, 0] == 0, axis=1)
 
         # check if this is the first batch to save
-        dset_keys = ['X', 'y', 'sample_weights']
+        dset_keys = ['X', 'y', 'sample_weights', 'err_samples', 'fully_intergenic_samples']
         if '/data/X' in h5_file:
             for dset_key in dset_keys:
                 dset = h5_file['/data/' + dset_key]
@@ -106,19 +108,20 @@ class ExportController(object):
                                    dtype='int8',
                                    compression='lzf',
                                    shuffle=True)
+            h5_file.create_dataset('/data/err_samples',
+                                   shape=(n_seq,),
+                                   maxshape=(None,),
+                                   dtype='bool',
+                                   compression='lzf')
+            h5_file.create_dataset('/data/fully_intergenic_samples',
+                                   shape=(n_seq,),
+                                   maxshape=(None,),
+                                   dtype='bool',
+                                   compression='lzf')
         # add new data
-        for dset_key, data in zip(dset_keys, [X, y, sample_weights]):
+        dsets = [X, y, sample_weights, err_samples, fully_intergenic_samples]
+        for dset_key, data in zip(dset_keys, dsets):
             h5_file['/data/' + dset_key][old_len:] = data
-
-        # update n_fully_correct_seqs and n_intergenic_seqs attrs
-        n_good_seqs = n_seq - np.count_nonzero(np.any(sample_weights == 0, axis=1))
-        n_intergenic_seqs = np.count_nonzero(np.all(y == 0, axis=(1, 2)))
-        if h5_file.attrs:
-            h5_file.attrs['n_fully_correct_seqs'] += n_good_seqs
-            h5_file.attrs['n_intergenic_seqs'] += n_intergenic_seqs
-        else:
-            h5_file.attrs['n_fully_correct_seqs'] = n_good_seqs
-            h5_file.attrs['n_intergenic_seqs'] = n_intergenic_seqs
         h5_file.flush()
 
     def _fetch_coords(self, genomes):

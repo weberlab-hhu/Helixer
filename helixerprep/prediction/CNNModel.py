@@ -20,7 +20,7 @@ class CNNModel(HelixerModel):
         model = Sequential()
         model.add(Conv1D(filters=self.filter_depth,
                          kernel_size=self.kernel_size,
-                         input_shape=(self.train_shape[1], 4),
+                         input_shape=(self.shape_train[1], 4),
                          padding="same",
                          activation="relu"))
         # -2 because first and last have different dimensions
@@ -48,22 +48,27 @@ class CNNModel(HelixerModel):
                           get_col_accuracy_fn(2),
                       ])
 
-    def _gen_data(self, h5_file, shuffle, exclude_erroneous_seqs=False, sample_intergenic=False):
+    def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False, sample_intergenic=False):
         n_seq = h5_file['/data/X'].shape[0]
+        if exclude_err_seqs:
+            err_samples = np.array(h5_file['/data/err_samples'])
+        if sample_intergenic and self.intergenic_chance < 1.0:
+            fully_intergenic_samples = np.array(h5_file['/data/fully_intergenic_samples'])
+            intergenic_rolls = np.random.random((n_seq,))  # a little bit too much, but simpler so
         X, y = [], []
         while True:
             seq_indexes = list(range(n_seq))
             if shuffle:
                 random.shuffle(seq_indexes)
             for i in seq_indexes:
-                raw_sw = h5_file['/data/sample_weights'][i]
+                if exclude_err_seqs and err_samples[i]:
+                    continue
+                if (sample_intergenic and self.intergenic_chance < 1.0
+                        and fully_intergenic_samples[i]
+                        and intergenic_rolls[i] > self.intergenic_chance):
+                    continue
                 X.append(h5_file['/data/X'][i])
                 y.append(h5_file['/data/y'][i])
-                if exclude_erroneous_seqs and np.any(raw_sw == 0):
-                    continue
-                if sample_intergenic and self.intergenic_chance < 1.0 and np.all(y[-1] == 0):
-                    if random.random() > self.intergenic_chance:
-                        continue
                 # apply intergenic sample weight value
                 if len(X) == self.batch_size:
                     yield (
