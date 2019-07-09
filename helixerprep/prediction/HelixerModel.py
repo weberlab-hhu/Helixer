@@ -147,6 +147,12 @@ class HelixerModel(ABC):
     def compile_model(self, model):
         pass
 
+    def plot_model(self, model):
+        from keras.utils import plot_model
+        plot_model(model, to_file='model.png')
+        print('Plotted to model.png')
+        sys.exit()
+
     def set_optimizer(self):
         if self.optimizer == 'adam':
             self.optimizer = optimizers.Adam(lr=self.learning_rate,
@@ -174,25 +180,28 @@ class HelixerModel(ABC):
             n_train_seqs_with_intergenic = self.train_shape[0]
             n_val_seqs_with_intergenic = self.val_shape[0]
 
+        # potentially account for intergenic seqs
+        n_intergenic_train_seqs = self.h5_train.attrs['n_intergenic_seqs']
+        n_intergenic_val_seqs = self.h5_val.attrs['n_intergenic_seqs']
+
         if self.intergenic_chance < 1.0:
-            # FIX ME wrong calculation
-            self.n_train_seqs = int(n_train_seqs_with_intergenic * self.intergenic_chance)
-            self.n_val_seqs = int(n_val_seqs_with_intergenic * self.intergenic_chance)
+            n_genic_train_seqs = n_train_seqs_with_intergenic - n_intergenic_train_seqs
+            n_genic_val_seqs = n_val_seqs_with_intergenic - n_intergenic_val_seqs
+            self.n_train_seqs = n_genic_train_seqs + \
+                                int(n_intergenic_train_seqs * self.intergenic_chance)
+            self.n_val_seqs = n_genic_val_seqs + int(n_intergenic_val_seqs * self.intergenic_chance)
         else:
             self.n_train_seqs = n_train_seqs_with_intergenic
             self.n_val_seqs = n_val_seqs_with_intergenic
-
-        self.n_intergenic_train_seqs = self.h5_train.attrs['n_intergenic_seqs']
-        self.n_intergenic_val_seqs = self.h5_val.attrs['n_intergenic_seqs']
 
         if self.verbose:
             print('\nTraining data shape: {}'.format(self.train_shape[:2]))
             print('Validation data shape: {}'.format(self.val_shape[:2]))
             print('\nTotal est. training sequences: {}'.format(self.n_train_seqs))
             print('Total est. val sequences: {}'.format(self.n_val_seqs))
-            print('\nIntergenic train/val seqs: {:.2f}% / {:.2f}%'.format(
-                self.n_intergenic_train_seqs / n_train_seqs_with_intergenic * 100,
-                self.n_intergenic_val_seqs / n_val_seqs_with_intergenic * 100))
+            print('\nEst. intergenic train/val seqs: {:.2f}% / {:.2f}%'.format(
+                n_intergenic_train_seqs / n_train_seqs_with_intergenic * 100,
+                n_intergenic_val_seqs / n_val_seqs_with_intergenic * 100))
             print('Fully correct train/val seqs: {:.2f}% / {:.2f}%\n'.format(
                 self.h5_train.attrs['n_fully_correct_seqs'] / self.train_shape[0] * 100,
                 self.h5_val.attrs['n_fully_correct_seqs'] / self.val_shape[0] * 100))
@@ -213,10 +222,7 @@ class HelixerModel(ABC):
                 print('Total params: {:,}'.format(model.count_params()))
 
             if self.plot:
-                from keras.utils import plot_model
-                plot_model(model, to_file='model.png')
-                print('Plotted to model.png')
-                sys.exit()
+                self.plot_model(model)
 
             self.set_optimizer()
             self.compile_model(model)
