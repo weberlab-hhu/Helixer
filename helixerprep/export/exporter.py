@@ -26,7 +26,7 @@ class ExportController(object):
             print('Exporting all data into test_data.h5')
             self.h5_test = h5py.File(os.path.join(data_dir, 'test_data.h5'), 'w')
         else:
-            print('Exporting all data into test_data.h5')
+            print('Splitting data into training_data.h5 and validation_data.h5')
             self.h5_train = h5py.File(os.path.join(data_dir, 'training_data.h5'), 'w')
             self.h5_val = h5py.File(os.path.join(data_dir, 'validation_data.h5'), 'w')
         self._mk_session()
