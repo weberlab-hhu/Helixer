@@ -72,13 +72,13 @@ class LSTMModel(HelixerModel):
                 random.shuffle(seq_indexes)
             for i in seq_indexes:
                 raw_sw = h5_file['/data/sample_weights'][i]
-                if exclude_erroneous_seqs and np.any(raw_sw == 0):
-                    continue
-                if sample_intergenic and self.intergenic_chance < 1.0 and np.all(y == 0):
-                    if random.random() > self.intergenic_chance:
-                        continue
                 X.append(h5_file['/data/X'][i])
                 y.append(h5_file['/data/y'][i])
+                if exclude_erroneous_seqs and np.any(raw_sw == 0):
+                    continue
+                if sample_intergenic and self.intergenic_chance < 1.0 and np.all(y[-1] == 0):
+                    if random.random() > self.intergenic_chance:
+                        continue
                 # apply intergenic sample weight value
                 genic_weight = X[-1][:, 0] + self.intergenic_sample_weight * (1 - X[-1][:, 0])
                 sample_weights.append(raw_sw * genic_weight)  # always set error as 0 weight
@@ -89,6 +89,7 @@ class LSTMModel(HelixerModel):
                         np.stack(sample_weights, axis=0)
                     )
                     X, y, sample_weights = [], [], []
+
 
 if __name__ == '__main__':
     model = LSTMModel()

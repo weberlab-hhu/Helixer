@@ -56,8 +56,14 @@ class CNNModel(HelixerModel):
             if shuffle:
                 random.shuffle(seq_indexes)
             for i in seq_indexes:
+                raw_sw = h5_file['/data/sample_weights'][i]
                 X.append(h5_file['/data/X'][i])
                 y.append(h5_file['/data/y'][i])
+                if exclude_erroneous_seqs and np.any(raw_sw == 0):
+                    continue
+                if sample_intergenic and self.intergenic_chance < 1.0 and np.all(y[-1] == 0):
+                    if random.random() > self.intergenic_chance:
+                        continue
                 # apply intergenic sample weight value
                 if len(X) == self.batch_size:
                     yield (
