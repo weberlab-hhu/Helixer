@@ -194,14 +194,12 @@ class HelixerModel(ABC):
         n_intergenic_val_seqs = np.count_nonzero(ic_samples_val == True)
 
         if self.intergenic_chance < 1.0:
-            n_genic_train_seqs = n_train_seqs_with_intergenic - n_intergenic_train_seqs
-            n_genic_val_seqs = n_val_seqs_with_intergenic - n_intergenic_val_seqs
-            self.n_train_seqs = n_genic_train_seqs + \
+            self.n_train_seqs = n_train_seqs_with_intergenic - n_intergenic_train_seqs + \
                                 int(n_intergenic_train_seqs * self.intergenic_chance)
-            self.n_val_seqs = n_genic_val_seqs + int(n_intergenic_val_seqs * self.intergenic_chance)
         else:
             self.n_train_seqs = n_train_seqs_with_intergenic
-            self.n_val_seqs = n_val_seqs_with_intergenic
+        # do not adjust the validation count for intergenic sampling as we don't do that then
+        self.n_val_seqs = n_val_seqs_with_intergenic
 
         if self.verbose:
             print('\nTraining data shape: {}'.format(self.shape_train[:2]))
