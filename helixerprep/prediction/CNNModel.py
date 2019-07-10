@@ -10,10 +10,10 @@ class CNNModel(HelixerModel):
 
     def __init__(self):
         super().__init__()
-        self.parser.add_argument('--kernel_size', type=int, default=7)
-        self.parser.add_argument('--final_kernel_size', type=int, default=128)
-        self.parser.add_argument('--filter_depth', type=int, default=64)
-        self.parser.add_argument('--n_layers', type=int, default=4)
+        self.parser.add_argument('--kernel-size', type=int, default=7)
+        self.parser.add_argument('--final-kernel-size', type=int, default=128)
+        self.parser.add_argument('--filter-depth', type=int, default=64)
+        self.parser.add_argument('--n-layers', type=int, default=4)
         self.parse_args()
 
     def model(self):
@@ -23,6 +23,7 @@ class CNNModel(HelixerModel):
                          input_shape=(self.shape_train[1], 4),
                          padding="same",
                          activation="relu"))
+
         # -2 because first and last have different dimensions
         for _ in range(self.n_layers - 2):
             model.add(Conv1D(filters=self.filter_depth,
@@ -31,10 +32,9 @@ class CNNModel(HelixerModel):
                              activation="relu"))
 
         model.add(Conv1D(filters=3,
-                         kernel_size=128,
+                         kernel_size=self.final_kernel_size,
                          activation="sigmoid",
-                         padding="same"
-                         ))
+                         padding="same"))
         return model
 
     def compile_model(self, model):

@@ -55,7 +55,7 @@ class HelixerModel(ABC):
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         self.parser = argparse.ArgumentParser()
-        self.parser.add_argument('-d', '--data_dir', type=str, default='')
+        self.parser.add_argument('-d', '--data-dir', type=str, default='')
         self.parser.add_argument('-sm', '--save-model-path', type=str, default='./best_model.h5')
         # training params
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
