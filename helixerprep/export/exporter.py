@@ -26,7 +26,7 @@ class ExportController(object):
             print('Exporting all data into test_data.h5')
             self.h5_test = h5py.File(os.path.join(data_dir, 'test_data.h5'), 'w')
         else:
-            print('Exporting all data into test_data.h5')
+            print('Splitting data into training_data.h5 and validation_data.h5')
             self.h5_train = h5py.File(os.path.join(data_dir, 'training_data.h5'), 'w')
             self.h5_val = h5py.File(os.path.join(data_dir, 'validation_data.h5'), 'w')
         self._mk_session()
@@ -75,9 +75,11 @@ class ExportController(object):
             X[j, :sample_len, :] = inputs[j]
             y[j, :sample_len, :] = labels[j]
             sample_weights[j, :sample_len] = label_masks[j]
+        err_samples = np.any(sample_weights == 0, axis=1)
+        fully_intergenic_samples = np.all(y[:, :, 0] == 0, axis=1)
 
         # check if this is the first batch to save
-        dset_keys = ['X', 'y', 'sample_weights']
+        dset_keys = ['X', 'y', 'sample_weights', 'err_samples', 'fully_intergenic_samples']
         if '/data/X' in h5_file:
             for dset_key in dset_keys:
                 dset = h5_file['/data/' + dset_key]
@@ -106,19 +108,20 @@ class ExportController(object):
                                    dtype='int8',
                                    compression='lzf',
                                    shuffle=True)
+            h5_file.create_dataset('/data/err_samples',
+                                   shape=(n_seq,),
+                                   maxshape=(None,),
+                                   dtype='bool',
+                                   compression='lzf')
+            h5_file.create_dataset('/data/fully_intergenic_samples',
+                                   shape=(n_seq,),
+                                   maxshape=(None,),
+                                   dtype='bool',
+                                   compression='lzf')
         # add new data
-        for dset_key, data in zip(dset_keys, [X, y, sample_weights]):
+        dsets = [X, y, sample_weights, err_samples, fully_intergenic_samples]
+        for dset_key, data in zip(dset_keys, dsets):
             h5_file['/data/' + dset_key][old_len:] = data
-
-        # update n_fully_correct_seqs and n_intergenic_seqs attrs
-        n_good_seqs = n_seq - np.count_nonzero(np.any(sample_weights == 0, axis=1))
-        n_intergenic_seqs = np.count_nonzero(np.all(y == 0, axis=(1, 2)))
-        if h5_file.attrs:
-            h5_file.attrs['n_fully_correct_seqs'] += n_good_seqs
-            h5_file.attrs['n_intergenic_seqs'] += n_intergenic_seqs
-        else:
-            h5_file.attrs['n_fully_correct_seqs'] = n_good_seqs
-            h5_file.attrs['n_intergenic_seqs'] = n_intergenic_seqs
         h5_file.flush()
 
     def _fetch_coords(self, genomes):
@@ -151,13 +154,15 @@ class ExportController(object):
 
         for i, coord in enumerate(all_coords):
             inputs, labels, label_masks = [], [], []
-            n_masked_bases = 0
+            n_masked_bases, n_intergenic_bases = 0, 0
             for is_plus_strand in [True, False]:
                 numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size)
                 coord_data = numerifier.numerify()
                 # keep track of variables
                 n_masked_bases += sum(
-                    [len(m) - np.count_nonzero(m) for m in coord_data['label_masks']])
+                    [np.count_nonzero(m == 0) for m in coord_data['label_masks']])
+                n_intergenic_bases += sum(
+                    [np.count_nonzero(np.all(l == 0, axis=1)) for l in coord_data['labels']])
                 # filter out sequences that are completely masked as error
                 valid_data = [s.any() for s in coord_data['label_masks']]
                 coord_data['inputs'] = list(compress(coord_data['inputs'], valid_data))
@@ -169,14 +174,16 @@ class ExportController(object):
                 label_masks += coord_data['label_masks']
 
             masked_bases_percent = n_masked_bases / (coord.length * 2) * 100
+            intergenic_bases_percent = n_intergenic_bases / (coord.length * 2) * 100
             # no need to split
             if self.only_test_set:
                 self._save_data(self.h5_test, inputs, labels, label_masks, chunk_size,
                                 timestep_len)
-                print(('{}/{} Numerified {} of species {} with {} features in {} chunks '
-                       'and a base level error rate of {:.2f}%').format(
+                print(('{}/{} Numerified {} of {} with {} features in {} chunks '
+                       'with an error rate of {:.2f}%, and intergenic rate of {:.2f}%').format(
                            i + 1, len(all_coords), coord, coord.genome.species,
-                           len(coord.features), len(inputs), masked_bases_percent))
+                           len(coord.features), len(inputs), masked_bases_percent,
+                           intergenic_bases_percent))
             else:
                 # split and save
                 train_data, val_data = self._split_data([inputs, labels, label_masks],
@@ -185,9 +192,9 @@ class ExportController(object):
                     self._save_data(self.h5_train, *train_data, chunk_size, timestep_len)
                 if val_data[0]:
                     self._save_data(self.h5_val, *val_data, chunk_size, timestep_len)
-                print(('{}/{} Numerified {} of species {} with {} features in {} chunks '
-                       '(train: {}, test: {}) and a base level error rate of {:.2f}%').format(
+                print(('{}/{} Numerified {} of {} with {} features in {} chunks '
+                       '(train: {}, test: {}) with an error rate of {:.2f}% and an intergenic rate of {:.2f}%').format(
                            i + 1, len(all_coords), coord, coord.genome.species,
                            len(coord.features), len(inputs), len(train_data[0]),
-                           len(val_data[0]), masked_bases_percent))
+                           len(val_data[0]), masked_bases_percent, intergenic_bases_percent))
         self._close_files()

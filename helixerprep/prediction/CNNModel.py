@@ -10,19 +10,20 @@ class CNNModel(HelixerModel):
 
     def __init__(self):
         super().__init__()
-        self.parser.add_argument('--kernel_size', type=int, default=7)
-        self.parser.add_argument('--final_kernel_size', type=int, default=128)
-        self.parser.add_argument('--filter_depth', type=int, default=64)
-        self.parser.add_argument('--n_layers', type=int, default=4)
+        self.parser.add_argument('--kernel-size', type=int, default=7)
+        self.parser.add_argument('--final-kernel-size', type=int, default=128)
+        self.parser.add_argument('--filter-depth', type=int, default=64)
+        self.parser.add_argument('--n-layers', type=int, default=4)
         self.parse_args()
 
     def model(self):
         model = Sequential()
         model.add(Conv1D(filters=self.filter_depth,
                          kernel_size=self.kernel_size,
-                         input_shape=(self.train_shape[1], 4),
+                         input_shape=(self.shape_train[1], 4),
                          padding="same",
                          activation="relu"))
+
         # -2 because first and last have different dimensions
         for _ in range(self.n_layers - 2):
             model.add(Conv1D(filters=self.filter_depth,
@@ -31,10 +32,9 @@ class CNNModel(HelixerModel):
                              activation="relu"))
 
         model.add(Conv1D(filters=3,
-                         kernel_size=128,
+                         kernel_size=self.final_kernel_size,
                          activation="sigmoid",
-                         padding="same"
-                         ))
+                         padding="same"))
         return model
 
     def compile_model(self, model):
@@ -48,14 +48,25 @@ class CNNModel(HelixerModel):
                           get_col_accuracy_fn(2),
                       ])
 
-    def _gen_data(self, h5_file, shuffle, exclude_erroneous_seqs=False, sample_intergenic=False):
+    def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False, sample_intergenic=False):
         n_seq = h5_file['/data/X'].shape[0]
+        if exclude_err_seqs:
+            err_samples = np.array(h5_file['/data/err_samples'])
+        if sample_intergenic and self.intergenic_chance < 1.0:
+            fully_intergenic_samples = np.array(h5_file['/data/fully_intergenic_samples'])
+            intergenic_rolls = np.random.random((n_seq,))  # a little bit too much, but simpler so
         X, y = [], []
         while True:
             seq_indexes = list(range(n_seq))
             if shuffle:
                 random.shuffle(seq_indexes)
             for i in seq_indexes:
+                if exclude_err_seqs and err_samples[i]:
+                    continue
+                if (sample_intergenic and self.intergenic_chance < 1.0
+                        and fully_intergenic_samples[i]
+                        and intergenic_rolls[i] > self.intergenic_chance):
+                    continue
                 X.append(h5_file['/data/X'][i])
                 y.append(h5_file['/data/y'][i])
                 # apply intergenic sample weight value

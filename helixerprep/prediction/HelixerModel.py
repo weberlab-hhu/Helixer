@@ -55,7 +55,7 @@ class HelixerModel(ABC):
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         self.parser = argparse.ArgumentParser()
-        self.parser.add_argument('-d', '--data_dir', type=str, default='')
+        self.parser.add_argument('-d', '--data-dir', type=str, default='')
         self.parser.add_argument('-sm', '--save-model-path', type=str, default='./best_model.h5')
         # training params
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
@@ -118,23 +118,26 @@ class HelixerModel(ABC):
             K.set_session(session)
 
     @abstractmethod
-    def _gen_data(self, h5_file, shuffle, exclude_erroneous_seqs=False, sample_intergenic=False):
+    def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False, sample_intergenic=False):
         pass
 
     def gen_training_data(self):
-        gen = self._gen_data(self.h5_train, shuffle=True, exclude_erroneous_seqs=self.exclude_errors,
+        gen = self._gen_data(self.h5_train, shuffle=True, exclude_err_seqs=self.exclude_errors,
                              sample_intergenic=True)
         while True:
             yield next(gen)
 
     def gen_validation_data(self):
-        gen = self._gen_data(self.h5_val, shuffle=False, exclude_erroneous_seqs=self.exclude_errors,
+        # reasons for the parameter setup of the generator: no need to shuffle, when we exclude
+        # errorneous seqs during training we should do it here and we probably also want to
+        # have a comparable validation set accross all possible parameters
+        gen = self._gen_data(self.h5_val, shuffle=False, exclude_err_seqs=self.exclude_errors,
                              sample_intergenic=False)
         while True:
             yield next(gen)
 
     def gen_test_data(self):
-        gen = self._gen_data(self.h5_test, shuffle=False, exclude_erroneous_seqs=self.exclude_errors,
+        gen = self._gen_data(self.h5_test, shuffle=False, exclude_err_seqs=self.exclude_errors,
                              sample_intergenic=False)
         while True:
             yield next(gen)
@@ -146,6 +149,12 @@ class HelixerModel(ABC):
     @abstractmethod
     def compile_model(self, model):
         pass
+
+    def plot_model(self, model):
+        from keras.utils import plot_model
+        plot_model(model, to_file='model.png')
+        print('Plotted to model.png')
+        sys.exit()
 
     def set_optimizer(self):
         if self.optimizer == 'adam':
@@ -163,39 +172,46 @@ class HelixerModel(ABC):
     def open_data_files(self):
         self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
         self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
-        self.train_shape = self.h5_train['/data/X'].shape
-        self.val_shape = self.h5_val['/data/X'].shape
+        self.shape_train = self.h5_train['/data/X'].shape
+        self.shape_val = self.h5_val['/data/X'].shape
+
+        err_samples_train = np.array(self.h5_train['/data/err_samples'])
+        err_samples_val = np.array(self.h5_val['/data/err_samples'])
+        n_train_correct_seqs = np.count_nonzero(err_samples_train == False)
+        n_val_correct_seqs = np.count_nonzero(err_samples_val == False)
 
         if self.exclude_errors:
-            # load from attr so we don't have to load the whole sample weight array in memory
-            n_train_seqs_with_intergenic = self.h5_train.attrs['n_fully_correct_seqs']
-            n_val_seqs_with_intergenic = self.h5_val.attrs['n_fully_correct_seqs']
+            n_train_seqs_with_intergenic = n_train_correct_seqs
+            n_val_seqs_with_intergenic = n_val_correct_seqs
         else:
-            n_train_seqs_with_intergenic = self.train_shape[0]
-            n_val_seqs_with_intergenic = self.val_shape[0]
+            n_train_seqs_with_intergenic = self.shape_train[0]
+            n_val_seqs_with_intergenic = self.shape_val[0]
+
+        # potentially account for intergenic seqs
+        ic_samples_train = np.array(self.h5_train['/data/fully_intergenic_samples'])
+        ic_samples_val = np.array(self.h5_val['/data/fully_intergenic_samples'])
+        n_intergenic_train_seqs = np.count_nonzero(ic_samples_train == True)
+        n_intergenic_val_seqs = np.count_nonzero(ic_samples_val == True)
 
         if self.intergenic_chance < 1.0:
-            # FIX ME wrong calculation
-            self.n_train_seqs = int(n_train_seqs_with_intergenic * self.intergenic_chance)
-            self.n_val_seqs = int(n_val_seqs_with_intergenic * self.intergenic_chance)
+            self.n_train_seqs = n_train_seqs_with_intergenic - n_intergenic_train_seqs + \
+                                int(n_intergenic_train_seqs * self.intergenic_chance)
         else:
             self.n_train_seqs = n_train_seqs_with_intergenic
-            self.n_val_seqs = n_val_seqs_with_intergenic
-
-        self.n_intergenic_train_seqs = self.h5_train.attrs['n_intergenic_seqs']
-        self.n_intergenic_val_seqs = self.h5_val.attrs['n_intergenic_seqs']
+        # do not adjust the validation count for intergenic sampling as we don't do that then
+        self.n_val_seqs = n_val_seqs_with_intergenic
 
         if self.verbose:
-            print('\nTraining data shape: {}'.format(self.train_shape[:2]))
-            print('Validation data shape: {}'.format(self.val_shape[:2]))
+            print('\nTraining data shape: {}'.format(self.shape_train[:2]))
+            print('Validation data shape: {}'.format(self.shape_val[:2]))
             print('\nTotal est. training sequences: {}'.format(self.n_train_seqs))
             print('Total est. val sequences: {}'.format(self.n_val_seqs))
-            print('\nIntergenic train/val seqs: {:.2f}% / {:.2f}%'.format(
-                self.n_intergenic_train_seqs / n_train_seqs_with_intergenic * 100,
-                self.n_intergenic_val_seqs / n_val_seqs_with_intergenic * 100))
+            print('\nEst. intergenic train/val seqs: {:.2f}% / {:.2f}%'.format(
+                n_intergenic_train_seqs / n_train_seqs_with_intergenic * 100,
+                n_intergenic_val_seqs / n_val_seqs_with_intergenic * 100))
             print('Fully correct train/val seqs: {:.2f}% / {:.2f}%\n'.format(
-                self.h5_train.attrs['n_fully_correct_seqs'] / self.train_shape[0] * 100,
-                self.h5_val.attrs['n_fully_correct_seqs'] / self.val_shape[0] * 100))
+                n_train_correct_seqs / self.shape_train[0] * 100,
+                n_val_correct_seqs / self.shape_val[0] * 100))
 
     def run(self):
         self.set_resources()
@@ -213,10 +229,7 @@ class HelixerModel(ABC):
                 print('Total params: {:,}'.format(model.count_params()))
 
             if self.plot:
-                from keras.utils import plot_model
-                plot_model(model, to_file='model.png')
-                print('Plotted to model.png')
-                sys.exit()
+                self.plot_model(model)
 
             self.set_optimizer()
             self.compile_model(model)
