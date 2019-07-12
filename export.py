@@ -8,7 +8,8 @@ def main(args):
     controller = ExportController(args.db_path_in, args.out_dir, args.only_test_set)
     if args.genomes != '':
         args.genomes = args.genomes.split(',')
-    controller.export(chunk_size=args.chunk_size, genomes=args.genomes)
+    controller.export(chunk_size=args.chunk_size, genomes=args.genomes,
+                      coordinate_chance=args.coordinate_chance, sample_strand=args.sample_strand)
 
 
 if __name__ == '__main__':
@@ -24,7 +25,13 @@ if __name__ == '__main__':
     data.add_argument('--genomes', type=str, default='',
                       help=('Comma seperated list of species names to be exported. '
                             'If empty all genomes in the db are used.'))
+    data.add_argument('--coordinate-chance', type=float, default=1.0,
+                      help=('The chance to include a specific coordinate. '
+                            'Can be used to control sampling'))
+    data.add_argument('--sample-strand', action='store_true',
+                      help='When true, choose only one strand of a coordinate at random.')
     data.add_argument('--only-test-set', action='store_true',
                       help='Whether to only output a single file named test_data.h5')
+
     args = parser.parse_args()
     main(args)
