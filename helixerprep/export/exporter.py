@@ -124,7 +124,7 @@ class ExportController(object):
             h5_file['/data/' + dset_key][old_len:] = data
         h5_file.flush()
 
-    def _get_coord_ids(self, genomes, coordinate_chance):
+    def _get_coord_ids(self, genomes, exclude, coordinate_chance):
         coord_ids_with_features = self.session.query(Feature.coordinate_id).distinct()
         if genomes:
             print('Selecting the following genomes: {}'.format(genomes))
@@ -134,10 +134,18 @@ class ExportController(object):
                             .filter(Coordinate.id.in_(coord_ids_with_features))
                             .all())
         else:
-            print('Selecting all genomes from {}'.format(self.db_path_in))
-            all_coord_ids = (self.session.query(Coordinate.id)
-                            .filter(Coordinate.id.in_(coord_ids_with_features))
-                            .all())
+            if exclude:
+                print('Selecting all genomes from {} except: {}'.format(self.db_path_in, exclude))
+                all_coord_ids = (self.session.query(Coordinate.id)
+                                .join(Genome, Genome.id == Coordinate.genome_id)
+                                .filter(Genome.species.notin_(exclude))
+                                .filter(Coordinate.id.in_(coord_ids_with_features))
+                                .all())
+            else:
+                print('Selecting all genomes from {}'.format(self.db_path_in))
+                all_coord_ids = (self.session.query(Coordinate.id)
+                                .filter(Coordinate.id.in_(coord_ids_with_features))
+                                .all())
 
         if coordinate_chance < 1.0:
             print('Choosing coordinates with a chance of {}'.format(coordinate_chance))
@@ -153,8 +161,8 @@ class ExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def export(self, chunk_size, genomes, coordinate_chance, sample_strand):
-        all_coord_ids = self._get_coord_ids(genomes, coordinate_chance)
+    def export(self, chunk_size, genomes, exclude, coordinate_chance, sample_strand):
+        all_coord_ids = self._get_coord_ids(genomes, exclude, coordinate_chance)
         print('\n{} coordinates chosen to numerify'.format(len(all_coord_ids)))
 
         for i, coord_id in enumerate(all_coord_ids):
