@@ -62,7 +62,7 @@ class ExportController(object):
             self.h5_val.attrs['genomes'] = ', '.join(genomes)
             self.h5_val.attrs['split_type'] = 'dev'
 
-    def _save_data(self, h5_file, inputs, labels, label_masks, chunk_size, timestep_len):
+    def _save_data(self, h5_file, inputs, labels, label_masks, chunk_size):
         # zero-pad each sequence to chunk_size
         # this is inefficient if there could be a batch with only sequences smaller than
         # chunk_size, but taking care of that introduces a lot of extra complexity
@@ -124,19 +124,35 @@ class ExportController(object):
             h5_file['/data/' + dset_key][old_len:] = data
         h5_file.flush()
 
-    def _fetch_coords(self, genomes):
+    def _get_coord_ids(self, genomes, exclude, coordinate_chance):
+        coord_ids_with_features = self.session.query(Feature.coordinate_id).distinct()
         if genomes:
             print('Selecting the following genomes: {}'.format(genomes))
-            coords_with_features = self.session.query(Feature.coordinate_id).distinct()
-            all_coords = (self.session.query(Coordinate)
-                         .join(Genome, Genome.id == Coordinate.genome_id)
-                         .filter(Genome.species.in_(genomes))
-                         .filter(Coordinate.id.in_(coords_with_features))
-                         .all())
+            all_coord_ids = (self.session.query(Coordinate.id)
+                            .join(Genome, Genome.id == Coordinate.genome_id)
+                            .filter(Genome.species.in_(genomes))
+                            .filter(Coordinate.id.in_(coord_ids_with_features))
+                            .all())
         else:
-            print('Selecting all genomes from {}'.format(self.db_path_in))
-            all_coords = self.session.query(Coordinate).all()
-        return all_coords
+            if exclude:
+                print('Selecting all genomes from {} except: {}'.format(self.db_path_in, exclude))
+                all_coord_ids = (self.session.query(Coordinate.id)
+                                .join(Genome, Genome.id == Coordinate.genome_id)
+                                .filter(Genome.species.notin_(exclude))
+                                .filter(Coordinate.id.in_(coord_ids_with_features))
+                                .all())
+            else:
+                print('Selecting all genomes from {}'.format(self.db_path_in))
+                all_coord_ids = (self.session.query(Coordinate.id)
+                                .filter(Coordinate.id.in_(coord_ids_with_features))
+                                .all())
+
+        if coordinate_chance < 1.0:
+            print('Choosing coordinates with a chance of {}'.format(coordinate_chance))
+            all_coord_ids = [c[0] for c in all_coord_ids if random.random() < coordinate_chance]
+        else:
+            all_coord_ids = [c[0] for c in all_coord_ids]
+        return all_coord_ids
 
     def _close_files(self):
         if self.only_test_set:
@@ -145,17 +161,16 @@ class ExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def export(self, chunk_size, timestep_len=1, genomes=''):
-        """timestep_len is the number of bp inputs at each timestep (and also how much to output)"""
-        assert chunk_size % timestep_len == 0
+    def export(self, chunk_size, genomes, exclude, coordinate_chance, sample_strand):
+        all_coord_ids = self._get_coord_ids(genomes, exclude, coordinate_chance)
+        print('\n{} coordinates chosen to numerify'.format(len(all_coord_ids)))
 
-        all_coords = self._fetch_coords(genomes)
-        print('{} coordinates chosen to numerify'.format(len(all_coords)))
-
-        for i, coord in enumerate(all_coords):
+        for i, coord_id in enumerate(all_coord_ids):
+            coord = self.session.query(Coordinate).filter(Coordinate.id == coord_id).one()
             inputs, labels, label_masks = [], [], []
             n_masked_bases, n_intergenic_bases = 0, 0
-            for is_plus_strand in [True, False]:
+            strands = [True, False] if not sample_strand else [random.choice([True, False])]
+            for is_plus_strand in strands:
                 numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size)
                 coord_data = numerifier.numerify()
                 # keep track of variables
@@ -173,15 +188,19 @@ class ExportController(object):
                 labels += coord_data['labels']
                 label_masks += coord_data['label_masks']
 
-            masked_bases_percent = n_masked_bases / (coord.length * 2) * 100
-            intergenic_bases_percent = n_intergenic_bases / (coord.length * 2) * 100
+            masked_bases_percent = n_masked_bases / (coord.length * len(strands)) * 100
+            intergenic_bases_percent = n_intergenic_bases / (coord.length * len(strands)) * 100
+            # for the debug output
+            if sample_strand:
+                strand_str = ' (+)' if strands == [True] else ' (-)'
+            else:
+                strand_str = ''
             # no need to split
             if self.only_test_set:
-                self._save_data(self.h5_test, inputs, labels, label_masks, chunk_size,
-                                timestep_len)
-                print(('{}/{} Numerified {} of {} with {} features in {} chunks '
+                self._save_data(self.h5_test, inputs, labels, label_masks, chunk_size)
+                print(('{}/{} Numerified {}{} of {} with {} features in {} chunks '
                        'with an error rate of {:.2f}%, and intergenic rate of {:.2f}%').format(
-                           i + 1, len(all_coords), coord, coord.genome.species,
+                           i + 1, len(all_coord_ids), coord, strand_str, coord.genome.species,
                            len(coord.features), len(inputs), masked_bases_percent,
                            intergenic_bases_percent))
             else:
@@ -189,12 +208,13 @@ class ExportController(object):
                 train_data, val_data = self._split_data([inputs, labels, label_masks],
                                                         test_size=0.2)
                 if train_data[0]:
-                    self._save_data(self.h5_train, *train_data, chunk_size, timestep_len)
+                    self._save_data(self.h5_train, *train_data, chunk_size)
                 if val_data[0]:
-                    self._save_data(self.h5_val, *val_data, chunk_size, timestep_len)
-                print(('{}/{} Numerified {} of {} with {} features in {} chunks '
-                       '(train: {}, test: {}) with an error rate of {:.2f}% and an intergenic rate of {:.2f}%').format(
-                           i + 1, len(all_coords), coord, coord.genome.species,
+                    self._save_data(self.h5_val, *val_data, chunk_size)
+                print(('{}/{} Numerified {}{} of {} with {} features in {} chunks '
+                       '(train: {}, test: {}) with an error rate of {:.2f}% and an '
+                       'intergenic rate of {:.2f}%').format(
+                           i + 1, len(all_coord_ids), coord, strand_str, coord.genome.species,
                            len(coord.features), len(inputs), len(train_data[0]),
                            len(val_data[0]), masked_bases_percent, intergenic_bases_percent))
         self._close_files()
