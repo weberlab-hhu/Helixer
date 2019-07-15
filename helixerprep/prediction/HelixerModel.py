@@ -202,6 +202,8 @@ class HelixerModel(ABC):
         self.n_val_seqs = n_val_seqs_with_intergenic
 
         if self.verbose:
+            print('\nData config: ')
+            print(dict(self.h5_train.attrs))
             print('\nTraining data shape: {}'.format(self.shape_train[:2]))
             print('Validation data shape: {}'.format(self.shape_val[:2]))
             print('\nTotal est. training sequences: {}'.format(self.n_train_seqs))

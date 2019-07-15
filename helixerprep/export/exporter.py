@@ -143,16 +143,29 @@ class ExportController(object):
                                 .all())
             else:
                 print('Selecting all genomes from {}'.format(self.db_path_in))
-                all_coord_ids = (self.session.query(Coordinate.id)
-                                .filter(Coordinate.id.in_(coord_ids_with_features))
-                                .all())
+                all_coord_ids = coord_ids_with_features.all()
 
         if coordinate_chance < 1.0:
             print('Choosing coordinates with a chance of {}'.format(coordinate_chance))
             all_coord_ids = [c[0] for c in all_coord_ids if random.random() < coordinate_chance]
         else:
             all_coord_ids = [c[0] for c in all_coord_ids]
+
         return all_coord_ids
+
+    def _add_data_attrs(self, genomes, exclude, coordinate_chance, sample_strand):
+        attrs = {
+            'genomes': ','.join(genomes),
+            'exclude': ','.join(exclude),
+            'coordinate_chance': coordinate_chance,
+            'sample_strand': str(sample_strand)
+        }
+        for key, value in attrs.items():
+            if self.only_test_set:
+                self.h5_test.attrs[key] = value
+            else:
+                self.h5_train.attrs[key] = value
+                self.h5_val.attrs[key] = value
 
     def _close_files(self):
         if self.only_test_set:
@@ -217,4 +230,5 @@ class ExportController(object):
                            i + 1, len(all_coord_ids), coord, strand_str, coord.genome.species,
                            len(coord.features), len(inputs), len(train_data[0]),
                            len(val_data[0]), masked_bases_percent, intergenic_bases_percent))
+        self._add_data_attrs(genomes, exclude, coordinate_chance, sample_strand)
         self._close_files()
