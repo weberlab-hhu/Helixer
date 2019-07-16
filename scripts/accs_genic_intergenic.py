@@ -32,15 +32,15 @@ TRUNCATE = 1000
 
 genic_mask = h5_data['/data/y'][:TRUNCATE, :, 0].astype(bool)
 error_mask = h5_data['/data/sample_weights'][:TRUNCATE, :].astype(bool)
-full_mask = np.logical_and(genic_mask, error_mask)
+genic_and_error_mask = np.logical_and(genic_mask, error_mask)
 
 # cds, intron cols in genic/intergenic
 for region in ['Genic', 'Intergenic']:
     table = [['', 'Precision', 'Recall', 'F1-Score']]
     if region == 'intergenic':
-        current_mask = np.bitwise_not(full_mask)
+        current_mask = np.bitwise_not(genic_and_error_mask)
     else:
-        current_mask = full_mask
+        current_mask = genic_and_error_mask
     for col, name in [(1, 'coding'), (2, 'intron')]:
         append_f1_row(name, col, current_mask)
     print(AsciiTable(table, region).table)
@@ -48,7 +48,7 @@ for region in ['Genic', 'Intergenic']:
 # all cols for everything
 table = [['', 'Precision', 'Recall', 'F1-Score']]
 for col, name in [(0, 'transcript'), (1, 'coding'), (2, 'intron')]:
-    append_f1_row(name, col, full_mask)
+    append_f1_row(name, col, error_mask)
 print(AsciiTable(table, 'Total').table)
 
 # everything

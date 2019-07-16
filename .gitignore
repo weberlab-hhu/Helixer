@@ -5,6 +5,7 @@ sliced_demosmaller.h5
 sliced_dummyloci.sqlite3
 sliced_dummyloci.h5
 *.prf
+*.lprof
 helixerprep/testdata/dummyloci.sequence.sliced.json
 helixerprep/testdata/dummyloci_annotations.sqlitedb
 helixerprep/testdata/dummyloci.sqlite3

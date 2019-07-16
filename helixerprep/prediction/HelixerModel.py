@@ -12,6 +12,8 @@ import numpy as np
 import tensorflow as tf
 from pprint import pprint
 from functools import partial
+from terminaltables import AsciiTable
+from sklearn.metrics import confusion_matrix
 from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
 from keras import optimizers
 from keras import backend as K
@@ -46,6 +48,98 @@ class ReportIntermediateResult(Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         nni.report_intermediate_result(logs['val_loss'])
+
+
+class F1Counter():
+    def __init__(self):
+        self.tn = 0
+        self.fp = 0
+        self.fn = 0
+        self.tp = 0
+
+    def add(self, tn, fp, fn, tp):
+        self.tn += tn
+        self.fp += fp
+        self.fn += fn
+        self.tp += tp
+
+    def get_values(self):
+        if self.tp == 0:
+            print('Warning: Number of TP is 0, returning 0 for all metrics')
+            return 0, 0, 0, 0
+        else:
+            return self.tn, self.fp, self.fn, self.tp
+
+
+class F1Results(Callback):
+    def __init__(self, gen_val, n_steps_val):
+        self.gen_val = gen_val
+        self.n_steps_val = n_steps_val
+        self.counters = {
+            'Genic': {
+                'cds': (1, F1Counter()),
+                'intron': (2, F1Counter())
+            },
+            'Intergenic': {
+                'cds': (1, F1Counter()),
+                'intron': (2, F1Counter())
+            },
+            'Global': {
+                'tr': (0, F1Counter()),
+                'cds': (1, F1Counter()),
+                'intron': (2, F1Counter())
+            },
+            # 'Total': F1Counter()
+        }
+        super(F1Results, self).__init__()
+
+    def print_f1_scores(self):
+        for region_name, counters in self.counters.items():
+            table = [['', 'Precision', 'Recall', 'F1-Score']]
+            for col_name, (_, counter) in counters.items():
+                tn, fp, fn, tp  = counter.get_values()
+                if tp == 0:
+                    precision, recall, f1 = 0, 0, 0
+                else:
+                    precision = tp / (tp + fp)
+                    recall = tp / (tp + fn)
+                    f1 = 2 * (precision * recall) / (precision + recall)
+                table.append([col_name] + ['{:.4f}'.format(s) for s in [precision, recall, f1]])
+            print(AsciiTable(table, region_name).table)
+
+    def on_epoch_end(self, epoch, logs=None):
+        tn, fp, fn, tp = 0, 0, 0, 0
+        for _ in range(self.n_steps_val):
+            batch_data = next(self.gen_val)
+            if len(batch_data) == 3:
+                # todo mask with sample_weights
+                X, y_true, sample_weights = batch_data
+                pass
+            else:
+                X, y_true = batch_data
+            y_pred = np.round(self.model.predict_on_batch(X)).astype(np.int8)
+
+            for region_name, counters in self.counters.items():
+                if region_name == 'Genic':
+                    mask = y_true[:, :, 0].astype(bool)
+                elif region_name == 'Intergenic':
+                    mask = np.bitwise_not(y_true[:, :, 0].astype(bool))
+                else:
+                    mask = np.ones(y_true.shape[:2]).astype(bool)
+                if np.all(mask == False):
+                    # don't count if there is nothing to count
+                    continue
+                for col_name, (col_id, _) in counters.items():
+                    y_true_masked = y_true[:, :, col_id][mask].ravel()
+                    y_pred_masked = y_pred[:, :, col_id][mask].ravel()
+
+                    tp = np.count_nonzero(np.bitwise_and(y_true_masked, y_pred_masked))
+                    tn = np.count_nonzero(np.bitwise_or(y_true_masked, y_pred_masked) == 0)
+                    fp = np.count_nonzero(np.bitwise_and(np.bitwise_not(y_true_masked), y_pred_masked))
+                    fn = np.count_nonzero(np.bitwise_and(y_true_masked, np.bitwise_not(y_pred_masked)))
+
+                    self.counters[region_name][col_name][1].add(tn, fp, fn, tp)
+        self.print_f1_scores()
 
 
 class HelixerModel(ABC):
@@ -100,7 +194,8 @@ class HelixerModel(ABC):
             History(),
             CSVLogger('history.log'),
             EarlyStopping(monitor='val_loss', patience=self.patience, verbose=1),
-            ModelCheckpoint(self.save_model_path, monitor='val_loss', save_best_only=True, verbose=1)
+            ModelCheckpoint(self.save_model_path, monitor='val_loss', save_best_only=True, verbose=1),
+            F1Results(self.gen_val, self.n_steps_val)
         ]
         if self.nni:
             callbacks.append(ReportIntermediateResult())
@@ -242,12 +337,15 @@ class HelixerModel(ABC):
     def init_generators(self):
         if not self.load_model_path:
             self.gen_train = self.gen_training_data()
-            self.n_steps_train = self.n_train_seqs // self.batch_size
+            # self.n_steps_train = self.n_train_seqs // self.batch_size
+            self.n_steps_train = 200
             self.gen_val = self.gen_validation_data()
-            self.n_steps_val = self.n_val_seqs // self.batch_size
+            # self.n_steps_val = self.n_val_seqs // self.batch_size
+            self.n_steps_val = 20
         else:
             self.gen_test = self.gen_test_data()
             self.n_steps_test = self.shape_test[0] // self.batch_size
+            # self.n_steps_test = 2
 
     def run(self):
         self.set_resources()
@@ -272,11 +370,9 @@ class HelixerModel(ABC):
 
             model.fit_generator(generator=self.gen_train,
                                 steps_per_epoch=self.n_steps_train,
-                                # steps_per_epoch=1,
                                 epochs=self.epochs,
                                 validation_data=self.gen_val,
                                 validation_steps=self.n_steps_val,
-                                # validation_steps=1,
                                 callbacks=self.generate_callbacks(),
                                 verbose=True)
 
@@ -300,7 +396,6 @@ class HelixerModel(ABC):
             if self.eval:
                 metrics = model.evaluate_generator(generator=self.gen_test,
                                                    steps=self.n_steps_test,
-                                                   # steps=2,
                                                    verbose=True)
                 metrics_names = model.metrics_names
                 print({z[0]: z[1] for z in zip(metrics_names, metrics)})
@@ -311,7 +406,6 @@ class HelixerModel(ABC):
                     ))
                 predictions = model.predict_generator(generator=self.gen_test,
                                                       steps=self.n_steps_test,
-                                                      # steps=2,
                                                       verbose=True)
                 predictions = predictions.astype(np.float32)  # in case of predicting with float64
 
