@@ -170,57 +170,91 @@ class HelixerModel(ABC):
             raise ValueError('Unknown Optimizer')
 
     def open_data_files(self):
-        self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
-        self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
-        self.shape_train = self.h5_train['/data/X'].shape
-        self.shape_val = self.h5_val['/data/X'].shape
+        def get_n_correct_seqs(h5_file):
+            err_samples = np.array(h5_file['/data/err_samples'])
+            return np.count_nonzero(err_samples == False)
 
-        err_samples_train = np.array(self.h5_train['/data/err_samples'])
-        err_samples_val = np.array(self.h5_val['/data/err_samples'])
-        n_train_correct_seqs = np.count_nonzero(err_samples_train == False)
-        n_val_correct_seqs = np.count_nonzero(err_samples_val == False)
+        def get_n_intergenic_seqs(h5_file):
+            ic_samples = np.array(h5_file['/data/fully_intergenic_samples'])
+            return np.count_nonzero(ic_samples == True)
 
-        if self.exclude_errors:
-            n_train_seqs_with_intergenic = n_train_correct_seqs
-            n_val_seqs_with_intergenic = n_val_correct_seqs
+        if not self.load_model_path:
+            self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
+            self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
+            self.shape_train = self.h5_train['/data/X'].shape
+            self.shape_val = self.h5_val['/data/X'].shape
+
+            n_train_correct_seqs = get_n_correct_seqs(self.h5_train)
+            n_val_correct_seqs = get_n_correct_seqs(self.h5_val)
+
+            if self.exclude_errors:
+                n_train_seqs_with_intergenic = n_train_correct_seqs
+                n_val_seqs_with_intergenic = n_val_correct_seqs
+            else:
+                n_train_seqs_with_intergenic = self.shape_train[0]
+                n_val_seqs_with_intergenic = self.shape_val[0]
+
+            # potentially account for intergenic seqs
+            n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
+            n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_val)
+
+            if self.intergenic_chance < 1.0:
+                self.n_train_seqs = n_train_seqs_with_intergenic - n_intergenic_train_seqs + \
+                                    int(n_intergenic_train_seqs * self.intergenic_chance)
+            else:
+                self.n_train_seqs = n_train_seqs_with_intergenic
+            # do not adjust the validation count for intergenic sampling as we don't do that then
+            self.n_val_seqs = n_val_seqs_with_intergenic
+
         else:
-            n_train_seqs_with_intergenic = self.shape_train[0]
-            n_val_seqs_with_intergenic = self.shape_val[0]
-
-        # potentially account for intergenic seqs
-        ic_samples_train = np.array(self.h5_train['/data/fully_intergenic_samples'])
-        ic_samples_val = np.array(self.h5_val['/data/fully_intergenic_samples'])
-        n_intergenic_train_seqs = np.count_nonzero(ic_samples_train == True)
-        n_intergenic_val_seqs = np.count_nonzero(ic_samples_val == True)
-
-        if self.intergenic_chance < 1.0:
-            self.n_train_seqs = n_train_seqs_with_intergenic - n_intergenic_train_seqs + \
-                                int(n_intergenic_train_seqs * self.intergenic_chance)
-        else:
-            self.n_train_seqs = n_train_seqs_with_intergenic
-        # do not adjust the validation count for intergenic sampling as we don't do that then
-        self.n_val_seqs = n_val_seqs_with_intergenic
+            self.h5_test = h5py.File(self.test_data, 'r')
+            self.shape_test = self.h5_test['/data/X'].shape
+            self.n_test_seqs = self.shape_test[0]
+            n_test_correct_seqs = get_n_correct_seqs(self.h5_test)
+            if self.exclude_errors:
+                n_test_seqs_with_intergenic = n_test_correct_seqs
+            else:
+                n_test_seqs_with_intergenic = self.shape_test[0]
+            n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_test)
 
         if self.verbose:
             print('\nData config: ')
-            print(dict(self.h5_train.attrs))
-            print('\nTraining data shape: {}'.format(self.shape_train[:2]))
-            print('Validation data shape: {}'.format(self.shape_val[:2]))
-            print('\nTotal est. training sequences: {}'.format(self.n_train_seqs))
-            print('Total est. val sequences: {}'.format(self.n_val_seqs))
-            print('\nEst. intergenic train/val seqs: {:.2f}% / {:.2f}%'.format(
-                n_intergenic_train_seqs / n_train_seqs_with_intergenic * 100,
-                n_intergenic_val_seqs / n_val_seqs_with_intergenic * 100))
-            print('Fully correct train/val seqs: {:.2f}% / {:.2f}%\n'.format(
-                n_train_correct_seqs / self.shape_train[0] * 100,
-                n_val_correct_seqs / self.shape_val[0] * 100))
+            if not self.load_model_path:
+                print(dict(self.h5_train.attrs))
+                print('\nTraining data shape: {}'.format(self.shape_train[:2]))
+                print('Validation data shape: {}'.format(self.shape_val[:2]))
+                print('\nTotal est. training sequences: {}'.format(self.n_train_seqs))
+                print('Total est. val sequences: {}'.format(self.n_val_seqs))
+                print('\nEst. intergenic train/val seqs: {:.2f}% / {:.2f}%'.format(
+                    n_intergenic_train_seqs / n_train_seqs_with_intergenic * 100,
+                    n_intergenic_val_seqs / n_val_seqs_with_intergenic * 100))
+                print('Fully correct train/val seqs: {:.2f}% / {:.2f}%\n'.format(
+                    n_train_correct_seqs / self.shape_train[0] * 100,
+                    n_val_correct_seqs / self.shape_val[0] * 100))
+            else:
+                print(dict(self.h5_test.attrs))
+                print('\nTest data shape: {}'.format(self.shape_test[:2]))
+                print('\nIntergenic test seqs: {:.2f}%'.format(
+                    n_intergenic_test_seqs / n_test_seqs_with_intergenic * 100))
+                print('Fully correct test seqs: {:.2f}%\n'.format(
+                    n_test_correct_seqs / self.shape_test[0] * 100))
+
+    def init_generators(self):
+        if not self.load_model_path:
+            self.gen_train = self.gen_training_data()
+            self.n_steps_train = self.n_train_seqs // self.batch_size
+            self.gen_val = self.gen_validation_data()
+            self.n_steps_val = self.n_val_seqs // self.batch_size
+        else:
+            self.gen_test = self.gen_test_data()
+            self.n_steps_test = self.shape_test[0] // self.batch_size
 
     def run(self):
         self.set_resources()
+        self.open_data_files()
+        self.init_generators()
         # we either train or predict
         if not self.load_model_path:
-            self.open_data_files()
-
             model = self.model()
             if not self.only_cpu and self.gpus >= 2:
                 model = multi_gpu_model(model, gpus=self.gpus)
@@ -236,12 +270,12 @@ class HelixerModel(ABC):
             self.set_optimizer()
             self.compile_model(model)
 
-            model.fit_generator(generator=self.gen_training_data(),
-                                steps_per_epoch=self.n_train_seqs // self.batch_size,
+            model.fit_generator(generator=self.gen_train,
+                                steps_per_epoch=self.n_steps_train,
                                 # steps_per_epoch=1,
                                 epochs=self.epochs,
-                                validation_data=self.gen_validation_data(),
-                                validation_steps=self.n_val_seqs // self.batch_size,
+                                validation_data=self.gen_val,
+                                validation_steps=self.n_steps_val,
                                 # validation_steps=1,
                                 callbacks=self.generate_callbacks(),
                                 verbose=True)
@@ -258,19 +292,14 @@ class HelixerModel(ABC):
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
 
-            self.h5_test = h5py.File(self.test_data, 'r')
-            self.test_shape = self.h5_test['/data/X'].shape
-            if self.verbose:
-                print('\nTest data shape: {}'.format(self.test_shape[:2]))
-
             model = load_model(self.load_model_path, custom_objects = {
                 'acc_t': get_col_accuracy_fn(0),
                 'acc_c': get_col_accuracy_fn(1),
                 'acc_i': get_col_accuracy_fn(2)
             })
             if self.eval:
-                metrics = model.evaluate_generator(generator=self.gen_test_data(),
-                                                   steps=self.test_shape[0] // self.batch_size,
+                metrics = model.evaluate_generator(generator=self.gen_test,
+                                                   steps=self.n_steps_test,
                                                    # steps=2,
                                                    verbose=True)
                 metrics_names = model.metrics_names
@@ -280,8 +309,8 @@ class HelixerModel(ABC):
                     print('{} already existing and will be overridden.'.format(
                         self.prediction_output_path
                     ))
-                predictions = model.predict_generator(generator=self.gen_test_data(),
-                                                      steps=self.test_shape[0] // self.batch_size,
+                predictions = model.predict_generator(generator=self.gen_test,
+                                                      steps=self.n_steps_test,
                                                       # steps=2,
                                                       verbose=True)
                 predictions = predictions.astype(np.float32)  # in case of predicting with float64
