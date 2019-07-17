@@ -13,7 +13,6 @@ import tensorflow as tf
 from pprint import pprint
 from functools import partial
 from terminaltables import AsciiTable
-from sklearn.metrics import confusion_matrix
 from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
 from keras import optimizers
 from keras import backend as K
@@ -65,7 +64,7 @@ class F1Counter():
 
     def get_values(self):
         if self.tp == 0:
-            print('Warning: Number of TP is 0, returning 0 for all metrics')
+            # print('Warning: Number of TP is 0, returning 0 for all metrics')
             return 0, 0, 0, 0
         else:
             return self.tn, self.fp, self.fn, self.tp
@@ -88,24 +87,41 @@ class F1Results(Callback):
                 'tr': (0, F1Counter()),
                 'cds': (1, F1Counter()),
                 'intron': (2, F1Counter())
-            },
-            # 'Total': F1Counter()
+            }
         }
+        self.total_counter = F1Counter()  # not in self.counters for simpler downstream code
         super(F1Results, self).__init__()
 
     def print_f1_scores(self):
         for region_name, counters in self.counters.items():
             table = [['', 'Precision', 'Recall', 'F1-Score']]
             for col_name, (_, counter) in counters.items():
-                tn, fp, fn, tp  = counter.get_values()
-                if tp == 0:
-                    precision, recall, f1 = 0, 0, 0
-                else:
-                    precision = tp / (tp + fp)
-                    recall = tp / (tp + fn)
-                    f1 = 2 * (precision * recall) / (precision + recall)
+                precision, recall, f1 = F1Results.calculate_f1(*counter.get_values())
                 table.append([col_name] + ['{:.4f}'.format(s) for s in [precision, recall, f1]])
-            print(AsciiTable(table, region_name).table)
+            print('\n', AsciiTable(table, region_name).table, sep='')
+        # total counter
+        table = [['Precision', 'Recall', 'F1-Score']]
+        precision, recall, f1 = F1Results.calculate_f1(*self.total_counter.get_values())
+        table.append(['{:.4f}'.format(s) for s in [precision, recall, f1]])
+        print('\n', AsciiTable(table, 'Total').table, '\n', sep='')
+
+    @staticmethod
+    def calculate_base_metrics(y_true, y_pred):
+        tn = np.count_nonzero(np.logical_or(y_true, y_pred) == 0)
+        fp = np.count_nonzero(np.logical_and(np.logical_not(y_true), y_pred))
+        fn = np.count_nonzero(np.logical_and(y_true, np.logical_not(y_pred)))
+        tp = np.count_nonzero(np.logical_and(y_true, y_pred))
+        return tn, fp, fn, tp
+
+    @staticmethod
+    def calculate_f1(tn, fp, fn, tp):
+        if tp == 0:
+            precision, recall, f1 = 0, 0, 0
+        else:
+            precision = tp / (tp + fp)
+            recall = tp / (tp + fn)
+            f1 = 2 * (precision * recall) / (precision + recall)
+        return precision, recall, f1
 
     def on_epoch_end(self, epoch, logs=None):
         tn, fp, fn, tp = 0, 0, 0, 0
@@ -117,28 +133,27 @@ class F1Results(Callback):
                 pass
             else:
                 X, y_true = batch_data
-            y_pred = np.round(self.model.predict_on_batch(X)).astype(np.int8)
+            y_pred = np.round(self.model.predict_on_batch(X)).astype(bool)
 
             for region_name, counters in self.counters.items():
                 if region_name == 'Genic':
                     mask = y_true[:, :, 0].astype(bool)
                 elif region_name == 'Intergenic':
-                    mask = np.bitwise_not(y_true[:, :, 0].astype(bool))
+                    mask = np.logical_not(y_true[:, :, 0].astype(bool))
                 else:
                     mask = np.ones(y_true.shape[:2]).astype(bool)
                 if np.all(mask == False):
                     # don't count if there is nothing to count
                     continue
                 for col_name, (col_id, _) in counters.items():
-                    y_true_masked = y_true[:, :, col_id][mask].ravel()
-                    y_pred_masked = y_pred[:, :, col_id][mask].ravel()
+                    y_true_masked = y_true[:, :, col_id][mask].ravel().astype(bool)
+                    y_pred_masked = y_pred[:, :, col_id][mask].ravel().astype(bool)
 
-                    tp = np.count_nonzero(np.bitwise_and(y_true_masked, y_pred_masked))
-                    tn = np.count_nonzero(np.bitwise_or(y_true_masked, y_pred_masked) == 0)
-                    fp = np.count_nonzero(np.bitwise_and(np.bitwise_not(y_true_masked), y_pred_masked))
-                    fn = np.count_nonzero(np.bitwise_and(y_true_masked, np.bitwise_not(y_pred_masked)))
-
-                    self.counters[region_name][col_name][1].add(tn, fp, fn, tp)
+                    base_metrics = F1Results.calculate_base_metrics(y_true_masked, y_pred_masked)
+                    self.counters[region_name][col_name][1].add(*base_metrics)
+            # total counter
+            base_metrics = F1Results.calculate_base_metrics(y_true, y_pred)
+            self.total_counter.add(*base_metrics)
         self.print_f1_scores()
 
 
@@ -337,11 +352,11 @@ class HelixerModel(ABC):
     def init_generators(self):
         if not self.load_model_path:
             self.gen_train = self.gen_training_data()
-            self.n_steps_train = self.n_train_seqs // self.batch_size
-            # self.n_steps_train = 200
             self.gen_val = self.gen_validation_data()
-            self.n_steps_val = self.n_val_seqs // self.batch_size
-            # self.n_steps_val = 20
+            # self.n_steps_train = self.n_train_seqs // self.batch_size
+            # self.n_steps_val = self.n_val_seqs // self.batch_size
+            self.n_steps_train = 200
+            self.n_steps_val = 20
         else:
             self.gen_test = self.gen_test_data()
             self.n_steps_test = self.shape_test[0] // self.batch_size
