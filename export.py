@@ -43,5 +43,5 @@ if __name__ == '__main__':
                       help='Whether to only output a single file named test_data.h5')
 
     args = parser.parse_args()
-    assert not args.genomes or not args.exclude_genomes
+    assert not (args.genomes and args.exclude_genomes), 'Can not include and exclude together'
     main(args)

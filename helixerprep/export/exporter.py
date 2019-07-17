@@ -124,6 +124,14 @@ class ExportController(object):
             h5_file['/data/' + dset_key][old_len:] = data
         h5_file.flush()
 
+    def _check_genome_names(self, *argv):
+        for names in argv:
+            if names:
+                genome_ids = self.session.query(Genome.id).filter(Genome.species.in_(names)).all()
+                if len(genome_ids) != len(names):
+                    print('One or more of the given genome names can not be found in the database')
+                    exit()
+
     def _get_coord_ids(self, genomes, exclude, coordinate_chance):
         coord_ids_with_features = self.session.query(Feature.coordinate_id).distinct()
         if genomes:
@@ -175,6 +183,7 @@ class ExportController(object):
             self.h5_val.close()
 
     def export(self, chunk_size, genomes, exclude, coordinate_chance, sample_strand):
+        self._check_genome_names(genomes, exclude)
         all_coord_ids = self._get_coord_ids(genomes, exclude, coordinate_chance)
         print('\n{} coordinates chosen to numerify'.format(len(all_coord_ids)))
 
