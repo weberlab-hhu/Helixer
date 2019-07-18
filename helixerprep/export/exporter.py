@@ -149,7 +149,6 @@ class ExportController(object):
         dsets = [X, y, sample_weights, err_samples, fully_intergenic_samples, start_ends, flat_data['species'],
                  flat_data['seqids']]
         for dset_key, data in zip(dset_keys, dsets):
-            print(dset_key)
             h5_file['/data/' + dset_key][old_len:] = data
         h5_file.flush()
 
@@ -211,7 +210,7 @@ class ExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def export(self, chunk_size, genomes, exclude, coordinate_chance, sample_strand):
+    def export(self, chunk_size, genomes, exclude, coordinate_chance, sample_strand, keep_errors=False):
         self._check_genome_names(genomes, exclude)
         all_coord_ids = self._get_coord_ids(genomes, exclude, coordinate_chance)
         print('\n{} coordinates chosen to numerify'.format(len(all_coord_ids)))
@@ -238,9 +237,10 @@ class ExportController(object):
                 n_intergenic_bases += sum(
                     [np.count_nonzero(np.all(l == 0, axis=1)) for l in coord_data['labels']])
                 # filter out sequences that are completely masked as error
-                valid_data = [s.any() for s in coord_data['label_masks']]
-                for key in ['inputs', 'labels', 'label_masks', 'start_ends']:
-                    coord_data[key] = list(compress(coord_data[key], valid_data))
+                if not keep_errors:
+                    valid_data = [s.any() for s in coord_data['label_masks']]
+                    for key in ['inputs', 'labels', 'label_masks', 'start_ends']:
+                        coord_data[key] = list(compress(coord_data[key], valid_data))
                 n_remaining = len(coord_data['inputs'])
                 # add data
                 for key in list_in_list_out:
@@ -257,8 +257,6 @@ class ExportController(object):
                 strand_str = ''
             # no need to split
             if self.only_test_set:
-                print(len(flat_data['species']))
-                print(flat_data['species'][:5])
                 self._save_data(self.h5_test, flat_data, chunk_size)
                 print(('{}/{} Numerified {}{} of {} with {} features in {} chunks '
                        'with an error rate of {:.2f}%, and intergenic rate of {:.2f}%').format(
