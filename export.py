@@ -13,7 +13,8 @@ def main(args):
         args.exclude_genomes = args.exclude_genomes.split(',')
 
     controller.export(chunk_size=args.chunk_size, genomes=args.genomes, exclude=args.exclude_genomes,
-                      coordinate_chance=args.coordinate_chance, sample_strand=args.sample_strand)
+                      coordinate_chance=args.coordinate_chance, sample_strand=args.sample_strand,
+                      keep_errors=args.keep_errors)
 
 
 if __name__ == '__main__':
@@ -41,6 +42,8 @@ if __name__ == '__main__':
                       help='When true, choose only one strand of a coordinate at random.')
     data.add_argument('--only-test-set', action='store_true',
                       help='Whether to only output a single file named test_data.h5')
+    data.add_argument('--keep_errors', action="store_true",
+                      help="Set this flag if entirely erroneous sequences should _not_ be excluded")
 
     args = parser.parse_args()
     assert not (args.genomes and args.exclude_genomes), 'Can not include and exclude together'
