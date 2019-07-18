@@ -36,19 +36,23 @@ class ExportController(object):
         self.session = sessionmaker(bind=self.engine)()
 
     @staticmethod
-    def _split_data(data_arrays, test_size=0.2):
+    def _split_data(flat_data, test_size=0.2):
         """Basically does the same as sklearn.model_selection.train_test_split except
         it does not always fill the test arrays with at least one element.
         Expects the arrays to be in the order: inputs, labels, label_masks
         """
-        train_arrays, val_arrays = [[], [], []], [[], [], []]
-        for i in range(len(data_arrays[0])):
+        train_arrays, val_arrays = {}, {}
+        for key in flat_data:
+            train_arrays[key] = []
+            val_arrays[key] = []
+
+        for i in range(len(flat_data['inputs'])):
             if random.random() > test_size:
-                for j in range(3):
-                    train_arrays[j].append(data_arrays[j][i])
+                for key in flat_data:
+                    train_arrays[key].append(flat_data[key][i])
             else:
-                for j in range(3):
-                    val_arrays[j].append(data_arrays[j][i])
+                for key in flat_data:
+                    val_arrays[key].append(flat_data[key][i])
         return train_arrays, val_arrays
 
     def _add_config_to_data_files(self, genomes):
@@ -263,17 +267,17 @@ class ExportController(object):
                            intergenic_bases_percent))
             else:
                 # split and save
-                train_data, val_data = self._split_data([inputs, labels, label_masks],
+                train_data, val_data = self._split_data(flat_data,
                                                         test_size=0.2)
-                if train_data[0]:
-                    self._save_data(self.h5_train, *train_data, chunk_size)
-                if val_data[0]:
-                    self._save_data(self.h5_val, *val_data, chunk_size)
+                if train_data['inputs']:
+                    self._save_data(self.h5_train, train_data, chunk_size)
+                if val_data['inputs']:
+                    self._save_data(self.h5_val, val_data, chunk_size)
                 print(('{}/{} Numerified {}{} of {} with {} features in {} chunks '
                        '(train: {}, test: {}) with an error rate of {:.2f}% and an '
                        'intergenic rate of {:.2f}%').format(
                            i + 1, len(all_coord_ids), coord, strand_str, coord.genome.species,
-                           len(coord.features), len(inputs), len(train_data[0]),
-                           len(val_data[0]), masked_bases_percent, intergenic_bases_percent))
+                           len(coord.features), len(flat_data['inputs']), len(train_data['inputs']),
+                           len(val_data['inputs']), masked_bases_percent, intergenic_bases_percent))
         self._add_data_attrs(genomes, exclude, coordinate_chance, sample_strand)
         self._close_files()
