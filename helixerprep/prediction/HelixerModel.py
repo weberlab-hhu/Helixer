@@ -58,9 +58,11 @@ class F1Results(Callback):
     def on_epoch_end(self, epoch, logs=None):
         self.calculator.count_and_calculate(self.model)
 
+    def on_test_end(self, logs=None):
+        self.calculator.count_and_calculate(self.model)
+
 
 class HelixerModel(ABC):
-
     def __init__(self):
         tf.logging.set_verbosity(tf.logging.ERROR)
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -311,8 +313,10 @@ class HelixerModel(ABC):
                 'acc_i': get_col_accuracy_fn(2)
             })
             if self.eval:
+                callback = [F1Results(self.gen_test_data(), self.n_steps_test)]
                 metrics = model.evaluate_generator(generator=self.gen_test,
                                                    steps=self.n_steps_test,
+                                                   callbacks=callback,
                                                    verbose=True)
                 metrics_names = model.metrics_names
                 print({z[0]: z[1] for z in zip(metrics_names, metrics)})
