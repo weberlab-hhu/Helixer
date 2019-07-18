@@ -185,10 +185,14 @@ class CoordNumerifier(object):
         inputs, input_masks = self.seq_numerifier.coord_to_matrices()
         labels, label_masks = self.anno_numerifier.coord_to_matrices()
 
+        coord = self.anno_numerifier.coord
         # do not output the input_masks yet as it is not used for anything
         out = {
             'inputs': inputs,
             'label_masks': label_masks,
             'labels': labels,
+            'species': coord.genome.species,
+            'coord_seqid': coord.seqid,
+            'start_ends': self.anno_numerifier.paired_steps
         }
         return out
