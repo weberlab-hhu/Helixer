@@ -259,7 +259,7 @@ class HelixerModel(ABC):
             self.gen_val = self.gen_validation_data()
             # self.n_steps_train = self.n_train_seqs // self.batch_size
             # self.n_steps_val = self.n_val_seqs // self.batch_size
-            self.n_steps_train = 200
+            self.n_steps_train = 50
             self.n_steps_val = 20
         else:
             self.gen_test = self.gen_test_data()
