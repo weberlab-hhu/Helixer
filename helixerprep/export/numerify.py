@@ -191,8 +191,8 @@ class CoordNumerifier(object):
             'inputs': inputs,
             'label_masks': label_masks,
             'labels': labels,
-            'species': coord.genome.species,
-            'coord_seqid': coord.seqid,
+            'species': coord.genome.species.encode('ASCII'),
+            'seqids': coord.seqid.encode('ASCII'),
             'start_ends': self.anno_numerifier.paired_steps
         }
         return out
