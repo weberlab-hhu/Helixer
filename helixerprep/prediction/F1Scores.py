@@ -82,7 +82,6 @@ class F1Calculator():
         return precision, recall, f1
 
     def count_and_calculate(self, model):
-        tn, fp, fn, tp = 0, 0, 0, 0
         for _ in range(self.n_steps):
             batch_data = next(self.generator)
             if len(batch_data) == 3:
@@ -92,7 +91,11 @@ class F1Calculator():
             else:
                 X, y_true = batch_data
             y_pred = np.round(model.predict_on_batch(X)).astype(bool)
+            self.count_and_calculate_one_batch(y_true, y_pred)
 
+        self.print_f1_scores()
+
+    def count_and_calculate_one_batch(self, y_true, y_pred):
             for region_name, counters in self.counters.items():
                 if region_name == 'Genic':
                     mask = y_true[:, :, 0].astype(bool)
@@ -117,4 +120,3 @@ class F1Calculator():
             for i in range(2):
                 base_metrics = F1Calculator._calculate_base_metrics(y_true, y_pred, cls=i)
                 self.total_counters[i].add(*base_metrics)
-        self.print_f1_scores()
