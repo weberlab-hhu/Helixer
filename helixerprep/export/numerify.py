@@ -159,7 +159,7 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
             elif feature.type.value in BasePairAnnotationNumerifier.error_type_values:
                 self.error_mask[start:end] = 0
             else:
-                raise ValueError('Unknown feature type found: {}'.format(feature.type))
+                raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
 
 
 class CoordNumerifier(object):

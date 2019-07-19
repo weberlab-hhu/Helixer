@@ -14,6 +14,7 @@ best_model.h5
 predictions.h5
 search_space.json
 config.yml
+jobs/*/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

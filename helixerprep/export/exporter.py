@@ -55,17 +55,6 @@ class ExportController(object):
                     val_arrays[key].append(flat_data[key][i])
         return train_arrays, val_arrays
 
-    def _add_config_to_data_files(self, genomes):
-        """Adds all data config params, except n_fully_correct_seqs, which is set in _save_data()"""
-        if self.only_test_set:
-            self.h5_test.attrs['genomes'] = ', '.join(genomes)
-            self.h5_test.attrs['split_type'] = 'test'
-        else:
-            self.h5_train.attrs['genomes'] = ', '.join(genomes)
-            self.h5_train.attrs['split_type'] = 'train'
-            self.h5_val.attrs['genomes'] = ', '.join(genomes)
-            self.h5_val.attrs['split_type'] = 'dev'
-
     def _save_data(self, h5_file, flat_data, chunk_size):
         inputs = flat_data['inputs']
         labels = flat_data['labels']
