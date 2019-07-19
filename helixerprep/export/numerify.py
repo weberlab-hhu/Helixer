@@ -137,9 +137,9 @@ class AnnotationNumerifier(Numerifier, ABC):
 
 class BasePairAnnotationNumerifier(AnnotationNumerifier):
     feature_to_col = {
-        types.OnSequence.transcript_feature: 0,
-        types.OnSequence.coding: 1,
-        types.OnSequence.intron: 2,
+        types.GeenuffFeature.geenuff_transcript: 0,
+        types.GeenuffFeature.geenuff_cds: 1,
+        types.GeenuffFeature.geenuff_intron: 2,
      }
     error_type_values = [t.value for t in types.Errors]
 
@@ -159,7 +159,7 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
             elif feature.type.value in BasePairAnnotationNumerifier.error_type_values:
                 self.error_mask[start:end] = 0
             else:
-                raise ValueError('Unknown feature type found')
+                raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
 
 
 class CoordNumerifier(object):
