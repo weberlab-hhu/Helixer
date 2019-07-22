@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 from terminaltables import AsciiTable
 
@@ -81,8 +82,23 @@ class F1Calculator():
             f1 = 2 * (precision * recall) / (precision + recall)
         return precision, recall, f1
 
+    @staticmethod
+    def progress(count, total):
+        bar_len = 40
+        filled_len = int(round(bar_len * count / float(total)))
+
+        percents = round(100.0 * count / float(total), 1)
+        if count < total:
+            bar = '=' * (filled_len - 1) + '>' + '-' * (bar_len - filled_len)
+        else:
+            bar = '=' * filled_len + '-' * (bar_len - filled_len)
+
+        sys.stdout.write('F1 Score: [%s] %s%s\r' % (bar, percents, '%'))
+        sys.stdout.flush()
+
     def count_and_calculate(self, model):
-        for _ in range(self.n_steps):
+        for i in range(self.n_steps):
+            F1Calculator.progress(i + 1, self.n_steps)
             batch_data = next(self.generator)
             if len(batch_data) == 3:
                 # todo mask with sample_weights
