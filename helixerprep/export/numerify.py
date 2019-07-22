@@ -186,6 +186,12 @@ class CoordNumerifier(object):
         labels, label_masks = self.anno_numerifier.coord_to_matrices()
 
         coord = self.anno_numerifier.coord
+        # flip the start ends back for - strand
+        if self.anno_numerifier.is_plus_strand:
+            start_ends = self.anno_numerifier.paired_steps
+        else:
+            start_ends = [(x[1], x[0]) for x in self.anno_numerifier.paired_steps]
+
         # do not output the input_masks yet as it is not used for anything
         out = {
             'inputs': inputs,
@@ -193,6 +199,6 @@ class CoordNumerifier(object):
             'labels': labels,
             'species': coord.genome.species.encode('ASCII'),
             'seqids': coord.seqid.encode('ASCII'),
-            'start_ends': self.anno_numerifier.paired_steps
+            'start_ends': start_ends
         }
         return out

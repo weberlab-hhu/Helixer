@@ -42,15 +42,15 @@ def all_coords_match(h5_data, h5_pred):
 
 
 def match_up(h5_data, h5_pred, h5_prediction_dataset):
-    lab_keys = mk_keys(h5_data)
-    pred_keys = mk_keys(h5_pred)
+    lab_keys = list(mk_keys(h5_data))
+    pred_keys = list(mk_keys(h5_pred))
 
     shared = list(set(lab_keys).intersection(set(pred_keys)))
     lab_mask = [x in shared for x in lab_keys]
     pred_mask = [x in shared for x in pred_keys]
 
     # err out if there were differences in sorting as well as content
-    assert np.array(lab_keys)[lab_mask] == np.array(pred_keys)[pred_mask], 'unhandled sorting diffs Y vs pred'
+    assert (np.array(lab_keys)[lab_mask] == np.array(pred_keys)[pred_mask]).all(), 'unhandled sorting diffs Y vs pred'
 
     # setup output arrays
     labs = np.array(h5_data['data/y'])[lab_mask]
