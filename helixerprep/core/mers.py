@@ -51,7 +51,7 @@ class MerController(object):
                     mer_counters[k - 1].add_count(substr)
         return coord, mer_counters
 
-    def add_mers(self, min_k, max_k, n_processes=8, limit=10000):
+    def add_mers(self, min_k, max_k, n_processes=8, limit=1000):
         # load 'limit' coordinates at once into memory
         # passing the session to the worker does not work as it is not pickleable
         all_mers = self.session.query(Mer).options(load_only('id')).all()

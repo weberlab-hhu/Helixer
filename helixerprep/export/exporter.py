@@ -178,12 +178,13 @@ class ExportController(object):
 
         return all_coord_ids
 
-    def _add_data_attrs(self, genomes, exclude, coordinate_chance, sample_strand):
+    def _add_data_attrs(self, genomes, exclude, coordinate_chance, sample_strand, keep_errors):
         attrs = {
             'genomes': ','.join(genomes),
             'exclude': ','.join(exclude),
             'coordinate_chance': coordinate_chance,
-            'sample_strand': str(sample_strand)
+            'sample_strand': str(sample_strand),
+            'keep_errors': keep_errors,
         }
         for key, value in attrs.items():
             if self.only_test_set:
@@ -266,5 +267,5 @@ class ExportController(object):
                            i + 1, len(all_coord_ids), coord, strand_str, coord.genome.species,
                            len(coord.features), len(flat_data['inputs']), len(train_data['inputs']),
                            len(val_data['inputs']), masked_bases_percent, intergenic_bases_percent))
-        self._add_data_attrs(genomes, exclude, coordinate_chance, sample_strand)
+        self._add_data_attrs(genomes, exclude, coordinate_chance, sample_strand, keep_errors)
         self._close_files()

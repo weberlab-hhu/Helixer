@@ -112,27 +112,27 @@ class F1Calculator():
         self.print_f1_scores()
 
     def count_and_calculate_one_batch(self, y_true, y_pred):
-            for region_name, counters in self.counters.items():
-                if region_name == 'Genic':
-                    mask = y_true[:, :, 0].astype(bool)
-                elif region_name == 'Intergenic':
-                    mask = np.logical_not(y_true[:, :, 0].astype(bool))
-                else:
-                    mask = np.ones(y_true.shape[:2]).astype(bool)
-                if np.all(mask == False):
-                    # don't count if there is nothing to count
-                    continue
-                for col_name, (col_id, _, _) in counters.items():
-                    y_true_masked = y_true[:, :, col_id][mask].ravel().astype(bool)
-                    y_pred_masked = y_pred[:, :, col_id][mask].ravel().astype(bool)
+        for region_name, counters in self.counters.items():
+            if region_name == 'Genic':
+                mask = y_true[:, :, 0].astype(bool)
+            elif region_name == 'Intergenic':
+                mask = np.logical_not(y_true[:, :, 0].astype(bool))
+            else:
+                mask = np.ones(y_true.shape[:2]).astype(bool)
+            if np.all(mask == False):
+                # don't count if there is nothing to count
+                continue
+            for col_name, (col_id, _, _) in counters.items():
+                y_true_masked = y_true[:, :, col_id][mask].ravel().astype(bool)
+                y_pred_masked = y_pred[:, :, col_id][mask].ravel().astype(bool)
 
-                    base_metrics_0 = F1Calculator._calculate_base_metrics(y_true_masked, y_pred_masked,
-                                                                          cls=0)
-                    self.counters[region_name][col_name][1].add(*base_metrics_0)
-                    base_metrics_1 = F1Calculator._calculate_base_metrics(y_true_masked, y_pred_masked,
-                                                                          cls=1)
-                    self.counters[region_name][col_name][2].add(*base_metrics_1)
-            # total counters
-            for i in range(2):
-                base_metrics = F1Calculator._calculate_base_metrics(y_true, y_pred, cls=i)
-                self.total_counters[i].add(*base_metrics)
+                base_metrics_0 = F1Calculator._calculate_base_metrics(y_true_masked, y_pred_masked,
+                                                                      cls=0)
+                self.counters[region_name][col_name][1].add(*base_metrics_0)
+                base_metrics_1 = F1Calculator._calculate_base_metrics(y_true_masked, y_pred_masked,
+                                                                      cls=1)
+                self.counters[region_name][col_name][2].add(*base_metrics_1)
+        # total counters
+        for i in range(2):
+            base_metrics = F1Calculator._calculate_base_metrics(y_true, y_pred, cls=i)
+            self.total_counters[i].add(*base_metrics)
