@@ -101,13 +101,11 @@ class F1Calculator():
     def progress(count, total):
         bar_len = 40
         filled_len = int(round(bar_len * count / float(total)))
-
         percents = round(100.0 * count / float(total), 1)
         if count < total:
             bar = '=' * (filled_len - 1) + '>' + '-' * (bar_len - filled_len)
         else:
             bar = '=' * filled_len + '-' * (bar_len - filled_len)
-
         sys.stdout.write('F1 Score: [%s] %s%s\r' % (bar, percents, '%'))
         sys.stdout.flush()
 
