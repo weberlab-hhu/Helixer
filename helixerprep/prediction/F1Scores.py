@@ -9,12 +9,6 @@ class F1Counter():
         self.fn = 0
         self.tp = 0
 
-    def __add__(self, other):
-        sum_counter = F1Counter()
-        sum_counter.add(self.tn, self.fp, self.fn, self.tp)
-        sum_counter.add(other.tn, other.fp, other.fn, other.tp)
-        return sum_counter
-
     def add(self, tn, fp, fn, tp):
         self.tn += tn
         self.fp += fp
@@ -27,6 +21,16 @@ class F1Counter():
             return 0, 0, 0, 0
         else:
             return self.tn, self.fp, self.fn, self.tp
+
+    def __add__(self, other):
+        sum_counter = F1Counter()
+        sum_counter.add(self.tn, self.fp, self.fn, self.tp)
+        sum_counter.add(other.tn, other.fp, other.fn, other.tp)
+        return sum_counter
+
+    def __radd__(self, other):
+        assert other == 0
+        return self
 
     def __repr__(self):
         return '[F1Counter, tn: {}, fp: {}, fn: {}, tp: {}]'.format(self.tn, self.fp, self.fn, self.tp)
@@ -66,8 +70,7 @@ class F1Calculator():
                     name = [col_name + ' ' + str(cls)]
                     table.append(name + ['{:.4f}'.format(s) for s in [precision, recall, f1]])
             # add the total overall counter row
-            total_counters = self.counters[region_name]['total']
-            total_overall_counter = total_counters[1] + total_counters[2]
+            total_overall_counter = sum([c for c in self.counters[region_name]['total'][1:]])
             precision, recall, f1 = F1Calculator._calculate_f1(*total_overall_counter.get_values())
             table.append(['total'] + ['{:.4f}'.format(s) for s in [precision, recall, f1]])
             print('\n', AsciiTable(table, region_name).table, sep='')
