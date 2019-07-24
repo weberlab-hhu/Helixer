@@ -90,6 +90,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-fp', '--float-precision', type=str, default='float32')
         self.parser.add_argument('-gpus', '--gpus', type=int, default=1)
         self.parser.add_argument('-cpus', '--cpus', type=int, default=8)
+        self.parser.add_argument('--specific-gpu-id', type=int, default=-1)
         self.parser.add_argument('-only-cpu', '--only-cpu', action='store_true')
         # misc flags
         self.parser.add_argument('-plot', '--plot', action='store_true')
@@ -130,6 +131,9 @@ class HelixerModel(ABC):
                                     device_count=device_count)
             session = tf.Session(config=config)
             K.set_session(session)
+        elif self.specific_gpu_id > -1:
+            os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID';
+            os.environ['CUDA_VISIBLE_DEVICES'] = str(self.specific_gpu_id)
 
     @abstractmethod
     def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False, sample_intergenic=False):
