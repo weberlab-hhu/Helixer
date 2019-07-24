@@ -36,7 +36,7 @@ class ExportController(object):
         self.session = sessionmaker(bind=self.engine)()
 
     @staticmethod
-    def _split_data(flat_data, test_size=0.2):
+    def _split_data(flat_data, val_size):
         """Basically does the same as sklearn.model_selection.train_test_split except
         it does not always fill the test arrays with at least one element.
         Expects the arrays to be in the order: inputs, labels, label_masks
@@ -47,7 +47,7 @@ class ExportController(object):
             val_arrays[key] = []
 
         for i in range(len(flat_data['inputs'])):
-            if random.random() > test_size:
+            if random.random() > val_size:
                 for key in flat_data:
                     train_arrays[key].append(flat_data[key][i])
             else:
@@ -79,8 +79,10 @@ class ExportController(object):
         start_ends = np.array(flat_data['start_ends'])
 
         # check if this is the first batch to save
-        dset_keys = ['X', 'y', 'sample_weights', 'err_samples', 'fully_intergenic_samples', 'start_ends', 'species',
-                     'seqids']
+        dset_keys = [
+            'X', 'y', 'sample_weights', 'err_samples', 'fully_intergenic_samples', 'start_ends',
+            'species', 'seqids'
+        ]
         if '/data/X' in h5_file:
             for dset_key in dset_keys:
                 dset = h5_file['/data/' + dset_key]
@@ -200,7 +202,8 @@ class ExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def export(self, chunk_size, genomes, exclude, coordinate_chance, sample_strand, keep_errors=False):
+    def export(self, chunk_size, genomes, exclude, coordinate_chance, val_size, sample_strand,
+               keep_errors):
         self._check_genome_names(genomes, exclude)
         all_coord_ids = self._get_coord_ids(genomes, exclude, coordinate_chance)
         print('\n{} coordinates chosen to numerify'.format(len(all_coord_ids)))
@@ -255,8 +258,7 @@ class ExportController(object):
                            intergenic_bases_percent))
             else:
                 # split and save
-                train_data, val_data = self._split_data(flat_data,
-                                                        test_size=0.2)
+                train_data, val_data = self._split_data(flat_data, val_size=val_size)
                 if train_data['inputs']:
                     self._save_data(self.h5_train, train_data, chunk_size)
                 if val_data['inputs']:
