@@ -15,22 +15,18 @@ class F1Counter():
         self.fn += fn
         self.tp += tp
 
+    def count_pos(self):
+        return self.tp + self.fn
+
+    def count_neg(self):
+        return self.tn + self.fp
+
     def get_values(self):
         if self.tp == 0:
             # print('Warning: Number of TP is 0, returning 0 for all metrics')
             return 0, 0, 0, 0
         else:
             return self.tn, self.fp, self.fn, self.tp
-
-    def __add__(self, other):
-        sum_counter = F1Counter()
-        sum_counter.add(self.tn, self.fp, self.fn, self.tp)
-        sum_counter.add(other.tn, other.fp, other.fn, other.tp)
-        return sum_counter
-
-    def __radd__(self, other):
-        assert other == 0
-        return self
 
     def __repr__(self):
         return '[F1Counter, tn: {}, fp: {}, fn: {}, tp: {}]'.format(self.tn, self.fp, self.fn, self.tp)
@@ -69,10 +65,6 @@ class F1Calculator():
                     precision, recall, f1 = F1Calculator._calculate_f1(*counter.get_values())
                     name = [col_name + ' ' + str(cls)]
                     table.append(name + ['{:.4f}'.format(s) for s in [precision, recall, f1]])
-            # add the total overall counter row
-            total_overall_counter = sum([c for c in self.counters[region_name]['total'][1:]])
-            precision, recall, f1 = F1Calculator._calculate_f1(*total_overall_counter.get_values())
-            table.append(['total'] + ['{:.4f}'.format(s) for s in [precision, recall, f1]])
             print('\n', AsciiTable(table, region_name).table, sep='')
 
     @staticmethod
