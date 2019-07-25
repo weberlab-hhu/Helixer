@@ -49,14 +49,19 @@ def match_up(h5_data, h5_pred, h5_prediction_dataset):
     lab_mask = [x in shared for x in lab_keys]
     pred_mask = [x in shared for x in pred_keys]
 
-    # err out if there were differences in sorting as well as content
-    assert (np.array(lab_keys)[lab_mask] == np.array(pred_keys)[pred_mask]).all(), 'unhandled sorting diffs Y vs pred'
-
-    # setup output arrays
+    # setup output arrays (with shared indexes)
     labs = np.array(h5_data['data/y'])[lab_mask]
     preds = np.array(h5_pred[h5_prediction_dataset])[pred_mask]
-    # todo, consider exporting matched up data back to h5s
 
+    # check if sorting matches
+    shared_lab_keys = np.array(lab_keys)[lab_mask]
+    shared_pred_keys = np.array(pred_keys)[pred_mask]
+    sorting_matches = (shared_lab_keys == shared_pred_keys).all()
+    # resort both if not
+    if not sorting_matches:
+        labs = labs[np.lexsort(np.flip(shared_lab_keys.T, axis=0))]
+        preds = preds[np.lexsort(np.flip(shared_pred_keys.T, axis=0))]
+    # todo, option to save as h5?
     return labs, preds
 
 

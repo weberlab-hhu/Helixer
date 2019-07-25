@@ -15,7 +15,7 @@ total_len = sw.size
 total_intergenic = np.count_nonzero(tr == 0)
 total_errors = np.count_nonzero(np.array(sw) == 0)
 
-print(args.d)
+print(args.data)
 print('Total len: {:.4f}Gb'.format(total_len / 10**9))
 print('Total intergenic: {:.2f}% ({:.4f}Gb)'.format(total_intergenic / total_len * 100,
                                                     total_intergenic / 10**9))
