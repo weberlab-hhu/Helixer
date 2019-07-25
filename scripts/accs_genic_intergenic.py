@@ -37,7 +37,14 @@ def main(args):
 
     # and score
     f1_calc = F1Calculator(None, None)
-    f1_calc.count_and_calculate_one_batch(h5_data_y, h5_pred_y)
+    # break into chunks (so as to not run out of memory)
+    i = 0
+    size = 100
+    while i < h5_data_y.shape[0]:
+        f1_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
+                                              h5_pred_y[i:(i + size)])
+        i += size
+
     f1_calc.print_f1_scores()
 
     print_accuracy_counts(h5_data_y, h5_pred_y)
