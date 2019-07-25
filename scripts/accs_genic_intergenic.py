@@ -22,8 +22,18 @@ def main(args):
         h5_data_y, h5_pred_y = match_up(h5_data, h5_pred, args.h5_prediction_dataset)
 
     # truncate (for devel efficiency, when we don't need the whole answer)
-    h5_data_y = h5_data_y[:args.truncate]
-    h5_pred_y = h5_pred_y[:args.truncate]
+    if args.truncate is not None:
+        h5_data_y = h5_data_y[:args.truncate]
+        h5_pred_y = h5_pred_y[:args.truncate]
+    # random subset (for devel efficiency, or just if we don't care that much about the full accuracy
+    if args.sample is not None:
+        a_sample = np.random.choice(
+            np.arange(h5_data_y.shape[0]),
+            size=[args.sample],
+            replace=False
+        )
+        h5_data_y = h5_data_y[a_sample]
+        h5_pred_y = h5_pred_y[a_sample]
 
     # and score
     f1_calc = F1Calculator(None, None)
@@ -71,6 +81,7 @@ def mk_keys(h5):
                h5['data/start_ends'][:, 0],
                h5['data/start_ends'][:, 1])
 
+
 def print_accuracy_counts(y, preds):
     print("overall accuracy: {:06.4f}%".format(acc_percent(y, preds)))
     print("transcriptional accuracy: {:06.4f}%".format(acc_percent(y[:, :, 0], preds[:, :, 0])))
@@ -82,11 +93,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, required=True)
     parser.add_argument('--predictions', type=str, required=True)
-    parser.add_argument('--truncate', type=int, default=-1, help="can set to e.g. 1000 for development speed")
+    parser.add_argument('--truncate', type=int, default=None, help="can set to e.g. 1000 for development speed")
     parser.add_argument('--h5_prediction_dataset', type=str, default='/predictions',
                         help="dataset in predictions h5 file to compare with data's '/data/y', default='/predictions',"
                              "the other likely option is '/data/y'")
     parser.add_argument('--unsorted', action='store_true',
                         help="don't assume coordinates match up but use the h5 datasets [species, seqids, start_ends]"
                              "to check order and reorder as necessary")
+    parser.add_argument('--sample', type=int, default=None,
+                        help="take a random sample of the data of this many chuncks")
     main(parser.parse_args())
