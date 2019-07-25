@@ -186,7 +186,7 @@ class ExportController(object):
             'exclude': ','.join(exclude),
             'coordinate_chance': coordinate_chance,
             'sample_strand': str(sample_strand),
-            'keep_errors': keep_errors,
+            'keep_errors': str(keep_errors),
         }
         for key, value in attrs.items():
             if self.only_test_set:

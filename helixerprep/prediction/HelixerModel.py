@@ -155,7 +155,10 @@ class HelixerModel(ABC):
             yield next(gen)
 
     def gen_test_data(self):
-        gen = self._gen_data(self.h5_test, shuffle=False, exclude_err_seqs=self.exclude_errors,
+        # shuffle so we don't always leave out the end with higher batch sizes
+        # downside: when run with --eval the test data does not match exactly for the overall evaluation
+        # and the f1 score
+        gen = self._gen_data(self.h5_test, shuffle=True, exclude_err_seqs=self.exclude_errors,
                              sample_intergenic=False)
         while True:
             yield next(gen)
