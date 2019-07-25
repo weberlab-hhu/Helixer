@@ -51,16 +51,16 @@ class MerController(object):
                     mer_counters[k - 1].add_count(substr)
         return coord, mer_counters
 
-    def add_mers(self, min_k, max_k, n_processes=8, limit=10000):
+    def add_mers(self, min_k, max_k, n_processes=8, limit=1000):
         # load 'limit' coordinates at once into memory
         # passing the session to the worker does not work as it is not pickleable
-        all_mers = self.session.query(Mer).options(load_only('id')).all()
-        n_coords_without_mers = self.session.query(Coordinate).\
-                                    filter(Coordinate.id.notin_(all_mers)).count()
+        all_mer_ids = self.session.query(Mer.id)
+        n_coords_without_mers = (self.session.query(Coordinate).
+                                    filter(Coordinate.id.notin_(all_mer_ids)).count())
         for offset in range(0, n_coords_without_mers, limit):
-            coords_without_mers = self.session.query(Coordinate).\
-                                      filter(Coordinate.id.notin_(all_mers)).\
-                                      limit(limit).offset(offset).all()
+            coords_without_mers = (self.session.query(Coordinate).
+                                      filter(Coordinate.id.notin_(all_mer_ids)).
+                                      limit(limit).offset(offset).all())
             random.shuffle(coords_without_mers)
 
             input_data = [[c, min_k, max_k] for c in coords_without_mers]

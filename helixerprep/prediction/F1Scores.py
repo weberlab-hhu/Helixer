@@ -22,6 +22,10 @@ class F1Counter():
         else:
             return self.tn, self.fp, self.fn, self.tp
 
+    def __repr__(self):
+        return '[F1Counter, tn: {}, fp: {}, fn: {}, tp: {}]'.format(self.tn, self.fp, self.fn, self.tp)
+
+
 class F1Calculator():
     def __init__(self, generator, n_steps):
         self.generator = generator
@@ -29,36 +33,33 @@ class F1Calculator():
         self.counters = {
             'Genic': {
                 'cds': (1, F1Counter(), F1Counter()),
-                'intron': (2, F1Counter(), F1Counter())
+                'intron': (2, F1Counter(), F1Counter()),
+                'total': (None, F1Counter(), F1Counter())  # None for simpler implementation
             },
             'Intergenic': {
                 'cds': (1, F1Counter(), F1Counter()),
-                'intron': (2, F1Counter(), F1Counter())
+                'intron': (2, F1Counter(), F1Counter()),
+                'total': (None, F1Counter(), F1Counter())
             },
             'Global': {
                 'tr': (0, F1Counter(), F1Counter()),
                 'cds': (1, F1Counter(), F1Counter()),
-                'intron': (2, F1Counter(), F1Counter())
+                'intron': (2, F1Counter(), F1Counter()),
+                'total': (None, F1Counter(), F1Counter())
             }
         }
-        # not in self.counters for simpler downstream code
-        self.total_counters = [F1Counter(), F1Counter()]
 
     def print_f1_scores(self):
         for region_name, counters in self.counters.items():
             table = [['', 'Precision', 'Recall', 'F1-Score']]
             for col_name, (_, counter0, counter1) in counters.items():
+                if col_name == 'total':
+                    table.append(['',''])
                 for cls, counter in enumerate([counter0, counter1]):
                     precision, recall, f1 = F1Calculator._calculate_f1(*counter.get_values())
                     name = [col_name + ' ' + str(cls)]
                     table.append(name + ['{:.4f}'.format(s) for s in [precision, recall, f1]])
             print('\n', AsciiTable(table, region_name).table, sep='')
-        # total counter
-        table = [['', 'Precision', 'Recall', 'F1-Score']]
-        for cls, counter in enumerate(self.total_counters):
-            precision, recall, f1 = F1Calculator._calculate_f1(*counter.get_values())
-            table.append([str(cls)] + ['{:.4f}'.format(s) for s in [precision, recall, f1]])
-        print('\n', AsciiTable(table, 'Total').table, '\n', sep='')
 
     @staticmethod
     def _calculate_base_metrics(y_true, y_pred, cls):
@@ -86,13 +87,11 @@ class F1Calculator():
     def progress(count, total):
         bar_len = 40
         filled_len = int(round(bar_len * count / float(total)))
-
         percents = round(100.0 * count / float(total), 1)
         if count < total:
             bar = '=' * (filled_len - 1) + '>' + '-' * (bar_len - filled_len)
         else:
             bar = '=' * filled_len + '-' * (bar_len - filled_len)
-
         sys.stdout.write('F1 Score: [%s] %s%s\r' % (bar, percents, '%'))
         sys.stdout.flush()
 
@@ -112,27 +111,28 @@ class F1Calculator():
         self.print_f1_scores()
 
     def count_and_calculate_one_batch(self, y_true, y_pred):
-            for region_name, counters in self.counters.items():
-                if region_name == 'Genic':
-                    mask = y_true[:, :, 0].astype(bool)
-                elif region_name == 'Intergenic':
-                    mask = np.logical_not(y_true[:, :, 0].astype(bool))
-                else:
-                    mask = np.ones(y_true.shape[:2]).astype(bool)
-                if np.all(mask == False):
-                    # don't count if there is nothing to count
-                    continue
-                for col_name, (col_id, _, _) in counters.items():
+        for region_name, counters in self.counters.items():
+            if region_name == 'Genic':
+                mask = y_true[:, :, 0].astype(bool)
+            elif region_name == 'Intergenic':
+                mask = np.logical_not(y_true[:, :, 0].astype(bool))
+            else:
+                mask = np.ones(y_true.shape[:2]).astype(bool)
+            if np.all(mask == False):
+                # don't count if there is nothing to count
+                continue
+            for col_name, (col_id, _, _) in counters.items():
+                if col_name != 'total':
+                    # actually use the col_id
                     y_true_masked = y_true[:, :, col_id][mask].ravel().astype(bool)
                     y_pred_masked = y_pred[:, :, col_id][mask].ravel().astype(bool)
+                else:
+                    y_true_masked = y_true[mask].ravel().astype(bool)
+                    y_pred_masked = y_pred[mask].ravel().astype(bool)
 
-                    base_metrics_0 = F1Calculator._calculate_base_metrics(y_true_masked, y_pred_masked,
-                                                                          cls=0)
-                    self.counters[region_name][col_name][1].add(*base_metrics_0)
-                    base_metrics_1 = F1Calculator._calculate_base_metrics(y_true_masked, y_pred_masked,
-                                                                          cls=1)
-                    self.counters[region_name][col_name][2].add(*base_metrics_1)
-            # total counters
-            for i in range(2):
-                base_metrics = F1Calculator._calculate_base_metrics(y_true, y_pred, cls=i)
-                self.total_counters[i].add(*base_metrics)
+                base_metrics_0 = F1Calculator._calculate_base_metrics(y_true_masked, y_pred_masked,
+                                                                      cls=0)
+                self.counters[region_name][col_name][1].add(*base_metrics_0)
+                base_metrics_1 = F1Calculator._calculate_base_metrics(y_true_masked, y_pred_masked,
+                                                                      cls=1)
+                self.counters[region_name][col_name][2].add(*base_metrics_1)

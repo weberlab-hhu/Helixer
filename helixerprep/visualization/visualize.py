@@ -37,16 +37,23 @@ class Visualization():
         self.next_button.bind('<ButtonPress-1>', self.next)
         self.next_button.grid(row=0, column=1)
 
+        self.next_genic_button = tk.Button(self.frame, text='next genic')
+        self.next_genic_button.bind('<ButtonPress-1>', self.next_genic)
+        self.next_genic_button.grid(row=0, column=2)
+
         self.seq_index_label = tk.Label(self.frame)
         self.seq_index_input = tk.Entry(self.frame, width=6)
         self.seq_index_button = tk.Button(self.frame, text='go')
         self.seq_index_button.bind('<ButtonPress-1>', self.go_seq_index)
         self.seq_index_random_button = tk.Button(self.frame, text='random')
         self.seq_index_random_button.bind('<ButtonPress-1>', self.go_seq_index_random)
+        self.seq_index_random_genic_button = tk.Button(self.frame, text='random genic')
+        self.seq_index_random_genic_button.bind('<ButtonPress-1>', self.go_seq_index_random_genic)
         self.seq_index_label.grid(row=1, column=0)
         self.seq_index_input.grid(row=1, column=1)
         self.seq_index_button.grid(row=1, column=2)
         self.seq_index_random_button.grid(row=1, column=3)
+        self.seq_index_random_genic_button.grid(row=1, column=4)
 
         self.seq_offset_label = tk.Label(self.frame)
         self.seq_offset_input = tk.Entry(self.frame, width=6)
@@ -66,6 +73,10 @@ class Visualization():
 
         assert self.chunk_len % self.BASE_COUNT_SCREEN == 0
 
+        fully_intergenic_bool = self.h5_data['/data/fully_intergenic_samples']
+        self.genic_indexes = np.squeeze(np.argwhere(np.array(fully_intergenic_bool) == False))
+
+        # figure, canvas etc
         fig_main = Figure(figsize=(self.HEATMAP_SIZE_X / self.DPI, self.HEATMAP_SIZE_Y / self.DPI),
                      dpi=self.DPI)
         self.ax_main = fig_main.add_subplot(111)
@@ -185,6 +196,10 @@ class Visualization():
             self.offset -= self.BASE_COUNT_SCREEN
             self.redraw(changed_seq=False)
 
+    def next_genic(self, event):
+        next_genic_index = np.searchsorted(self.genic_indexes, self.seq_index, side='right')
+        self.load_seq_index(self.genic_indexes[next_genic_index])
+
     def load_seq_index(self, new_seq_index):
         if new_seq_index <= self.n_seq:
             self.seq_index = new_seq_index
@@ -198,6 +213,10 @@ class Visualization():
     def go_seq_index_random(self, event):
         random_seq_index = random.randint(0, self.n_seq)
         self.load_seq_index(random_seq_index)
+
+    def go_seq_index_random_genic(self, event):
+        random_genic_seq_index = np.random.choice(self.genic_indexes)
+        self.load_seq_index(random_genic_seq_index)
 
     def go_seq_offset(self, event):
         """offset here is within a sequence, as it appears to the user"""
