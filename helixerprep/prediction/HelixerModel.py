@@ -155,10 +155,7 @@ class HelixerModel(ABC):
             yield next(gen)
 
     def gen_test_data(self):
-        # shuffle so we don't always leave out the end with higher batch sizes
-        # downside: when run with --eval the test data does not match exactly for the overall evaluation
-        # and the f1 score
-        gen = self._gen_data(self.h5_test, shuffle=True, exclude_err_seqs=self.exclude_errors,
+        gen = self._gen_data(self.h5_test, shuffle=False, exclude_err_seqs=self.exclude_errors,
                              sample_intergenic=False)
         while True:
             yield next(gen)
@@ -261,16 +258,22 @@ class HelixerModel(ABC):
                     n_test_correct_seqs / self.shape_test[0] * 100))
 
     def init_generators(self):
+        def calculate_steps(n_seqs):
+            if n_seqs % self.batch_size == 0:
+                return n_seqs // self.batch_size
+            else:
+                return n_seqs // self.batch_size + 1
+
         if not self.load_model_path:
             self.gen_train = self.gen_training_data()
             self.gen_val = self.gen_validation_data()
-            self.n_steps_train = self.n_train_seqs // self.batch_size
-            self.n_steps_val = self.n_val_seqs // self.batch_size
+            self.n_steps_train = calculate_steps(self.n_train_seqs)
+            self.n_steps_val = calculate_steps(self.n_val_seqs)
             # self.n_steps_train = 50
             # self.n_steps_val = 20
         else:
             self.gen_test = self.gen_test_data()
-            self.n_steps_test = self.shape_test[0] // self.batch_size
+            self.n_steps_test = calculate_steps(self.shape_test[0])
             # self.n_steps_test = 2
 
     def run(self):
