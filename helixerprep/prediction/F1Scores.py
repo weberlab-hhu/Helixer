@@ -85,6 +85,7 @@ class F1Calculator():
 
     @staticmethod
     def progress(count, total):
+        """Expects the lowest count to be 1"""
         bar_len = 40
         filled_len = int(round(bar_len * count / float(total)))
         percents = round(100.0 * count / float(total), 1)
@@ -92,8 +93,9 @@ class F1Calculator():
             bar = '=' * (filled_len - 1) + '>' + '-' * (bar_len - filled_len)
         else:
             bar = '=' * filled_len + '-' * (bar_len - filled_len)
-        sys.stdout.write('F1 Score: [%s] %s%s\r' % (bar, percents, '%'))
-        sys.stdout.flush()
+        if count == 1:
+            print()
+        print('F1 Score: [{}] {}%'.format(bar, percents), end="\r")
 
     def count_and_calculate(self, model):
         for i in range(self.n_steps):
