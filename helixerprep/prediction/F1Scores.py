@@ -15,12 +15,6 @@ class F1Counter():
         self.fn += fn
         self.tp += tp
 
-    def count_pos(self):
-        return self.tp + self.fn
-
-    def count_neg(self):
-        return self.tn + self.fp
-
     def get_values(self):
         if self.tp == 0:
             # print('Warning: Number of TP is 0, returning 0 for all metrics')

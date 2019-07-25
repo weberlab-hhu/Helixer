@@ -50,13 +50,19 @@ class ReportIntermediateResult(Callback):
         nni.report_intermediate_result(logs['val_loss'])
 
 
-class F1Results(Callback):
+class F1ResultsTest(Callback):
     def __init__(self, generator, n_steps):
         self.calculator = F1Calculator(generator, n_steps)
-        super(F1Results, self).__init__()
+        super(F1ResultsTest, self).__init__()
 
-    def on_epoch_end(self, epoch, logs=None):
+    def on_test_end(self, logs=None):
         self.calculator.count_and_calculate(self.model)
+
+
+class F1ResultsTrain(Callback):
+    def __init__(self, generator, n_steps):
+        self.calculator = F1Calculator(generator, n_steps)
+        super(F1ResultsTrain, self).__init__()
 
     def on_test_end(self, logs=None):
         self.calculator.count_and_calculate(self.model)
@@ -115,7 +121,7 @@ class HelixerModel(ABC):
             CSVLogger('history.log'),
             EarlyStopping(monitor='val_loss', patience=self.patience, verbose=1),
             ModelCheckpoint(self.save_model_path, monitor='val_loss', save_best_only=True, verbose=1),
-            F1Results(self.gen_val, self.n_steps_val)
+            F1ResultsTrain(self.gen_validation_data(), self.n_steps_val)
         ]
         if self.nni:
             callbacks.append(ReportIntermediateResult())
@@ -196,6 +202,12 @@ class HelixerModel(ABC):
             ic_samples = np.array(h5_file['/data/fully_intergenic_samples'])
             return np.count_nonzero(ic_samples == True)
 
+        def calculate_steps(n_seqs):
+            if n_seqs % self.batch_size == 0:
+                return n_seqs // self.batch_size
+            else:
+                return n_seqs // self.batch_size + 1
+
         if not self.load_model_path:
             self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
             self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
@@ -224,6 +236,11 @@ class HelixerModel(ABC):
             # do not adjust the validation count for intergenic sampling as we don't do that then
             self.n_val_seqs = n_val_seqs_with_intergenic
 
+            # set steps
+            self.n_steps_train = calculate_steps(self.n_train_seqs)
+            self.n_steps_val = calculate_steps(self.n_val_seqs)
+            # self.n_steps_train = 50
+            # self.n_steps_val = 20
         else:
             self.h5_test = h5py.File(self.test_data, 'r')
             self.shape_test = self.h5_test['/data/X'].shape
@@ -234,6 +251,9 @@ class HelixerModel(ABC):
             else:
                 n_test_seqs_with_intergenic = self.shape_test[0]
             n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_test)
+
+            self.n_steps_test = calculate_steps(self.shape_test[0])
+            # self.n_steps_test = 2
 
         if self.verbose:
             print('\nData config: ')
@@ -257,29 +277,9 @@ class HelixerModel(ABC):
                 print('Fully correct test seqs: {:.2f}%\n'.format(
                     n_test_correct_seqs / self.shape_test[0] * 100))
 
-    def init_generators(self):
-        def calculate_steps(n_seqs):
-            if n_seqs % self.batch_size == 0:
-                return n_seqs // self.batch_size
-            else:
-                return n_seqs // self.batch_size + 1
-
-        if not self.load_model_path:
-            self.gen_train = self.gen_training_data()
-            self.gen_val = self.gen_validation_data()
-            self.n_steps_train = calculate_steps(self.n_train_seqs)
-            self.n_steps_val = calculate_steps(self.n_val_seqs)
-            # self.n_steps_train = 50
-            # self.n_steps_val = 20
-        else:
-            self.gen_test = self.gen_test_data()
-            self.n_steps_test = calculate_steps(self.shape_test[0])
-            # self.n_steps_test = 2
-
     def run(self):
         self.set_resources()
         self.open_data_files()
-        self.init_generators()
         # we either train or predict
         if not self.load_model_path:
             model = self.model()
@@ -297,10 +297,10 @@ class HelixerModel(ABC):
             self.set_optimizer()
             self.compile_model(model)
 
-            model.fit_generator(generator=self.gen_train,
+            model.fit_generator(generator=self.gen_training_data(),
                                 steps_per_epoch=self.n_steps_train,
                                 epochs=self.epochs,
-                                validation_data=self.gen_val,
+                                validation_data=self.gen_validation_data(),
                                 validation_steps=self.n_steps_val,
                                 callbacks=self.generate_callbacks(),
                                 verbose=True)
@@ -323,8 +323,8 @@ class HelixerModel(ABC):
                 'acc_i': get_col_accuracy_fn(2)
             })
             if self.eval:
-                callback = [F1Results(self.gen_test_data(), self.n_steps_test)]
-                metrics = model.evaluate_generator(generator=self.gen_test,
+                callback = [F1ResultsTest(self.gen_test_data(), self.n_steps_test)]
+                metrics = model.evaluate_generator(generator=self.gen_test_data(),
                                                    steps=self.n_steps_test,
                                                    callbacks=callback,
                                                    verbose=True)
@@ -335,7 +335,7 @@ class HelixerModel(ABC):
                     print('{} already existing and will be overridden.'.format(
                         self.prediction_output_path
                     ))
-                predictions = model.predict_generator(generator=self.gen_test,
+                predictions = model.predict_generator(generator=self.gen_test_data(),
                                                       steps=self.n_steps_test,
                                                       verbose=True)
                 predictions = predictions.astype(np.float32)  # in case of predicting with float64
