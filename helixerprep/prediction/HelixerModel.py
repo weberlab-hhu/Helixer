@@ -82,7 +82,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-bs', '--batch-size', type=int, default=8)
         self.parser.add_argument('-opt', '--optimizer', type=str, default='adam')
         self.parser.add_argument('-loss', '--loss', type=str, default='')
-        self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
+        self.parser.add_argument('-cn', '--clip-norm', type=float, default=10.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
         self.parser.add_argument('-igsw', '--intergenic-sample-weight', type=float, default=1)
         self.parser.add_argument('-ic', '--intergenic-chance', type=float, default=1.0)
@@ -110,6 +110,7 @@ class HelixerModel(ABC):
         if self.nni:
             hyperopt_args = nni.get_next_parameter()
             self.__dict__.update(hyperopt_args)
+            self.__dict__['save_model_path'] = '\'$NNI_OUTPUT_DIR'/best_model.h5\''
             args.update(hyperopt_args)
         if self.verbose:
             print()
