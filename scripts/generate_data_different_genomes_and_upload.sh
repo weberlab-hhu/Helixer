@@ -10,7 +10,7 @@ coordinate_chance=1.0
 
 for genome in $(ls -1 $local_main_folder_input)
 do
-	folder_out="$local_main_folder_output""h5_data""$len_in_k""k""$genome"
+	folder_out="$local_main_folder_output$genome/h5_data_$len_in_k""k"
 	echo -e "\nGenerating $genome"
 	../export.py --db-path-in $db_path --out-dir $folder_out --chunk-size "$len_in_k"000 --coordinate-chance $coordinate_chance --genomes $genome --only-test-set
 

@@ -15,6 +15,7 @@ predictions.h5
 search_space.json
 config.yml
 jobs/*/*
+nohup.out
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
