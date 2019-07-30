@@ -4,7 +4,6 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 from F1Scores import F1Calculator
 
 from abc import ABC, abstractmethod
-import nni
 import os
 import sys
 import h5py
@@ -108,6 +107,7 @@ class HelixerModel(ABC):
         self.__dict__.update(args)
 
         if self.nni:
+            import nni
             nni_save_model_path = os.path.expandvars('$NNI_OUTPUT_DIR/best_model.h5')
             hyperopt_args = nni.get_next_parameter()
             self.__dict__.update(hyperopt_args)
