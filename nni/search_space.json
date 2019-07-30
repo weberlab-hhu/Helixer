@@ -1,18 +1,6 @@
 {
-    "units": {
-        "_type": "choice",
-        "_value": [2, 4, 8, 16]
-    },
-    "batch_size": {
-        "_type": "choice",
-        "_value": [16, 32, 64]
-    },
-    "learning_rate": {
-        "_type": "choice",
-        "_value": [1e-2, 1e-3, 1e-4]
-    },
     "optimizer": {
         "_type": "choice",
-        "_value": ["adam", "rmsprop"]
+        "_value": ["adam"]
     }
 }

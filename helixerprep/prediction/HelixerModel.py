@@ -108,10 +108,13 @@ class HelixerModel(ABC):
         self.__dict__.update(args)
 
         if self.nni:
+            nni_save_model_path = os.path.expandvars('$NNI_OUTPUT_DIR/best_model.h5')
             hyperopt_args = nni.get_next_parameter()
             self.__dict__.update(hyperopt_args)
-            self.__dict__['save_model_path'] = '\'$NNI_OUTPUT_DIR\'/best_model.h5'
+            self.__dict__['save_model_path'] = nni_save_model_path
             args.update(hyperopt_args)
+            # for the print out
+            args['save_model_path'] = nni_save_model_path
         if self.verbose:
             print()
             pprint(args)
