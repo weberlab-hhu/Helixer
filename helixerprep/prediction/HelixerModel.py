@@ -81,7 +81,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-bs', '--batch-size', type=int, default=8)
         self.parser.add_argument('-opt', '--optimizer', type=str, default='adam')
         self.parser.add_argument('-loss', '--loss', type=str, default='')
-        self.parser.add_argument('-cn', '--clip-norm', type=float, default=10.0)
+        self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
         self.parser.add_argument('-igsw', '--intergenic-sample-weight', type=float, default=1)
         self.parser.add_argument('-ic', '--intergenic-chance', type=float, default=1.0)
