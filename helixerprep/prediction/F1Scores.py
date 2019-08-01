@@ -108,8 +108,15 @@ class F1Calculator():
             else:
                 X, y_true = batch_data
             y_pred = np.round(model.predict_on_batch(X)).astype(bool)
-            self.count_and_calculate_one_batch(y_true, y_pred)
 
+            # reshape back to [:, :, 3] if we predicted more than one point per timestep
+            if y_pred.shape[-1] > 3:
+                n_per_step = y_pred.shape[-1] // 3
+                original_shape = (y_pred.shape[0], y_pred.shape[1] * n_per_step, 3)
+                y_true = y_true.reshape(original_shape)
+                y_pred = y_pred.reshape(original_shape)
+
+            self.count_and_calculate_one_batch(y_true, y_pred)
         self.print_f1_scores()
 
     def count_and_calculate_one_batch(self, y_true, y_pred):

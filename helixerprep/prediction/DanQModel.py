@@ -2,7 +2,7 @@
 import random
 import numpy as np
 from keras.models import Sequential
-from keras.layers import Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional
+from keras.layers import Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, MaxPooling1D
 from HelixerModel import HelixerModel, get_col_accuracy_fn
 
 
@@ -13,6 +13,7 @@ class DanQModel(HelixerModel):
         self.parser.add_argument('-u', '--units', type=int, default=4)
         self.parser.add_argument('-f', '--filter-depth', type=int, default=8)
         self.parser.add_argument('-ks', '--kernel-size', type=int, default=26)
+        self.parser.add_argument('-ps', '--pool-size', type=int, default=1)
         self.parse_args()
 
     def model(self):
@@ -23,9 +24,11 @@ class DanQModel(HelixerModel):
                          padding="same",
                          activation="relu"))
 
-        model.add(Bidirectional(CuDNNLSTM(self.units, return_sequences=True)))
+        if self.pool_size > 1:
+            model.add(MaxPooling1D(pool_size=self.pool_size, padding='same'))
 
-        model.add(Dense(3, activation='sigmoid'))
+        model.add(Bidirectional(CuDNNLSTM(self.units, return_sequences=True)))
+        model.add(Dense(self.pool_size * 3, activation='sigmoid'))
         return model
 
     def compile_model(self, model):
@@ -40,6 +43,7 @@ class DanQModel(HelixerModel):
 
     # generator should be the same as for the cnn
     def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False, sample_intergenic=False):
+        assert self.shape_train[1] % self.pool_size == 0
         n_seq = h5_file['/data/X'].shape[0]
         if exclude_err_seqs:
             err_samples = np.array(h5_file['/data/err_samples'])
@@ -62,10 +66,15 @@ class DanQModel(HelixerModel):
                 y.append(h5_file['/data/y'][i])
                 # apply intergenic sample weight value
                 if n == len(seq_indexes) - 1 or len(X) == self.batch_size:
-                    yield (
-                        np.stack(X, axis=0),
-                        np.stack(y, axis=0)
-                    )
+                    X = np.stack(X, axis=0)
+                    y = np.stack(y, axis=0)
+                    if self.pool_size > 1:
+                        y = y.reshape((
+                            y.shape[0],
+                            y.shape[1] // self.pool_size,
+                            self.pool_size * 3
+                        ))
+                    yield (X, y)
                     X, y = [], []
 
 
