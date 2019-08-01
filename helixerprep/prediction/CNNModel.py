@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 from keras.models import Sequential
-from keras.layers import Conv1D, Dense, Flatten, Reshape
+from keras.layers import Conv1D, Dense, Flatten
 from HelixerModel import HelixerModel, get_col_accuracy_fn
 import random
 import numpy as np
@@ -40,7 +40,6 @@ class CNNModel(HelixerModel):
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
                       loss='binary_crossentropy',
-                      #sample_weight_mode='temporal',
                       metrics=[
                           'accuracy',
                           get_col_accuracy_fn(0),
