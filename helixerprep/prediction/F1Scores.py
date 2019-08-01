@@ -2,6 +2,7 @@ import sys
 import numpy as np
 from terminaltables import AsciiTable
 
+
 class F1Counter():
     def __init__(self):
         self.tn = 0
