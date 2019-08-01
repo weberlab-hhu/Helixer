@@ -6,9 +6,14 @@ from F1Scores import F1Calculator
 from abc import ABC, abstractmethod
 import os
 import sys
+try:
+    import nni
+except ImportError:
+    pass
 import h5py
 import random
 import argparse
+import importlib
 import numpy as np
 import tensorflow as tf
 from pprint import pprint
@@ -107,7 +112,6 @@ class HelixerModel(ABC):
         self.__dict__.update(args)
 
         if self.nni:
-            import nni
             nni_save_model_path = os.path.expandvars('$NNI_OUTPUT_DIR/best_model.h5')
             hyperopt_args = nni.get_next_parameter()
             self.__dict__.update(hyperopt_args)
