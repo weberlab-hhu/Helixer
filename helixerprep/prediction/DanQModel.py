@@ -39,6 +39,7 @@ class DanQModel(HelixerModel):
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
                       loss='binary_crossentropy',
+                      sample_weight_mode='temporal',
                       metrics=[
                           'accuracy',
                           get_col_accuracy_fn(0),
@@ -47,7 +48,6 @@ class DanQModel(HelixerModel):
                       ])
 
     def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False, sample_intergenic=False):
-        assert self.shape_train[1] % self.pool_size == 0
         assert exclude_err_seqs, 'DanQ can only be run atm without any errors in the sequences'
         assert self.intergenic_chance == 1.0, 'Intergenic sampling not supported atm with DanQ'
         assert self.intergenic_sample_weight == 1.0, 'Intergenic sw are not applied currently'
@@ -68,13 +68,20 @@ class DanQModel(HelixerModel):
                 if n == len(seq_indexes) - 1 or len(X) == self.batch_size:
                     X = np.stack(X, axis=0)
                     y = np.stack(y, axis=0)
+                    sw = np.ones((y.shape[:2]), dtype=np.int8)
                     if self.pool_size > 1:
+                        if y.shape[1] % self.pool_size != 0:
+                            overhang = self.pool_size - (y.shape[1] % self.pool_size)
+                            y = np.pad(y, ((0, 0), (0, overhang), (0, 0)), 'constant',
+                                       constant_values=(0, 0))
+                            sw = np.ones((y.shape[0], y.shape[1] // self.pool_size), dtype=np.int8)
+                            sw[:, -1] = 0
                         y = y.reshape((
                             y.shape[0],
                             y.shape[1] // self.pool_size,
                             self.pool_size * 3
                         ))
-                    yield (X, y)
+                    yield (X, y, sw)
                     X, y = [], []
 
 
