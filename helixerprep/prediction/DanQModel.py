@@ -68,14 +68,14 @@ class DanQModel(HelixerModel):
                 if n == len(seq_indexes) - 1 or len(X) == self.batch_size:
                     X = np.stack(X, axis=0)
                     y = np.stack(y, axis=0)
-                    sw = np.ones((y.shape[:2]), dtype=np.int8)
+                    sw = np.ones((y.shape[0], y.shape[1] // self.pool_size), dtype=np.int8)
                     if self.pool_size > 1:
                         if y.shape[1] % self.pool_size != 0:
+                            # add additional values and mask them so everything divides evenly
                             overhang = self.pool_size - (y.shape[1] % self.pool_size)
                             y = np.pad(y, ((0, 0), (0, overhang), (0, 0)), 'constant',
                                        constant_values=(0, 0))
-                            sw = np.ones((y.shape[0], y.shape[1] // self.pool_size), dtype=np.int8)
-                            sw[:, -1] = 0
+                            sw = np.pad(sw, ((0, 0), (0, 1)), 'constant', constant_values=(0, 0))
                         y = y.reshape((
                             y.shape[0],
                             y.shape[1] // self.pool_size,

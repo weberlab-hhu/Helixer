@@ -103,9 +103,7 @@ class F1Calculator():
             F1Calculator.progress(i + 1, self.n_steps)
             batch_data = next(self.generator)
             if len(batch_data) == 3:
-                # todo mask with sample_weights
                 X, y_true, sample_weights = batch_data
-                pass
             else:
                 X, y_true = batch_data
             y_pred = np.round(model.predict_on_batch(X)).astype(bool)
@@ -116,6 +114,18 @@ class F1Calculator():
                 original_shape = (y_pred.shape[0], y_pred.shape[1] * n_per_step, 3)
                 y_true = y_true.reshape(original_shape)
                 y_pred = y_pred.reshape(original_shape)
+
+            if 'sample_weights' in locals():
+                if not np.all(sample_weights):
+                    if np.count_nonzero(sample_weights[:, -1]) == 0:
+                        if i == 0:
+                            print('WARNING: DanQ sample weights assumed '
+                                  '(possible 0 only at the very end)')
+                        y_true = y_true[:, :-1, :]
+                        y_pred = y_pred[:, :-1, :]
+                    else:
+                        print('ERROR: Sample weights found that do not seem appropriate')
+                        return
 
             self.count_and_calculate_one_batch(y_true, y_pred)
         self.print_f1_scores()
