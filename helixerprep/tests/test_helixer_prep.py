@@ -91,7 +91,7 @@ def setup_simpler_numerifier():
     transcript_feature = geenuff.orm.Feature(start=40,
                                              end=9,
                                              is_plus_strand=False,
-                                             type=geenuff.types.TRANSCRIPT_FEATURE,
+                                             type=geenuff.types.GEENUFF_TRANSCRIPT,
                                              start_is_biological_start=True,
                                              end_is_biological_end=True,
                                              coordinate=coord)
@@ -350,7 +350,8 @@ def test_minus_strand_numerify():
 def test_coord_numerifier_and_h5_gen_plus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=400)
+    controller.export(chunk_size=400, genomes='', exclude='', coordinate_chance=1.0, val_size=0.2,
+                      sample_strand=False, keep_errors=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     inputs = f['/data/X']
@@ -398,7 +399,8 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
 def test_coord_numerifier_and_h5_gen_minus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=200)
+    controller.export(chunk_size=200, genomes='', exclude='', coordinate_chance=1.0, val_size=0.2,
+                      sample_strand=False, keep_errors=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     inputs = f['/data/X']
