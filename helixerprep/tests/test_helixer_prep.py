@@ -40,7 +40,8 @@ def setup_dummy_db(request):
 
     # setup dummyloci
     controller = ImportController(database_path='sqlite:///' + DUMMYLOCI_DB)
-    controller.add_genome('testdata/dummyloci.fa', 'testdata/dummyloci.gff')
+    controller.add_genome('testdata/dummyloci.fa', 'testdata/dummyloci.gff',
+                          genome_args={"species": "dummy"})
 
     # make tmp folder
     if not os.path.exists(H5_OUT_FOLDER):
