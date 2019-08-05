@@ -43,6 +43,7 @@ class DanQModel(HelixerModel):
 
     # generator should be the same as for the cnn
     def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False, sample_intergenic=False):
+        assert self.shape_train[1] % self.pool_size == 0
         n_seq = h5_file['/data/X'].shape[0]
         if exclude_err_seqs:
             err_samples = np.array(h5_file['/data/err_samples'])
