@@ -46,26 +46,21 @@ class DanQModel(HelixerModel):
                           get_col_accuracy_fn(2),
                       ])
 
-    # generator should be the same as for the cnn
     def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False, sample_intergenic=False):
         assert self.shape_train[1] % self.pool_size == 0
+        assert exclude_err_seqs, 'DanQ can only be run atm without any errors in the sequences'
+        assert self.intergenic_chance == 1.0, 'Intergenic sampling not supported atm with DanQ'
+        assert self.intergenic_sample_weight == 1.0, 'Intergenic sw are not applied currently'
+
         n_seq = h5_file['/data/X'].shape[0]
-        if exclude_err_seqs:
-            err_samples = np.array(h5_file['/data/err_samples'])
-        if sample_intergenic and self.intergenic_chance < 1.0:
-            fully_intergenic_samples = np.array(h5_file['/data/fully_intergenic_samples'])
-            intergenic_rolls = np.random.random((n_seq,))  # a little bit too much, but simpler so
+        err_samples = np.array(h5_file['/data/err_samples'])
         X, y = [], []
         while True:
             seq_indexes = list(range(n_seq))
             if shuffle:
                 random.shuffle(seq_indexes)
             for n, i in enumerate(seq_indexes):
-                if exclude_err_seqs and err_samples[i]:
-                    continue
-                if (sample_intergenic and self.intergenic_chance < 1.0
-                        and fully_intergenic_samples[i]
-                        and intergenic_rolls[i] > self.intergenic_chance):
+                if err_samples[i]:
                     continue
                 X.append(h5_file['/data/X'][i])
                 y.append(h5_file['/data/y'][i])
