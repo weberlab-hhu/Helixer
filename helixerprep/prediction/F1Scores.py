@@ -1,4 +1,3 @@
-import sys
 import numpy as np
 from terminaltables import AsciiTable
 
@@ -55,7 +54,7 @@ class F1Calculator():
             table = [['', 'Precision', 'Recall', 'F1-Score']]
             for col_name, (_, counter0, counter1) in counters.items():
                 if col_name == 'total':
-                    table.append(['',''])
+                    table.append(['', ''])
                 for cls, counter in enumerate([counter0, counter1]):
                     precision, recall, f1 = F1Calculator._calculate_f1(*counter.get_values())
                     name = [col_name + ' ' + str(cls)]
