@@ -6,9 +6,6 @@ from terminaltables import AsciiTable
 from sklearn.metrics import precision_recall_fscore_support as f1_score
 from helixerprep.prediction.F1Scores import F1Calculator
 
-"""Outputs the coding and intron accuracy within and outside of genes seperately.
-Needs a data and a corresponding predictions file."""
-
 
 def main(args):
     h5_data = h5py.File(args.data, 'r')
@@ -21,7 +18,8 @@ def main(args):
         lab_mask = [True] * h5_data_y.shape[0]
         lab_lexsort = np.arange(h5_data_y.shape[0])
     else:
-        h5_data_y, h5_pred_y, lab_mask, lab_lexsort = match_up(h5_data, h5_pred, args.h5_prediction_dataset)
+        h5_data_y, h5_pred_y, lab_mask, lab_lexsort = match_up(h5_data, h5_pred,
+                                                               args.h5_prediction_dataset)
 
     # truncate (for devel efficiency, when we don't need the whole answer)
     if args.truncate is not None:
@@ -45,6 +43,9 @@ def main(args):
         export(args.save_to, h5_in=h5_data,
                labs=h5_data_y, preds=h5_pred_y,
                lab_mask=lab_mask, lab_lexsort=lab_lexsort)
+
+    # for all subsequent analysis round predictions
+    h5_pred_y = np.round(h5_pred_y)
 
     # and score
     f1_calc = F1Calculator(None, None)
