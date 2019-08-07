@@ -30,7 +30,7 @@ else:
     y_true = h5_data['/data/y']
     y_pred = h5_pred['/predictions']
 
-table = [['index', 'acc overall', 'acc rowwise']]
+table = [['index', 'acc pointwise', 'acc rowwise']]
 for i in range(0, y_true.shape[1], args.resolution):
     y_true_section = y_true[:, i:i+args.resolution]
     y_pred_section = y_pred[:, i:i+args.resolution]
