@@ -70,9 +70,16 @@ class Visualization():
         self.seq_info_seqid.grid(row=2, column=7)
         self.seq_info_start_end.grid(row=3, column=7)
 
+        self.error_label = tk.Label(self.frame)
+        self.error_label.grid(row=4, column=1)
+
         # load and transform data
         self.h5_data = h5py.File(args.test_data, 'r')
         self.h5_predictions = h5py.File(args.predictions, 'r')
+
+        if self.args.exclude_errors:
+            self.err_idx = np.squeeze(np.argwhere(np.array(self.h5_data['/data/err_samples']) == True))
+
         # save n_seq and chunk_len from predictions as there are likely a tiny bit fewer
         # than labels, due to the data generator in keras
         self.n_seq = self.h5_predictions['/predictions'].shape[0]
@@ -82,6 +89,9 @@ class Visualization():
 
         fully_intergenic_bool = self.h5_data['/data/fully_intergenic_samples']
         self.genic_indexes = np.squeeze(np.argwhere(np.array(fully_intergenic_bool) == False))
+
+        if self.args.exclude_errors:
+            self.genic_indexes = np.setdiff1d(self.genic_indexes, self.err_idx)
 
         # figure, canvas etc
         fig_main = Figure(figsize=(self.HEATMAP_SIZE_X / self.DPI, self.HEATMAP_SIZE_Y / self.DPI),
@@ -211,16 +221,14 @@ class Visualization():
     def next(self, event):
         self.offset = (self.offset + self.BASE_COUNT_SCREEN) % self.chunk_len
         if self.offset < self.BASE_COUNT_SCREEN:
-            self.seq_index += 1
-            self.redraw(changed_seq=True)
+            self.load_seq_index(self.seq_index + 1)
         else:
             self.redraw(changed_seq=False)
 
     def previous(self, event):
         if self.offset < self.BASE_COUNT_SCREEN:
             self.offset = self.chunk_len + self.offset - self.BASE_COUNT_SCREEN
-            self.seq_index -= 1
-            self.redraw(changed_seq=True)
+            self.load_seq_index(self.seq_index - 1)
         else:
             self.offset -= self.BASE_COUNT_SCREEN
             self.redraw(changed_seq=False)
@@ -230,17 +238,27 @@ class Visualization():
         self.load_seq_index(self.genic_indexes[next_genic_index])
 
     def load_seq_index(self, new_seq_index):
-        if new_seq_index <= self.n_seq:
-            self.seq_index = new_seq_index
-            self.offset = 0
-            self.redraw(changed_seq=True)
+        if self.args.exclude_errors and new_seq_index not in self.err_idx:
+            if new_seq_index <= self.n_seq:
+                self.seq_index = new_seq_index
+                self.offset = 0
+                self.redraw(changed_seq=True)
+                self.error_label.config(text='')
+            else:
+                self.error_label.config(text='ERROR: End of data reached')
+        else:
+            self.error_label.config(text='ERROR: Sequence has errors')
 
     def go_seq_index(self, event):
         new_seq_index = int(self.seq_index_input.get())
         self.load_seq_index(new_seq_index)
 
     def go_seq_index_random(self, event):
-        random_seq_index = random.randint(0, self.n_seq)
+        if self.args.exclude_errors:
+            clean_seq_indexes = np.delete(np.arange(self.n_seq), self.err_idx)
+            random_seq_index = random.choice(clean_seq_indexes)
+        else:
+            random_seq_index = random.randint(0, self.n_seq)
         self.load_seq_index(random_seq_index)
 
     def go_seq_index_random_genic(self, event):
@@ -270,6 +288,7 @@ if __name__ == '__main__':
     parser.add_argument('-r', '--n-rows', type=int, default=5)
     # how to narrow down the vmin/vmax args of the heatmap as predictions are very close to 0
     parser.add_argument('-cbo', '--colorbar-offset', type=float, default=0.0)
+    parser.add_argument('-ee', '--exclude-errors', action='store_true')
     args = parser.parse_args()
 
     root = tk.Tk()
