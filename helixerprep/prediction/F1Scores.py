@@ -1,4 +1,3 @@
-import sys
 import numpy as np
 from terminaltables import AsciiTable
 
@@ -33,7 +32,7 @@ class F1Calculator():
         self.n_steps = n_steps
         self.counters = {
             'Genic': {
-                'cds': (1, F1Counter(), F1Counter()),
+                'cds': (1, F1Counter(), F1Counter()),  # (col_id, counter for class 0, class 1)
                 'intron': (2, F1Counter(), F1Counter()),
                 'total': (None, F1Counter(), F1Counter())  # None for simpler implementation
             },
@@ -55,7 +54,7 @@ class F1Calculator():
             table = [['', 'Precision', 'Recall', 'F1-Score']]
             for col_name, (_, counter0, counter1) in counters.items():
                 if col_name == 'total':
-                    table.append(['',''])
+                    table.append(['', ''])
                 for cls, counter in enumerate([counter0, counter1]):
                     precision, recall, f1 = F1Calculator._calculate_f1(*counter.get_values())
                     name = [col_name + ' ' + str(cls)]
@@ -119,7 +118,7 @@ class F1Calculator():
                 if not np.all(sample_weights):
                     if np.count_nonzero(sample_weights[:, -1]) == 0:
                         if i == 0:
-                            print('WARNING: DanQ sample weights assumed '
+                            print('WARNING: DanQ sample weights for pooling overhang assumed '
                                   '(possible 0 only at the very end)')
                         y_true = y_true[:, :-1, :]
                         y_pred = y_pred[:, :-1, :]

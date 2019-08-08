@@ -1,5 +1,6 @@
 import os
 from shutil import copy
+from sklearn.metrics import precision_recall_fscore_support as f1_scores
 import numpy as np
 import pytest
 import h5py
@@ -17,6 +18,7 @@ from ..export import numerify
 from ..export.numerify import (SequenceNumerifier, BasePairAnnotationNumerifier, Stepper,
                                AMBIGUITY_DECODE)
 from ..export.exporter import ExportController
+from ..prediction.F1Scores import F1Calculator
 
 TMP_DB = 'testdata/tmp.db'
 DUMMYLOCI_DB = 'testdata/dummyloci.sqlite3'
@@ -476,3 +478,173 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     label_mask_expect = np.insert(label_mask_expect, 200 + 177, np.zeros((23,)), axis=0)
     assert np.array_equal(label_masks[0], label_mask_expect[:200])
     assert np.array_equal(label_masks[1][:50], label_mask_expect[200:250])
+
+
+def test_f1_scores():
+    # 40 bases in total
+    y_true = np.array([
+        # 5 bases intergenic
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        # 4 bases UTR
+        [1, 0, 0],
+        [1, 0, 0],
+        [1, 0, 0],
+        [1, 0, 0],
+        # 8 bases exon
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        # 6 bases intron
+        [1, 1, 1],
+        [1, 1, 1],
+        [1, 1, 1],
+        [1, 1, 1],
+        [1, 1, 1],
+        [1, 1, 1],
+        # 5 bases exon
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        # 3 bases UTR
+        [1, 0, 0],
+        [1, 0, 0],
+        [1, 0, 0],
+        # 9 bases intergenic
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0]
+    ])
+    y_pred = np.array([
+        # 7 bases intergenic
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        # 4 bases UTR
+        [1, 0, 0],
+        [1, 0, 0],
+        [1, 0, 0],
+        [1, 0, 0],
+        # 6 bases exon
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        # 2 bases intron
+        [1, 1, 1],
+        [1, 1, 1],
+        # 10 bases exon
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        [1, 1, 0],
+        # 7 bases UTR
+        [1, 0, 0],
+        [1, 0, 0],
+        [1, 0, 0],
+        [1, 0, 0],
+        [1, 0, 0],
+        [1, 0, 0],
+        [1, 0, 0],
+        # 5 bases intergenic
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0]
+    ])
+
+    # stack arrays to create a "batch"
+    y_true = np.tile(y_true, (8, 1, 1))
+    y_pred = np.tile(y_pred, (8, 1, 1))
+
+    f1 = F1Calculator(None, 0)  # params don't matter
+    f1.count_and_calculate_one_batch(y_true, y_pred)
+
+    # Total counters
+    total_0_counter = f1.counters['Global']['total'][1]
+    pred_values = F1Calculator._calculate_f1(*total_0_counter.get_values())
+    true_values = f1_scores(y_true.ravel(), y_pred.ravel(), average='binary', pos_label=0)[:3]
+
+    for pred, true in zip (pred_values, true_values):
+        assert pred == true
+
+    total_1_counter = f1.counters['Global']['total'][2]
+    pred_values = F1Calculator._calculate_f1(*total_1_counter.get_values())
+    true_values = f1_scores(y_true.ravel(), y_pred.ravel(), average='binary', pos_label=1)[:3]
+
+    for pred, true in zip (pred_values, true_values):
+        assert pred == true
+
+    # CDS in genic test
+    genic_mask = y_true[:, :, 0].astype(bool)
+    y_true_genic_cds = np.copy(y_true)[genic_mask, :][:, 1]
+    y_pred_genic_cds = np.copy(y_pred)[genic_mask, :][:, 1]
+
+    genic_cds_0_counter = f1.counters['Genic']['cds'][1]
+    pred_values = F1Calculator._calculate_f1(*genic_cds_0_counter.get_values())
+    true_values = f1_scores(y_true_genic_cds.ravel(), y_pred_genic_cds.ravel(),
+                            average='binary', pos_label=0)[:3]
+
+    for pred, true in zip (pred_values, true_values):
+        assert pred == true
+
+    genic_cds_1_counter = f1.counters['Genic']['cds'][2]
+    pred_values = F1Calculator._calculate_f1(*genic_cds_1_counter.get_values())
+    true_values = f1_scores(y_true_genic_cds.ravel(), y_pred_genic_cds.ravel(),
+                            average='binary', pos_label=1)[:3]
+
+    for pred, true in zip (pred_values, true_values):
+        assert pred == true
+
+    # Test f1 with more than one prediction per timestep
+    new_shape = (y_true.shape[0], y_true.shape[1] // 5, 3 * 5)
+    y_true_reshaped = np.copy(y_true).reshape(new_shape)
+    y_pred_reshaped = np.copy(y_pred).reshape(new_shape)
+
+    # New f1 counts
+    f1 = F1Calculator(None, 0)
+    f1.count_and_calculate_one_batch(y_true_reshaped, y_pred_reshaped)
+
+    total_0_counter = f1.counters['Global']['total'][1]
+    pred_values = F1Calculator._calculate_f1(*total_0_counter.get_values())
+    true_values = f1_scores(y_true_reshaped.ravel(), y_pred_reshaped.ravel(),
+                            average='binary', pos_label=0)[:3]
+
+    for pred, true in zip (pred_values, true_values):
+        assert pred == true
+
+    total_1_counter = f1.counters['Global']['total'][2]
+    pred_values = F1Calculator._calculate_f1(*total_1_counter.get_values())
+    true_values = f1_scores(y_true_reshaped.ravel(), y_pred_reshaped.ravel(),
+                            average='binary', pos_label=1)[:3]
+
+    for pred, true in zip (pred_values, true_values):
+        assert pred == true

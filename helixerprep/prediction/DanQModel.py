@@ -3,7 +3,7 @@ import random
 import numpy as np
 from keras.models import Sequential
 from keras.layers import Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, MaxPooling1D, Dropout
-from HelixerModel import HelixerModel, get_col_accuracy_fn
+from HelixerModel import HelixerModel, acc_row, acc_g_row, acc_ig_row
 
 
 class DanQModel(HelixerModel):
@@ -42,9 +42,9 @@ class DanQModel(HelixerModel):
                       sample_weight_mode='temporal',
                       metrics=[
                           'accuracy',
-                          get_col_accuracy_fn(0),
-                          get_col_accuracy_fn(1),
-                          get_col_accuracy_fn(2),
+                          acc_row,
+                          acc_g_row,
+                          acc_ig_row,
                       ])
 
     def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False, sample_intergenic=False):
