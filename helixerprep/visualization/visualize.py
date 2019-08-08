@@ -133,7 +133,7 @@ class Visualization():
             new_label_masks = np.ones((self.args.n_rows * 2 - 1, self.BASE_COUNT_X, 3)).astype(bool)
             label_masks = add_dummy_data(label_masks, new_label_masks)
 
-        # make string labels
+        # make string annotations
         labels_str = labels.astype(str)
         labels_str[labels_str == '0'] = ''
         labels_str[labels_str == '1'] = '-'
@@ -165,12 +165,22 @@ class Visualization():
         self.canvas_main.draw()
 
     def draw_summary_heatmap(self):
-        _, errors, label_masks, _ = self.load_sequence(0, self.chunk_len, include_dummy=False)
+        _, errors, label_masks, label_str = self.load_sequence(0, self.chunk_len, include_dummy=False)
+
+        labels = label_str == '-'  # convert to bool
+        labels = np.swapaxes(labels, 0, 1)
+        labels = labels.reshape((3, 100, labels.shape[1] // 100))
+        labels = labels.any(axis=2)
+        labels_str = labels.astype(str)
+        labels_str[labels_str == 'True'] = '-'
+        labels_str[labels_str == 'False'] = ''
+
         masked_errors = np.ma.masked_array(errors, mask=label_masks)
         # reshape and average over each part
         masked_errors = np.swapaxes(masked_errors, 0, 1)
         masked_errors = masked_errors.reshape((3, 100, self.chunk_len // 100))
         masked_errors_avg = np.mean(masked_errors, axis=2)
+
         # paint
         self.ax_summary.clear()
         seaborn.heatmap(masked_errors_avg,
@@ -181,6 +191,9 @@ class Visualization():
                         square=True,
                         cbar=False,
                         mask=masked_errors_avg.mask,
+                        annot=labels_str,
+                        fmt='',
+                        annot_kws={'fontweight': 'bold'},
                         xticklabels=False,
                         yticklabels=False,
                         ax=self.ax_summary)
