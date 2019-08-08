@@ -348,6 +348,25 @@ def test_minus_strand_numerify():
     assert np.array_equal(num_list[1], np.flip(expect[0:50], axis=0))
 
 
+def test_minus_truncated_numerify():
+    # setup a very basic -strand locus
+    _, coord = setup_simpler_numerifier()
+    coord.features[0].end = -1
+    coord.features[0].end_is_biological_end = False
+    numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                              features=coord.features,
+                                              is_plus_strand=False,
+                                              max_len=1000)
+    # and now that we get the expect range on the minus strand,
+    # keeping in mind the 40 is inclusive, and the -1, not
+    nums = numerifier.coord_to_matrices()[0][0]
+
+    expect = np.zeros([100, 3], dtype=np.float32)
+    expect[0:41, 0] = 1.
+    expect = np.flip(expect, axis=0)
+    assert np.array_equal(nums, expect)
+
+
 def test_coord_numerifier_and_h5_gen_plus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file

@@ -149,16 +149,25 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
 
     def update_matrix_and_error_mask(self):
         for feature in self.features:
+            # don't include features from the other strand
+            if not feature.is_plus_strand == self.is_plus_strand:
+                continue
             start = feature.start
             end = feature.end
             if not self.is_plus_strand:
                 start, end = end + 1, start + 1
+            print("start: {}, end: {}, self.is_plus_strand: {}, feature.is_plus_strand: {}, "
+                  "feature.type.value: {}, feature.type: {}".format(
+                       start, end, self.is_plus_strand, feature.is_plus_strand, feature.type.value, feature.type))
             if feature.type in BasePairAnnotationNumerifier.feature_to_col.keys():
+                print('mod matrix')
                 col = BasePairAnnotationNumerifier.feature_to_col[feature.type]
                 self.matrix[start:end, col] = 1
             elif feature.type.value in BasePairAnnotationNumerifier.error_type_values:
                 self.error_mask[start:end] = 0
+                print('mask')
             else:
+                print('val error')
                 raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
 
 
