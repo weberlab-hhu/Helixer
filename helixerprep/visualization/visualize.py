@@ -63,6 +63,13 @@ class Visualization():
         self.seq_offset_input.grid(row=2, column=1)
         self.seq_offset_button.grid(row=2, column=2)
 
+        self.seq_info_species = tk.Label(self.frame, padx=100)
+        self.seq_info_seqid = tk.Label(self.frame)
+        self.seq_info_start_end = tk.Label(self.frame)
+        self.seq_info_species.grid(row=1, column=7)
+        self.seq_info_seqid.grid(row=2, column=7)
+        self.seq_info_start_end.grid(row=3, column=7)
+
         # load and transform data
         self.h5_data = h5py.File(args.test_data, 'r')
         self.h5_predictions = h5py.File(args.predictions, 'r')
@@ -179,6 +186,15 @@ class Visualization():
                         ax=self.ax_summary)
         self.canvas_summary.draw()
 
+    def update_seq_info(self):
+        species = self.h5_data['/data/species'][self.seq_index].decode('utf-8')
+        seqid = self.h5_data['/data/seqids'][self.seq_index].decode('utf-8')
+        start_end = list(self.h5_data['/data/start_ends'][self.seq_index])
+        # self.seq_info.config(text=str('{}\n{}\n{}'.format(species, seqid, start_end)))
+        self.seq_info_species.config(text=species)
+        self.seq_info_seqid.config(text=seqid)
+        self.seq_info_start_end.config(text=str(start_end))
+
     def next(self, event):
         self.offset = (self.offset + self.BASE_COUNT_SCREEN) % self.chunk_len
         if self.offset < self.BASE_COUNT_SCREEN:
@@ -231,6 +247,7 @@ class Visualization():
         self.draw_main_heatmap()
         if changed_seq:
             self.draw_summary_heatmap()
+            self.update_seq_info()
 
 
 if __name__ == '__main__':
