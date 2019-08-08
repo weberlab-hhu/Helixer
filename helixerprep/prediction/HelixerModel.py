@@ -25,17 +25,22 @@ from keras.models import load_model
 from keras.utils import multi_gpu_model
 
 
-def get_col_accuracy_fn(col):
-    def col_accuracy(y_true, y_pred, col):
-        return K.cast(K.equal(y_true[:, :, col], K.round(y_pred[:, :, col])), K.floatx())
-    fn = partial(col_accuracy, col=col)
-    if col == 0:
-        fn.__name__ = 'acc_t'
-    elif col == 1:
-        fn.__name__ = 'acc_c'
-    elif col == 2:
-        fn.__name__ = 'acc_i'
-    return fn
+def acc_row(y_true, y_pred):
+    return K.cast(K.all(K.equal(y_true, K.round(y_pred)), axis=-1), K.floatx())
+
+
+def acc_g_row(y_true, y_pred):
+    mask = y_true[:, :, 0] > 0
+    y_true = tf.boolean_mask(y_true, mask)
+    y_pred = tf.boolean_mask(y_pred, mask)
+    return K.cast(K.all(K.equal(y_true, K.round(y_pred)), axis=-1), K.floatx())
+
+
+def acc_ig_row(y_true, y_pred):
+    mask = y_true[:, :, 0] < 1
+    y_true = tf.boolean_mask(y_true, mask)
+    y_pred = tf.boolean_mask(y_pred, mask)
+    return K.cast(K.all(K.equal(y_true, K.round(y_pred)), axis=-1), K.floatx())
 
 
 class SaveEveryEpoch(Callback):
