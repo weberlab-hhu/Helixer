@@ -77,15 +77,18 @@ class Visualization():
         self.h5_data = h5py.File(args.test_data, 'r')
         self.h5_predictions = h5py.File(args.predictions, 'r')
 
-        if self.args.exclude_errors:
-            self.err_idx = np.squeeze(np.argwhere(np.array(self.h5_data['/data/err_samples']) == True))
-
         # save n_seq and chunk_len from predictions as there are likely a tiny bit fewer
         # than labels, due to the data generator in keras
         self.n_seq = self.h5_predictions['/predictions'].shape[0]
         self.chunk_len = self.h5_predictions['/predictions'].shape[1]
-
         assert self.chunk_len % self.BASE_COUNT_SCREEN == 0
+
+        if self.args.exclude_errors:
+            self.err_idx = np.squeeze(np.argwhere(np.array(self.h5_data['/data/err_samples']) == True))
+            data_len = self.h5_data['/data/y'].shape[0] - len(self.err_idx)
+        else:
+            data_len = self.h5_data['/data/y'].shape[0]
+        assert data_len == self.n_seq
 
         fully_intergenic_bool = self.h5_data['/data/fully_intergenic_samples']
         self.genic_indexes = np.squeeze(np.argwhere(np.array(fully_intergenic_bool) == False))

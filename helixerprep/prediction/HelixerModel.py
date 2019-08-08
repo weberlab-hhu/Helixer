@@ -330,6 +330,10 @@ class HelixerModel(ABC):
                 'acc_c': get_col_accuracy_fn(1),
                 'acc_i': get_col_accuracy_fn(2)
             })
+            if self.exclude_errors:
+                print('Leaving out erroneous sequences due to --exclude-errors')
+            else:
+                print('Predicting for erroneous sequences as well as good ones')
             if self.eval:
                 callback = [F1ResultsTest(self.gen_test_data(), self.n_steps_test)]
                 metrics = model.evaluate_generator(generator=self.gen_test_data(),
