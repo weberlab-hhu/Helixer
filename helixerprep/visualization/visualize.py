@@ -82,13 +82,10 @@ class Visualization():
         self.n_seq = self.h5_predictions['/predictions'].shape[0]
         self.chunk_len = self.h5_predictions['/predictions'].shape[1]
         assert self.chunk_len % self.BASE_COUNT_SCREEN == 0
+        assert self.h5_data['/data/y'].shape[0] == self.n_seq
 
         if self.args.exclude_errors:
             self.err_idx = np.squeeze(np.argwhere(np.array(self.h5_data['/data/err_samples']) == True))
-            data_len = self.h5_data['/data/y'].shape[0] - len(self.err_idx)
-        else:
-            data_len = self.h5_data['/data/y'].shape[0]
-        assert data_len == self.n_seq
 
         fully_intergenic_bool = self.h5_data['/data/fully_intergenic_samples']
         self.genic_indexes = np.squeeze(np.argwhere(np.array(fully_intergenic_bool) == False))
@@ -216,7 +213,7 @@ class Visualization():
         species = self.h5_data['/data/species'][self.seq_index].decode('utf-8')
         seqid = self.h5_data['/data/seqids'][self.seq_index].decode('utf-8')
         start_end = list(self.h5_data['/data/start_ends'][self.seq_index])
-        # self.seq_info.config(text=str('{}\n{}\n{}'.format(species, seqid, start_end)))
+
         self.seq_info_species.config(text=species)
         self.seq_info_seqid.config(text=seqid)
         self.seq_info_start_end.config(text=str(start_end))

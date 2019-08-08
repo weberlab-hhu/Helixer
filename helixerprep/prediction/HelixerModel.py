@@ -260,6 +260,7 @@ class HelixerModel(ABC):
                 n_test_seqs_with_intergenic = self.shape_test[0]
             n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_test)
 
+            # always use all the data during test time to avoid problems with missing predictions etc.
             self.n_steps_test = calculate_steps(self.shape_test[0])
             # self.n_steps_test = 2
 
@@ -330,10 +331,6 @@ class HelixerModel(ABC):
                 'acc_c': get_col_accuracy_fn(1),
                 'acc_i': get_col_accuracy_fn(2)
             })
-            if self.exclude_errors:
-                print('Leaving out erroneous sequences due to --exclude-errors')
-            else:
-                print('Predicting for erroneous sequences as well as good ones')
             if self.eval:
                 callback = [F1ResultsTest(self.gen_test_data(), self.n_steps_test)]
                 metrics = model.evaluate_generator(generator=self.gen_test_data(),
