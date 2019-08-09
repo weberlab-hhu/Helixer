@@ -43,14 +43,6 @@ def acc_ig_row(y_true, y_pred):
     return K.cast(K.all(K.equal(y_true, K.round(y_pred)), axis=-1), K.floatx())
 
 
-class SaveEveryEpoch(Callback):
-    def __init__(self):
-        super(SaveEveryEpoch, self).__init__()
-
-    def on_epoch_end(self, epoch, _):
-        self.model.save('model' + str(epoch) + '.h5')
-
-
 class ReportIntermediateResult(Callback):
     def __init__(self):
         super(ReportIntermediateResult, self).__init__()
@@ -132,8 +124,11 @@ class HelixerModel(ABC):
         callbacks = [
             History(),
             CSVLogger('history.log'),
-            EarlyStopping(monitor='val_loss', patience=self.patience, verbose=1),
-            ModelCheckpoint(self.save_model_path, monitor='val_loss', save_best_only=True, verbose=1),
+            # EarlyStopping(monitor='val_loss', patience=self.patience, verbose=1),
+            EarlyStopping(monitor='acc_g_row', patience=self.patience, verbose=1),
+            # ModelCheckpoint(self.save_model_path, monitor='val_loss', save_best_only=True, verbose=1),
+            ModelCheckpoint(self.save_model_path, monitor='acc_g_row', mode='max',
+                            save_best_only=True, verbose=1),
             F1ResultsTrain(self.gen_validation_data(), self.n_steps_val)
         ]
         if self.nni:
