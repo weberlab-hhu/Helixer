@@ -48,7 +48,7 @@ class ReportIntermediateResult(Callback):
         super(ReportIntermediateResult, self).__init__()
 
     def on_epoch_end(self, epoch, logs=None):
-        nni.report_intermediate_result(logs['val_loss'])
+        nni.report_intermediate_result(logs['acc_g_row'])
 
 
 class F1ResultsTest(Callback):
@@ -314,9 +314,8 @@ class HelixerModel(ABC):
                                 callbacks=self.generate_callbacks(),
                                 verbose=True)
 
-            best_val_loss = min(model.history.history['val_loss'])
             if self.nni:
-                nni.report_final_result(best_val_loss)
+                nni.report_final_result(max(model.history.history['acc_g_row']))
 
             self.h5_train.close()
             self.h5_val.close()
