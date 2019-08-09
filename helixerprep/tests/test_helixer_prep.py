@@ -479,6 +479,51 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     assert np.array_equal(label_masks[1][:50], label_mask_expect[200:250])
 
 
+def test_numerify_with_end_neg1():
+    def check_one(coord, is_plus_strand, expect, maskexpect):
+        numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                                  features=coord.features,
+                                                  is_plus_strand=is_plus_strand,
+                                                  max_len=1000)
+        nums, masks = [x[0] for x in numerifier.coord_to_matrices()]
+
+        assert np.array_equal(nums, expect)
+        assert np.array_equal(masks, maskexpect)
+
+    controller = ImportController(database_path='sqlite:///:memory:')
+    controller.add_genome('testdata/edges.fa', 'testdata/edges.gff',
+                          genome_args={"species": "edges"})
+    # todo, test edge cases for both features and masking
+    #  maybe also end of sequence on + strand?
+    # test case: plus strand, start, features
+    # + (each char represents ~ 50bp)
+    # 1111 0000 0000 0000 0000 0000
+    # 0110 0000 0000 0000 0000 0000
+    # 0000 0000 0000 0000 0000 0000
+    # err
+    # 1111 1111 1111 1111 1111 1111
+    coord = controller.session.query(Coordinate).filter(Coordinate.id == 1).first()
+    expect = np.zeros([1000, 3], dtype=np.float32)
+    expect[0:200, 0] = 1.  # transcribed
+    expect[50:149, 1] = 1.
+
+    maskexpect = np.ones((1000,), dtype=np.int)
+    check_one(coord, True, expect, maskexpect)
+    # - strand, as above, but expect all 0s no masking
+    expect = np.zeros([1000, 3], dtype=np.float32)
+    check_one(coord, False, expect, maskexpect)
+
+    # test case: plus strand, start, errors
+    # + (each char represents ~ 50bp)
+    # 0111 0000 0000 0000 0000 0000
+    # 0110 0000 0000 0000 0000 0000
+    # 0000 0000 0000 0000 0000 0000
+    # err
+    # 0111 1111 1111 1111 1111 1111
+    expect[50:149, 1] = 1.
+    # todo, fin the other 7 cases...
+    
+
 def test_f1_scores():
     # 40 bases in total
     y_true = np.array([
