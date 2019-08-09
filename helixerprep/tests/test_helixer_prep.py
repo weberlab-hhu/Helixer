@@ -493,8 +493,6 @@ def test_numerify_with_end_neg1():
     controller = ImportController(database_path='sqlite:///:memory:')
     controller.add_genome('testdata/edges.fa', 'testdata/edges.gff',
                           genome_args={"species": "edges"})
-    # todo, test edge cases for both features and masking
-    #  maybe also end of sequence on + strand?
     # test case: plus strand, start, features
     # + (each char represents ~ 50bp)
     # 1111 0000 0000 0000 0000 0000
@@ -520,9 +518,10 @@ def test_numerify_with_end_neg1():
     # 0000 0000 0000 0000 0000 0000
     # err
     # 0111 1111 1111 1111 1111 1111
+    expect[50:200, 0] = 1.
     expect[50:149, 1] = 1.
     # todo, fin the other 7 cases...
-    
+
 
 def test_f1_scores():
     # 40 bases in total
