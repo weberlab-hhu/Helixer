@@ -48,7 +48,7 @@ class ReportIntermediateResult(Callback):
         super(ReportIntermediateResult, self).__init__()
 
     def on_epoch_end(self, epoch, logs=None):
-        nni.report_intermediate_result(logs['acc_g_row'])
+        nni.report_intermediate_result(logs['val_acc_g_row'])
 
 
 class F1ResultsTest(Callback):
@@ -125,9 +125,9 @@ class HelixerModel(ABC):
             History(),
             CSVLogger('history.log'),
             # EarlyStopping(monitor='val_loss', patience=self.patience, verbose=1),
-            EarlyStopping(monitor='acc_g_row', patience=self.patience, verbose=1),
+            EarlyStopping(monitor='val_acc_g_row', patience=self.patience, verbose=1),
             # ModelCheckpoint(self.save_model_path, monitor='val_loss', save_best_only=True, verbose=1),
-            ModelCheckpoint(self.save_model_path, monitor='acc_g_row', mode='max',
+            ModelCheckpoint(self.save_model_path, monitor='val_acc_g_row', mode='max',
                             save_best_only=True, verbose=1),
             F1ResultsTrain(self.gen_validation_data(), self.n_steps_val)
         ]
@@ -315,7 +315,7 @@ class HelixerModel(ABC):
                                 verbose=True)
 
             if self.nni:
-                nni.report_final_result(max(model.history.history['acc_g_row']))
+                nni.report_final_result(max(model.history.history['val_acc_g_row']))
 
             self.h5_train.close()
             self.h5_val.close()
