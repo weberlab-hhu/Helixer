@@ -383,7 +383,7 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
     # five chunks for each the two coordinates and *2 for each strand and -4 for
     # completely erroneous sequences
     # also tests if we ignore the third coordinate, that does not have any annotations
-    assert len(inputs) == len(labels) == len(label_masks) == 16
+    assert len(inputs) == len(labels) == len(label_masks) == 17
 
     # prep seq
     seq_expect = np.full((405, 4), 0.25)
@@ -429,8 +429,7 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     labels = f['/data/y']
     label_masks = f['/data/sample_weights']
 
-    assert len(inputs) == len(labels) == len(label_masks) == 27
-
+    assert len(inputs) == len(labels) == len(label_masks) == 30
     # the last 5 inputs/labels should be for the 2nd coord and the minus strand
     # orginally there where 9 but 4 were tossed out due to be fully erroneous
     # all the sequences are also 0-padded
