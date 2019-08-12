@@ -156,18 +156,12 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
             end = feature.end
             if not self.is_plus_strand:
                 start, end = end + 1, start + 1
-            print("start: {}, end: {}, self.is_plus_strand: {}, feature.is_plus_strand: {}, "
-                  "feature.type.value: {}, feature.type: {}".format(
-                       start, end, self.is_plus_strand, feature.is_plus_strand, feature.type.value, feature.type))
             if feature.type in BasePairAnnotationNumerifier.feature_to_col.keys():
-                print('mod matrix')
                 col = BasePairAnnotationNumerifier.feature_to_col[feature.type]
                 self.matrix[start:end, col] = 1
             elif feature.type.value in BasePairAnnotationNumerifier.error_type_values:
                 self.error_mask[start:end] = 0
-                print('mask')
             else:
-                print('val error')
                 raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
 
 
@@ -193,14 +187,12 @@ class CoordNumerifier(object):
     def numerify(self):
         inputs, input_masks = self.seq_numerifier.coord_to_matrices()
         labels, label_masks = self.anno_numerifier.coord_to_matrices()
-
         coord = self.anno_numerifier.coord
         # flip the start ends back for - strand
         if self.anno_numerifier.is_plus_strand:
             start_ends = self.anno_numerifier.paired_steps
         else:
             start_ends = [(x[1], x[0]) for x in self.anno_numerifier.paired_steps]
-
         # do not output the input_masks yet as it is not used for anything
         out = {
             'inputs': inputs,

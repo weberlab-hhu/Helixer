@@ -350,25 +350,6 @@ def test_minus_strand_numerify():
     assert np.array_equal(num_list[1], np.flip(expect[0:50], axis=0))
 
 
-def test_minus_truncated_numerify():
-    # setup a very basic -strand locus
-    _, coord = setup_simpler_numerifier()
-    coord.features[0].end = -1
-    coord.features[0].end_is_biological_end = False
-    numerifier = BasePairAnnotationNumerifier(coord=coord,
-                                              features=coord.features,
-                                              is_plus_strand=False,
-                                              max_len=1000)
-    # and now that we get the expect range on the minus strand,
-    # keeping in mind the 40 is inclusive, and the -1, not
-    nums = numerifier.coord_to_matrices()[0][0]
-
-    expect = np.zeros([100, 3], dtype=np.float32)
-    expect[0:41, 0] = 1.
-    expect = np.flip(expect, axis=0)
-    assert np.array_equal(nums, expect)
-
-
 def test_coord_numerifier_and_h5_gen_plus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
@@ -383,7 +364,7 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
     # five chunks for each the two coordinates and *2 for each strand and -4 for
     # completely erroneous sequences
     # also tests if we ignore the third coordinate, that does not have any annotations
-    assert len(inputs) == len(labels) == len(label_masks) == 16
+    assert len(inputs) == len(labels) == len(label_masks) == 17
 
     # prep seq
     seq_expect = np.full((405, 4), 0.25)
@@ -429,8 +410,7 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     labels = f['/data/y']
     label_masks = f['/data/sample_weights']
 
-    assert len(inputs) == len(labels) == len(label_masks) == 27
-
+    assert len(inputs) == len(labels) == len(label_masks) == 30
     # the last 5 inputs/labels should be for the 2nd coord and the minus strand
     # orginally there where 9 but 4 were tossed out due to be fully erroneous
     # all the sequences are also 0-padded
@@ -478,6 +458,190 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     label_mask_expect = np.insert(label_mask_expect, 200 + 177, np.zeros((23,)), axis=0)
     assert np.array_equal(label_masks[0], label_mask_expect[:200])
     assert np.array_equal(label_masks[1][:50], label_mask_expect[200:250])
+
+
+def test_numerify_with_end_neg1():
+    def check_one(coord, is_plus_strand, expect, maskexpect):
+        numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                                  features=coord.features,
+                                                  is_plus_strand=is_plus_strand,
+                                                  max_len=1000)
+        nums, masks = [x[0] for x in numerifier.coord_to_matrices()]
+
+        if not np.array_equal(nums, expect):
+            for i in range(nums.shape[0]):
+                if not np.all(nums[i] == expect[i]):
+                    print("nums[i] != expect[i]: {} != {}, @ {}".format(nums[i], expect[i], i))
+            assert False, "label arrays not equal, see above"
+        if not np.array_equal(masks, maskexpect):
+            for i in range(len(masks)):
+                if masks[i] != maskexpect[i]:
+                    print("masks[i] != maskexpect[i]: {} != {}, @ {}".format(masks[i], maskexpect[i], i))
+            assert False, "mask arrays not equal, see above"
+
+    def expect0():
+        return np.zeros([1000, 3], dtype=np.float32)
+
+    def masks1():
+        return np.ones((1000,), dtype=np.int)
+
+    controller = ImportController(database_path='sqlite:///:memory:')
+    controller.add_genome('testdata/edges.fa', 'testdata/edges.gff',
+                          genome_args={"species": "edges"})
+    # test case: plus strand, start, features
+    # + (each char represents ~ 50bp)
+    # 1111 0000 0000 0000 0000 0000
+    # 0110 0000 0000 0000 0000 0000
+    # 0000 0000 0000 0000 0000 0000
+    # err
+    # 1111 1111 1111 1111 1111 1111
+    coord = controller.session.query(Coordinate).filter(Coordinate.id == 1).first()
+    expect = expect0()
+    expect[0:200, 0] = 1.  # transcribed
+    expect[50:149, 1] = 1.
+
+    maskexpect = masks1()
+    check_one(coord, True, expect, maskexpect)
+    # - strand, as above, but expect all 0s no masking
+    expect = expect0()
+    check_one(coord, False, expect, maskexpect)
+
+    # test case: plus strand, start, errors
+    # + (each char represents ~ 50bp)
+    # 0111 0000 0000 0000 0000 0000
+    # 0110 0000 0000 0000 0000 0000
+    # 0000 0000 0000 0000 0000 0000
+    # err
+    # 0111 1111 1111 1111 1111 1111
+    coord = controller.session.query(Coordinate).filter(Coordinate.id == 2).first()
+    expect = expect0()
+    expect[50:200, 0] = 1.
+    expect[50:149, 1] = 1.
+    maskexpect = masks1()
+    maskexpect[0:50] = 0
+    check_one(coord, True, expect, maskexpect)
+    # - strand
+    expect = expect0()
+    maskexpect = masks1()
+    check_one(coord, False, expect, maskexpect)
+
+    # test case: minus strand, end, features
+    # -
+    # 0000 0000 0000 0000 0000 1111
+    # 0000 0000 0000 0000 0000 0110
+    # 0000 0000 0000 0000 0000 0000
+    # err
+    # 1111 1111 1111 1111 1111 1111
+    coord = controller.session.query(Coordinate).filter(Coordinate.id == 3).first()
+    expect = expect0()
+    expect[0:200, 0] = 1.  # transcribed
+    expect[50:149, 1] = 1.
+    expect = np.flip(expect, axis=0)
+
+    maskexpect = masks1()
+    check_one(coord, False, expect, maskexpect)
+    # + strand, as above, but expect all 0s no masking
+    expect = expect0()
+    check_one(coord, True, expect, maskexpect)
+
+    # test case: minus strand, end, errors
+    # -
+    # 0000 0000 0000 0000 0000 1110
+    # 0000 0000 0000 0000 0000 0110
+    # 0000 0000 0000 0000 0000 0000
+    # err
+    # 1111 1111 1111 1111 1111 1110
+    coord = controller.session.query(Coordinate).filter(Coordinate.id == 4).first()
+    expect = expect0()
+    expect[50:200, 0] = 1.  # transcribed
+    expect[50:149, 1] = 1.
+    expect = np.flip(expect, axis=0)
+
+    maskexpect = masks1()
+    maskexpect[0:50] = 0
+    maskexpect = np.flip(maskexpect, axis=0)
+    check_one(coord, False, expect, maskexpect)
+    # + strand, as above, but expect all 0s no masking
+    expect = expect0()
+    maskexpect = masks1()
+    check_one(coord, True, expect, maskexpect)
+
+    # test case: plus strand, end, features
+    # +
+    # 0000 0000 0000 0000 0000 1111
+    # 0000 0000 0000 0000 0000 0110
+    # 0000 0000 0000 0000 0000 0000
+    # err
+    # 1111 1111 1111 1111 1111 1111
+    coord = controller.session.query(Coordinate).filter(Coordinate.id == 5).first()
+    expect = expect0()
+    expect[799:1000, 0] = 1.  # transcribed
+    expect[851:950, 1] = 1.
+    maskexpect = masks1()
+    check_one(coord, True, expect, maskexpect)
+    # - strand, as above, but expect all 0s no masking
+    expect = expect0()
+    maskexpect = masks1()
+    check_one(coord, False, expect, maskexpect)
+
+    # test case: plus strand, end, errors
+    # +
+    # 0000 0000 0000 0000 0000 1110
+    # 0000 0000 0000 0000 0000 0110
+    # 0000 0000 0000 0000 0000 0000
+    # err
+    # 1111 1111 1111 1111 1111 1110
+    coord = controller.session.query(Coordinate).filter(Coordinate.id == 6).first()
+    expect = expect0()
+    expect[799:950, 0] = 1.  # transcribed
+    expect[851:950, 1] = 1.
+    maskexpect = masks1()
+    maskexpect[950:1000] = 0
+    check_one(coord, True, expect, maskexpect)
+    # - strand, as above, but expect all 0s no masking
+    expect = expect0()
+    maskexpect = masks1()
+    check_one(coord, False, expect, maskexpect)
+
+    # test case: minus strand, start, features
+    # -
+    # 1111 0000 0000 0000 0000 0000
+    # 0110 0000 0000 0000 0000 0000
+    # 0000 0000 0000 0000 0000 0000
+    # err
+    # 1111 1111 1111 1111 1111 1111
+    coord = controller.session.query(Coordinate).filter(Coordinate.id == 7).first()
+    expect = expect0()
+    expect[799:1000, 0] = 1.  # transcribed
+    expect[851:950, 1] = 1.
+    expect = np.flip(expect, axis=0)
+    maskexpect = masks1()
+    check_one(coord, False, expect, maskexpect)
+    # + strand, as above, but expect all 0s no masking
+    expect = expect0()
+    maskexpect = masks1()
+    check_one(coord, True, expect, maskexpect)
+
+    # test case: minus strand, start, errors
+    # -
+    # 0111 0000 0000 0000 0000 0000
+    # 0110 0000 0000 0000 0000 0000
+    # 0000 0000 0000 0000 0000 0000
+    # err
+    # 0111 1111 1111 1111 1111 1111
+    coord = controller.session.query(Coordinate).filter(Coordinate.id == 8).first()
+    expect = expect0()
+    expect[799:950, 0] = 1.  # transcribed
+    expect[851:950, 1] = 1.
+    expect = np.flip(expect, axis=0)
+    maskexpect = masks1()
+    maskexpect[950:1000] = 0
+    maskexpect = np.flip(maskexpect, axis=0)
+    check_one(coord, False, expect, maskexpect)
+    # + strand, as above, but expect all 0s no masking
+    expect = expect0()
+    maskexpect = masks1()
+    check_one(coord, True, expect, maskexpect)
 
 
 def test_f1_scores():
