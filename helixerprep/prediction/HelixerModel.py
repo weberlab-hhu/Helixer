@@ -108,6 +108,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--specific-gpu-id', type=int, default=-1)
         self.parser.add_argument('-only-cpu', '--only-cpu', action='store_true')
         # misc flags
+        self.parser.add_argument('-nof1', '--no-f1-score', action='store_true')
         self.parser.add_argument('-plot', '--plot', action='store_true')
         self.parser.add_argument('-nni', '--nni', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
@@ -134,8 +135,9 @@ class HelixerModel(ABC):
             CSVLogger('history.log'),
             EarlyStopping(monitor='val_loss', patience=self.patience, verbose=1),
             ModelCheckpoint(self.save_model_path, monitor='val_loss', save_best_only=True, verbose=1),
-            F1ResultsTrain(self.gen_validation_data(), self.n_steps_val)
         ]
+        if not self.no_f1_score:
+            callbacks.append(F1ResultsTrain(self.gen_validation_data(), self.n_steps_val))
         if self.nni:
             callbacks.append(ReportIntermediateResult())
         return callbacks
@@ -337,7 +339,10 @@ class HelixerModel(ABC):
                 'acc_i': get_col_accuracy_fn(2)
             })
             if self.eval:
-                callback = [F1ResultsTest(self.gen_test_data(), self.n_steps_test)]
+                if not self.no_f1_score:
+                    callback = [F1ResultsTest(self.gen_test_data(), self.n_steps_test)]
+                else:
+                    callback = []
                 metrics = model.evaluate_generator(generator=self.gen_test_data(),
                                                    steps=self.n_steps_test,
                                                    callbacks=callback,
