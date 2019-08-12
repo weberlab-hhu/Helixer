@@ -2,7 +2,7 @@
 from keras.models import Sequential, Model
 from keras.layers import Conv1D, Dense, Flatten, Reshape, Input, BatchNormalization, Activation, MaxPool1D, Dropout, \
     Concatenate
-from HelixerModel import HelixerModel, get_col_accuracy_fn
+from HelixerModel import HelixerModel, acc_row, acc_g_row, acc_ig_row
 import random
 import numpy as np
 
@@ -122,9 +122,9 @@ class InceptionModel(HelixerModel):
                       #sample_weight_mode='temporal',
                       metrics=[
                           'accuracy',
-                          get_col_accuracy_fn(0),
-                          get_col_accuracy_fn(1),
-                          get_col_accuracy_fn(2),
+                          acc_row,
+                          acc_g_row,
+                          acc_ig_row,
                       ])
 
     def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False, sample_intergenic=False):
