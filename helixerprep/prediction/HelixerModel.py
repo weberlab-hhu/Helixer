@@ -43,20 +43,12 @@ def acc_ig_row(y_true, y_pred):
     return K.cast(K.all(K.equal(y_true, K.round(y_pred)), axis=-1), K.floatx())
 
 
-class SaveEveryEpoch(Callback):
-    def __init__(self):
-        super(SaveEveryEpoch, self).__init__()
-
-    def on_epoch_end(self, epoch, _):
-        self.model.save('model' + str(epoch) + '.h5')
-
-
 class ReportIntermediateResult(Callback):
     def __init__(self):
         super(ReportIntermediateResult, self).__init__()
 
     def on_epoch_end(self, epoch, logs=None):
-        nni.report_intermediate_result(logs['val_loss'])
+        nni.report_intermediate_result(logs['val_acc_g_row'])
 
 
 class F1ResultsTest(Callback):
@@ -133,8 +125,9 @@ class HelixerModel(ABC):
         callbacks = [
             History(),
             CSVLogger('history.log'),
-            EarlyStopping(monitor='val_loss', patience=self.patience, verbose=1),
-            ModelCheckpoint(self.save_model_path, monitor='val_loss', save_best_only=True, verbose=1),
+            EarlyStopping(monitor='val_acc_g_row', patience=self.patience, verbose=1),
+            ModelCheckpoint(self.save_model_path, monitor='val_acc_g_row', mode='max',
+                            save_best_only=True, verbose=1),
         ]
         if not self.no_f1_score:
             callbacks.append(F1ResultsTrain(self.gen_validation_data(), self.n_steps_val))
@@ -321,9 +314,8 @@ class HelixerModel(ABC):
                                 callbacks=self.generate_callbacks(),
                                 verbose=True)
 
-            best_val_loss = min(model.history.history['val_loss'])
             if self.nni:
-                nni.report_final_result(best_val_loss)
+                nni.report_final_result(max(model.history.history['val_acc_g_row']))
 
             self.h5_train.close()
             self.h5_val.close()

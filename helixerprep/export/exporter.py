@@ -77,7 +77,6 @@ class ExportController(object):
         # just one entry per chunk
         fully_intergenic_samples = np.all(y[:, :, 0] == 0, axis=1)
         start_ends = np.array(flat_data['start_ends'])
-
         # check if this is the first batch to save
         dset_keys = [
             'X', 'y', 'sample_weights', 'err_samples', 'fully_intergenic_samples', 'start_ends',

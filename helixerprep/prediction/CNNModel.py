@@ -1,9 +1,9 @@
 #! /usr/bin/env python3
-from keras.models import Sequential
-from keras.layers import Conv1D, Dense, Flatten
-from HelixerModel import HelixerModel, get_col_accuracy_fn
 import random
 import numpy as np
+from keras.models import Sequential
+from keras.layers import Conv1D, Dense, Flatten
+from HelixerModel import HelixerModel, acc_row, acc_g_row, acc_ig_row
 
 
 class CNNModel(HelixerModel):
@@ -42,9 +42,9 @@ class CNNModel(HelixerModel):
                       loss='binary_crossentropy',
                       metrics=[
                           'accuracy',
-                          get_col_accuracy_fn(0),
-                          get_col_accuracy_fn(1),
-                          get_col_accuracy_fn(2),
+                          acc_row,
+                          acc_g_row,
+                          acc_ig_row,
                       ])
 
     def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False, sample_intergenic=False):

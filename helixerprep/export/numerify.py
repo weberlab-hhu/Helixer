@@ -149,6 +149,9 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
 
     def update_matrix_and_error_mask(self):
         for feature in self.features:
+            # don't include features from the other strand
+            if not feature.is_plus_strand == self.is_plus_strand:
+                continue
             start = feature.start
             end = feature.end
             if not self.is_plus_strand:
@@ -184,14 +187,12 @@ class CoordNumerifier(object):
     def numerify(self):
         inputs, input_masks = self.seq_numerifier.coord_to_matrices()
         labels, label_masks = self.anno_numerifier.coord_to_matrices()
-
         coord = self.anno_numerifier.coord
         # flip the start ends back for - strand
         if self.anno_numerifier.is_plus_strand:
             start_ends = self.anno_numerifier.paired_steps
         else:
             start_ends = [(x[1], x[0]) for x in self.anno_numerifier.paired_steps]
-
         # do not output the input_masks yet as it is not used for anything
         out = {
             'inputs': inputs,
