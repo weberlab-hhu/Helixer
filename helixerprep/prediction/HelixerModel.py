@@ -260,9 +260,9 @@ class HelixerModel(ABC):
             n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
             n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_val)
 
-            # self.n_steps_train = calculate_steps(n_train_seqs)
+            self.n_steps_train = calculate_steps(n_train_seqs)
             self.n_steps_val = calculate_steps(n_val_seqs)
-            self.n_steps_train = 2
+            # self.n_steps_train = 2
             # self.n_steps_val = 2
         else:
             self.h5_test = h5py.File(self.test_data, 'r')
