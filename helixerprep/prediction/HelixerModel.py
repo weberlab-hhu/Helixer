@@ -85,8 +85,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('-loss', '--loss', type=str, default='')
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
-        self.parser.add_argument('-igsw', '--intergenic-sample-weight', type=float, default=1)
-        self.parser.add_argument('-ic', '--intergenic-chance', type=float, default=1.0)
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
@@ -150,12 +148,12 @@ class HelixerModel(ABC):
             os.environ['CUDA_VISIBLE_DEVICES'] = str(self.specific_gpu_id)
 
     @abstractmethod
-    def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False, sample_intergenic=False):
+    def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False):
         pass
 
     def gen_training_data(self):
-        gen = self._gen_data(self.h5_train, shuffle=True, exclude_err_seqs=self.exclude_errors,
-                             sample_intergenic=True)
+        gen = self._gen_data(self.h5_train, shuffle=True, exclude_err_seqs=self.exclude_errors)
+
         while True:
             yield next(gen)
 
@@ -163,14 +161,12 @@ class HelixerModel(ABC):
         # reasons for the parameter setup of the generator: no need to shuffle, when we exclude
         # errorneous seqs during training we should do it here and we probably also want to
         # have a comparable validation set accross all possible parameters
-        gen = self._gen_data(self.h5_val, shuffle=False, exclude_err_seqs=self.exclude_errors,
-                             sample_intergenic=False)
+        gen = self._gen_data(self.h5_val, shuffle=False, exclude_err_seqs=self.exclude_errors)
         while True:
             yield next(gen)
 
     def gen_test_data(self):
-        gen = self._gen_data(self.h5_test, shuffle=False, exclude_err_seqs=self.exclude_errors,
-                             sample_intergenic=False)
+        gen = self._gen_data(self.h5_test, shuffle=False, exclude_err_seqs=self.exclude_errors)
         while True:
             yield next(gen)
 
@@ -226,33 +222,23 @@ class HelixerModel(ABC):
             n_val_correct_seqs = get_n_correct_seqs(self.h5_val)
 
             if self.exclude_errors:
-                n_train_seqs_with_intergenic = n_train_correct_seqs
-                n_val_seqs_with_intergenic = n_val_correct_seqs
+                n_train_seqs = n_train_correct_seqs
+                n_val_seqs = n_val_correct_seqs
             else:
-                n_train_seqs_with_intergenic = self.shape_train[0]
-                n_val_seqs_with_intergenic = self.shape_val[0]
+                n_train_seqs = self.shape_train[0]
+                n_val_seqs = self.shape_val[0]
 
-            # potentially account for intergenic seqs
             n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
             n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_val)
 
-            if self.intergenic_chance < 1.0:
-                self.n_train_seqs = n_train_seqs_with_intergenic - n_intergenic_train_seqs + \
-                                    int(n_intergenic_train_seqs * self.intergenic_chance)
-            else:
-                self.n_train_seqs = n_train_seqs_with_intergenic
-            # do not adjust the validation count for intergenic sampling as we don't do that then
-            self.n_val_seqs = n_val_seqs_with_intergenic
-
             # set steps
-            self.n_steps_train = calculate_steps(self.n_train_seqs)
-            self.n_steps_val = calculate_steps(self.n_val_seqs)
-            # self.n_steps_train = 50
-            # self.n_steps_val = 20
+            self.n_steps_train = calculate_steps(n_train_seqs)
+            self.n_steps_val = calculate_steps(n_val_seqs)
+            # self.n_steps_train = 2
+            # self.n_steps_val = 2
         else:
             self.h5_test = h5py.File(self.test_data, 'r')
             self.shape_test = self.h5_test['/data/X'].shape
-            self.n_test_seqs = self.shape_test[0]
             n_test_correct_seqs = get_n_correct_seqs(self.h5_test)
             if self.exclude_errors:
                 n_test_seqs_with_intergenic = n_test_correct_seqs
@@ -270,7 +256,7 @@ class HelixerModel(ABC):
                 print(dict(self.h5_train.attrs))
                 print('\nTraining data shape: {}'.format(self.shape_train[:2]))
                 print('Validation data shape: {}'.format(self.shape_val[:2]))
-                print('\nTotal est. training sequences: {}'.format(self.n_train_seqs))
+                print('\nTotal est. training sequences: {}'.format(n_train_seqs))
                 print('Total est. val sequences: {}'.format(self.n_val_seqs))
                 print('\nEst. intergenic train/val seqs: {:.2f}% / {:.2f}%'.format(
                     n_intergenic_train_seqs / n_train_seqs_with_intergenic * 100,
@@ -309,6 +295,7 @@ class HelixerModel(ABC):
             model.fit_generator(generator=self.gen_training_data(),
                                 steps_per_epoch=self.n_steps_train,
                                 epochs=self.epochs,
+                                # workers=0,  # run in main thread
                                 validation_data=self.gen_validation_data(),
                                 validation_steps=self.n_steps_val,
                                 callbacks=self.generate_callbacks(),

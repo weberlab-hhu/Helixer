@@ -49,8 +49,6 @@ class DanQModel(HelixerModel):
 
     def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False, sample_intergenic=False):
         assert exclude_err_seqs, 'DanQ can only be run atm without any errors in the sequences'
-        assert self.intergenic_chance == 1.0, 'Intergenic sampling not supported atm with DanQ'
-        assert self.intergenic_sample_weight == 1.0, 'Intergenic sw are not applied currently'
 
         n_seq = h5_file['/data/X'].shape[0]
         err_samples = np.array(h5_file['/data/err_samples'])
@@ -59,12 +57,13 @@ class DanQModel(HelixerModel):
             seq_indexes = list(range(n_seq))
             if shuffle:
                 random.shuffle(seq_indexes)
+            else:
+                print('shuffle false')
             for n, i in enumerate(seq_indexes):
                 if err_samples[i]:
                     continue
                 X.append(h5_file['/data/X'][i])
                 y.append(h5_file['/data/y'][i])
-                # apply intergenic sample weight value
                 if n == len(seq_indexes) - 1 or len(X) == self.batch_size:
                     X = np.stack(X, axis=0)
                     y = np.stack(y, axis=0)
