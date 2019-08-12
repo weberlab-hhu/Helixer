@@ -3,7 +3,15 @@ import random
 import numpy as np
 from keras.models import Sequential
 from keras.layers import Conv1D, Dense, Flatten
-from HelixerModel import HelixerModel, acc_row, acc_g_row, acc_ig_row
+from HelixerModel import HelixerModel, HelixerSequence, acc_row, acc_g_row, acc_ig_row
+
+
+class CNNSequence(HelixerSequence):
+    def __getitem__(self, idx):
+        usable_idx_slice = self.usable_idx[idx * self.batch_size:(idx + 1) * self.batch_size]
+        X = np.stack(self.x_dset[sorted(list(usable_idx_slice))])  # got to provide a sorted list of idx
+        y = np.stack(self.y_dset[sorted(list(usable_idx_slice))])
+        return X, y
 
 
 class CNNModel(HelixerModel):
@@ -15,6 +23,9 @@ class CNNModel(HelixerModel):
         self.parser.add_argument('--filter-depth', type=int, default=64)
         self.parser.add_argument('--n-layers', type=int, default=4)
         self.parse_args()
+
+    def sequence_cls(self):
+        return CNNSequence
 
     def model(self):
         model = Sequential()
@@ -46,28 +57,6 @@ class CNNModel(HelixerModel):
                           acc_g_row,
                           acc_ig_row,
                       ])
-
-    def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False):
-        n_seq = h5_file['/data/X'].shape[0]
-        if exclude_err_seqs:
-            err_samples = np.array(h5_file['/data/err_samples'])
-        X, y = [], []
-        while True:
-            seq_indexes = list(range(n_seq))
-            if shuffle:
-                random.shuffle(seq_indexes)
-            for n, i in enumerate(seq_indexes):
-                if exclude_err_seqs and err_samples[i]:
-                    continue
-                X.append(h5_file['/data/X'][i])
-                y.append(h5_file['/data/y'][i])
-                # apply intergenic sample weight value
-                if n == len(seq_indexes) - 1 or len(X) == self.batch_size:
-                    yield (
-                        np.stack(X, axis=0),
-                        np.stack(y, axis=0)
-                    )
-                    X, y = [], []
 
 
 if __name__ == '__main__':

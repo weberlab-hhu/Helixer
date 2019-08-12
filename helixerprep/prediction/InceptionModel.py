@@ -2,9 +2,17 @@
 from keras.models import Sequential, Model
 from keras.layers import Conv1D, Dense, Flatten, Reshape, Input, BatchNormalization, Activation, MaxPool1D, Dropout, \
     Concatenate
-from HelixerModel import HelixerModel, acc_row, acc_g_row, acc_ig_row
+from HelixerModel import HelixerModel, HelixerSequence, acc_row, acc_g_row, acc_ig_row
 import random
 import numpy as np
+
+
+class InceptionSequence(HelixerSequence):
+    def __getitem__(self, idx):
+        usable_idx_slice = self.usable_idx[idx * self.batch_size:(idx + 1) * self.batch_size]
+        X = np.stack(self.x_dset[sorted(list(usable_idx_slice))])  # got to provide a sorted list of idx
+        y = np.stack(self.y_dset[sorted(list(usable_idx_slice))])
+        return X, y
 
 
 class InceptionModel(HelixerModel):
@@ -25,6 +33,9 @@ class InceptionModel(HelixerModel):
     @staticmethod
     def _parse_kernel_sizes(ks_string):
         return [[int(x)] for x in ks_string.split(',')]
+
+    def sequence_cls(self):
+        return InceptionSequence
 
     def model(self):
         # some non-parameters, that should be
@@ -126,28 +137,6 @@ class InceptionModel(HelixerModel):
                           acc_g_row,
                           acc_ig_row,
                       ])
-
-    def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False):
-        n_seq = h5_file['/data/X'].shape[0]
-        if exclude_err_seqs:
-            err_samples = np.array(h5_file['/data/err_samples'])
-        X, y = [], []
-        while True:
-            seq_indexes = list(range(n_seq))
-            if shuffle:
-                random.shuffle(seq_indexes)
-            for i in seq_indexes:
-                if exclude_err_seqs and err_samples[i]:
-                    continue
-                X.append(h5_file['/data/X'][i])
-                y.append(h5_file['/data/y'][i])
-                # apply intergenic sample weight value
-                if len(X) == self.batch_size:
-                    yield (
-                        np.stack(X, axis=0),
-                        np.stack(y, axis=0)
-                    )
-                    X, y = [], []
 
 
 if __name__ == '__main__':

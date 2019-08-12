@@ -22,7 +22,7 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, 
 from keras import optimizers
 from keras import backend as K
 from keras.models import load_model
-from keras.utils import multi_gpu_model
+from keras.utils import multi_gpu_model, Sequence
 
 
 def acc_row(y_true, y_pred):
@@ -67,6 +67,30 @@ class F1ResultsTrain(Callback):
 
     def on_test_end(self, logs=None):
         self.calculator.count_and_calculate(self.model)
+
+
+class HelixerSequence(Sequence):
+    def __init__(self, model, h5_file, exclude_errors, shuffle):
+        self.model = model
+        self.batch_size = self.model.batch_size
+        self.x_dset = h5_file['/data/X']
+        self.y_dset = h5_file['/data/y']
+        self.sw_dset = h5_file['/data/sample_weights']
+        # set array of usable indexes
+        if exclude_errors:
+            self.usable_idx = np.argwhere(np.array(h5_file['/data/err_samples']) == False)
+            self.usable_idx = np.squeeze(self.usable_idx)
+        else:
+            self.usable_idx = list(range(self.x_dset.shape[0]))
+        if shuffle:
+            random.shuffle(self.usable_idx)
+
+    def __len__(self):
+        return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
+
+    @abstractmethod
+    def __getitem__(self, idx):
+        pass
 
 
 class HelixerModel(ABC):
@@ -147,28 +171,33 @@ class HelixerModel(ABC):
             os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID';
             os.environ['CUDA_VISIBLE_DEVICES'] = str(self.specific_gpu_id)
 
-    @abstractmethod
-    def _gen_data(self, h5_file, shuffle, exclude_err_seqs=False):
-        pass
-
     def gen_training_data(self):
-        gen = self._gen_data(self.h5_train, shuffle=True, exclude_err_seqs=self.exclude_errors)
-
-        while True:
-            yield next(gen)
+        SequenceCls = self.sequence_cls()
+        return SequenceCls(model=self,
+                           h5_file=self.h5_train,
+                           exclude_errors=self.exclude_errors,
+                           shuffle=True)
 
     def gen_validation_data(self):
         # reasons for the parameter setup of the generator: no need to shuffle, when we exclude
         # errorneous seqs during training we should do it here and we probably also want to
         # have a comparable validation set accross all possible parameters
-        gen = self._gen_data(self.h5_val, shuffle=False, exclude_err_seqs=self.exclude_errors)
-        while True:
-            yield next(gen)
+        SequenceCls = self.sequence_cls()
+        return SequenceCls(model=self,
+                           h5_file=self.h5_val,
+                           exclude_errors=self.exclude_errors,
+                           shuffle=False)
 
     def gen_test_data(self):
-        gen = self._gen_data(self.h5_test, shuffle=False, exclude_err_seqs=self.exclude_errors)
-        while True:
-            yield next(gen)
+        SequenceCls = self.sequence_cls()
+        return SequenceCls(model=self,
+                           h5_file=self.h5_test,
+                           exclude_errors=self.exclude_errors,
+                           shuffle=False)
+
+    @abstractmethod
+    def sequence_cls(self):
+        pass
 
     @abstractmethod
     def model(self):
@@ -231,10 +260,9 @@ class HelixerModel(ABC):
             n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
             n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_val)
 
-            # set steps
-            self.n_steps_train = calculate_steps(n_train_seqs)
+            # self.n_steps_train = calculate_steps(n_train_seqs)
             self.n_steps_val = calculate_steps(n_val_seqs)
-            # self.n_steps_train = 2
+            self.n_steps_train = 2
             # self.n_steps_val = 2
         else:
             self.h5_test = h5py.File(self.test_data, 'r')
@@ -257,10 +285,10 @@ class HelixerModel(ABC):
                 print('\nTraining data shape: {}'.format(self.shape_train[:2]))
                 print('Validation data shape: {}'.format(self.shape_val[:2]))
                 print('\nTotal est. training sequences: {}'.format(n_train_seqs))
-                print('Total est. val sequences: {}'.format(self.n_val_seqs))
+                print('Total est. val sequences: {}'.format(n_val_seqs))
                 print('\nEst. intergenic train/val seqs: {:.2f}% / {:.2f}%'.format(
-                    n_intergenic_train_seqs / n_train_seqs_with_intergenic * 100,
-                    n_intergenic_val_seqs / n_val_seqs_with_intergenic * 100))
+                    n_intergenic_train_seqs / n_train_seqs * 100,
+                    n_intergenic_val_seqs / n_val_seqs * 100))
                 print('Fully correct train/val seqs: {:.2f}% / {:.2f}%\n'.format(
                     n_train_correct_seqs / self.shape_train[0] * 100,
                     n_val_correct_seqs / self.shape_val[0] * 100))
