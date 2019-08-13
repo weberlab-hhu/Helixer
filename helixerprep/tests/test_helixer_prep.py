@@ -749,7 +749,7 @@ def test_f1_scores():
     y_true = np.tile(y_true, (8, 1, 1))
     y_pred = np.tile(y_pred, (8, 1, 1))
 
-    f1 = F1Calculator(None, 0)  # params don't matter
+    f1 = F1Calculator(None)  # params don't matter
     f1.count_and_calculate_one_batch(y_true, y_pred)
 
     # Total counters
@@ -794,7 +794,7 @@ def test_f1_scores():
     y_pred_reshaped = np.copy(y_pred).reshape(new_shape)
 
     # New f1 counts
-    f1 = F1Calculator(None, 0)
+    f1 = F1Calculator(None)
     f1.count_and_calculate_one_batch(y_true_reshaped, y_pred_reshaped)
 
     total_0_counter = f1.counters['Global']['total'][1]
