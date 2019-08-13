@@ -14,7 +14,7 @@ def main(args):
 
     controller.export(chunk_size=args.chunk_size, genomes=args.genomes, exclude=args.exclude_genomes,
                       coordinate_chance=args.coordinate_chance, val_size=args.val_size,
-                      sample_strand=args.sample_strand, keep_errors=args.keep_errors)
+                      keep_errors=args.keep_errors)
 
 
 if __name__ == '__main__':
@@ -40,8 +40,6 @@ if __name__ == '__main__':
                             'Can be used to control sampling'))
     data.add_argument('--val-size', type=float, default=0.2,
                       help='The chance for a sequence to end up in validation_data.h5' )
-    data.add_argument('--sample-strand', action='store_true',
-                      help='When true, choose only one strand of a coordinate at random.')
     data.add_argument('--only-test-set', action='store_true',
                       help='Whether to only output a single file named test_data.h5')
     data.add_argument('--keep_errors', action="store_true",

@@ -179,12 +179,11 @@ class ExportController(object):
 
         return all_coord_ids
 
-    def _add_data_attrs(self, genomes, exclude, coordinate_chance, sample_strand, keep_errors):
+    def _add_data_attrs(self, genomes, exclude, coordinate_chance, keep_errors):
         attrs = {
             'genomes': ','.join(genomes),
             'exclude': ','.join(exclude),
             'coordinate_chance': coordinate_chance,
-            'sample_strand': str(sample_strand),
             'keep_errors': str(keep_errors),
         }
         for key, value in attrs.items():
@@ -201,8 +200,7 @@ class ExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def export(self, chunk_size, genomes, exclude, coordinate_chance, val_size, sample_strand,
-               keep_errors):
+    def export(self, chunk_size, genomes, exclude, coordinate_chance, val_size, keep_errors):
         self._check_genome_names(genomes, exclude)
         all_coord_ids = self._get_coord_ids(genomes, exclude, coordinate_chance)
         print('\n{} coordinates chosen to numerify'.format(len(all_coord_ids)))
@@ -219,8 +217,7 @@ class ExportController(object):
                 flat_data[key] = []
 
             n_masked_bases, n_intergenic_bases = 0, 0
-            strands = [True, False] if not sample_strand else [random.choice([True, False])]
-            for is_plus_strand in strands:
+            for is_plus_strand in [True, False]:
                 numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size)
                 coord_data = numerifier.numerify()
                 # keep track of variables
@@ -240,19 +237,14 @@ class ExportController(object):
                 for key in str_in_list_out:
                     flat_data[key] += [coord_data[key]] * n_remaining
 
-            masked_bases_percent = n_masked_bases / (coord.length * len(strands)) * 100
-            intergenic_bases_percent = n_intergenic_bases / (coord.length * len(strands)) * 100
-            # for the debug output
-            if sample_strand:
-                strand_str = ' (+)' if strands == [True] else ' (-)'
-            else:
-                strand_str = ''
+            masked_bases_percent = n_masked_bases / (coord.length * 2) * 100
+            intergenic_bases_percent = n_intergenic_bases / (coord.length * 2) * 100
             # no need to split
             if self.only_test_set:
                 self._save_data(self.h5_test, flat_data, chunk_size)
-                print(('{}/{} Numerified {}{} of {} with {} features in {} chunks '
+                print(('{}/{} Numerified {} of {} with {} features in {} chunks '
                        'with an error rate of {:.2f}%, and intergenic rate of {:.2f}%').format(
-                           i + 1, len(all_coord_ids), coord, strand_str, coord.genome.species,
+                           i + 1, len(all_coord_ids), coord, coord.genome.species,
                            len(coord.features), len(flat_data['inputs']), masked_bases_percent,
                            intergenic_bases_percent))
             else:
@@ -262,11 +254,11 @@ class ExportController(object):
                     self._save_data(self.h5_train, train_data, chunk_size)
                 if val_data['inputs']:
                     self._save_data(self.h5_val, val_data, chunk_size)
-                print(('{}/{} Numerified {}{} of {} with {} features in {} chunks '
+                print(('{}/{} Numerified {} of {} with {} features in {} chunks '
                        '(train: {}, test: {}) with an error rate of {:.2f}% and an '
                        'intergenic rate of {:.2f}%').format(
-                           i + 1, len(all_coord_ids), coord, strand_str, coord.genome.species,
+                           i + 1, len(all_coord_ids), coord, coord.genome.species,
                            len(coord.features), len(flat_data['inputs']), len(train_data['inputs']),
                            len(val_data['inputs']), masked_bases_percent, intergenic_bases_percent))
-        self._add_data_attrs(genomes, exclude, coordinate_chance, sample_strand, keep_errors)
+        self._add_data_attrs(genomes, exclude, coordinate_chance, keep_errors)
         self._close_files()
