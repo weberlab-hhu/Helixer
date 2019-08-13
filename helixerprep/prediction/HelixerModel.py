@@ -52,8 +52,8 @@ class ReportIntermediateResult(Callback):
 
 
 class F1ResultsTest(Callback):
-    def __init__(self, generator, n_steps):
-        self.calculator = F1Calculator(generator, n_steps)
+    def __init__(self, generator):
+        self.calculator = F1Calculator(generator)
         super(F1ResultsTest, self).__init__()
 
     def on_test_end(self, logs=None):
@@ -61,8 +61,8 @@ class F1ResultsTest(Callback):
 
 
 class F1ResultsTrain(Callback):
-    def __init__(self, generator, n_steps):
-        self.calculator = F1Calculator(generator, n_steps)
+    def __init__(self, generator):
+        self.calculator = F1Calculator(generator)
         super(F1ResultsTrain, self).__init__()
 
     def on_test_end(self, logs=None):
@@ -72,20 +72,21 @@ class F1ResultsTrain(Callback):
 class HelixerSequence(Sequence):
     def __init__(self, model, h5_file, exclude_errors, shuffle):
         self.model = model
+        self.exclude_errors = exclude_errors
         self.batch_size = self.model.batch_size
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
         # set array of usable indexes
-        if exclude_errors:
-            self.usable_idx = np.argwhere(np.array(h5_file['/data/err_samples']) == False)
-            self.usable_idx = np.squeeze(self.usable_idx)
+        if self.exclude_errors:
+            self.usable_idx = np.flatnonzero(np.array(h5_file['/data/err_samples']) == False)
         else:
             self.usable_idx = list(range(self.x_dset.shape[0]))
         if shuffle:
             random.shuffle(self.usable_idx)
 
     def __len__(self):
+        # return 10
         return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
 
     @abstractmethod
@@ -152,7 +153,7 @@ class HelixerModel(ABC):
                             save_best_only=True, verbose=1),
         ]
         if not self.no_f1_score:
-            callbacks.append(F1ResultsTrain(self.gen_validation_data(), self.n_steps_val))
+            callbacks.append(F1ResultsTrain(self.gen_validation_data()))
         if self.nni:
             callbacks.append(ReportIntermediateResult())
         return callbacks
@@ -235,12 +236,6 @@ class HelixerModel(ABC):
             ic_samples = np.array(h5_file['/data/fully_intergenic_samples'])
             return np.count_nonzero(ic_samples == True)
 
-        def calculate_steps(n_seqs):
-            if n_seqs % self.batch_size == 0:
-                return n_seqs // self.batch_size
-            else:
-                return n_seqs // self.batch_size + 1
-
         if not self.load_model_path:
             self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
             self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
@@ -259,11 +254,6 @@ class HelixerModel(ABC):
 
             n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
             n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_val)
-
-            self.n_steps_train = calculate_steps(n_train_seqs)
-            self.n_steps_val = calculate_steps(n_val_seqs)
-            # self.n_steps_train = 2
-            # self.n_steps_val = 2
         else:
             self.h5_test = h5py.File(self.test_data, 'r')
             self.shape_test = self.h5_test['/data/X'].shape
@@ -273,10 +263,6 @@ class HelixerModel(ABC):
             else:
                 n_test_seqs_with_intergenic = self.shape_test[0]
             n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_test)
-
-            # always use all the data during test time to avoid problems with missing predictions etc.
-            self.n_steps_test = calculate_steps(self.shape_test[0])
-            # self.n_steps_test = 2
 
         if self.verbose:
             print('\nData config: ')
@@ -321,11 +307,9 @@ class HelixerModel(ABC):
             self.compile_model(model)
 
             model.fit_generator(generator=self.gen_training_data(),
-                                steps_per_epoch=self.n_steps_train,
                                 epochs=self.epochs,
                                 # workers=0,  # run in main thread
                                 validation_data=self.gen_validation_data(),
-                                validation_steps=self.n_steps_val,
                                 callbacks=self.generate_callbacks(),
                                 verbose=True)
 
@@ -347,7 +331,7 @@ class HelixerModel(ABC):
             })
             if self.eval:
                 if not self.no_f1_score:
-                    callback = [F1ResultsTest(self.gen_test_data(), self.n_steps_test)]
+                    callback = [F1ResultsTest(self.gen_test_data())]
                 else:
                     callback = []
                 metrics = model.evaluate_generator(generator=self.gen_test_data(),

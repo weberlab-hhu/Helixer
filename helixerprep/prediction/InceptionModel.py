@@ -3,16 +3,9 @@ from keras.models import Sequential, Model
 from keras.layers import Conv1D, Dense, Flatten, Reshape, Input, BatchNormalization, Activation, MaxPool1D, Dropout, \
     Concatenate
 from HelixerModel import HelixerModel, HelixerSequence, acc_row, acc_g_row, acc_ig_row
+from CNNModel import CNNSequence
 import random
 import numpy as np
-
-
-class InceptionSequence(HelixerSequence):
-    def __getitem__(self, idx):
-        usable_idx_slice = self.usable_idx[idx * self.batch_size:(idx + 1) * self.batch_size]
-        X = np.stack(self.x_dset[sorted(list(usable_idx_slice))])  # got to provide a sorted list of idx
-        y = np.stack(self.y_dset[sorted(list(usable_idx_slice))])
-        return X, y
 
 
 class InceptionModel(HelixerModel):
@@ -35,7 +28,7 @@ class InceptionModel(HelixerModel):
         return [[int(x)] for x in ks_string.split(',')]
 
     def sequence_cls(self):
-        return InceptionSequence
+        return CNNSequence
 
     def model(self):
         # some non-parameters, that should be

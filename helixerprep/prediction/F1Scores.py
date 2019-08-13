@@ -27,9 +27,8 @@ class F1Counter():
 
 
 class F1Calculator():
-    def __init__(self, generator, n_steps):
+    def __init__(self, generator):
         self.generator = generator
-        self.n_steps = n_steps
         self.counters = {
             'Genic': {
                 'cds': (1, F1Counter(), F1Counter()),  # (col_id, counter for class 0, class 1)
@@ -98,9 +97,9 @@ class F1Calculator():
         print('F1 Score: [{}] {}%'.format(bar, percents), end="\r")
 
     def count_and_calculate(self, model):
-        for i in range(self.n_steps):
-            F1Calculator.progress(i + 1, self.n_steps)
-            batch_data = next(self.generator)
+        for i in range(len(self.generator)):
+            F1Calculator.progress(i + 1, len(self.generator))
+            batch_data = self.generator[i]
             if len(batch_data) == 3:
                 X, y_true, sample_weights = batch_data
             else:

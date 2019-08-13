@@ -8,6 +8,7 @@ from HelixerModel import HelixerModel, HelixerSequence, acc_row, acc_g_row, acc_
 
 class DanQSequence(HelixerSequence):
     def __getitem__(self, idx):
+        assert self.exclude_errors  # our way of dealing with errors atm
         pool_size = self.model.pool_size
         usable_idx_slice = self.usable_idx[idx * self.batch_size:(idx + 1) * self.batch_size]
         X = np.stack(self.x_dset[sorted(list(usable_idx_slice))])  # got to provide a sorted list of idx
