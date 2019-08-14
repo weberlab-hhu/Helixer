@@ -3,6 +3,7 @@ import os
 from glob import glob
 
 base_path = '/mnt/data/ali/share/phytozome_organized/ready/train/'
+delimiter = ','
 columns = {
     'species': [],
     # gff_features
@@ -93,23 +94,49 @@ busco_key_matches = {
     'Missing BUSCOs (M)': 'busco_M',
 }
 
-for genome in os.listdir(base_path):
+for genome in sorted(os.listdir(base_path)):
     columns['species'].append(genome)
     genome_path = os.path.join(base_path, genome)
     # gff_features
+    # some values may be missing so setup dict with default values
+    gff_values = {
+        'CDS': '0',
+        'exon': '0',
+        'five_prime_UTR': '0',
+        'three_prime_UTR': '0',
+        'gene': '0',
+        'mRNA': '0',
+    }
     for line in open(os.path.join(genome_path, 'meta_collection', 'gff_features', 'counts.txt')):
         parts = line.strip().split(' ')
-        columns[parts[1]].append(parts[0])
+        gff_values[parts[1]] = parts[0]
+    for gff_type, count in gff_values.items():
+        columns[gff_type].append(count)
     # quast
     for line in open(os.path.join(genome_path, 'meta_collection', 'quast', 'geno', 'report.tsv')):
         parts = line.strip().split('\t')
         if parts[0] in quast_key_matches:
-            columns[quast_key_matches[parts[0]]] = parts[1]
+            columns[quast_key_matches[parts[0]]].append(parts[1])
     # busco
     for busco_type in ['geno', 'prot', 'tran']:
         path = os.path.join(genome_path, 'meta_collection', 'busco', busco_type)
-        import pudb; pudb.set_trace()
         for line in open(glob(os.path.join(path, 'short_summary*.txt'))[0]):
             parts = line.strip().split('\t')
             if len(parts) > 1 and parts[1] in busco_key_matches:
-                columns[busco_key_matches[parts[1]] + '_' + busco_type] = parts[0]
+                columns[busco_key_matches[parts[1]] + '_' + busco_type].append(parts[0])
+    # jellyfish
+    for kmer_len in ['1', '2']:
+        file_name = 'k' + kmer_len + 'mer_counts.tsv'
+        for line in open(os.path.join(genome_path, 'meta_collection', 'jellyfish', file_name)):
+            parts = line.strip().split('\t')
+            columns[parts[1]].append(parts[0])
+
+# checks
+species_len = len(columns['species'])
+for key, value_list in columns.items():
+    assert len(value_list) == species_len
+
+# output csv
+print(delimiter.join(list(columns.keys())))
+for i in range(len(columns['species'])):
+    print(delimiter.join([columns[key][i] for key in columns.keys()]))
