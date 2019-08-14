@@ -1,6 +1,8 @@
 #! /usr/bin/env python3
 import random
 import numpy as np
+
+from keras_layer_normalization import LayerNormalization
 from keras.models import Sequential
 from keras.layers import Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, MaxPooling1D, Dropout
 from HelixerModel import HelixerModel, HelixerSequence, acc_row, acc_g_row, acc_ig_row
@@ -38,6 +40,7 @@ class DanQModel(HelixerModel):
         self.parser.add_argument('-ps', '--pool-size', type=int, default=10)
         self.parser.add_argument('-dr1', '--dropout1', type=float, default=0.0)
         self.parser.add_argument('-dr2', '--dropout2', type=float, default=0.0)
+        self.parser.add_argument('-ln', '--layer-normalization', action='store_true')
         self.parse_args()
 
     def sequence_cls(self):
@@ -53,6 +56,9 @@ class DanQModel(HelixerModel):
 
         if self.pool_size > 1:
             model.add(MaxPooling1D(pool_size=self.pool_size, padding='same'))
+
+        if self.layer_normalization:
+            model.add(LayerNormalization())
 
         model.add(Dropout(self.dropout1))
         model.add(Bidirectional(CuDNNLSTM(self.units, return_sequences=True)))
