@@ -135,7 +135,7 @@ class AnnotationNumerifier(Numerifier, ABC):
         pass
 
 
-class BasePairAnnotationNumerifier(AnnotationNumerifier):
+class MultiClassNumerifier(AnnotationNumerifier):
     feature_to_col = {
         types.GeenuffFeature.geenuff_transcript: 0,
         types.GeenuffFeature.geenuff_cds: 1,
@@ -156,10 +156,10 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
             end = feature.end
             if not self.is_plus_strand:
                 start, end = end + 1, start + 1
-            if feature.type in BasePairAnnotationNumerifier.feature_to_col.keys():
-                col = BasePairAnnotationNumerifier.feature_to_col[feature.type]
+            if feature.type in MultiClassNumerifier.feature_to_col.keys():
+                col = MultiClassNumerifier.feature_to_col[feature.type]
                 self.matrix[start:end, col] = 1
-            elif feature.type.value in BasePairAnnotationNumerifier.error_type_values:
+            elif feature.type.value in MultiClassNumerifier.error_type_values:
                 self.error_mask[start:end] = 0
             else:
                 raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
@@ -176,7 +176,7 @@ class CoordNumerifier(object):
         if not coord.features:
             logging.warning('Sequence {} has no annoations'.format(coord.seqid))
 
-        self.anno_numerifier = BasePairAnnotationNumerifier(coord=coord,
+        self.anno_numerifier = MultiClassNumerifier(coord=coord,
                                                             features=coord.features,
                                                             is_plus_strand=is_plus_strand,
                                                             max_len=max_len)
