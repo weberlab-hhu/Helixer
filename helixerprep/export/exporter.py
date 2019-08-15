@@ -3,7 +3,9 @@ import h5py
 import copy
 import numpy as np
 import random
+import datetime
 from itertools import compress
+from sklearn.model_selection import train_test_split
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -36,7 +38,7 @@ class ExportController(object):
         self.session = sessionmaker(bind=self.engine)()
 
     @staticmethod
-    def _split_data(flat_data, val_size):
+    def _split_sequences(flat_data, val_size):
         """Basically does the same as sklearn.model_selection.train_test_split except
         it does not always fill the test arrays with at least one element.
         Expects the arrays to be in the order: inputs, labels, label_masks
@@ -176,6 +178,7 @@ class ExportController(object):
 
     def _add_data_attrs(self, genomes, exclude, keep_errors):
         attrs = {
+            'timestamp': str(datetime.datetime.now()),
             'genomes': ','.join(genomes),
             'exclude': ','.join(exclude),
             'keep_errors': str(keep_errors),
@@ -231,21 +234,31 @@ class ExportController(object):
         self._check_genome_names(genomes, exclude)
         all_coord_ids = self._get_coord_ids(genomes, exclude)
         print('\n{} coordinates chosen to numerify'.format(len(all_coord_ids)))
+        if split_coordinates:
+            train_coord_ids, val_coord_ids = train_test_split(all_coord_ids, test_size=val_size)
 
         for i, coord_id in enumerate(all_coord_ids):
             numerify_outputs = self._numerify_coord(coord_id, chunk_size, keep_errors)
             flat_data, coord, masked_bases_percent, intergenic_bases_percent = numerify_outputs
-            # no need to split
-            if self.only_test_set:
-                self._save_data(self.h5_test, flat_data, chunk_size)
+            if split_coordinates or self.only_test_set:
+                if split_coordinates:
+                    if coord_id in train_coord_ids:
+                        self._save_data(self.h5_train, flat_data, chunk_size)
+                        assigned_set = 'train'
+                    else:
+                        self._save_data(self.h5_val, flat_data, chunk_size)
+                        assigned_set = 'val'
+                elif self.only_test_set:
+                    self._save_data(self.h5_test, flat_data, chunk_size)
+                    assigned_set = 'test'
                 print(('{}/{} Numerified {} of {} with {} features in {} chunks '
-                       'with an error rate of {:.2f}%, and intergenic rate of {:.2f}%').format(
+                       'with an error rate of {:.2f}%, and intergenic rate of {:.2f}% ({})').format(
                            i + 1, len(all_coord_ids), coord, coord.genome.species,
                            len(coord.features), len(flat_data['inputs']), masked_bases_percent,
-                           intergenic_bases_percent))
+                           intergenic_bases_percent, assigned_set))
             else:
-                # split and save
-                train_data, val_data = self._split_data(flat_data, val_size=val_size)
+                # split sequences
+                train_data, val_data = self._split_sequences(flat_data, val_size=val_size)
                 if train_data['inputs']:
                     self._save_data(self.h5_train, train_data, chunk_size)
                 if val_data['inputs']:
