@@ -194,45 +194,47 @@ class ExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def export(self, chunk_size, genomes, exclude, val_size, keep_errors):
+    def _numerify_coord(self, coord_id, chunk_size, keep_errors):
+        list_in_list_out = ['inputs', 'labels', 'label_masks', 'start_ends']
+        str_in_list_out = ['species', 'seqids']
+
+        coord = self.session.query(Coordinate).filter(Coordinate.id == coord_id).one()
+        # will pre-organize all data and metadata to have one entry per chunk in flat_data below
+        flat_data = {}
+        for key in list_in_list_out + str_in_list_out:
+            flat_data[key] = []
+
+        n_masked_bases, n_intergenic_bases = 0, 0
+        for is_plus_strand in [True, False]:
+            numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size)
+            coord_data = numerifier.numerify()
+            # keep track of variables
+            n_masked_bases += sum(
+                [np.count_nonzero(m == 0) for m in coord_data['label_masks']])
+            n_intergenic_bases += sum(
+                [np.count_nonzero(np.all(l == 0, axis=1)) for l in coord_data['labels']])
+            # filter out sequences that are completely masked as error
+            if not keep_errors:
+                valid_data = [s.any() for s in coord_data['label_masks']]
+                for key in ['inputs', 'labels', 'label_masks', 'start_ends']:
+                    coord_data[key] = list(compress(coord_data[key], valid_data))
+            # add data
+            for key in list_in_list_out:
+                flat_data[key] += coord_data[key]
+            for key in str_in_list_out:
+                flat_data[key] += [coord_data[key]] * len(coord_data['inputs'])
+        masked_bases_percent = n_masked_bases / (coord.length * 2) * 100
+        intergenic_bases_percent = n_intergenic_bases / (coord.length * 2) * 100
+        return flat_data, coord, masked_bases_percent, intergenic_bases_percent
+
+    def export(self, chunk_size, genomes, exclude, val_size, split_coordinates, keep_errors):
         self._check_genome_names(genomes, exclude)
         all_coord_ids = self._get_coord_ids(genomes, exclude)
         print('\n{} coordinates chosen to numerify'.format(len(all_coord_ids)))
 
-        list_in_list_out = ['inputs', 'labels', 'label_masks', 'start_ends']
-        str_in_list_out = ['species', 'seqids']
-
         for i, coord_id in enumerate(all_coord_ids):
-            coord = self.session.query(Coordinate).filter(Coordinate.id == coord_id).one()
-
-            # will pre-organize all data and metadata to have one entry per chunk in flat_data below
-            flat_data = {}
-            for key in list_in_list_out + str_in_list_out:
-                flat_data[key] = []
-
-            n_masked_bases, n_intergenic_bases = 0, 0
-            for is_plus_strand in [True, False]:
-                numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size)
-                coord_data = numerifier.numerify()
-                # keep track of variables
-                n_masked_bases += sum(
-                    [np.count_nonzero(m == 0) for m in coord_data['label_masks']])
-                n_intergenic_bases += sum(
-                    [np.count_nonzero(np.all(l == 0, axis=1)) for l in coord_data['labels']])
-                # filter out sequences that are completely masked as error
-                if not keep_errors:
-                    valid_data = [s.any() for s in coord_data['label_masks']]
-                    for key in ['inputs', 'labels', 'label_masks', 'start_ends']:
-                        coord_data[key] = list(compress(coord_data[key], valid_data))
-                n_remaining = len(coord_data['inputs'])
-                # add data
-                for key in list_in_list_out:
-                    flat_data[key] += coord_data[key]
-                for key in str_in_list_out:
-                    flat_data[key] += [coord_data[key]] * n_remaining
-
-            masked_bases_percent = n_masked_bases / (coord.length * 2) * 100
-            intergenic_bases_percent = n_intergenic_bases / (coord.length * 2) * 100
+            numerify_outputs = self._numerify_coord(coord_id, chunk_size, keep_errors)
+            flat_data, coord, masked_bases_percent, intergenic_bases_percent = numerify_outputs
             # no need to split
             if self.only_test_set:
                 self._save_data(self.h5_test, flat_data, chunk_size)
