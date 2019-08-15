@@ -17,6 +17,7 @@ search_space.json
 config.yml
 jobs/*/*
 nohup.out
+metadata.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,6 +1,11 @@
 #! /usr/bin/env python3
 import os
+import argparse
 from glob import glob
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--scale', action='store_true', help='Whether to scale the kmer and busco columns')
+args = parser.parse_args()
 
 base_path = '/mnt/data/ali/share/phytozome_organized/ready/train/'
 delimiter = ','
@@ -123,13 +128,21 @@ for genome in sorted(os.listdir(base_path)):
         for line in open(glob(os.path.join(path, 'short_summary*.txt'))[0]):
             parts = line.strip().split('\t')
             if len(parts) > 1 and parts[1] in busco_key_matches:
-                columns[busco_key_matches[parts[1]] + '_' + busco_type].append(parts[0])
+                if args.scale:
+                    value = '{:.4f}'.format(int(parts[0]) / 430.0)
+                else:
+                    value = parts[0]
+                columns[busco_key_matches[parts[1]] + '_' + busco_type].append(value)
     # jellyfish
     for kmer_len in ['1', '2']:
         file_name = 'k' + kmer_len + 'mer_counts.tsv'
         for line in open(os.path.join(genome_path, 'meta_collection', 'jellyfish', file_name)):
             parts = line.strip().split('\t')
-            columns[parts[1]].append(parts[0])
+            if args.scale:
+                value = '{:.4f}'.format(int(parts[0]) / float(columns['total_len'][-1]))
+            else:
+                value = parts[0]
+            columns[parts[1]].append(value)
 
 # checks
 species_len = len(columns['species'])
