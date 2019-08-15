@@ -57,7 +57,7 @@ class ExportController(object):
                     val_arrays[key].append(flat_data[key][i])
         return train_arrays, val_arrays
 
-    def _save_data(self, h5_file, flat_data, chunk_size):
+    def _save_data(self, h5_file, flat_data, chunk_size, n_y_cols):
         inputs = flat_data['inputs']
         labels = flat_data['labels']
         label_masks = flat_data['label_masks']
@@ -68,7 +68,7 @@ class ExportController(object):
         # chunk_size, but taking care of that introduces a lot of extra complexity
         n_seq = len(inputs)
         X = np.zeros((n_seq, chunk_size, 4), dtype=inputs[0].dtype)
-        y = np.zeros((n_seq, chunk_size, 3), dtype=labels[0].dtype)
+        y = np.zeros((n_seq, chunk_size, n_y_cols), dtype=labels[0].dtype)
         sample_weights = np.zeros((n_seq, chunk_size), dtype=label_masks[0].dtype)
         for j in range(n_seq):
             sample_len = len(inputs[j])
@@ -99,9 +99,9 @@ class ExportController(object):
                                    compression='lzf',
                                    shuffle=True)  # only for the compression
             h5_file.create_dataset('/data/y',
-                                   shape=(n_seq, chunk_size, 3),
-                                   maxshape=(None, chunk_size, 3),
-                                   chunks=(1, chunk_size, 3),
+                                   shape=(n_seq, chunk_size, n_y_cols),
+                                   maxshape=(None, chunk_size, n_y_cols),
+                                   chunks=(1, chunk_size, n_y_cols),
                                    dtype='int8',
                                    compression='lzf',
                                    shuffle=True)
@@ -197,7 +197,7 @@ class ExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def _numerify_coord(self, coord_id, chunk_size, keep_errors):
+    def _numerify_coord(self, coord_id, chunk_size, one_hot, merge_introns, keep_errors):
         list_in_list_out = ['inputs', 'labels', 'label_masks', 'start_ends']
         str_in_list_out = ['species', 'seqids']
 
@@ -209,13 +209,16 @@ class ExportController(object):
 
         n_masked_bases, n_intergenic_bases = 0, 0
         for is_plus_strand in [True, False]:
-            numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size)
+            numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size, one_hot, merge_introns)
             coord_data = numerifier.numerify()
             # keep track of variables
             n_masked_bases += sum(
                 [np.count_nonzero(m == 0) for m in coord_data['label_masks']])
-            n_intergenic_bases += sum(
-                [np.count_nonzero(np.all(l == 0, axis=1)) for l in coord_data['labels']])
+            if one_hot:
+                n_intergenic_bases += sum([np.count_nonzero(l[:, 0] == 1) for l in coord_data['labels']])
+            else:
+                n_intergenic_bases += sum(
+                    [np.count_nonzero(np.all(l == 0, axis=1)) for l in coord_data['labels']])
             # filter out sequences that are completely masked as error
             if not keep_errors:
                 valid_data = [s.any() for s in coord_data['label_masks']]
@@ -230,26 +233,32 @@ class ExportController(object):
         intergenic_bases_percent = n_intergenic_bases / (coord.length * 2) * 100
         return flat_data, coord, masked_bases_percent, intergenic_bases_percent
 
-    def export(self, chunk_size, genomes, exclude, val_size, split_coordinates, keep_errors):
+    def export(self, chunk_size, genomes, exclude, val_size, one_hot, merge_introns,
+               split_coordinates, keep_errors):
         self._check_genome_names(genomes, exclude)
         all_coord_ids = self._get_coord_ids(genomes, exclude)
         print('\n{} coordinates chosen to numerify'.format(len(all_coord_ids)))
         if split_coordinates:
             train_coord_ids, val_coord_ids = train_test_split(all_coord_ids, test_size=val_size)
+        if not one_hot:
+            n_y_cols = 3
+        else:
+            n_y_cols = 4 if merge_introns else 5
 
         for i, coord_id in enumerate(all_coord_ids):
-            numerify_outputs = self._numerify_coord(coord_id, chunk_size, keep_errors)
+            numerify_outputs = self._numerify_coord(coord_id, chunk_size, one_hot, merge_introns,
+                                                    keep_errors)
             flat_data, coord, masked_bases_percent, intergenic_bases_percent = numerify_outputs
             if split_coordinates or self.only_test_set:
                 if split_coordinates:
                     if coord_id in train_coord_ids:
-                        self._save_data(self.h5_train, flat_data, chunk_size)
+                        self._save_data(self.h5_train, flat_data, chunk_size, n_y_cols)
                         assigned_set = 'train'
                     else:
-                        self._save_data(self.h5_val, flat_data, chunk_size)
+                        self._save_data(self.h5_val, flat_data, chunk_size, n_y_cols)
                         assigned_set = 'val'
                 elif self.only_test_set:
-                    self._save_data(self.h5_test, flat_data, chunk_size)
+                    self._save_data(self.h5_test, flat_data, chunk_size, n_y_cols)
                     assigned_set = 'test'
                 print(('{}/{} Numerified {} of {} with {} features in {} chunks '
                        'with an error rate of {:.2f}%, and intergenic rate of {:.2f}% ({})').format(
@@ -260,9 +269,9 @@ class ExportController(object):
                 # split sequences
                 train_data, val_data = self._split_sequences(flat_data, val_size=val_size)
                 if train_data['inputs']:
-                    self._save_data(self.h5_train, train_data, chunk_size)
+                    self._save_data(self.h5_train, train_data, chunk_size, n_y_cols)
                 if val_data['inputs']:
-                    self._save_data(self.h5_val, val_data, chunk_size)
+                    self._save_data(self.h5_val, val_data, chunk_size, n_y_cols)
                 print(('{}/{} Numerified {} of {} with {} features in {} chunks '
                        '(train: {}, test: {}) with an error rate of {:.2f}% and an '
                        'intergenic rate of {:.2f}%').format(

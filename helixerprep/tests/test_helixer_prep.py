@@ -15,7 +15,7 @@ from ..core import helpers
 from ..core.mers import MerController
 from ..core.orm import Mer
 from ..export import numerify
-from ..export.numerify import (SequenceNumerifier, MultiClassNumerifier, Stepper,
+from ..export.numerify import (SequenceNumerifier, BasePairAnnotationNumerifier, Stepper,
                                AMBIGUITY_DECODE)
 from ..export.exporter import ExportController
 from ..prediction.F1Scores import F1Calculator
@@ -251,10 +251,10 @@ def test_short_sequence_numerify():
 
 def test_base_level_annotation_numerify():
     _, _, coord = setup_dummyloci()
-    numerifier = MultiClassNumerifier(coord=coord,
-                                      features=coord.features,
-                                      is_plus_strand=True,
-                                      max_len=5000)
+    numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                              features=coord.features,
+                                              is_plus_strand=True,
+                                              max_len=5000)
     nums = numerifier.coord_to_matrices()[0][0][:405]
     expect = np.zeros([405, 3], dtype=np.float32)
     expect[0:400, 0] = 1.  # set genic/in raw transcript
@@ -288,10 +288,10 @@ def test_coherent_slicing():
     seq_numerifier = SequenceNumerifier(coord=coord,
                                         is_plus_strand=True,
                                         max_len=100)
-    anno_numerifier = MultiClassNumerifier(coord=coord,
-                                           features=coord.features,
-                                           is_plus_strand=True,
-                                           max_len=100)
+    anno_numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                                   features=coord.features,
+                                                   is_plus_strand=True,
+                                                   max_len=100)
     seq_slices = seq_numerifier.coord_to_matrices()[0]
     anno_slices = anno_numerifier.coord_to_matrices()[0]
     assert len(seq_slices) == len(anno_slices) == 19
@@ -315,19 +315,19 @@ def test_coherent_slicing():
 def test_minus_strand_numerify():
     # setup a very basic -strand locus
     _, coord = setup_simpler_numerifier()
-    numerifier = MultiClassNumerifier(coord=coord,
-                                      features=coord.features,
-                                      is_plus_strand=True,
-                                      max_len=1000)
+    numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                              features=coord.features,
+                                              is_plus_strand=True,
+                                              max_len=1000)
     nums = numerifier.coord_to_matrices()[0][0]
     # first, we should make sure the opposite strand is unmarked when empty
     expect = np.zeros([100, 3], dtype=np.float32)
     assert np.array_equal(nums, expect)
 
-    numerifier = MultiClassNumerifier(coord=coord,
-                                      features=coord.features,
-                                      is_plus_strand=False,
-                                      max_len=1000)
+    numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                              features=coord.features,
+                                              is_plus_strand=False,
+                                              max_len=1000)
     # and now that we get the expect range on the minus strand,
     # keeping in mind the 40 is inclusive, and the 9, not
     nums = numerifier.coord_to_matrices()[0][0]
@@ -337,10 +337,10 @@ def test_minus_strand_numerify():
     assert np.array_equal(nums, expect)
 
     # minus strand and actual cutting
-    numerifier = MultiClassNumerifier(coord=coord,
-                                      features=coord.features,
-                                      is_plus_strand=False,
-                                      max_len=50)
+    numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                              features=coord.features,
+                                              is_plus_strand=False,
+                                              max_len=50)
     num_list = numerifier.coord_to_matrices()[0]
 
     expect = np.zeros([100, 3], dtype=np.float32)
@@ -462,10 +462,10 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
 
 def test_numerify_with_end_neg1():
     def check_one(coord, is_plus_strand, expect, maskexpect):
-        numerifier = MultiClassNumerifier(coord=coord,
-                                          features=coord.features,
-                                          is_plus_strand=is_plus_strand,
-                                          max_len=1000)
+        numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                                  features=coord.features,
+                                                  is_plus_strand=is_plus_strand,
+                                                  max_len=1000)
         nums, masks = [x[0] for x in numerifier.coord_to_matrices()]
 
         if not np.array_equal(nums, expect):
