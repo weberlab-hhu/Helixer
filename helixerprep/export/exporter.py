@@ -150,7 +150,7 @@ class ExportController(object):
                     print('One or more of the given genome names can not be found in the database')
                     exit()
 
-    def _get_coord_ids(self, genomes, exclude, coordinate_chance):
+    def _get_coord_ids(self, genomes, exclude):
         coord_ids_with_features = self.session.query(Feature.coordinate_id).distinct()
         if genomes:
             print('Selecting the following genomes: {}'.format(genomes))
@@ -171,19 +171,13 @@ class ExportController(object):
                 print('Selecting all genomes from {}'.format(self.db_path_in))
                 all_coord_ids = coord_ids_with_features.all()
 
-        if coordinate_chance < 1.0:
-            print('Choosing coordinates with a chance of {}'.format(coordinate_chance))
-            all_coord_ids = [c[0] for c in all_coord_ids if random.random() < coordinate_chance]
-        else:
-            all_coord_ids = [c[0] for c in all_coord_ids]
-
+        all_coord_ids = [c[0] for c in all_coord_ids]
         return all_coord_ids
 
-    def _add_data_attrs(self, genomes, exclude, coordinate_chance, keep_errors):
+    def _add_data_attrs(self, genomes, exclude, keep_errors):
         attrs = {
             'genomes': ','.join(genomes),
             'exclude': ','.join(exclude),
-            'coordinate_chance': coordinate_chance,
             'keep_errors': str(keep_errors),
         }
         for key, value in attrs.items():
@@ -200,9 +194,9 @@ class ExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def export(self, chunk_size, genomes, exclude, coordinate_chance, val_size, keep_errors):
+    def export(self, chunk_size, genomes, exclude, val_size, keep_errors):
         self._check_genome_names(genomes, exclude)
-        all_coord_ids = self._get_coord_ids(genomes, exclude, coordinate_chance)
+        all_coord_ids = self._get_coord_ids(genomes, exclude)
         print('\n{} coordinates chosen to numerify'.format(len(all_coord_ids)))
 
         list_in_list_out = ['inputs', 'labels', 'label_masks', 'start_ends']
@@ -260,5 +254,5 @@ class ExportController(object):
                            i + 1, len(all_coord_ids), coord, coord.genome.species,
                            len(coord.features), len(flat_data['inputs']), len(train_data['inputs']),
                            len(val_data['inputs']), masked_bases_percent, intergenic_bases_percent))
-        self._add_data_attrs(genomes, exclude, coordinate_chance, keep_errors)
+        self._add_data_attrs(genomes, exclude, keep_errors)
         self._close_files()
