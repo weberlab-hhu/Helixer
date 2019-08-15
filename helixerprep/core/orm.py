@@ -29,3 +29,18 @@ class Mer(orm.Base):
                                                                             self.count,
                                                                             self.length)
 
+class MetaInformation(orm.Base):
+    __tablename__ = "meta_information"
+
+    id = Column(Integer, primary_key=True)
+    coordinate_id = Column(Integer, ForeignKey('coordinate.id'), nullable=False)
+
+    coordinate = relationship('orm.Coordinate')
+
+    __table_args__ = (
+        UniqueConstraint('coordinate_id', name='unique_coord'),
+    )
+
+    def __repr__(self):
+        return '<MetaInformation {}, coord_id: {}>'.format(self.id, self.coordinate_id)
+
