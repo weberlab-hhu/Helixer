@@ -87,7 +87,7 @@ class HelixerSequence(Sequence):
             random.shuffle(self.usable_idx)
 
     def __len__(self):
-        # return 10
+        # return 2
         return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
 
     @abstractmethod
@@ -348,9 +348,14 @@ class HelixerModel(ABC):
                     ))
                 predictions = model.predict_generator(generator=self.gen_test_data(), verbose=True)
                 predictions = predictions.astype(np.float32)  # in case of predicting with float64
-                # reshape when predicting more than one point at a time (no matter in what way)
-                if predictions.shape != self.shape_test:
-                    predictions = predictions.reshape(self.shape_test)
+                # reshape when predicting more than one point at a time
+                if predictions.shape[2] != 3:
+                    n_points = predictions.shape[2] // 3
+                    predictions = predictions.reshape(
+                        predictions.shape[0],
+                        predictions.shape[1] * n_points,
+                        3,
+                    )
 
                 h5_model = h5py.File(self.load_model_path, 'r')
                 pred_out = h5py.File(self.prediction_output_path, 'w')
