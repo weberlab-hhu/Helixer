@@ -18,6 +18,7 @@ import numpy as np
 import tensorflow as tf
 from pprint import pprint
 from functools import partial
+from keras_layer_normalization import LayerNormalization
 from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
 from keras import optimizers
 from keras import backend as K
@@ -325,9 +326,10 @@ class HelixerModel(ABC):
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
 
             model = load_model(self.load_model_path, custom_objects = {
-                'acc_t': get_col_accuracy_fn(0),
-                'acc_c': get_col_accuracy_fn(1),
-                'acc_i': get_col_accuracy_fn(2)
+                'LayerNormalization': LayerNormalization,
+                'acc_row': acc_row,
+                'acc_g_row': acc_g_row,
+                'acc_ig_row': acc_ig_row,
             })
             if self.eval:
                 if not self.no_f1_score:
@@ -335,7 +337,6 @@ class HelixerModel(ABC):
                 else:
                     callback = []
                 metrics = model.evaluate_generator(generator=self.gen_test_data(),
-                                                   steps=self.n_steps_test,
                                                    callbacks=callback,
                                                    verbose=True)
                 metrics_names = model.metrics_names
@@ -345,9 +346,7 @@ class HelixerModel(ABC):
                     print('{} already existing and will be overridden.'.format(
                         self.prediction_output_path
                     ))
-                predictions = model.predict_generator(generator=self.gen_test_data(),
-                                                      steps=self.n_steps_test,
-                                                      verbose=True)
+                predictions = model.predict_generator(generator=self.gen_test_data(), verbose=True)
                 predictions = predictions.astype(np.float32)  # in case of predicting with float64
 
                 h5_model = h5py.File(self.load_model_path, 'r')
