@@ -82,7 +82,6 @@ class Visualization():
         self.n_seq = self.h5_predictions['/predictions'].shape[0]
         self.chunk_len = self.h5_predictions['/predictions'].shape[1]
         assert self.chunk_len % self.BASE_COUNT_SCREEN == 0
-        assert self.h5_data['/data/y'].shape[0] == self.n_seq
 
         if self.args.exclude_errors:
             self.err_idx = np.squeeze(np.argwhere(np.array(self.h5_data['/data/err_samples']) == True))
