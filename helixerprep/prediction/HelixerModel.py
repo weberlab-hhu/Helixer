@@ -18,6 +18,7 @@ import numpy as np
 import tensorflow as tf
 from pprint import pprint
 from functools import partial
+from keras_layer_normalization import LayerNormalization
 from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
 from keras import optimizers
 from keras import backend as K
@@ -86,7 +87,7 @@ class HelixerSequence(Sequence):
             random.shuffle(self.usable_idx)
 
     def __len__(self):
-        # return 10
+        # return 2
         return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
 
     @abstractmethod
@@ -325,9 +326,10 @@ class HelixerModel(ABC):
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
 
             model = load_model(self.load_model_path, custom_objects = {
-                'acc_t': get_col_accuracy_fn(0),
-                'acc_c': get_col_accuracy_fn(1),
-                'acc_i': get_col_accuracy_fn(2)
+                'LayerNormalization': LayerNormalization,
+                'acc_row': acc_row,
+                'acc_g_row': acc_g_row,
+                'acc_ig_row': acc_ig_row,
             })
             if self.eval:
                 if not self.no_f1_score:
@@ -335,7 +337,6 @@ class HelixerModel(ABC):
                 else:
                     callback = []
                 metrics = model.evaluate_generator(generator=self.gen_test_data(),
-                                                   steps=self.n_steps_test,
                                                    callbacks=callback,
                                                    verbose=True)
                 metrics_names = model.metrics_names
@@ -345,13 +346,16 @@ class HelixerModel(ABC):
                     print('{} already existing and will be overridden.'.format(
                         self.prediction_output_path
                     ))
-                predictions = model.predict_generator(generator=self.gen_test_data(),
-                                                      steps=self.n_steps_test,
-                                                      verbose=True)
+                predictions = model.predict_generator(generator=self.gen_test_data(), verbose=True)
                 predictions = predictions.astype(np.float32)  # in case of predicting with float64
-                # reshape when predicting more than one point at a time (no matter in what way)
-                if predictions.shape != self.shape_test:
-                    predictions = predictions.reshape(self.shape_test)
+                # reshape when predicting more than one point at a time
+                if predictions.shape[2] != 3:
+                    n_points = predictions.shape[2] // 3
+                    predictions = predictions.reshape(
+                        predictions.shape[0],
+                        predictions.shape[1] * n_points,
+                        3,
+                    )
 
                 h5_model = h5py.File(self.load_model_path, 'r')
                 pred_out = h5py.File(self.prediction_output_path, 'w')
