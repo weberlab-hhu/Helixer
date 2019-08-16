@@ -348,6 +348,9 @@ class HelixerModel(ABC):
                     ))
                 predictions = model.predict_generator(generator=self.gen_test_data(), verbose=True)
                 predictions = predictions.astype(np.float32)  # in case of predicting with float64
+                # reshape when predicting more than one point at a time (no matter in what way)
+                if predictions.shape != self.shape_test:
+                    predictions = predictions.reshape(self.shape_test)
 
                 h5_model = h5py.File(self.load_model_path, 'r')
                 pred_out = h5py.File(self.prediction_output_path, 'w')
