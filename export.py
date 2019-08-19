@@ -51,4 +51,5 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     assert not (args.genomes and args.exclude_genomes), 'Can not include and exclude together'
+    assert not (args.merge_introns and not args.one_hot)
     main(args)

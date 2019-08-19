@@ -165,6 +165,7 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
                 self.error_mask[start:end] = 0
             else:
                 raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
+
         # transform matrix into one-hot encoding for classical classification if desired
         if self.one_hot:
             # Class order: Intergenic, UTR, CDS, (non-coding Intron), Intron
@@ -189,8 +190,6 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
                 one_hot_matrix[:, 3] = np.logical_and(genic_non_coding, col_2)
                 one_hot_matrix[:, 4] = np.all(self.matrix, axis=1)
             self.matrix = one_hot_matrix.astype(np.int8)
-            # just to make sure, can be commented out when we are sure this works
-            assert np.all(np.count_nonzero(self.matrix, axis=1) == 1)
 
 
 class CoordNumerifier(object):

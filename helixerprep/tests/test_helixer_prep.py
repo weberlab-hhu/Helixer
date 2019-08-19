@@ -826,19 +826,66 @@ def test_f1_scores():
         assert pred == true
 
 
-def test_one_hot_encodings(self):
-    # make normal encoding (multi class)
+def test_one_hot_encodings():
+    classes_multi = [
+        [0, 0, 0],
+        [1, 0, 0],
+        [1, 1, 0],
+        # [1, 0, 1],
+        [1, 1, 1],
+    ]
+    classes_5 = [
+        [1, 0, 0, 0, 0],  # intergenic
+        [0, 1, 0, 0, 0],  # UTR
+        [0, 0, 1, 0, 0],  # CDS
+        # [0, 0, 0, 1, 0],  # Non-coding Intron
+        [0, 0, 0, 0, 1],  # Intron
+    ]
+    classes_4 = [
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1],
+    ]
 
+    # make normal encoding (multi class)
+    _, _, coord = setup_dummyloci()
+    numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                              features=coord.features,
+                                              is_plus_strand=True,
+                                              max_len=5000,
+                                              one_hot=False,
+                                              merge_introns=False)
+    y_multi = numerifier.coord_to_matrices()[0][0]
     # count classes
+    uniques_multi = np.unique(y_multi, return_counts=True, axis=0)
 
     # make both kinds of one-hot encodings
+    numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                              features=coord.features,
+                                              is_plus_strand=True,
+                                              max_len=5000,
+                                              one_hot=True,
+                                              merge_introns=False)
+    y_one_hot_5 = numerifier.coord_to_matrices()[0][0]
+    uniques_5 = np.unique(y_one_hot_5, return_counts=True, axis=0)
+    for i in range(len(classes_multi)):
+        idx = (uniques_5[0] == classes_5[i]).all(axis=1).nonzero()[0][0]
+        assert uniques_multi[1][i] == uniques_5[1][idx]
+
+    numerifier = BasePairAnnotationNumerifier(coord=coord,
+                                              features=coord.features,
+                                              is_plus_strand=True,
+                                              max_len=5000,
+                                              one_hot=True,
+                                              merge_introns=True)
+    y_one_hot_4 = numerifier.coord_to_matrices()[0][0]
+    uniques_4 = np.unique(y_one_hot_4, return_counts=True, axis=0)
+    # this loop has to be changed when using accounting for non-coding introns as well
+    for i in range(len(classes_multi)):
+        idx = (uniques_4[0] == classes_4[i]).all(axis=1).nonzero()[0][0]
+        assert uniques_multi[1][i] == uniques_4[1][idx]
 
     # test if they are one-hot at all
-
-    # compare class counts to classic encoding
-
-
-
-
-
-
+    assert np.all(np.count_nonzero(y_one_hot_5, axis=1) == 1)
+    assert np.all(np.count_nonzero(y_one_hot_4, axis=1) == 1)
