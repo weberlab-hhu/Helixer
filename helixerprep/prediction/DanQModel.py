@@ -10,7 +10,6 @@ from HelixerModel import HelixerModel, HelixerSequence, acc_row, acc_g_row, acc_
 
 class DanQSequence(HelixerSequence):
     def __getitem__(self, idx):
-        assert self.exclude_errors  # our way of dealing with errors atm
         pool_size = self.model.pool_size
         usable_idx_slice = self.usable_idx[idx * self.batch_size:(idx + 1) * self.batch_size]
         X = np.stack(self.x_dset[sorted(list(usable_idx_slice))])  # got to provide a sorted list of idx
@@ -42,6 +41,9 @@ class DanQModel(HelixerModel):
         self.parser.add_argument('-dr2', '--dropout2', type=float, default=0.0)
         self.parser.add_argument('-ln', '--layer-normalization', action='store_true')
         self.parse_args()
+
+        if not self.exclude_errors:
+            print('\nRunning DanQ without --exclude-errors. This should only be done in test mode.')
 
     def sequence_cls(self):
         return DanQSequence

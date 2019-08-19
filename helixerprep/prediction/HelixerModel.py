@@ -66,7 +66,7 @@ class F1ResultsTrain(Callback):
         self.calculator = F1Calculator(generator)
         super(F1ResultsTrain, self).__init__()
 
-    def on_test_end(self, logs=None):
+    def on_epoch_end(self, epoch, logs=None):
         self.calculator.count_and_calculate(self.model)
 
 
@@ -346,23 +346,47 @@ class HelixerModel(ABC):
                     print('{} already existing and will be overridden.'.format(
                         self.prediction_output_path
                     ))
-                predictions = model.predict_generator(generator=self.gen_test_data(), verbose=True)
-                predictions = predictions.astype(np.float32)  # in case of predicting with float64
-                # reshape when predicting more than one point at a time
-                if predictions.shape[2] != 3:
-                    n_points = predictions.shape[2] // 3
-                    predictions = predictions.reshape(
-                        predictions.shape[0],
-                        predictions.shape[1] * n_points,
-                        3,
-                    )
+                if self.exclude_errors:
+                    print('WARNING: --exclude-errors used in test mode')
 
-                h5_model = h5py.File(self.load_model_path, 'r')
+                # loop through batches and continously expand output dataset as everything might
+                # no fit in memory
                 pred_out = h5py.File(self.prediction_output_path, 'w')
-                pred_out.create_dataset('/predictions', data=predictions, compression='lzf',
-                                        shuffle=True)
+                test_sequence = self.gen_test_data()
+                for i in range(len(test_sequence)):
+                    print(i, '/', len(test_sequence))
+                    predictions = model.predict_on_batch(test_sequence[i][0]).astype(np.float16)
+                    # reshape when predicting more than one point at a time
+                    if predictions.shape[2] != 3:
+                        n_points = predictions.shape[2] // 3
+                        predictions = predictions.reshape(
+                            predictions.shape[0],
+                            predictions.shape[1] * n_points,
+                            3,
+                        )
+                        # remove overhang if existing
+                        if predictions.shape[1] > self.shape_test[1]:
+                            predictions = predictions[:, :self.shape_test[1], :]
+                    # create or expand dataset
+                    if i == 0:
+                        pred_out.create_dataset('/predictions',
+                                                data=predictions,
+                                                maxshape=(None,) + predictions.shape[1:],
+                                                chunks=(1,) + predictions.shape[1:],
+                                                dtype='float16',
+                                                compression='lzf',
+                                                shuffle=True)
+                        old_len = 0
+                    else:
+                        old_len = pred_out['/predictions'].shape[0]
+                        pred_out['/predictions'].resize(old_len + predictions.shape[0], axis=0)
+                    # save predictions
+                    pred_out['/predictions'][old_len:] = predictions
+
                 # add model config to predictions
+                h5_model = h5py.File(self.load_model_path, 'r')
                 pred_out.attrs['model_config'] = h5_model.attrs['model_config']
+                pred_out.attrs['test_data_path'] = self.test_data
                 pred_out.close()
                 h5_model.close()
 
