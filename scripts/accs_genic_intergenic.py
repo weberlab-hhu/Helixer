@@ -3,8 +3,44 @@ import h5py
 import numpy as np
 import argparse
 from terminaltables import AsciiTable
-from sklearn.metrics import precision_recall_fscore_support as f1_score
 from helixerprep.prediction.F1Scores import F1Calculator
+import itertools
+
+
+class AccuracyCalculator(object):
+    def __init__(self, name):
+        self.right = 0
+        self.total = 0
+        self.name = name
+
+    def count_and_calculate_one_batch(self, y, preds):
+        self.right += np.sum(y == preds)
+        self.total += np.product(y.shape)
+
+    def cal_accuracy(self):
+        return self.right / self.total * 100
+
+
+class AllAccuracyCalculator(object):
+    DIMENSIONS = (0, 1, 2, (0, 1, 2))
+    NAMES = ("tr", "cds", "intron", "total")
+
+    def __init__(self):
+        self.calculators = []
+        for name in AllAccuracyCalculator.DIMENSIONS:
+            self.calculators.append(AccuracyCalculator(name))
+
+    def count_and_calculate_one_batch(self, y, preds):
+        for i, dim in enumerate(AllAccuracyCalculator.DIMENSIONS):
+            self.calculators[i].count_and_calculate_one_batch(y[:, :, dim], preds[:, :, dim])
+
+    def print_accuracy(self):
+        table_name = "Accuracy"
+        table = [["region", "accuracy"]]
+        for i, name in enumerate(AllAccuracyCalculator.NAMES):
+            acc = self.calculators[i].cal_accuracy()
+            table.append([name, '{:.4f}'.format(acc)])
+        print('\n', AsciiTable(table, table_name).table, sep='')
 
 
 def main(args):
@@ -48,18 +84,20 @@ def main(args):
     h5_pred_y = np.round(h5_pred_y)
 
     # and score
-    f1_calc = F1Calculator(None, None)
+    f1_calc = F1Calculator(None)
+    acc_calc = AllAccuracyCalculator()
     # break into chunks (so as to not run out of memory)
     i = 0
-    size = 100
+    size = 1000
     while i < h5_data_y.shape[0]:
         f1_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
                                               h5_pred_y[i:(i + size)])
+        acc_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
+                                               h5_pred_y[i:(i + size)])
         i += size
 
     f1_calc.print_f1_scores()
-
-    print_accuracy_counts(h5_data_y, h5_pred_y)
+    acc_calc.print_accuracy()
 
 
 def acc_percent(y, preds):
@@ -67,25 +105,33 @@ def acc_percent(y, preds):
 
 
 def all_coords_match(h5_data, h5_pred):
-    return list(mk_keys(h5_data)) == list(mk_keys(h5_pred))
+    for data, pred in zip(mk_keys(h5_data), mk_keys(h5_pred)):
+        if data != pred:
+            return False
+    return True
 
 
-def match_up(h5_data, h5_pred, h5_prediction_dataset):
-    lab_keys = list(mk_keys(h5_data))
-    pred_keys = list(mk_keys(h5_pred))
+def match_up(h5_data, h5_pred, h5_prediction_dataset, data_start_end=None, pred_start_end=None):
+    if data_start_end is None:
+        data_start_end = (0, h5_data['data/X'].shape[0])
+    if pred_start_end is None:
+        pred_start_end = (0, h5_pred['data/X'].shape[0])
+    lab_keys = list(itertools.islice(mk_keys(h5_data), data_start_end[0], data_start_end[1]))
+    pred_keys = list(itertools.islice(mk_keys(h5_pred), pred_start_end[0], pred_start_end[1]))
 
     shared = list(set(lab_keys).intersection(set(pred_keys)))
     lab_mask = [x in shared for x in lab_keys]
     pred_mask = [x in shared for x in pred_keys]
 
     # setup output arrays (with shared indexes)
-    labs = np.array(h5_data['data/y'])[lab_mask]
-    preds = np.array(h5_pred[h5_prediction_dataset])[pred_mask]
+    labs = np.array(h5_data['data/y'][data_start_end[0]:data_start_end[1]])[lab_mask]
+    preds = np.array(h5_pred[h5_prediction_dataset][data_start_end[0]:data_start_end[1]])[pred_mask]
 
     # check if sorting matches
     shared_lab_keys = np.array(lab_keys)[lab_mask]
     shared_pred_keys = np.array(pred_keys)[pred_mask]
-    sorting_matches = (shared_lab_keys == shared_pred_keys).all()
+    sorting_matches = np.all(shared_lab_keys == shared_pred_keys)
+
     # resort both if not
     if not sorting_matches:
         lab_lexsort = np.lexsort(np.flip(shared_lab_keys.T, axis=0))
@@ -122,18 +168,19 @@ def export(h5_path, h5_in, labs, preds, lab_mask, lab_lexsort):
     h5_file.close()
 
 
+def chunk(h5_data, h5_pred):
+    # todo, get range for every species,seqid pair in each species
+    #  get subset of the above that both data and pred share
+    #  export data_start_end, pred_start end
+    #  e.g., np.unique(x, axis=0, return_counts=True, return_index=True)
+    pass
+
+
 def mk_keys(h5):
     return zip(h5['data/species'],
                h5['data/seqids'],
                h5['data/start_ends'][:, 0],
                h5['data/start_ends'][:, 1])
-
-
-def print_accuracy_counts(y, preds):
-    print("overall accuracy: {:06.4f}%".format(acc_percent(y[:], preds[:])))
-    print("transcriptional accuracy: {:06.4f}%".format(acc_percent(y[:, :, 0], preds[:, :, 0])))
-    print("coding accuracy: {:06.4f}%".format(acc_percent(y[:, :, 1], preds[:, :, 1])))
-    print("intron accuracy: {:06.4f}%".format(acc_percent(y[:, :, 2], preds[:, :, 2])))
 
 
 if __name__ == "__main__":
