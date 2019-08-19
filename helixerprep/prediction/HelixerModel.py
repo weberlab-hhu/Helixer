@@ -13,6 +13,7 @@ except ImportError:
 import h5py
 import random
 import argparse
+import datetime
 import importlib
 import numpy as np
 import tensorflow as tf
@@ -350,7 +351,7 @@ class HelixerModel(ABC):
                     print('WARNING: --exclude-errors used in test mode')
 
                 # loop through batches and continously expand output dataset as everything might
-                # no fit in memory
+                # not fit in memory
                 pred_out = h5py.File(self.prediction_output_path, 'w')
                 test_sequence = self.gen_test_data()
                 for i in range(len(test_sequence)):
@@ -383,10 +384,11 @@ class HelixerModel(ABC):
                     # save predictions
                     pred_out['/predictions'][old_len:] = predictions
 
-                # add model config to predictions
+                # add model config and other attributes to predictions
                 h5_model = h5py.File(self.load_model_path, 'r')
                 pred_out.attrs['model_config'] = h5_model.attrs['model_config']
                 pred_out.attrs['test_data_path'] = self.test_data
+                pred_out.attrs['timestamp'] = str(datetime.datetime.now())
                 pred_out.close()
                 h5_model.close()
 
