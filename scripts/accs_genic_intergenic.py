@@ -168,12 +168,42 @@ def export(h5_path, h5_in, labs, preds, lab_mask, lab_lexsort):
     h5_file.close()
 
 
+def np_unique_checksort(an_array):
+    uniques, starts, counts = np.unique(an_array, return_index=True, return_counts=True)
+
+    for i in range(uniques.shape[0]):
+        dat = uniques[i]
+        start = starts[i]
+        end = start + counts[i]
+        assert np.all(an_array[start:end] == dat)
+    return uniques, starts, counts
+
+
 def chunk(h5_data, h5_pred):
-    # todo, get range for every species,seqid pair in each species
-    #  get subset of the above that both data and pred share
-    #  export data_start_end, pred_start end
-    #  e.g., np.unique(x, axis=0, return_counts=True, return_index=True)
-    pass
+    # this assumes that all unique species,seqid sets
+    # occur in blocks, and will fail (with error) if not
+    data_array = np.array(mk_seqonly_keys(h5_data))
+    pred_array = np.array(mk_seqonly_keys(h5_pred))
+    d_unique, d_starts, d_counts = np_unique_checksort(data_array)
+    p_unique, p_starts, p_counts = np_unique_checksort(pred_array)
+    theintersect = np.intersect1d(d_unique, p_unique)
+    d_mask = np.in2d(d_unique, theintersect)
+    p_mask = np.in2d(p_unique, theintersect)
+    d_unique, d_starts, d_counts = [x[d_mask] for x in [d_unique, d_starts, d_counts]]
+    p_unique, p_starts, p_counts = [x[p_mask] for x in [p_unique, p_starts, p_counts]]
+    # np.unique sorts it's output, so data and preds should now match
+    out = np.empty(shape=[d_unique.shape[0], 4])
+    # data start, data end, pred start, pred end
+    out[:, 0] = d_starts
+    out[:, 1] = d_starts + d_counts
+    out[:, 2] = p_starts
+    out[:, 3] = p_starts + p_counts
+    return out
+
+
+def mk_seqonly_keys(h5):
+    return [a + b for a, b in zip(h5['data/species'],
+                                  h5['data/seqids'])]
 
 
 def mk_keys(h5):
