@@ -77,7 +77,7 @@ class ExportController(object):
             sample_weights[j, :sample_len] = label_masks[j]
         err_samples = np.any(sample_weights == 0, axis=1)
         # just one entry per chunk
-        fully_intergenic_samples = np.all(y[:, :, 0] == 0, axis=1)
+        fully_intergenic_samples = np.all(y[:, :, 0] == 1, axis=1)
         start_ends = np.array(flat_data['start_ends'])
         # check if this is the first batch to save
         dset_keys = [
@@ -176,11 +176,13 @@ class ExportController(object):
         all_coord_ids = [c[0] for c in all_coord_ids]
         return all_coord_ids
 
-    def _add_data_attrs(self, genomes, exclude, keep_errors):
+    def _add_data_attrs(self, genomes, exclude, one_hot, merge_introns, keep_errors):
         attrs = {
             'timestamp': str(datetime.datetime.now()),
             'genomes': ','.join(genomes),
             'exclude': ','.join(exclude),
+            'one_hot': str(one_hot),
+            'merge_introns': str(merge_introns),
             'keep_errors': str(keep_errors),
         }
         for key, value in attrs.items():
@@ -278,5 +280,5 @@ class ExportController(object):
                            i + 1, len(all_coord_ids), coord, coord.genome.species,
                            len(coord.features), len(flat_data['inputs']), len(train_data['inputs']),
                            len(val_data['inputs']), masked_bases_percent, intergenic_bases_percent))
-        self._add_data_attrs(genomes, exclude, keep_errors)
+        self._add_data_attrs(genomes, exclude, one_hot, merge_introns, keep_errors)
         self._close_files()

@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 import argparse
+from pprint import pprint
 
 from helixerprep.export.exporter import ExportController
 
@@ -52,4 +53,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     assert not (args.genomes and args.exclude_genomes), 'Can not include and exclude together'
     assert not (args.merge_introns and not args.one_hot)
+    pprint(vars(args))
+    print()
+
     main(args)
