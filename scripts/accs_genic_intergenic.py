@@ -114,7 +114,7 @@ def main(args):
     for d_start, d_end, p_start, p_end in chunk(h5_data, h5_pred):
         print('starting', h5_data['data/seqids'][d_start], file=sys.stderr)
         # get comparable subset of data
-        if not args.unsorted or all_coords_match(h5_data, h5_pred):  # todo check subset only
+        if not args.unsorted or all_coords_match(h5_data, h5_pred, (d_start, d_end), (p_start, p_end)):
             length = d_end - d_start
             h5_data_y = np.array(h5_data['/data/y'][d_start:d_end])
             h5_pred_y = np.array(h5_pred[args.h5_prediction_dataset][p_start:p_end])
@@ -168,9 +168,15 @@ def main(args):
     acc_calc.print_accuracy()
 
 
-def all_coords_match(h5_data, h5_pred):
-    for data, pred in zip(mk_keys(h5_data), mk_keys(h5_pred)):
-        if data != pred:
+def all_coords_match(h5_data, h5_pred, data_start_end, pred_start_end):
+    d_start, d_end = data_start_end
+    p_start, p_end = pred_start_end
+    # if the arrays aren't all the same size, they certainly won't all match
+    if d_end - d_start != p_end - p_start:
+        return False
+    for key in ['species', 'seqids', 'start_ends']:
+        if np.any(h5_data['data/' + key][data_start_end[0]:data_start_end[1]] !=
+                  h5_pred['data/' + key][pred_start_end[0]:pred_start_end[1]]):
             return False
     return True
 
@@ -208,7 +214,6 @@ def match_up(h5_data, h5_pred, lab_keys, pred_keys, h5_prediction_dataset, data_
         preds = preds[np.lexsort(np.flip(shared_pred_keys.T, axis=0))]
     else:
         lab_lexsort = np.arange(labs.shape[0])
-    # todo, option to save as h5?
     return labs, preds, lab_mask, lab_lexsort
 
 
