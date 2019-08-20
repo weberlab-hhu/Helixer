@@ -4,8 +4,10 @@ import numpy as np
 
 from keras_layer_normalization import LayerNormalization
 from keras.models import Sequential
-from keras.layers import Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, MaxPooling1D, Dropout
-from HelixerModel import HelixerModel, HelixerSequence, acc_row, acc_g_row, acc_ig_row
+from keras.layers import (Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
+                          Activation)
+from HelixerModel import (HelixerModel, HelixerSequence,
+                          acc_row, acc_g_row, acc_ig_row, acc_ig_oh, acc_g_oh)
 
 
 class DanQSequence(HelixerSequence):
@@ -22,11 +24,20 @@ class DanQSequence(HelixerSequence):
                 y = np.pad(y, ((0, 0), (0, overhang), (0, 0)), 'constant',
                            constant_values=(0, 0))
                 sw = np.pad(sw, ((0, 0), (0, 1)), 'constant', constant_values=(0, 0))
-            y = y.reshape((
-                y.shape[0],
-                y.shape[1] // pool_size,
-                pool_size * 3
-            ))
+            if self.one_hot:
+                # make labels 2d so we can use the standart softmax / loss functions
+                y = y.reshape((
+                    y.shape[0],
+                    y.shape[1] // pool_size,
+                    pool_size,
+                    y.shape[-1],
+                ))
+            else:
+                y = y.reshape((
+                    y.shape[0],
+                    y.shape[1] // pool_size,
+                    -1
+                ))
         return X, y, sw
 
 
@@ -64,21 +75,37 @@ class DanQModel(HelixerModel):
 
         model.add(Dropout(self.dropout1))
         model.add(Bidirectional(CuDNNLSTM(self.units, return_sequences=True)))
-
         model.add(Dropout(self.dropout2))
-        model.add(Dense(self.pool_size * 3, activation='sigmoid'))
+
+        if self.one_hot:
+            label_dim = 4 if self.merged_introns else 5
+            model.add(Dense(self.pool_size * label_dim))
+            model.add(Reshape((-1, self.pool_size, label_dim)))
+            model.add(Activation('softmax'))
+        else:
+            model.add(Dense(self.pool_size * 3,  activation='sigmoid'))
         return model
 
     def compile_model(self, model):
-        model.compile(optimizer=self.optimizer,
-                      loss='binary_crossentropy',
-                      sample_weight_mode='temporal',
-                      metrics=[
-                          'accuracy',
-                          acc_row,
-                          acc_g_row,
-                          acc_ig_row,
-                      ])
+        if self.one_hot:
+            model.compile(optimizer=self.optimizer,
+                          loss='categorical_crossentropy',
+                          sample_weight_mode='temporal',
+                          metrics=[
+                              'accuracy',
+                              acc_g_oh,
+                              acc_ig_oh,
+                          ])
+        else:
+            model.compile(optimizer=self.optimizer,
+                          loss='binary_crossentropy',
+                          sample_weight_mode='temporal',
+                          metrics=[
+                              'accuracy',
+                              acc_row,
+                              acc_g_row,
+                              acc_ig_row,
+                          ])
 
 
 if __name__ == '__main__':
