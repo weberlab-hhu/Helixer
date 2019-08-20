@@ -47,54 +47,63 @@ def main(args):
     h5_data = h5py.File(args.data, 'r')
     h5_pred = h5py.File(args.predictions, 'r')
 
-    # get comparable subset of data
-    if not args.unsorted or all_coords_match(h5_data, h5_pred):
-        h5_data_y = np.array(h5_data['/data/y'])
-        h5_pred_y = np.array(h5_pred[args.h5_prediction_dataset])
-        lab_mask = [True] * h5_data_y.shape[0]
-        lab_lexsort = np.arange(h5_data_y.shape[0])
-    else:
-        h5_data_y, h5_pred_y, lab_mask, lab_lexsort = match_up(h5_data, h5_pred,
-                                                               args.h5_prediction_dataset)
-
-    # truncate (for devel efficiency, when we don't need the whole answer)
-    if args.truncate is not None:
-        assert args.save_to is None, "truncate and save not implemented"
-        h5_data_y = h5_data_y[:args.truncate]
-        h5_pred_y = h5_pred_y[:args.truncate]
-    # random subset (for devel efficiency, or just if we don't care that much about the full accuracy
-    if args.sample is not None:
-        assert args.save_to is None, "sample and save not implemented"
-        a_sample = np.random.choice(
-            np.arange(h5_data_y.shape[0]),
-            size=[args.sample],
-            replace=False
-        )
-        h5_data_y = h5_data_y[a_sample]
-        h5_pred_y = h5_pred_y[a_sample]
-
-    # export the cleaned up matched up everything
-    if args.save_to is not None:
-
-        export(args.save_to, h5_in=h5_data,
-               labs=h5_data_y, preds=h5_pred_y,
-               lab_mask=lab_mask, lab_lexsort=lab_lexsort)
-
-    # for all subsequent analysis round predictions
-    h5_pred_y = np.round(h5_pred_y)
-
     # and score
     f1_calc = F1Calculator(None)
     acc_calc = AllAccuracyCalculator()
-    # break into chunks (so as to not run out of memory)
-    i = 0
-    size = 1000
-    while i < h5_data_y.shape[0]:
-        f1_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
-                                              h5_pred_y[i:(i + size)])
-        acc_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
-                                               h5_pred_y[i:(i + size)])
-        i += size
+    # prep keys
+    lab_keys = list(mk_keys(h5_data))
+    pred_keys = list(mk_keys(h5_pred))
+    for d_start, d_end, p_start, p_end in chunk(h5_data, h5_pred):
+        # get comparable subset of data
+        if not args.unsorted or all_coords_match(h5_data, h5_pred):  # todo check subset only
+            length = d_end - d_start
+            h5_data_y = np.array(h5_data['/data/y'][d_start:d_end])
+            h5_pred_y = np.array(h5_pred[args.h5_prediction_dataset][p_start:p_end])
+            lab_mask = [True] * length
+            lab_lexsort = np.arange(length)
+        else:
+            h5_data_y, h5_pred_y, lab_mask, lab_lexsort = match_up(h5_data, h5_pred,
+                                                                   lab_keys, pred_keys,
+                                                                   args.h5_prediction_dataset,
+                                                                   data_start_end=(d_start, d_end),
+                                                                   pred_start_end=(p_start, p_end))
+
+        ## truncate (for devel efficiency, when we don't need the whole answer)
+        #if args.truncate is not None:
+        #    assert args.save_to is None, "truncate and save not implemented"
+        #    h5_data_y = h5_data_y[:args.truncate]
+        #    h5_pred_y = h5_pred_y[:args.truncate]
+        ## random subset (for devel efficiency, or just if we don't care that much about the full accuracy
+        #if args.sample is not None:
+        #    assert args.save_to is None, "sample and save not implemented"
+        #    a_sample = np.random.choice(
+        #        np.arange(h5_data_y.shape[0]),
+        #        size=[args.sample],
+        #        replace=False
+        #    )
+        #    h5_data_y = h5_data_y[a_sample]
+        #    h5_pred_y = h5_pred_y[a_sample]
+
+        # export the cleaned up matched up everything
+        #if args.save_to is not None:
+
+        #    export(args.save_to, h5_in=h5_data,
+        #           labs=h5_data_y, preds=h5_pred_y,
+        #           lab_mask=lab_mask, lab_lexsort=lab_lexsort)
+
+        # for all subsequent analysis round predictions
+        h5_pred_y = np.round(h5_pred_y)
+
+
+        # break into chunks (so as to not run out of memory)
+        i = 0
+        size = 1000
+        while i < h5_data_y.shape[0]:
+            f1_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
+                                                  h5_pred_y[i:(i + size)])
+            acc_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
+                                                   h5_pred_y[i:(i + size)])
+            i += size
 
     f1_calc.print_f1_scores()
     acc_calc.print_accuracy()
@@ -111,13 +120,19 @@ def all_coords_match(h5_data, h5_pred):
     return True
 
 
-def match_up(h5_data, h5_pred, h5_prediction_dataset, data_start_end=None, pred_start_end=None):
+def match_up(h5_data, h5_pred, lab_keys, pred_keys, h5_prediction_dataset, data_start_end=None, pred_start_end=None):
     if data_start_end is None:
         data_start_end = (0, h5_data['data/X'].shape[0])
+    else:
+        data_start_end = [int(x) for x in data_start_end]
     if pred_start_end is None:
         pred_start_end = (0, h5_pred['data/X'].shape[0])
-    lab_keys = list(itertools.islice(mk_keys(h5_data), data_start_end[0], data_start_end[1]))
-    pred_keys = list(itertools.islice(mk_keys(h5_pred), pred_start_end[0], pred_start_end[1]))
+    else:
+        pred_start_end = [int(x) for x in pred_start_end]
+    print(data_start_end, pred_start_end)
+
+    lab_keys = lab_keys[data_start_end[0]:data_start_end[1]]
+    pred_keys = pred_keys[pred_start_end[0]:pred_start_end[1]]
 
     shared = list(set(lab_keys).intersection(set(pred_keys)))
     lab_mask = [x in shared for x in lab_keys]
@@ -125,7 +140,7 @@ def match_up(h5_data, h5_pred, h5_prediction_dataset, data_start_end=None, pred_
 
     # setup output arrays (with shared indexes)
     labs = np.array(h5_data['data/y'][data_start_end[0]:data_start_end[1]])[lab_mask]
-    preds = np.array(h5_pred[h5_prediction_dataset][data_start_end[0]:data_start_end[1]])[pred_mask]
+    preds = np.array(h5_pred[h5_prediction_dataset][pred_start_end[0]:pred_start_end[1]])[pred_mask]
 
     # check if sorting matches
     shared_lab_keys = np.array(lab_keys)[lab_mask]
@@ -187,12 +202,12 @@ def chunk(h5_data, h5_pred):
     d_unique, d_starts, d_counts = np_unique_checksort(data_array)
     p_unique, p_starts, p_counts = np_unique_checksort(pred_array)
     theintersect = np.intersect1d(d_unique, p_unique)
-    d_mask = np.in2d(d_unique, theintersect)
-    p_mask = np.in2d(p_unique, theintersect)
+    d_mask = np.in1d(d_unique, theintersect)
+    p_mask = np.in1d(p_unique, theintersect)
     d_unique, d_starts, d_counts = [x[d_mask] for x in [d_unique, d_starts, d_counts]]
     p_unique, p_starts, p_counts = [x[p_mask] for x in [p_unique, p_starts, p_counts]]
     # np.unique sorts it's output, so data and preds should now match
-    out = np.empty(shape=[d_unique.shape[0], 4])
+    out = np.empty(shape=[d_unique.shape[0], 4], dtype=int)
     # data start, data end, pred start, pred end
     out[:, 0] = d_starts
     out[:, 1] = d_starts + d_counts
