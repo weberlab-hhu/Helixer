@@ -62,11 +62,12 @@ def acc_ig_oh(y_true, y_pred):
 
 
 class ReportIntermediateResult(Callback):
-    def __init__(self):
+    def __init__(self, metric):
+        self.metric = metric
         super(ReportIntermediateResult, self).__init__()
 
     def on_epoch_end(self, epoch, logs=None):
-        nni.report_intermediate_result(logs['val_acc_g_row'])
+        nni.report_intermediate_result(logs[self.metric])
 
 
 class F1ResultsTest(Callback):
@@ -174,7 +175,7 @@ class HelixerModel(ABC):
         if not self.no_f1_score and not self.one_hot:
             callbacks.append(F1ResultsTrain(self.gen_validation_data()))
         if self.nni:
-            callbacks.append(ReportIntermediateResult())
+            callbacks.append(ReportIntermediateResult(self.stopping_metric))
         return callbacks
 
     def set_resources(self):
@@ -362,7 +363,7 @@ class HelixerModel(ABC):
                                 verbose=True)
 
             if self.nni:
-                nni.report_final_result(max(model.history.history['val_acc_g_row']))
+                nni.report_final_result(max(model.history.history[self.stopping_metric]))
 
             self.h5_train.close()
             self.h5_val.close()
