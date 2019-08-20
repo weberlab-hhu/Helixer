@@ -4,7 +4,7 @@ import numpy as np
 import argparse
 from terminaltables import AsciiTable
 from helixerprep.prediction.F1Scores import F1Calculator
-import itertools
+import sys
 
 
 class AccuracyCalculator(object):
@@ -36,11 +36,64 @@ class AllAccuracyCalculator(object):
 
     def print_accuracy(self):
         table_name = "Accuracy"
-        table = [["region", "accuracy"]]
+        table = [["region", "accuracy", "count"]]
         for i, name in enumerate(AllAccuracyCalculator.NAMES):
             acc = self.calculators[i].cal_accuracy()
-            table.append([name, '{:.4f}'.format(acc)])
+            table.append([name, '{:.4f}'.format(acc), self.calculators[i].total])
         print('\n', AsciiTable(table, table_name).table, sep='')
+
+
+class Exporter(object):
+    def __init__(self, h5_path):
+        self.h5_file = h5py.File(h5_path, 'w')
+        self.saved1 = False
+        self.length_added = 0
+
+    def add_data(self, h5_in, labs, preds, lab_mask, lab_lexsort, start, end):
+        if not self.saved1:
+            self.saved1 = True
+            self.mk_datasets(h5_in, labs)
+
+        length = labs.shape[0]
+        for key in h5_in['data'].keys():
+            fullkey = 'data/' + key
+            dset = h5_in[fullkey][start:end]
+            if key != "y":
+                cleanup = np.array(dset)[lab_mask]
+                cleanup = cleanup[lab_lexsort]
+            else:
+                cleanup = labs
+            self.append(fullkey, cleanup, length)
+
+        self.append('predictions', preds, length)
+        self.length_added += length
+
+    def append(self, fullkey, data, length):
+        assert data.shape[0] == length
+        dset = self.h5_file[fullkey]
+        old_len = dset.shape[0]
+        dset.resize(old_len + length, axis=0)
+        dset[old_len:] = data
+
+    def mk_datasets(self, h5_in, labs):
+        # setup datasets
+        for key in h5_in['data'].keys():
+            dset = h5_in['data/' + key]
+            shape = list(dset.shape)
+            shape[0] = 0
+            self.h5_file.create_dataset('data/' + key,
+                                        shape=shape,
+                                        maxshape=[None] + list(shape[1:]),
+                                        dtype=dset.dtype,
+                                        compression="lzf")
+        self.h5_file.create_dataset('predictions',
+                                    shape=[0] + list(labs.shape[1:]),
+                                    maxshape=[None] + list(labs.shape[1:]),
+                                    dtype='f',
+                                    compression='lzf')
+
+    def close(self):
+        self.h5_file.close()
 
 
 def main(args):
@@ -53,7 +106,13 @@ def main(args):
     # prep keys
     lab_keys = list(mk_keys(h5_data))
     pred_keys = list(mk_keys(h5_pred))
+
+    # prep export
+    if args.save_to is not None:
+        exporter = Exporter(args.save_to)
+
     for d_start, d_end, p_start, p_end in chunk(h5_data, h5_pred):
+        print('starting', h5_data['data/seqids'][d_start], file=sys.stderr)
         # get comparable subset of data
         if not args.unsorted or all_coords_match(h5_data, h5_pred):  # todo check subset only
             length = d_end - d_start
@@ -68,34 +127,32 @@ def main(args):
                                                                    data_start_end=(d_start, d_end),
                                                                    pred_start_end=(p_start, p_end))
 
-        ## truncate (for devel efficiency, when we don't need the whole answer)
-        #if args.truncate is not None:
-        #    assert args.save_to is None, "truncate and save not implemented"
-        #    h5_data_y = h5_data_y[:args.truncate]
-        #    h5_pred_y = h5_pred_y[:args.truncate]
-        ## random subset (for devel efficiency, or just if we don't care that much about the full accuracy
-        #if args.sample is not None:
-        #    assert args.save_to is None, "sample and save not implemented"
-        #    a_sample = np.random.choice(
-        #        np.arange(h5_data_y.shape[0]),
-        #        size=[args.sample],
-        #        replace=False
-        #    )
-        #    h5_data_y = h5_data_y[a_sample]
-        #    h5_pred_y = h5_pred_y[a_sample]
+        # truncate (for devel efficiency, when we don't need the whole answer)
+        if args.truncate is not None:
+            assert args.save_to is None, "truncate and save not implemented"
+            h5_data_y = h5_data_y[:args.truncate]
+            h5_pred_y = h5_pred_y[:args.truncate]
+        # random subset (for devel efficiency, or just if we don't care that much about the full accuracy
+        if args.sample is not None:
+            assert args.save_to is None, "sample and save not implemented"
+            a_sample = np.random.choice(
+                np.arange(h5_data_y.shape[0]),
+                size=[args.sample],
+                replace=False
+            )
+            h5_data_y = h5_data_y[a_sample]
+            h5_pred_y = h5_pred_y[a_sample]
 
         # export the cleaned up matched up everything
-        #if args.save_to is not None:
-
-        #    export(args.save_to, h5_in=h5_data,
-        #           labs=h5_data_y, preds=h5_pred_y,
-        #           lab_mask=lab_mask, lab_lexsort=lab_lexsort)
+        if args.save_to is not None:
+            exporter.add_data(h5_in=h5_data, labs=h5_data_y, preds=h5_pred_y,
+                              lab_mask=lab_mask, lab_lexsort=lab_lexsort,
+                              start=d_start, end=d_end)
 
         # for all subsequent analysis round predictions
         h5_pred_y = np.round(h5_pred_y)
 
-
-        # break into chunks (so as to not run out of memory)
+        # break into chunks (keep mem usage minimal)
         i = 0
         size = 1000
         while i < h5_data_y.shape[0]:
@@ -105,12 +162,10 @@ def main(args):
                                                    h5_pred_y[i:(i + size)])
             i += size
 
+    if args.save_to is not None:
+        exporter.close()
     f1_calc.print_f1_scores()
     acc_calc.print_accuracy()
-
-
-def acc_percent(y, preds):
-    return np.sum(y == preds) / np.product(y.shape) * 100
 
 
 def all_coords_match(h5_data, h5_pred):
@@ -129,7 +184,6 @@ def match_up(h5_data, h5_pred, lab_keys, pred_keys, h5_prediction_dataset, data_
         pred_start_end = (0, h5_pred['data/X'].shape[0])
     else:
         pred_start_end = [int(x) for x in pred_start_end]
-    print(data_start_end, pred_start_end)
 
     lab_keys = lab_keys[data_start_end[0]:data_start_end[1]]
     pred_keys = pred_keys[pred_start_end[0]:pred_start_end[1]]
@@ -156,31 +210,6 @@ def match_up(h5_data, h5_pred, lab_keys, pred_keys, h5_prediction_dataset, data_
         lab_lexsort = np.arange(labs.shape[0])
     # todo, option to save as h5?
     return labs, preds, lab_mask, lab_lexsort
-
-
-def export(h5_path, h5_in, labs, preds, lab_mask, lab_lexsort):
-    h5_file = h5py.File(h5_path, 'w')
-    # setup datasets
-    for key in h5_in['data'].keys():
-        dset = h5_in['data/' + key]
-        shape = list(dset.shape)
-        shape[0] = labs.shape[0]
-        h5_file.create_dataset('data/' + key,
-                               shape=shape,
-                               dtype=dset.dtype,
-                               compression="lzf"
-                               )
-        if key != "y":
-            cleanup = np.array(dset)[lab_mask]
-            cleanup = cleanup[lab_lexsort]
-            h5_file['data/' + key][:] = cleanup
-    h5_file['data/y'][:] = labs
-    h5_file.create_dataset('predictions',
-                           shape=preds.shape,
-                           dtype='int8',
-                           compression='lzf')
-    h5_file['predictions'][:] = preds
-    h5_file.close()
 
 
 def np_unique_checksort(an_array):
@@ -232,7 +261,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, required=True)
     parser.add_argument('--predictions', type=str, required=True)
-    parser.add_argument('--truncate', type=int, default=None, help="can set to e.g. 1000 for development speed")
+    parser.add_argument('--truncate', type=int, default=None, help="look at just the first N chunks of each sequence")
     parser.add_argument('--h5_prediction_dataset', type=str, default='/predictions',
                         help="dataset in predictions h5 file to compare with data's '/data/y', default='/predictions',"
                              "the other likely option is '/data/y'")
@@ -240,6 +269,6 @@ if __name__ == "__main__":
                         help="don't assume coordinates match up but use the h5 datasets [species, seqids, start_ends]"
                              "to check order and reorder as necessary")
     parser.add_argument('--sample', type=int, default=None,
-                        help="take a random sample of the data of this many chunks")
+                        help="take a random sample of the data of this many chunks per sequence")
     parser.add_argument('--save_to', type=str, help="set this to output the newly sorted matches to a h5 file")
     main(parser.parse_args())
