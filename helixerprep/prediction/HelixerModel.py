@@ -260,16 +260,17 @@ class HelixerModel(ABC):
             return np.count_nonzero(ic_samples == True)
 
         def detect_label_type(h5_file):
-            if h5_file['/data/y'].shape[2] == 3:
+            self.label_dim = h5_file['/data/y'].shape[2]
+            if self.label_dim == 3:
                 print('\nMulti class data found')
                 self.one_hot = False
                 self.merged_introns = False
             else:
                 self.one_hot = True
-                if h5_file['/data/y'].shape[2] == 4:
+                if self.label_dim == 4:
                     self.merged_introns = True
                     print('\nOne hot encoding data with merged introns found (dim = 4)')
-                elif h5_file['/data/y'].shape[2] == 5:
+                elif self.label_dim == 5:
                     self.merged_introns = False
                     print('\nOne hot encoding data without merged introns found (dim = 5)')
                 else:
@@ -378,6 +379,8 @@ class HelixerModel(ABC):
                 'acc_row': acc_row,
                 'acc_g_row': acc_g_row,
                 'acc_ig_row': acc_ig_row,
+                'acc_g_oh': acc_g_oh,
+                'acc_ig_oh': acc_ig_oh,
             })
             if self.eval:
                 if not self.no_f1_score:
@@ -404,13 +407,16 @@ class HelixerModel(ABC):
                 for i in range(len(test_sequence)):
                     print(i, '/', len(test_sequence))
                     predictions = model.predict_on_batch(test_sequence[i][0]).astype(np.float16)
+                    # join last two dims when prediction one hot labels
+                    if self.one_hot:
+                        predictions = predictions.reshape(predictions.shape[:2] + (-1,))
                     # reshape when predicting more than one point at a time
-                    if predictions.shape[2] != 3:
-                        n_points = predictions.shape[2] // 3
+                    if predictions.shape[2] != self.label_dim:
+                        n_points = predictions.shape[2] // self.label_dim
                         predictions = predictions.reshape(
                             predictions.shape[0],
                             predictions.shape[1] * n_points,
-                            3,
+                            self.label_dim,
                         )
                         # remove overhang if existing
                         if predictions.shape[1] > self.shape_test[1]:
