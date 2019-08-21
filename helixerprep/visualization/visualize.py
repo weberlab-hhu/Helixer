@@ -13,17 +13,40 @@ class Visualization():
     def __init__(self, root, args):
         self.root = root
         self.args = args
+        self.offset = 0  # of a sequence
+        self.seq_index = 0
 
+        # load and transform data
+        self.h5_data = h5py.File(args.test_data, 'r')
+        self.h5_predictions = h5py.File(args.predictions, 'r')
+
+        # detect labels
+        self.label_dim = self.h5_data['/data/y'].shape[-1]
+        self.one_hot = self.label_dim > 3
+
+        # set a few constants
         self.BASE_COUNT_X = 100
         self.BASE_COUNT_SCREEN = self.BASE_COUNT_X * args.n_rows
         self.MARGIN_BOTTOM = 100
         self.HEATMAP_SIZE_X = 1920
         self.PIXEL_SIZE = self.HEATMAP_SIZE_X // self.BASE_COUNT_X
-        self.HEATMAP_SIZE_Y = self.PIXEL_SIZE * 3 * (args.n_rows * 2 - 1)
+        self.HEATMAP_SIZE_Y = self.PIXEL_SIZE * self.label_dim * (args.n_rows * 2 - 1)
         self.DPI = 96  # monitor specific
 
-        self.offset = 0  # of a sequence
-        self.seq_index = 0
+        # save n_seq and chunk_len from predictions as there are likely a tiny bit fewer
+        # than labels, due to the data generator in keras
+        self.n_seq = self.h5_predictions['/predictions'].shape[0]
+        self.chunk_len = self.h5_predictions['/predictions'].shape[1]
+        assert self.chunk_len % self.BASE_COUNT_SCREEN == 0
+
+        if self.args.exclude_errors:
+            self.err_idx = np.squeeze(np.argwhere(np.array(self.h5_data['/data/err_samples']) == True))
+
+        fully_intergenic_bool = self.h5_data['/data/fully_intergenic_samples']
+        self.genic_indexes = np.squeeze(np.argwhere(np.array(fully_intergenic_bool) == False))
+
+        if self.args.exclude_errors:
+            self.genic_indexes = np.setdiff1d(self.genic_indexes, self.err_idx)
 
         # set up GUI
         self.frame = tk.Frame(self.root)
@@ -73,25 +96,6 @@ class Visualization():
         self.error_label = tk.Label(self.frame)
         self.error_label.grid(row=4, column=1)
 
-        # load and transform data
-        self.h5_data = h5py.File(args.test_data, 'r')
-        self.h5_predictions = h5py.File(args.predictions, 'r')
-
-        # save n_seq and chunk_len from predictions as there are likely a tiny bit fewer
-        # than labels, due to the data generator in keras
-        self.n_seq = self.h5_predictions['/predictions'].shape[0]
-        self.chunk_len = self.h5_predictions['/predictions'].shape[1]
-        assert self.chunk_len % self.BASE_COUNT_SCREEN == 0
-
-        if self.args.exclude_errors:
-            self.err_idx = np.squeeze(np.argwhere(np.array(self.h5_data['/data/err_samples']) == True))
-
-        fully_intergenic_bool = self.h5_data['/data/fully_intergenic_samples']
-        self.genic_indexes = np.squeeze(np.argwhere(np.array(fully_intergenic_bool) == False))
-
-        if self.args.exclude_errors:
-            self.genic_indexes = np.setdiff1d(self.genic_indexes, self.err_idx)
-
         # figure, canvas etc
         fig_main = Figure(figsize=(self.HEATMAP_SIZE_X / self.DPI, self.HEATMAP_SIZE_Y / self.DPI),
                      dpi=self.DPI)
@@ -101,7 +105,7 @@ class Visualization():
         self.canvas_main.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         fig_summary = Figure(figsize=(self.HEATMAP_SIZE_X / self.DPI,
-                                      self.PIXEL_SIZE * 3/ self.DPI),
+                                      self.PIXEL_SIZE * self.label_dim / self.DPI),
                      dpi=self.DPI)
         self.ax_summary = fig_summary.add_subplot(111)
         self.canvas_summary = FigureCanvasTkAgg(fig_summary, self.root)
@@ -114,10 +118,10 @@ class Visualization():
         """loads data for the heatmap and possibly inputs dummy data that serves as margin"""
         def add_dummy_data(dset, new_dset):
             # insert valid data at every second row
-            new_dset[0::2,:] = dset.reshape((self.args.n_rows, self.BASE_COUNT_X, 3))
+            new_dset[0::2,:] = dset.reshape((self.args.n_rows, self.BASE_COUNT_X, self.label_dim))
             # reshape back to properly display in heatmap
             new_dset = np.swapaxes(new_dset, 1, 2)
-            new_dset = new_dset.reshape((self.args.n_rows * 2 - 1) * 3, self.BASE_COUNT_X)
+            new_dset = new_dset.reshape((self.args.n_rows * 2 - 1) * self.label_dim, self.BASE_COUNT_X)
             return new_dset
 
         off_lim = offset + seq_len
@@ -128,18 +132,20 @@ class Visualization():
 
         dset = self.h5_data['/data/sample_weights']
         label_masks = np.array(dset[self.seq_index][offset:off_lim])
-        label_masks = np.repeat(label_masks[:, np.newaxis], 3, axis=1)
+        label_masks = np.repeat(label_masks[:, np.newaxis], self.label_dim, axis=1)
         label_masks = ([1] - label_masks).astype(bool)
 
         if include_dummy:
             # reshape and add dummy data
-            new_labels = np.zeros((self.args.n_rows * 2 - 1, self.BASE_COUNT_X, 3),
+            new_labels = np.zeros((self.args.n_rows * 2 - 1, self.BASE_COUNT_X, self.label_dim),
                                   dtype=labels.dtype)
             labels = add_dummy_data(labels, new_labels)
-            new_errors = np.zeros((self.args.n_rows * 2 - 1, self.BASE_COUNT_X, 3),
+            new_errors = np.zeros((self.args.n_rows * 2 - 1, self.BASE_COUNT_X, self.label_dim),
                                   dtype=errors.dtype)
             errors = add_dummy_data(errors, new_errors)
-            new_label_masks = np.ones((self.args.n_rows * 2 - 1, self.BASE_COUNT_X, 3)).astype(bool)
+            new_label_masks = np.ones((self.args.n_rows * 2 - 1,
+                                       self.BASE_COUNT_X,
+                                       self.label_dim)).astype(bool)
             label_masks = add_dummy_data(label_masks, new_label_masks)
 
         # make string annotations
@@ -178,7 +184,7 @@ class Visualization():
 
         labels = label_str == '-'  # convert to bool
         labels = np.swapaxes(labels, 0, 1)
-        labels = labels.reshape((3, 100, labels.shape[1] // 100))
+        labels = labels.reshape((self.label_dim, 100, labels.shape[1] // 100))
         labels = labels.any(axis=2)
         labels_str = labels.astype(str)
         labels_str[labels_str == 'True'] = '-'
@@ -187,7 +193,7 @@ class Visualization():
         masked_errors = np.ma.masked_array(errors, mask=label_masks)
         # reshape and average over each part
         masked_errors = np.swapaxes(masked_errors, 0, 1)
-        masked_errors = masked_errors.reshape((3, 100, self.chunk_len // 100))
+        masked_errors = masked_errors.reshape((self.label_dim, 100, self.chunk_len // 100))
         masked_errors_avg = np.mean(masked_errors, axis=2)
 
         # paint
