@@ -236,8 +236,8 @@ class CoordNumerifier(object):
                 .one()[0])
         except NoResultFound:
             gc_content = 0
-            print('WARNING: no gc_content found for coord {}, set to 0 in the data'
-                      .format(self.coord.seqid))
+            logging.warning('No gc_content found for coord {}, set to 0 in the data'
+                                 .format(self.coord.seqid))
         # do not output the input_masks as it is not used for anything
         out = {
             'inputs': inputs,
