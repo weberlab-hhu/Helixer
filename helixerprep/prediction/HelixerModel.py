@@ -19,6 +19,8 @@ import numpy as np
 import tensorflow as tf
 from pprint import pprint
 from functools import partial
+from sklearn.metrics import confusion_matrix
+
 from keras_layer_normalization import LayerNormalization
 from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
 from keras import optimizers
@@ -86,6 +88,33 @@ class F1ResultsTrain(Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         self.calculator.count_and_calculate(self.model)
+
+
+class ConfusionMatrixTest(Callback):
+    def __init__(self, generator, label_dim):
+        self.generator = generator
+        self.label_dim = label_dim
+        super(ConfusionMatrixTest, self).__init__()
+
+    def on_test_end(self, logs=None):
+        def reshape_data(arr, n_steps):
+            arr = np.argmax(arr, axis=-1).astype(np.int8)
+            arr = arr.reshape((arr.shape[0], -1))
+            arr = arr[:, :n_steps].ravel()  # remove overhang
+            return arr
+
+        confusion_matrix_sum = np.zeros((self.label_dim, self.label_dim))
+        for i in range(len(self.generator)):
+            print(i, '/', len(self.generator))
+            X, y_true, sw = self.generator[i]
+            y_pred = self.model.predict_on_batch(X)
+            y_pred = reshape_data(y_pred, X.shape[1])
+            y_true = reshape_data(y_true, X.shape[1])
+            confusion_matrix_sum += confusion_matrix(y_true, y_pred, labels=range(4))
+
+        # divide columns in confusion matrix by # of predictions made per class
+        confusion_matrix_sum /= np.sum(confusion_matrix_sum, axis=0)
+        pprint(confusion_matrix_sum)
 
 
 class HelixerSequence(Sequence):
@@ -383,10 +412,13 @@ class HelixerModel(ABC):
                 'acc_ig_oh': acc_ig_oh,
             })
             if self.eval:
-                if not self.no_f1_score:
+                if not self.no_f1_score and not self.one_hot:
                     callback = [F1ResultsTest(self.gen_test_data())]
                 else:
-                    callback = []
+                    if self.one_hot:
+                        callback = [ConfusionMatrixTest(self.gen_test_data(), self.label_dim)]
+                    else:
+                        callback = []
                 metrics = model.evaluate_generator(generator=self.gen_test_data(),
                                                    callbacks=callback,
                                                    verbose=True)
@@ -405,9 +437,10 @@ class HelixerModel(ABC):
                 pred_out = h5py.File(self.prediction_output_path, 'w')
                 test_sequence = self.gen_test_data()
                 for i in range(len(test_sequence)):
-                    print(i, '/', len(test_sequence))
+                    if self.verbose:
+                        print(i, '/', len(test_sequence))
                     predictions = model.predict_on_batch(test_sequence[i][0]).astype(np.float16)
-                    # join last two dims when prediction one hot labels
+                    # join last two dims when predicting one hot labels
                     if self.one_hot:
                         predictions = predictions.reshape(predictions.shape[:2] + (-1,))
                     # reshape when predicting more than one point at a time
@@ -423,6 +456,7 @@ class HelixerModel(ABC):
                             predictions = predictions[:, :self.shape_test[1], :]
                     # create or expand dataset
                     if i == 0:
+                        old_len = 0
                         pred_out.create_dataset('/predictions',
                                                 data=predictions,
                                                 maxshape=(None,) + predictions.shape[1:],
@@ -430,7 +464,6 @@ class HelixerModel(ABC):
                                                 dtype='float16',
                                                 compression='lzf',
                                                 shuffle=True)
-                        old_len = 0
                     else:
                         old_len = pred_out['/predictions'].shape[0]
                         pred_out['/predictions'].resize(old_len + predictions.shape[0], axis=0)
