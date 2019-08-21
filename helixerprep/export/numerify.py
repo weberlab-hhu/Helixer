@@ -5,6 +5,8 @@ import logging
 from abc import ABC, abstractmethod
 
 from geenuff.base import types
+from geenuff.base.orm import Coordinate, Genome
+from ..core.orm import Mer
 
 
 AMBIGUITY_DECODE = {
@@ -197,38 +199,48 @@ class CoordNumerifier(object):
     to ensure consistent parameters.
     Currently just selects all Features of the given Coordinate.
     """
-    def __init__(self, coord, is_plus_strand, max_len, one_hot, merge_introns):
+    def __init__(self, session, coord, is_plus_strand, max_len, one_hot, merge_introns):
         assert isinstance(is_plus_strand, bool)
         assert isinstance(max_len, int) and max_len > 0
-        if not coord.features:
-            logging.warning('Sequence {} has no annoations'.format(coord.seqid))
+        self.session = session
+        self.coord = coord
 
-        self.anno_numerifier = BasePairAnnotationNumerifier(coord=coord,
-                                                            features=coord.features,
+        if not self.coord.features:
+            logging.warning('Sequence {} has no annoations'.format(self.coord.seqid))
+
+        self.anno_numerifier = BasePairAnnotationNumerifier(coord=self.coord,
+                                                            features=self.coord.features,
                                                             is_plus_strand=is_plus_strand,
                                                             max_len=max_len,
                                                             one_hot=one_hot,
                                                             merge_introns=merge_introns)
-        self.seq_numerifier = SequenceNumerifier(coord=coord,
+        self.seq_numerifier = SequenceNumerifier(coord=self.coord,
                                                  is_plus_strand=is_plus_strand,
                                                  max_len=max_len)
 
     def numerify(self):
         inputs, input_masks = self.seq_numerifier.coord_to_matrices()
         labels, label_masks = self.anno_numerifier.coord_to_matrices()
-        coord = self.anno_numerifier.coord
+
         # flip the start ends back for - strand
         if self.anno_numerifier.is_plus_strand:
             start_ends = self.anno_numerifier.paired_steps
         else:
             start_ends = [(x[1], x[0]) for x in self.anno_numerifier.paired_steps]
-        # do not output the input_masks yet as it is not used for anything
+
+        gc_content = (self.session.query(Mer.count)
+            .filter(Mer.coordinate == self.coord)
+            .filter(Mer.mer_sequence == 'C')
+            .one()[0])
+        # do not output the input_masks as it is not used for anything
         out = {
             'inputs': inputs,
-            'label_masks': label_masks,
             'labels': labels,
-            'species': coord.genome.species.encode('ASCII'),
-            'seqids': coord.seqid.encode('ASCII'),
-            'start_ends': start_ends
+            'label_masks': label_masks,
+            'gc_contents': gc_content,
+            'coord_lengths': self.coord.length,
+            'species': self.coord.genome.species.encode('ASCII'),
+            'seqids': self.coord.seqid.encode('ASCII'),
+            'start_ends': start_ends,
         }
         return out

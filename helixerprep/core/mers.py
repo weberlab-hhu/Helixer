@@ -1,20 +1,18 @@
 import os
-import multiprocessing
-import random
+from glob import glob
 from shutil import copyfile
-from sqlalchemy.orm import load_only
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import geenuff
-from geenuff.base.helpers import full_db_path
-from geenuff.base.orm import Coordinate
+from geenuff.base.helpers import full_db_path, reverse_complement
+from geenuff.base.orm import Coordinate, Genome
 from helixerprep.core.orm import Mer
-from helixerprep.core.helpers import MerCounter
 
 
 class MerController(object):
-    def __init__(self, db_path_in, db_path_out):
+    def __init__(self, db_path_in, db_path_out, meta_info_root_path):
+        self.meta_info_root_path = meta_info_root_path
         self._setup_db(db_path_in, db_path_out)
         self._mk_session()
 
@@ -35,48 +33,54 @@ class MerController(object):
             geenuff.orm.Base.metadata.tables['mer'].create(self.engine)
         self.session = sessionmaker(bind=self.engine)()
 
-    @staticmethod
-    def _count_mers(coord, min_k, max_k):
-        mer_counters = []
-        # setup all counters
-        for k in range(min_k, max_k + 1):
-            mer_counters.append(MerCounter(k))
-
-        # count all 'mers
-        for i in range(len(coord.sequence)):
-            # count backwards to potentially benefit from some caching
-            for k in range(max_k, min_k - 1, -1):
-                if i + 1 >= k:
-                    substr = coord.sequence[i-(k-1):i+1]
-                    mer_counters[k - 1].add_count(substr)
-        return coord, mer_counters
-
-    def add_mers(self, min_k, max_k, n_processes=8, limit=1000):
-        # load 'limit' coordinates at once into memory
-        # passing the session to the worker does not work as it is not pickleable
-        all_mer_ids = self.session.query(Mer.id)
-        n_coords_without_mers = (self.session.query(Coordinate).
-                                    filter(Coordinate.id.notin_(all_mer_ids)).count())
-        for offset in range(0, n_coords_without_mers, limit):
-            coords_without_mers = (self.session.query(Coordinate).
-                                      filter(Coordinate.id.notin_(all_mer_ids)).
-                                      limit(limit).offset(offset).all())
-            random.shuffle(coords_without_mers)
-
-            input_data = [[c, min_k, max_k] for c in coords_without_mers]
-            with multiprocessing.Pool(processes=n_processes) as pool:
-                mer_counters = pool.starmap(MerController._count_mers, input_data)
-            self._add_mer_counters_to_db(mer_counters)
-            print('kmers added: {}/{}'.format(offset + limit, n_coords_without_mers))
-
-    def _add_mer_counters_to_db(self, mer_counters_all_coords):
-        # convert to canonical and setup db entries
-        for coord, mer_counters in mer_counters_all_coords:
-            for mer_counter in mer_counters:
-                for mer_sequence, count in mer_counter.export().items():
-                    mer = Mer(coordinate_id=coord.id,
-                              mer_sequence=mer_sequence,
-                              count=count,
-                              length=mer_counter.k)
-                    self.session.add(mer)
+    def _add_mers_of_seqid(self, species, seqid, mers):
+        print(species, seqid)
+        genome_id = self.session.query(Genome.id).filter(Genome.species == species).one()[0]
+        coord_id = (self.session.query(Coordinate.id)
+                       .filter(Coordinate.genome_id == genome_id)
+                       .filter(Coordinate.seqid == seqid)
+                       .one())[0]
+        for mer_sequence, count in mers.items():
+            mer = Mer(coordinate_id=coord_id,
+                      mer_sequence=mer_sequence,
+                      count=count,
+                      length=len(mer_sequence))
+            self.session.add(mer)
         self.session.commit()
+
+    def add_mer_counts_to_db(self):
+        """Tries to add all kmer counts it can find for each coordinate in the db
+        Assumes the kmer file to contain non-collapsed kmers ordered by coordinate first and kmer
+        sequence second"""
+        assert os.path.exists(self.meta_info_root_path)
+        genomes_in_db = self.session.query(Genome).all()
+        for i, genome in enumerate(genomes_in_db):
+            kmer_file = os.path.join(self.meta_info_root_path, genomes_in_db[i].species,
+                                     'meta_collection', 'kmers', 'kmers.tsv')
+            if os.path.exists(kmer_file):
+                last_seqid = ''
+                seqid_mers = {}  # here we collect the sum of the
+                for i, line in enumerate(open(kmer_file)):
+                    # loop setup
+                    if i == 0:
+                        continue  # skip header
+                    seqid, mer_sequence, count, _ = line.strip().split('\t')
+                    count = int(count)
+                    if i == 1:
+                        last_seqid = seqid
+
+                    # insert coordinate mers
+                    if last_seqid != seqid:
+                        self._add_mers_of_seqid(genome.species, last_seqid, seqid_mers)
+                        seqid_mers = {}
+                        last_seqid = seqid
+
+                    # figure out kmer collapse
+                    rc = ''.join(reverse_complement(mer_sequence))
+                    key = rc if rc < mer_sequence else mer_sequence
+                    if key in seqid_mers:
+                        seqid_mers[key] += count
+                    else:
+                        seqid_mers[key] = count
+                self._add_mers_of_seqid(genome.species, last_seqid, seqid_mers)
+                print('Kmers from file {} added\n'.format(kmer_file))

@@ -5,9 +5,10 @@ from helixerprep.core.mers import MerController
 
 
 def main(args):
-    controller = MerController(args.db_path_in, args.db_path_out)  # inserts Mer table
-    if args.max_k > 0:
-        controller.add_mers(args.min_k, args.max_k)
+    # insert mer table
+    controller = MerController(args.db_path_in, args.db_path_out, args.meta_info_root_path)
+    # lookup kmers and add what we find
+    controller.add_mer_counts_to_db()
 
 
 if __name__ == '__main__':
@@ -19,17 +20,10 @@ if __name__ == '__main__':
                     help=('Output path of the new Helixer SQLite database. If not provided '
                           'the input database will be replaced.'))
 
-    fasta_specific = parser.add_argument_group("Controlling the kmer generation:")
-    fasta_specific.add_argument('--min-k', help='minimum size kmer to calculate from sequence',
-                                default=0, type=int)
-    fasta_specific.add_argument('--max-k', help='maximum size kmer to calculate from sequence',
-                                default=0, type=int)
-
+    fasta_specific = parser.add_argument_group("Controlling the kmer lookup:")
+    fasta_specific.add_argument('--meta-info-root-path', type=str,
+                                help=('Absolute folder path from where the jellyfish files are in the '
+                                      'subfolder {species}/meta_collection/jellyfish/'),
+                                default='/mnt/data/ali/share/phytozome_organized/ready/train')
     args = parser.parse_args()
-
-    assert args.min_k <= args.max_k, 'min-k can not be greater than max-k'
-    if args.max_k > 0 and args.min_k == 0:
-        args.min_k = 1
-        print('min-k parameter set to 1')
-
     main(args)

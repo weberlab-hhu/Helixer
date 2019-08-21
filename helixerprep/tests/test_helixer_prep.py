@@ -7,11 +7,9 @@ import h5py
 
 import geenuff
 from geenuff.tests.test_geenuff import setup_data_handler, mk_memory_session
-
 from geenuff.applications.importer import ImportController
 from geenuff.base.orm import SuperLocus, Genome, Coordinate
 from geenuff.base.helpers import reverse_complement
-from ..core import helpers
 from ..core.mers import MerController
 from ..core.orm import Mer
 from ..export import numerify
@@ -65,7 +63,7 @@ def mk_controllers(source_db, helixer_db=TMP_DB, h5_out=H5_OUT_FOLDER, only_test
         if os.path.exists(p):
             os.remove(p)
 
-    mer_controller = MerController(source_db, helixer_db)
+    mer_controller = MerController(source_db, helixer_db, '')
     export_controller = ExportController(helixer_db, h5_out, only_test_set=only_test_set)
     return mer_controller, export_controller
 
@@ -123,86 +121,6 @@ def test_copy_n_import():
 
     # if I ever get to collapsing redundant features this will change
     assert len(all_features) == 9
-
-
-### sequences ###
-def test_add_mers():
-    mer_controller, _ = mk_controllers(source_db=DUMMYLOCI_DB)
-    mer_controller.add_mers(1, 3)
-    query = mer_controller.session.query
-
-    coords = query(Coordinate).all()
-    for coord in coords:
-        mers = query(Mer).filter(Mer.coordinate==coord).filter(Mer.length==1).all()
-        assert len(mers) == 3
-        mers = query(Mer).filter(Mer.coordinate==coord).filter(Mer.length==2).all()
-        assert len(mers) == 11  # some mers can be their own reverse complement here
-        mers = query(Mer).filter(Mer.coordinate==coord).filter(Mer.length==3).all()
-        assert len(mers) == ((4 ** 3) / 2) + 1
-
-
-def test_count2mers():
-    mc = helpers.MerCounter(2)
-    sequence = 'AAAA'
-    mc.add_sequence(sequence)
-    counted = mc.export()
-    print(counted)
-    assert counted['AA'] == 3
-
-    sequence = 'TTT'
-    mc.add_sequence(sequence)
-    counted = mc.export()
-    assert counted['AA'] == 5
-
-    mc2 = helpers.MerCounter(2)
-    seq = 'AAATTT'
-    mc2.add_sequence(seq)
-    counted = mc2.export()
-    non0 = [x for x in counted if counted[x] > 0]
-    assert len(non0) == 2
-    assert counted['AA'] == 4
-    assert counted['AT'] == 1
-
-
-def test_count_range_of_mers():
-    seq = 'ATATAT'
-
-    genome = Genome()
-    coordinate = Coordinate(genome=genome, length=6, sequence=seq)
-    all_mer_counters = MerController._count_mers(coordinate, 1, 6)[1]
-
-    assert len(all_mer_counters) == 6
-
-    # make sure total counts for any mer length, k, equal seq_length - k + 1
-    for i in range(len(all_mer_counters)):
-        counted = all_mer_counters[i].export()
-        assert sum(counted.values()) == 6 - i
-
-    # counting 1-mers, expect 6 x 'A'
-    counted = all_mer_counters[0].export()
-    assert counted['A'] == 6
-
-    # counting 2-mers, expect (3, 'AT'; 2 'TA')
-    counted = all_mer_counters[1].export()
-    assert counted['AT'] == 3
-    assert counted['TA'] == 2
-
-    # counting 3-mers, expect (4, 'ATA')
-    counted = all_mer_counters[2].export()
-    assert counted['ATA'] == 4
-
-    # counting 4-mers, expect (2, 'ATAT'; 1, 'TATA')
-    counted = all_mer_counters[3].export()
-    assert counted['ATAT'] == 2
-    assert counted['TATA'] == 1
-
-    # counting 5-mers, expect (2, 'ATATA')
-    counted = all_mer_counters[4].export()
-    assert counted['ATATA'] == 2
-
-    # counting 6-mer, expect original sequence, uppercase
-    counted = all_mer_counters[5].export()
-    assert counted['ATATAT'] == 1
 
 
 #### numerify ####

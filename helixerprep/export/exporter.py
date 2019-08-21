@@ -77,12 +77,17 @@ class ExportController(object):
             sample_weights[j, :sample_len] = label_masks[j]
         err_samples = np.any(sample_weights == 0, axis=1)
         # just one entry per chunk
-        fully_intergenic_samples = np.all(y[:, :, 0] == 1, axis=1)
-        start_ends = np.array(flat_data['start_ends'])
+        if n_y_cols > 3:
+            fully_intergenic_samples = np.all(y[:, :, 0] == 1, axis=1)
+        else:
+            fully_intergenic_samples = np.all(y[:, :, 0] == 0, axis=1)
+        gc_contents = np.array(flat_data['gc_contents'], dtype=np.uint64)
+        coord_lengths = np.array(flat_data['coord_lengths'], dtype=np.uint64)
+        start_ends = np.array(flat_data['start_ends'], dtype=np.int64)
         # check if this is the first batch to save
         dset_keys = [
-            'X', 'y', 'sample_weights', 'err_samples', 'fully_intergenic_samples', 'start_ends',
-            'species', 'seqids'
+            'X', 'y', 'sample_weights', 'gc_contents', 'coord_lengths', 'err_samples',
+            'fully_intergenic_samples', 'start_ends', 'species', 'seqids'
         ]
         if '/data/X' in h5_file:
             for dset_key in dset_keys:
@@ -112,6 +117,16 @@ class ExportController(object):
                                    dtype='int8',
                                    compression='lzf',
                                    shuffle=True)
+            h5_file.create_dataset('/data/gc_contents',
+                                   shape=(n_seq,),
+                                   maxshape=(None,),
+                                   dtype='uint64',
+                                   compression='lzf')
+            h5_file.create_dataset('/data/coord_lengths',
+                                   shape=(n_seq,),
+                                   maxshape=(None,),
+                                   dtype='uint64',
+                                   compression='lzf')
             h5_file.create_dataset('/data/err_samples',
                                    shape=(n_seq,),
                                    maxshape=(None,),
@@ -122,24 +137,24 @@ class ExportController(object):
                                    maxshape=(None,),
                                    dtype='bool',
                                    compression='lzf')
-            h5_file.create_dataset('data/species',
+            h5_file.create_dataset('/data/species',
                                    shape=(n_seq,),
                                    maxshape=(None,),
                                    dtype='S25',
                                    compression='lzf')
-            h5_file.create_dataset('data/seqids',
+            h5_file.create_dataset('/data/seqids',
                                    shape=(n_seq,),
                                    maxshape=(None,),
                                    dtype='S50',
                                    compression='lzf')
-            h5_file.create_dataset('data/start_ends',
+            h5_file.create_dataset('/data/start_ends',
                                    shape=(n_seq, 2),
                                    maxshape=(None, 2),
-                                   dtype='int32',
+                                   dtype='int64',
                                    compression='lzf')
         # add new data
-        dsets = [X, y, sample_weights, err_samples, fully_intergenic_samples, start_ends, flat_data['species'],
-                 flat_data['seqids']]
+        dsets = [X, y, sample_weights, gc_contents, coord_lengths, err_samples,
+                 fully_intergenic_samples, start_ends, flat_data['species'], flat_data['seqids']]
         for dset_key, data in zip(dset_keys, dsets):
             h5_file['/data/' + dset_key][old_len:] = data
         h5_file.flush()
@@ -201,17 +216,17 @@ class ExportController(object):
 
     def _numerify_coord(self, coord_id, chunk_size, one_hot, merge_introns, keep_errors):
         list_in_list_out = ['inputs', 'labels', 'label_masks', 'start_ends']
-        str_in_list_out = ['species', 'seqids']
-
+        one_in_list_out = ['gc_contents', 'coord_lengths', 'species', 'seqids']
         coord = self.session.query(Coordinate).filter(Coordinate.id == coord_id).one()
         # will pre-organize all data and metadata to have one entry per chunk in flat_data below
         flat_data = {}
-        for key in list_in_list_out + str_in_list_out:
+        for key in list_in_list_out + one_in_list_out:
             flat_data[key] = []
 
         n_masked_bases, n_intergenic_bases = 0, 0
         for is_plus_strand in [True, False]:
-            numerifier = CoordNumerifier(coord, is_plus_strand, chunk_size, one_hot, merge_introns)
+            numerifier = CoordNumerifier(self.session, coord, is_plus_strand, chunk_size,
+                                         one_hot, merge_introns)
             coord_data = numerifier.numerify()
             # keep track of variables
             n_masked_bases += sum(
@@ -224,12 +239,12 @@ class ExportController(object):
             # filter out sequences that are completely masked as error
             if not keep_errors:
                 valid_data = [s.any() for s in coord_data['label_masks']]
-                for key in ['inputs', 'labels', 'label_masks', 'start_ends']:
+                for key in list_in_list_out:
                     coord_data[key] = list(compress(coord_data[key], valid_data))
             # add data
             for key in list_in_list_out:
                 flat_data[key] += coord_data[key]
-            for key in str_in_list_out:
+            for key in one_in_list_out:
                 flat_data[key] += [coord_data[key]] * len(coord_data['inputs'])
         masked_bases_percent = n_masked_bases / (coord.length * 2) * 100
         intergenic_bases_percent = n_intergenic_bases / (coord.length * 2) * 100
