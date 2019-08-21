@@ -1,4 +1,5 @@
 #! /usr/bin/env python3
+import sys
 import h5py
 import random
 import numpy as np
@@ -8,6 +9,8 @@ import matplotlib
 import argparse
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
+
+from helixerprep.export.numerify import AMBIGUITY_DECODE
 
 class Visualization():
     def __init__(self, root, args):
@@ -30,7 +33,7 @@ class Visualization():
         self.MARGIN_BOTTOM = 100
         self.HEATMAP_SIZE_X = 1920
         self.PIXEL_SIZE = self.HEATMAP_SIZE_X // self.BASE_COUNT_X
-        self.HEATMAP_SIZE_Y = self.PIXEL_SIZE * self.label_dim * (args.n_rows * 2 - 1)
+        self.HEATMAP_SIZE_Y = self.PIXEL_SIZE * self.label_dim * (args.n_rows * 2)
         self.DPI = 96  # monitor specific
 
         # save n_seq and chunk_len from predictions as there are likely a tiny bit fewer
@@ -121,7 +124,7 @@ class Visualization():
             new_dset[0::2,:] = dset.reshape((self.args.n_rows, self.BASE_COUNT_X, self.label_dim))
             # reshape back to properly display in heatmap
             new_dset = np.swapaxes(new_dset, 1, 2)
-            new_dset = new_dset.reshape((self.args.n_rows * 2 - 1) * self.label_dim, self.BASE_COUNT_X)
+            new_dset = new_dset.reshape((self.args.n_rows * 2) * self.label_dim, self.BASE_COUNT_X)
             return new_dset
 
         off_lim = offset + seq_len
@@ -137,13 +140,13 @@ class Visualization():
 
         if include_dummy:
             # reshape and add dummy data
-            new_labels = np.zeros((self.args.n_rows * 2 - 1, self.BASE_COUNT_X, self.label_dim),
+            new_labels = np.zeros((self.args.n_rows * 2, self.BASE_COUNT_X, self.label_dim),
                                   dtype=labels.dtype)
             labels = add_dummy_data(labels, new_labels)
-            new_errors = np.zeros((self.args.n_rows * 2 - 1, self.BASE_COUNT_X, self.label_dim),
+            new_errors = np.zeros((self.args.n_rows * 2, self.BASE_COUNT_X, self.label_dim),
                                   dtype=errors.dtype)
             errors = add_dummy_data(errors, new_errors)
-            new_label_masks = np.ones((self.args.n_rows * 2 - 1,
+            new_label_masks = np.ones((self.args.n_rows * 2,
                                        self.BASE_COUNT_X,
                                        self.label_dim)).astype(bool)
             label_masks = add_dummy_data(label_masks, new_label_masks)
@@ -153,6 +156,16 @@ class Visualization():
         labels_str[labels_str == '0'] = ''
         labels_str[labels_str == '1'] = '-'
 
+        if include_dummy:
+            # add genic sequence to string annotations
+            genic_seq = np.array(self.h5_data['/data/X'][self.seq_index][offset:off_lim])
+            decode_dict = {tuple(a):c for c, a in AMBIGUITY_DECODE.items()}
+            genic_seq = np.array([decode_dict[tuple(i)] for i in genic_seq])
+            genic_seq = genic_seq.reshape((self.args.n_rows, self.BASE_COUNT_X))
+            for i, n in enumerate(range(self.label_dim + 1, labels.shape[0], self.label_dim * 2)):
+                labels_str[n] = genic_seq[i]
+                label_masks[n] = np.zeros((self.BASE_COUNT_X,), dtype=bool)
+
         return labels, errors, label_masks, labels_str
 
     def draw_main_heatmap(self):
@@ -161,8 +174,8 @@ class Visualization():
                                                                      include_dummy=True)
         self.ax_main.clear()
         # massively speeds up painting
-        if np.all(labels_str == ''):
-            labels_str = False
+        # if np.all(labels_str == ''):
+            # labels_str = False
         seaborn.heatmap(errors,
                         vmin=0 + args.colorbar_offset,
                         vmax=1 - args.colorbar_offset,
