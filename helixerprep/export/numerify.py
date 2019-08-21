@@ -3,6 +3,7 @@
 import numpy as np
 import logging
 from abc import ABC, abstractmethod
+from sqlalchemy.orm.exc import NoResultFound
 
 from geenuff.base import types
 from geenuff.base.orm import Coordinate, Genome
@@ -228,10 +229,15 @@ class CoordNumerifier(object):
         else:
             start_ends = [(x[1], x[0]) for x in self.anno_numerifier.paired_steps]
 
-        gc_content = (self.session.query(Mer.count)
-            .filter(Mer.coordinate == self.coord)
-            .filter(Mer.mer_sequence == 'C')
-            .one()[0])
+        try:
+            gc_content = (self.session.query(Mer.count)
+                .filter(Mer.coordinate == self.coord)
+                .filter(Mer.mer_sequence == 'C')
+                .one()[0])
+        except NoResultFound:
+            gc_content = 0
+            print('WARNING: no gc_content found for coord {}, set to 0 in the data'
+                      .format(self.coord.seqid))
         # do not output the input_masks as it is not used for anything
         out = {
             'inputs': inputs,
