@@ -20,7 +20,7 @@ import tensorflow as tf
 from pprint import pprint
 from functools import partial
 from sklearn.metrics import confusion_matrix
-from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import MinMaxScaler
 
 from keras_layer_normalization import LayerNormalization
 from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
@@ -318,9 +318,15 @@ class HelixerModel(ABC):
             self.coord_lengths = np.array(h5_file['/data/coord_lengths'], dtype=self.float_precision)
             # scale gc content by their coord lengths
             self.gc_contents /= self.coord_lengths
-            # standardize coord_lengths; gc contents should have a fine scale already
+            # log transform and standardize coord_lengths to [0, 1]
+            # gc_contents should have a fine scale already
+            self.coord_lengths = np.log(self.coord_lengths)
             self.coord_lengths = self.coord_lengths.reshape(-1, 1)
-            self.coord_lengths = RobustScaler().fit(self.coord_lengths).transform(self.coord_lengths)
+            self.coord_lengths = MinMaxScaler().fit(self.coord_lengths).transform(self.coord_lengths)
+            # need to clip as values can be slightly above 1.0 (docs say otherwise..)
+            self.coord_lengths = np.clip(self.coord_lengths, 0.0, 1.0)
+            assert np.all(np.logical_and(self.gc_contents >= 0.0, self.gc_contents <= 1.0))
+            assert np.all(np.logical_and(self.coord_lengths >= 0.0, self.coord_lengths <= 1.0))
 
         if not self.load_model_path:
             self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')

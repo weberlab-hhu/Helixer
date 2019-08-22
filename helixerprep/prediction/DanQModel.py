@@ -3,9 +3,9 @@ import random
 import numpy as np
 
 from keras_layer_normalization import LayerNormalization
-from keras.models import Sequential
+from keras.models import Sequential, Model
 from keras.layers import (Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
-                          Activation)
+                          Activation, Concatenate, Input)
 from HelixerModel import (HelixerModel, HelixerSequence,
                           acc_row, acc_g_row, acc_ig_row, acc_ig_oh, acc_g_oh)
 
@@ -51,6 +51,7 @@ class DanQModel(HelixerModel):
         self.parser.add_argument('-dr1', '--dropout1', type=float, default=0.0)
         self.parser.add_argument('-dr2', '--dropout2', type=float, default=0.0)
         self.parser.add_argument('-ln', '--layer-normalization', action='store_true')
+        self.parser.add_argument('-meta', '--add-meta-information', action='store_true')
         self.parse_args()
 
         if not self.exclude_errors:
@@ -60,30 +61,38 @@ class DanQModel(HelixerModel):
         return DanQSequence
 
     def model(self):
-        model = Sequential()
-        model.add(Conv1D(filters=self.filter_depth,
-                         kernel_size=self.kernel_size,
-                         input_shape=(self.shape_train[1], 4),
-                         padding="same",
-                         activation="relu"))
+        main_input = Input(shape=(self.shape_train[1], 4), dtype=self.float_precision, name='main_input')
+        x = Conv1D(filters=self.filter_depth,
+                   kernel_size=self.kernel_size,
+                   padding="same",
+                   activation="relu")(main_input)
 
         if self.pool_size > 1:
-            model.add(MaxPooling1D(pool_size=self.pool_size, padding='same'))
+            x = MaxPooling1D(pool_size=self.pool_size, padding='same')(x)
+
+        # if self.add_meta_information:
+            # meta_model = Sequential()
+            # meta_model.add(Activation('linear', input_shape=(1,)))
+            # model.add(Concatenate([convnet, meta_model]))
+        # else:
+            # model = convnet
 
         if self.layer_normalization:
-            model.add(LayerNormalization())
+            x = LayerNormalization()(x)
 
-        model.add(Dropout(self.dropout1))
-        model.add(Bidirectional(CuDNNLSTM(self.units, return_sequences=True)))
-        model.add(Dropout(self.dropout2))
+        x = Dropout(self.dropout1)(x)
+        x = Bidirectional(CuDNNLSTM(self.units, return_sequences=True))(x)
+        x = Dropout(self.dropout2)(x)
 
         if self.one_hot:
             label_dim = 4 if self.merged_introns else 5
-            model.add(Dense(self.pool_size * label_dim))
-            model.add(Reshape((-1, self.pool_size, label_dim)))
-            model.add(Activation('softmax'))
+            x = Dense(self.pool_size * label_dim)(x)
+            x = Reshape((-1, self.pool_size, label_dim))(x)
+            x = Activation('softmax')(x)
         else:
-            model.add(Dense(self.pool_size * 3,  activation='sigmoid'))
+            x = Dense(self.pool_size * 3,  activation='sigmoid')(x)
+
+        model = Model(inputs=[main_input], outputs=[x])
         return model
 
     def compile_model(self, model):
