@@ -20,6 +20,7 @@ import tensorflow as tf
 from pprint import pprint
 from functools import partial
 from sklearn.metrics import confusion_matrix
+from sklearn.preprocessing import RobustScaler
 
 from keras_layer_normalization import LayerNormalization
 from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
@@ -312,6 +313,15 @@ class HelixerModel(ABC):
             else:
                 self.stopping_metric = 'val_acc_g_row'
 
+        def load_and_scale_meta_info(h5_file):
+            self.gc_contents = np.array(h5_file['/data/gc_contents'], dtype=self.float_precision)
+            self.coord_lengths = np.array(h5_file['/data/coord_lengths'], dtype=self.float_precision)
+            # scale gc content by their coord lengths
+            self.gc_contents /= self.coord_lengths
+            # standardize coord_lengths; gc contents should have a fine scale already
+            self.coord_lengths = self.coord_lengths.reshape(-1, 1)
+            self.coord_lengths = RobustScaler().fit(self.coord_lengths).transform(self.coord_lengths)
+
         if not self.load_model_path:
             self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
             self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
@@ -330,17 +340,24 @@ class HelixerModel(ABC):
 
             n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
             n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_val)
+
+            load_and_scale_meta_info(self.h5_train)
+            load_and_scale_meta_info(self.h5_val)
+
             detect_label_type(self.h5_train)
             set_stopping_metric()
         else:
             self.h5_test = h5py.File(self.test_data, 'r')
             self.shape_test = self.h5_test['/data/X'].shape
             n_test_correct_seqs = get_n_correct_seqs(self.h5_test)
+
             if self.exclude_errors:
                 n_test_seqs_with_intergenic = n_test_correct_seqs
             else:
                 n_test_seqs_with_intergenic = self.shape_test[0]
+
             n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_test)
+            load_and_scale_meta_info(self.h5_test)
             detect_label_type(self.h5_test)
 
         if self.verbose:
