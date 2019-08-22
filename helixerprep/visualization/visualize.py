@@ -96,6 +96,11 @@ class Visualization():
         self.seq_info_seqid.grid(row=2, column=7)
         self.seq_info_start_end.grid(row=3, column=7)
 
+        self.toggle_dna_state = tk.IntVar()
+        self.toggle_dna_sequence = tk.Checkbutton(self.frame, text='show DNA', command=self.redraw,
+                                                  variable=self.toggle_dna_state)
+        self.toggle_dna_sequence.grid(row=1, column=8)
+
         self.error_label = tk.Label(self.frame)
         self.error_label.grid(row=4, column=1)
 
@@ -156,14 +161,15 @@ class Visualization():
         labels_str[labels_str == '0'] = ''
         labels_str[labels_str == '1'] = '-'
 
-        if include_dummy:
+        if include_dummy and self.toggle_dna_state.get():
             # add genic sequence to string annotations
             genic_seq = np.array(self.h5_data['/data/X'][self.seq_index][offset:off_lim])
             decode_dict = {tuple(a):c for c, a in AMBIGUITY_DECODE.items()}
             genic_seq = np.array([decode_dict[tuple(i)] for i in genic_seq])
             genic_seq = genic_seq.reshape((self.args.n_rows, self.BASE_COUNT_X))
-            for i, n in enumerate(range(self.label_dim + 1, labels.shape[0], self.label_dim * 2)):
+            for i, n in enumerate(range(self.label_dim, labels.shape[0], self.label_dim * 2)):
                 labels_str[n] = genic_seq[i]
+                errors[n] = np.full((self.BASE_COUNT_X,), 0.5, dtype=errors.dtype)
                 label_masks[n] = np.zeros((self.BASE_COUNT_X,), dtype=bool)
 
         return labels, errors, label_masks, labels_str
@@ -173,9 +179,6 @@ class Visualization():
                                                                      self.BASE_COUNT_SCREEN,
                                                                      include_dummy=True)
         self.ax_main.clear()
-        # massively speeds up painting
-        # if np.all(labels_str == ''):
-            # labels_str = False
         seaborn.heatmap(errors,
                         vmin=0 + args.colorbar_offset,
                         vmax=1 - args.colorbar_offset,
@@ -187,6 +190,7 @@ class Visualization():
                         annot=labels_str,
                         fmt='',
                         annot_kws={'fontweight': 'bold'},
+                        # annot_kws={'fontsize': 8},
                         xticklabels=False,
                         yticklabels=False,
                         ax=self.ax_main)
