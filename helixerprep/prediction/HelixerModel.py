@@ -119,14 +119,20 @@ class ConfusionMatrixTest(Callback):
 
 
 class HelixerSequence(Sequence):
-    def __init__(self, model, h5_file, one_hot, exclude_errors, shuffle):
+    def __init__(self, model, h5_file, shuffle):
         self.model = model
-        self.one_hot = one_hot
-        self.exclude_errors = exclude_errors
+        self.h5_file = h5_file
         self.batch_size = self.model.batch_size
+        self.float_precision = self.model.float_precision
+        self.add_meta_information = self.model.add_meta_information
+        self.add_meta_losses = self.model.add_meta_losses
+        self.one_hot = self.model.one_hot
+        self.exclude_errors = self.model.exclude_errors
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
+        self._load_and_scale_meta_info()
+
         # set array of usable indexes
         if self.exclude_errors:
             self.usable_idx = np.flatnonzero(np.array(h5_file['/data/err_samples']) == False)
@@ -134,6 +140,21 @@ class HelixerSequence(Sequence):
             self.usable_idx = list(range(self.x_dset.shape[0]))
         if shuffle:
             random.shuffle(self.usable_idx)
+
+    def _load_and_scale_meta_info(self):
+        self.gc_contents = np.array(self.h5_file['/data/gc_contents'], dtype=self.float_precision)
+        self.coord_lengths = np.array(self.h5_file['/data/coord_lengths'], dtype=self.float_precision)
+        # scale gc content by their coord lengths
+        self.gc_contents /= self.coord_lengths
+        # log transform and standardize coord_lengths to [0, 1]
+        # gc_contents should have a fine scale already
+        self.coord_lengths = np.log(self.coord_lengths)
+        self.coord_lengths = self.coord_lengths.reshape(-1, 1)
+        self.coord_lengths = MinMaxScaler().fit(self.coord_lengths).transform(self.coord_lengths)
+        # need to clip as values can be slightly above 1.0 (docs say otherwise..)
+        self.coord_lengths = np.clip(self.coord_lengths, 0.0, 1.0).squeeze()
+        assert np.all(np.logical_and(self.gc_contents >= 0.0, self.gc_contents <= 1.0))
+        assert np.all(np.logical_and(self.coord_lengths >= 0.0, self.coord_lengths <= 1.0))
 
     def __len__(self):
         # return 2
@@ -226,8 +247,6 @@ class HelixerModel(ABC):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_train,
-                           one_hot=self.one_hot,
-                           exclude_errors=self.exclude_errors,
                            shuffle=True)
 
     def gen_validation_data(self):
@@ -237,16 +256,12 @@ class HelixerModel(ABC):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_val,
-                           one_hot=self.one_hot,
-                           exclude_errors=self.exclude_errors,
                            shuffle=False)
 
     def gen_test_data(self):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_test,
-                           one_hot=self.one_hot,
-                           exclude_errors=self.exclude_errors,
                            shuffle=False)
 
     @abstractmethod
@@ -313,21 +328,6 @@ class HelixerModel(ABC):
             else:
                 self.stopping_metric = 'val_acc_g_row'
 
-        def load_and_scale_meta_info(h5_file):
-            self.gc_contents = np.array(h5_file['/data/gc_contents'], dtype=self.float_precision)
-            self.coord_lengths = np.array(h5_file['/data/coord_lengths'], dtype=self.float_precision)
-            # scale gc content by their coord lengths
-            self.gc_contents /= self.coord_lengths
-            # log transform and standardize coord_lengths to [0, 1]
-            # gc_contents should have a fine scale already
-            self.coord_lengths = np.log(self.coord_lengths)
-            self.coord_lengths = self.coord_lengths.reshape(-1, 1)
-            self.coord_lengths = MinMaxScaler().fit(self.coord_lengths).transform(self.coord_lengths)
-            # need to clip as values can be slightly above 1.0 (docs say otherwise..)
-            self.coord_lengths = np.clip(self.coord_lengths, 0.0, 1.0)
-            assert np.all(np.logical_and(self.gc_contents >= 0.0, self.gc_contents <= 1.0))
-            assert np.all(np.logical_and(self.coord_lengths >= 0.0, self.coord_lengths <= 1.0))
-
         if not self.load_model_path:
             self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
             self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
@@ -347,9 +347,6 @@ class HelixerModel(ABC):
             n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
             n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_val)
 
-            load_and_scale_meta_info(self.h5_train)
-            load_and_scale_meta_info(self.h5_val)
-
             detect_label_type(self.h5_train)
             set_stopping_metric()
         else:
@@ -363,7 +360,6 @@ class HelixerModel(ABC):
                 n_test_seqs_with_intergenic = self.shape_test[0]
 
             n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_test)
-            load_and_scale_meta_info(self.h5_test)
             detect_label_type(self.h5_test)
 
         if self.verbose:
@@ -410,7 +406,7 @@ class HelixerModel(ABC):
 
             model.fit_generator(generator=self.gen_training_data(),
                                 epochs=self.epochs,
-                                # workers=0,  # run in main thread
+                                workers=0,  # run in main thread
                                 validation_data=self.gen_validation_data(),
                                 callbacks=self.generate_callbacks(),
                                 verbose=True)
