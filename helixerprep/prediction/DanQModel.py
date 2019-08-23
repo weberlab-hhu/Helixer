@@ -64,6 +64,7 @@ class DanQModel(HelixerModel):
         self.parser.add_argument('-ps', '--pool-size', type=int, default=10)
         self.parser.add_argument('-dr1', '--dropout1', type=float, default=0.0)
         self.parser.add_argument('-dr2', '--dropout2', type=float, default=0.0)
+        self.parser.add_argument('-mlw', '--meta-loss-weight', type=float, default=0.1)
         self.parser.add_argument('-ln', '--layer-normalization', action='store_true')
         self.parser.add_argument('-meta-input', '--add-meta-information', action='store_true')
         self.parser.add_argument('-meta-output', '--add-meta-losses', action='store_true')
@@ -119,7 +120,7 @@ class DanQModel(HelixerModel):
         if self.one_hot:
             if self.add_meta_losses:
                 losses = ['categorical_crossentropy', 'mean_squared_error']
-                loss_weights = [1.0, 0.1]
+                loss_weights = [1.0, self.meta_loss_weight]
                 metrics = {
                     'main_output': ['accuracy', acc_g_oh, acc_ig_oh],
                     # 'main_output': ['accuracy'],
