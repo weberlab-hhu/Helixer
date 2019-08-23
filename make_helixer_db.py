@@ -21,9 +21,9 @@ if __name__ == '__main__':
                           'the input database will be replaced.'))
 
     fasta_specific = parser.add_argument_group("Controlling the kmer lookup:")
-    fasta_specific.add_argument('--meta-info-root-path', type=str,
-                                help=('Absolute folder path from where the jellyfish files are in the '
-                                      'subfolder {species}/meta_collection/jellyfish/'),
+    fasta_specific.add_argument('--meta-info-root-path', type=str, required=True,
+                                help=('Absolute folder path from where the kmers files are in the '
+                                      'subfolder {species}/meta_collection/kmers/kmers.tsv'),
                                 default='/mnt/data/ali/share/phytozome_organized/ready/train')
     args = parser.parse_args()
     main(args)
