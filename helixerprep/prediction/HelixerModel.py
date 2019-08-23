@@ -324,7 +324,11 @@ class HelixerModel(ABC):
 
         def set_stopping_metric():
             if self.one_hot:
-                self.stopping_metric = 'val_acc_g_oh'
+                if self.add_meta_losses:
+                    # the additional losses are not yet working with multi class predictions
+                    self.stopping_metric = 'val_main_output_acc_g_oh'
+                else:
+                    self.stopping_metric = 'val_acc_g_oh'
             else:
                 self.stopping_metric = 'val_acc_g_row'
 
