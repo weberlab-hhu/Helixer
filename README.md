@@ -25,7 +25,12 @@ Both can best be installed according to their own installation instructions
 pip install -r requirements.txt
 ```
 
-### Todo, setup.py...
+### HelixerPrep itself
+
+```
+# from the HelixerPrep directory
+python setup.py develop  # or `install`, if someone who isn't working on this actually installs it
+```
 
 ## Example usage
 Download your sequence and annotation files 
