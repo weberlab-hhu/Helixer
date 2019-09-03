@@ -1,8 +1,6 @@
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-from F1Scores import F1Calculator
-
 from abc import ABC, abstractmethod
 import os
 import sys
@@ -19,7 +17,6 @@ import numpy as np
 import tensorflow as tf
 from pprint import pprint
 from functools import partial
-from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import MinMaxScaler
 
 from keras_layer_normalization import LayerNormalization
@@ -29,6 +26,8 @@ from keras import backend as K
 from keras.models import load_model
 from keras.utils import multi_gpu_model, Sequence
 
+from F1Scores import F1Calculator
+from ConfusionMatrix import ConfusionMatrix
 
 # multi class metrics
 def acc_row(y_true, y_pred):
@@ -73,6 +72,8 @@ class ReportIntermediateResult(Callback):
         nni.report_intermediate_result(logs[self.metric])
 
 
+# Callbacks have to be done seperately for train/test as the way they are called by Keras
+# is buggy currently
 class F1ResultsTest(Callback):
     def __init__(self, generator):
         self.calculator = F1Calculator(generator)
@@ -93,29 +94,20 @@ class F1ResultsTrain(Callback):
 
 class ConfusionMatrixTest(Callback):
     def __init__(self, generator, label_dim):
-        self.generator = generator
-        self.label_dim = label_dim
+        self.cm_calculator = ConfusionMatrix(generator, label_dim)
         super(ConfusionMatrixTest, self).__init__()
 
     def on_test_end(self, logs=None):
-        def reshape_data(arr, n_steps):
-            arr = np.argmax(arr, axis=-1).astype(np.int8)
-            arr = arr.reshape((arr.shape[0], -1))
-            arr = arr[:, :n_steps].ravel()  # remove overhang
-            return arr
+        self.cm_calculator.calculate_cm()
 
-        confusion_matrix_sum = np.zeros((self.label_dim, self.label_dim))
-        for i in range(len(self.generator)):
-            print(i, '/', len(self.generator))
-            X, y_true, sw = self.generator[i]
-            y_pred = self.model.predict_on_batch(X)
-            y_pred = reshape_data(y_pred, X.shape[1])
-            y_true = reshape_data(y_true, X.shape[1])
-            confusion_matrix_sum += confusion_matrix(y_true, y_pred, labels=range(4))
 
-        # divide columns in confusion matrix by # of predictions made per class
-        confusion_matrix_sum /= np.sum(confusion_matrix_sum, axis=0)
-        pprint(confusion_matrix_sum)
+class ConfusionMatrixTrain(Callback):
+    def __init__(self, generator, label_dim):
+        self.cm_calculator = ConfusionMatrix(generator, label_dim)
+        super(ConfusionMatrixTest, self).__init__()
+
+    def on_epoch_end(self, epoch, logs=None):
+        self.cm_calculator.calculate_cm()
 
 
 class HelixerSequence(Sequence):
@@ -410,7 +402,8 @@ class HelixerModel(ABC):
 
             model.fit_generator(generator=self.gen_training_data(),
                                 epochs=self.epochs,
-                                workers=0,  # run in main thread
+                                # workers=0,  # run in main thread
+                                workers=1,
                                 validation_data=self.gen_validation_data(),
                                 callbacks=self.generate_callbacks(),
                                 verbose=True)
