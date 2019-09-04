@@ -746,12 +746,6 @@ def test_one_hot_encodings():
         [1, 1, 0],
         [1, 1, 1],
     ]
-    classes_5 = [
-        [1, 0, 0, 0, 0],  # intergenic
-        [0, 1, 0, 0, 0],  # UTR
-        [0, 0, 1, 0, 0],  # CDS
-        [0, 0, 0, 0, 1],  # Intron
-    ]
     classes_4 = [
         [1, 0, 0, 0],
         [0, 1, 0, 0],
