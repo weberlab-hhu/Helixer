@@ -146,9 +146,7 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
      }
     error_type_values = [t.value for t in types.Errors]
 
-    def __init__(self, coord, features, is_plus_strand, max_len, one_hot, merge_introns):
-        self.one_hot = one_hot
-        self.merge_introns = merge_introns
+    def __init__(self, coord, features, is_plus_strand, max_len):
         super().__init__(n_cols=3, coord=coord, features=features,
                          is_plus_strand=is_plus_strand, max_len=max_len)
 
@@ -169,30 +167,20 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
             else:
                 raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
 
-        # transform matrix into one-hot encoding for classical classification if desired
-        if self.one_hot:
-            # Class order: Intergenic, UTR, CDS, (non-coding Intron), Intron
-            # This could be done in a more efficient way, but this way we may catch bugs
-            # where non-standard classes are output in the multiclass output
-            if self.merge_introns:
-                one_hot_matrix = np.zeros((self.matrix.shape[0], 4), dtype=bool)
-            else:
-                one_hot_matrix = np.zeros((self.matrix.shape[0], 5), dtype=bool)
-            col_0, col_1, col_2 = self.matrix[:, 0], self.matrix[:, 1], self.matrix[:, 2]
-            # Intergenic
-            one_hot_matrix[:, 0] = np.logical_not(col_0)
-            # UTR
-            genic_non_coding = np.logical_and(col_0, np.logical_not(col_1))
-            one_hot_matrix[:, 1] = np.logical_and(genic_non_coding, np.logical_not(col_2))
-            # CDS
-            one_hot_matrix[:, 2] = np.logical_and(np.logical_and(col_0, col_1), np.logical_not(col_2))
-            # Introns
-            if self.merge_introns:
-                one_hot_matrix[:, 3] = np.logical_and(col_0, col_2)
-            else:
-                one_hot_matrix[:, 3] = np.logical_and(genic_non_coding, col_2)
-                one_hot_matrix[:, 4] = np.all(self.matrix, axis=1)
-            self.matrix = one_hot_matrix.astype(np.int8)
+        # transform matrix into one-hot encoding for classical classification
+        # Class order: Intergenic, UTR, CDS, Intron
+        one_hot_matrix = np.zeros((self.matrix.shape[0], 4), dtype=bool)
+        col_0, col_1, col_2 = self.matrix[:, 0], self.matrix[:, 1], self.matrix[:, 2]
+        # Intergenic
+        one_hot_matrix[:, 0] = np.logical_not(col_0)
+        # UTR
+        genic_non_coding = np.logical_and(col_0, np.logical_not(col_1))
+        one_hot_matrix[:, 1] = np.logical_and(genic_non_coding, np.logical_not(col_2))
+        # CDS
+        one_hot_matrix[:, 2] = np.logical_and(np.logical_and(col_0, col_1), np.logical_not(col_2))
+        # Introns
+        one_hot_matrix[:, 3] = np.logical_and(col_0, col_2)
+        self.matrix = one_hot_matrix.astype(np.int8)
 
 
 class CoordNumerifier(object):
@@ -200,7 +188,7 @@ class CoordNumerifier(object):
     to ensure consistent parameters.
     Currently just selects all Features of the given Coordinate.
     """
-    def __init__(self, session, coord, is_plus_strand, max_len, one_hot, merge_introns):
+    def __init__(self, session, coord, is_plus_strand, max_len):
         assert isinstance(is_plus_strand, bool)
         assert isinstance(max_len, int) and max_len > 0
         self.session = session
@@ -212,9 +200,7 @@ class CoordNumerifier(object):
         self.anno_numerifier = BasePairAnnotationNumerifier(coord=self.coord,
                                                             features=self.coord.features,
                                                             is_plus_strand=is_plus_strand,
-                                                            max_len=max_len,
-                                                            one_hot=one_hot,
-                                                            merge_introns=merge_introns)
+                                                            max_len=max_len)
         self.seq_numerifier = SequenceNumerifier(coord=self.coord,
                                                  is_plus_strand=is_plus_strand,
                                                  max_len=max_len)
