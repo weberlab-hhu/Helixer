@@ -98,16 +98,16 @@ class ConfusionMatrixTest(Callback):
         super(ConfusionMatrixTest, self).__init__()
 
     def on_test_end(self, logs=None):
-        self.cm_calculator.calculate_cm()
+        self.cm_calculator.calculate_cm(self.model)
 
 
 class ConfusionMatrixTrain(Callback):
     def __init__(self, generator, label_dim):
         self.cm_calculator = ConfusionMatrix(generator, label_dim)
-        super(ConfusionMatrixTest, self).__init__()
+        super(ConfusionMatrixTrain, self).__init__()
 
     def on_epoch_end(self, epoch, logs=None):
-        self.cm_calculator.calculate_cm()
+        self.cm_calculator.calculate_cm(self.model)
 
 
 class HelixerSequence(Sequence):
@@ -217,6 +217,8 @@ class HelixerModel(ABC):
         ]
         if not self.no_f1_score and not self.one_hot:
             callbacks.append(F1ResultsTrain(self.gen_validation_data()))
+        if self.one_hot:
+            callbacks.append(ConfusionMatrixTrain(self.gen_validation_data(), self.label_dim))
         if self.nni:
             callbacks.append(ReportIntermediateResult(self.stopping_metric))
         return callbacks
