@@ -29,28 +29,8 @@ from keras.utils import multi_gpu_model, Sequence
 from F1Scores import F1Calculator
 from ConfusionMatrix import ConfusionMatrix
 
-# multi class metrics
-def acc_row(y_true, y_pred):
-    return K.cast(K.all(K.equal(y_true, K.round(y_pred)), axis=-1), K.floatx())
-
-
-def acc_g_row(y_true, y_pred):
-    mask = y_true[:, :, 0] > 0
-    y_true = tf.boolean_mask(y_true, mask)
-    y_pred = tf.boolean_mask(y_pred, mask)
-    return K.cast(K.all(K.equal(y_true, K.round(y_pred)), axis=-1), K.floatx())
-
-
-def acc_ig_row(y_true, y_pred):
-    mask = y_true[:, :, 0] < 1
-    y_true = tf.boolean_mask(y_true, mask)
-    y_pred = tf.boolean_mask(y_pred, mask)
-    return K.cast(K.all(K.equal(y_true, K.round(y_pred)), axis=-1), K.floatx())
-
-
-# single class metrics
 def acc_g_oh(y_true, y_pred):
-    mask = y_true[:, :, :, 0] < 1  # opposite direction than from multi class
+    mask = y_true[:, :, :, 0] < 1
     y_true = K.argmax(tf.boolean_mask(y_true, mask), axis=-1)
     y_pred = K.argmax(tf.boolean_mask(y_pred, mask), axis=-1)
     return K.cast(K.equal(y_true, y_pred), K.floatx())
@@ -74,24 +54,6 @@ class ReportIntermediateResult(Callback):
 
 # Callbacks have to be done seperately for train/test as the way they are called by Keras
 # is buggy currently
-class F1ResultsTest(Callback):
-    def __init__(self, generator):
-        self.calculator = F1Calculator(generator)
-        super(F1ResultsTest, self).__init__()
-
-    def on_test_end(self, logs=None):
-        self.calculator.count_and_calculate(self.model)
-
-
-class F1ResultsTrain(Callback):
-    def __init__(self, generator):
-        self.calculator = F1Calculator(generator)
-        super(F1ResultsTrain, self).__init__()
-
-    def on_epoch_end(self, epoch, logs=None):
-        self.calculator.count_and_calculate(self.model)
-
-
 class ConfusionMatrixTest(Callback):
     def __init__(self, generator, label_dim):
         self.cm_calculator = ConfusionMatrix(generator, label_dim)
@@ -116,13 +78,12 @@ class HelixerSequence(Sequence):
         self.h5_file = h5_file
         self.batch_size = self.model.batch_size
         self.float_precision = self.model.float_precision
-        self.add_meta_information = self.model.add_meta_information
         self.add_meta_losses = self.model.add_meta_losses
-        self.one_hot = self.model.one_hot
         self.exclude_errors = self.model.exclude_errors
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
+        self.label_dim = self.y_dset.shape[-1]
         self._load_and_scale_meta_info()
 
         # set array of usable indexes
@@ -169,7 +130,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
         self.parser.add_argument('-p', '--patience', type=int, default=10)
         self.parser.add_argument('-bs', '--batch-size', type=int, default=8)
-        self.parser.add_argument('-opt', '--optimizer', type=str, default='adam')
         self.parser.add_argument('-loss', '--loss', type=str, default='')
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
@@ -186,7 +146,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--specific-gpu-id', type=int, default=-1)
         self.parser.add_argument('-only-cpu', '--only-cpu', action='store_true')
         # misc flags
-        self.parser.add_argument('-nof1', '--no-f1-score', action='store_true')
+        self.parser.add_argument('-nocm', '--no-confusion-matrix', action='store_true')
         self.parser.add_argument('-plot', '--plot', action='store_true')
         self.parser.add_argument('-nni', '--nni', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
@@ -215,9 +175,7 @@ class HelixerModel(ABC):
             ModelCheckpoint(self.save_model_path, monitor=self.stopping_metric, mode='max',
                             save_best_only=True, verbose=1),
         ]
-        if not self.no_f1_score and not self.one_hot:
-            callbacks.append(F1ResultsTrain(self.gen_validation_data()))
-        if self.one_hot:
+        if not self.no_confusion_matrix:
             callbacks.append(ConfusionMatrixTrain(self.gen_validation_data(), self.label_dim))
         if self.nni:
             callbacks.append(ReportIntermediateResult(self.stopping_metric))
@@ -276,19 +234,6 @@ class HelixerModel(ABC):
         print('Plotted to model.png')
         sys.exit()
 
-    def set_optimizer(self):
-        if self.optimizer == 'adam':
-            self.optimizer = optimizers.Adam(lr=self.learning_rate,
-                                             clipnorm=self.clip_norm)
-        elif self.optimizer == 'rmsprop':
-            self.optimizer = optimizers.RMSprop(lr=self.learning_rate,
-                                                clipnorm=self.clip_norm)
-        elif self.optimizer == 'adagrad':
-            print('learning rate not changed from default for adagrad')
-            self.optimizer = optimizers.Adagrad(clipnorm=self.clip_norm)
-        else:
-            raise ValueError('Unknown Optimizer')
-
     def open_data_files(self):
         def get_n_correct_seqs(h5_file):
             err_samples = np.array(h5_file['/data/err_samples'])
@@ -298,34 +243,14 @@ class HelixerModel(ABC):
             ic_samples = np.array(h5_file['/data/fully_intergenic_samples'])
             return np.count_nonzero(ic_samples == True)
 
-        def detect_label_type(h5_file):
-            self.label_dim = h5_file['/data/y'].shape[2]
-            if self.label_dim == 3:
-                print('\nMulti class data found')
-                self.one_hot = False
-                self.merged_introns = False
-            else:
-                self.one_hot = True
-                if self.label_dim == 4:
-                    self.merged_introns = True
-                    print('\nOne hot encoding data with merged introns found (dim = 4)')
-                elif self.label_dim == 5:
-                    self.merged_introns = False
-                    print('\nOne hot encoding data without merged introns found (dim = 5)')
-                else:
-                    print('\nUnknown data encoding')
-                    exit()
-
         def set_stopping_metric():
-            if self.one_hot:
-                if self.add_meta_losses:
-                    # the additional losses are not yet working with multi class predictions
-                    self.stopping_metric = 'val_main_output_acc_g_oh'
-                else:
-                    self.stopping_metric = 'val_acc_g_oh'
+            if self.add_meta_losses:
+                # the additional losses are not yet working with multi class predictions
+                self.stopping_metric = 'val_main_output_acc_g_oh'
             else:
-                self.stopping_metric = 'val_acc_g_row'
+                self.stopping_metric = 'val_acc_g_oh'
 
+        self.label_dim = 4  # if we every enable multiple possible dimension again, here is the switch
         if not self.load_model_path:
             self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
             self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
@@ -345,7 +270,6 @@ class HelixerModel(ABC):
             n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
             n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_val)
 
-            detect_label_type(self.h5_train)
             set_stopping_metric()
         else:
             self.h5_test = h5py.File(self.test_data, 'r')
@@ -358,7 +282,6 @@ class HelixerModel(ABC):
                 n_test_seqs_with_intergenic = self.shape_test[0]
 
             n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_test)
-            detect_label_type(self.h5_test)
 
         if self.verbose:
             print('\nData config: ')
@@ -399,7 +322,7 @@ class HelixerModel(ABC):
             if self.plot:
                 self.plot_model(model)
 
-            self.set_optimizer()
+            self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
             self.compile_model(model)
 
             model.fit_generator(generator=self.gen_training_data(),
@@ -430,13 +353,10 @@ class HelixerModel(ABC):
                 'acc_ig_oh': acc_ig_oh,
             })
             if self.eval:
-                if not self.no_f1_score and not self.one_hot:
-                    callback = [F1ResultsTest(self.gen_test_data())]
+                if self.no_confusion_matrix:
+                    callback = []
                 else:
-                    if self.one_hot:
-                        callback = [ConfusionMatrixTest(self.gen_test_data(), self.label_dim)]
-                    else:
-                        callback = []
+                    callback = [ConfusionMatrixTest(self.gen_test_data(), self.label_dim)]
                 metrics = model.evaluate_generator(generator=self.gen_test_data(),
                                                    callbacks=callback,
                                                    verbose=True)
@@ -459,8 +379,7 @@ class HelixerModel(ABC):
                         print(i, '/', len(test_sequence))
                     predictions = model.predict_on_batch(test_sequence[i][0]).astype(np.float16)
                     # join last two dims when predicting one hot labels
-                    if self.one_hot:
-                        predictions = predictions.reshape(predictions.shape[:2] + (-1,))
+                    predictions = predictions.reshape(predictions.shape[:2] + (-1,))
                     # reshape when predicting more than one point at a time
                     if predictions.shape[2] != self.label_dim:
                         n_points = predictions.shape[2] // self.label_dim
