@@ -191,11 +191,12 @@ class ExportController(object):
         all_coord_ids = [c[0] for c in all_coord_ids]
         return all_coord_ids
 
-    def _add_data_attrs(self, genomes, exclude, keep_errors):
+    def _add_data_attrs(self, genomes, exclude, one_hot, keep_errors):
         attrs = {
             'timestamp': str(datetime.datetime.now()),
             'genomes': ','.join(genomes),
             'exclude': ','.join(exclude),
+            'one_hot': str(one_hot),
             'keep_errors': str(keep_errors),
         }
         for key, value in attrs.items():
@@ -212,7 +213,7 @@ class ExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def _numerify_coord(self, coord_id, chunk_size, keep_errors):
+    def _numerify_coord(self, coord_id, chunk_size, one_hot, keep_errors):
         list_in_list_out = ['inputs', 'labels', 'label_masks', 'start_ends']
         one_in_list_out = ['gc_contents', 'coord_lengths', 'species', 'seqids']
         coord = self.session.query(Coordinate).filter(Coordinate.id == coord_id).one()
@@ -223,12 +224,16 @@ class ExportController(object):
 
         n_masked_bases, n_intergenic_bases = 0, 0
         for is_plus_strand in [True, False]:
-            numerifier = CoordNumerifier(self.session, coord, is_plus_strand, chunk_size)
+            numerifier = CoordNumerifier(self.session, coord, is_plus_strand, chunk_size, one_hot)
             coord_data = numerifier.numerify()
             # keep track of variables
             n_masked_bases += sum(
                 [np.count_nonzero(m == 0) for m in coord_data['label_masks']])
-            n_intergenic_bases += sum([np.count_nonzero(l[:, 0] == 1) for l in coord_data['labels']])
+            if one_hot:
+                n_intergenic_bases += sum([np.count_nonzero(l[:, 0] == 1) for l in coord_data['labels']])
+            else:
+                n_intergenic_bases += sum(
+                    [np.count_nonzero(np.all(l == 0, axis=1)) for l in coord_data['labels']])
             # filter out sequences that are completely masked as error
             if not keep_errors:
                 valid_data = [s.any() for s in coord_data['label_masks']]
@@ -243,16 +248,16 @@ class ExportController(object):
         intergenic_bases_percent = n_intergenic_bases / (coord.length * 2) * 100
         return flat_data, coord, masked_bases_percent, intergenic_bases_percent
 
-    def export(self, chunk_size, genomes, exclude, val_size, split_coordinates, keep_errors):
+    def export(self, chunk_size, genomes, exclude, val_size, one_hot, split_coordinates, keep_errors):
         self._check_genome_names(genomes, exclude)
         all_coord_ids = self._get_coord_ids(genomes, exclude)
         print('\n{} coordinates chosen to numerify'.format(len(all_coord_ids)))
         if split_coordinates:
             train_coord_ids, val_coord_ids = train_test_split(all_coord_ids, test_size=val_size)
 
-        n_y_cols = 4
+        n_y_cols = 4 if one_hot else 3
         for i, coord_id in enumerate(all_coord_ids):
-            numerify_outputs = self._numerify_coord(coord_id, chunk_size, keep_errors)
+            numerify_outputs = self._numerify_coord(coord_id, chunk_size, one_hot, keep_errors)
             flat_data, coord, masked_bases_percent, intergenic_bases_percent = numerify_outputs
             if split_coordinates or self.only_test_set:
                 if split_coordinates:
@@ -283,5 +288,5 @@ class ExportController(object):
                            i + 1, len(all_coord_ids), coord, coord.genome.species,
                            len(coord.features), len(flat_data['inputs']), len(train_data['inputs']),
                            len(val_data['inputs']), masked_bases_percent, intergenic_bases_percent))
-        self._add_data_attrs(genomes, exclude, keep_errors)
+        self._add_data_attrs(genomes, exclude, one_hot, keep_errors)
         self._close_files()

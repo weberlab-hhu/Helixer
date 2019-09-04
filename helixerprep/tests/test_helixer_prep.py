@@ -173,8 +173,7 @@ def test_base_level_annotation_numerify():
                                               features=coord.features,
                                               is_plus_strand=True,
                                               max_len=5000,
-                                              one_hot=False,
-                                              merge_introns=False)
+                                              one_hot=False)
     nums = numerifier.coord_to_matrices()[0][0][:405]
     expect = np.zeros([405, 3], dtype=np.float32)
     expect[0:400, 0] = 1.  # set genic/in raw transcript
@@ -212,8 +211,7 @@ def test_coherent_slicing():
                                                    features=coord.features,
                                                    is_plus_strand=True,
                                                    max_len=100,
-                                                   one_hot=False,
-                                                   merge_introns=False)
+                                                   one_hot=False)
     seq_slices = seq_numerifier.coord_to_matrices()[0]
     anno_slices = anno_numerifier.coord_to_matrices()[0]
     assert len(seq_slices) == len(anno_slices) == 19
@@ -241,8 +239,7 @@ def test_minus_strand_numerify():
                                               features=coord.features,
                                               is_plus_strand=True,
                                               max_len=1000,
-                                              one_hot=False,
-                                              merge_introns=False)
+                                              one_hot=False)
     nums = numerifier.coord_to_matrices()[0][0]
     # first, we should make sure the opposite strand is unmarked when empty
     expect = np.zeros([100, 3], dtype=np.float32)
@@ -252,8 +249,7 @@ def test_minus_strand_numerify():
                                               features=coord.features,
                                               is_plus_strand=False,
                                               max_len=1000,
-                                              one_hot=False,
-                                              merge_introns=False)
+                                              one_hot=False)
     # and now that we get the expect range on the minus strand,
     # keeping in mind the 40 is inclusive, and the 9, not
     nums = numerifier.coord_to_matrices()[0][0]
@@ -267,8 +263,7 @@ def test_minus_strand_numerify():
                                               features=coord.features,
                                               is_plus_strand=False,
                                               max_len=50,
-                                              one_hot=False,
-                                              merge_introns=False)
+                                              one_hot=False)
     num_list = numerifier.coord_to_matrices()[0]
 
     expect = np.zeros([100, 3], dtype=np.float32)
@@ -282,7 +277,7 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=400, genomes='', exclude='', val_size=0.2, one_hot=False,
-                      merge_introns=False, split_coordinates=False, keep_errors=False)
+                      split_coordinates=False, keep_errors=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     inputs = f['/data/X']
@@ -331,7 +326,7 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=200, genomes='', exclude='', val_size=0.2, one_hot=False,
-                      merge_introns=False, split_coordinates=False, keep_errors=False)
+                      split_coordinates=False, keep_errors=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     inputs = f['/data/X']
@@ -394,8 +389,8 @@ def test_numerify_with_end_neg1():
                                                   features=coord.features,
                                                   is_plus_strand=is_plus_strand,
                                                   max_len=1000,
-                                                  one_hot=False,
-                                                  merge_introns=False)
+                                                  one_hot=False)
+
         nums, masks = [x[0] for x in numerifier.coord_to_matrices()]
 
         if not np.array_equal(nums, expect):
@@ -749,14 +744,12 @@ def test_one_hot_encodings():
         [0, 0, 0],
         [1, 0, 0],
         [1, 1, 0],
-        # [1, 0, 1],
         [1, 1, 1],
     ]
     classes_5 = [
         [1, 0, 0, 0, 0],  # intergenic
         [0, 1, 0, 0, 0],  # UTR
         [0, 0, 1, 0, 0],  # CDS
-        # [0, 0, 0, 1, 0],  # Non-coding Intron
         [0, 0, 0, 0, 1],  # Intron
     ]
     classes_4 = [
@@ -772,31 +765,18 @@ def test_one_hot_encodings():
                                               features=coord.features,
                                               is_plus_strand=True,
                                               max_len=5000,
-                                              one_hot=False,
-                                              merge_introns=False)
+                                              one_hot=False)
+
     y_multi = numerifier.coord_to_matrices()[0][0]
     # count classes
     uniques_multi = np.unique(y_multi, return_counts=True, axis=0)
 
-    # make both kinds of one-hot encodings
+    # make one hot encoding
     numerifier = BasePairAnnotationNumerifier(coord=coord,
                                               features=coord.features,
                                               is_plus_strand=True,
                                               max_len=5000,
-                                              one_hot=True,
-                                              merge_introns=False)
-    y_one_hot_5 = numerifier.coord_to_matrices()[0][0]
-    uniques_5 = np.unique(y_one_hot_5, return_counts=True, axis=0)
-    for i in range(len(classes_multi)):
-        idx = (uniques_5[0] == classes_5[i]).all(axis=1).nonzero()[0][0]
-        assert uniques_multi[1][i] == uniques_5[1][idx]
-
-    numerifier = BasePairAnnotationNumerifier(coord=coord,
-                                              features=coord.features,
-                                              is_plus_strand=True,
-                                              max_len=5000,
-                                              one_hot=True,
-                                              merge_introns=True)
+                                              one_hot=True)
     y_one_hot_4 = numerifier.coord_to_matrices()[0][0]
     uniques_4 = np.unique(y_one_hot_4, return_counts=True, axis=0)
     # this loop has to be changed when using accounting for non-coding introns as well
@@ -805,5 +785,4 @@ def test_one_hot_encodings():
         assert uniques_multi[1][i] == uniques_4[1][idx]
 
     # test if they are one-hot at all
-    assert np.all(np.count_nonzero(y_one_hot_5, axis=1) == 1)
     assert np.all(np.count_nonzero(y_one_hot_4, axis=1) == 1)
