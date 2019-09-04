@@ -34,7 +34,7 @@ if __name__ == '__main__':
                                'Can only be used when --genomes is empty'))
 
     data = parser.add_argument_group("Data generation parameters")
-    data.add_argument('--chunk-size', type=int, default=10000,
+    data.add_argument('--chunk-size', type=int, default=20000,
                       help='Size of the chunks each genomic sequence gets cut into.')
     data.add_argument('--val-size', type=float, default=0.2,
                       help='The chance for a sequence or coordinate to end up in validation_data.h5' )
