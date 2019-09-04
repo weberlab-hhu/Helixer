@@ -10,7 +10,7 @@ from geenuff.base.orm import Coordinate, Genome
 from helixerprep.core.orm import Mer
 
 
-class MerController(object):
+class HelixerController(object):
     def __init__(self, db_path_in, db_path_out, meta_info_root_path):
         self.meta_info_root_path = meta_info_root_path
         self._setup_db(db_path_in, db_path_out)
@@ -28,9 +28,11 @@ class MerController(object):
 
     def _mk_session(self):
         self.engine = create_engine(full_db_path(self.db_path), echo=False)
-        # add Helixer specific table to the input db if it doesn't exist yet
-        if not self.engine.dialect.has_table(self.engine, 'mer'):
-            geenuff.orm.Base.metadata.tables['mer'].create(self.engine)
+        # add Helixer specific tables to the input db if they don't exist yet
+        new_tables = ['mer', 'meta_information']
+        for table in new_tables:
+            if not self.engine.dialect.has_table(self.engine, table):
+                geenuff.orm.Base.metadata.tables[table].create(self.engine)
         self.session = sessionmaker(bind=self.engine)()
 
     def _add_mers_of_seqid(self, species, seqid, mers):
