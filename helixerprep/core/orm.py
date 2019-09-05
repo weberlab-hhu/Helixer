@@ -1,5 +1,5 @@
 from geenuff import orm
-from sqlalchemy import Column, Integer, ForeignKey, UniqueConstraint, CheckConstraint, String
+from sqlalchemy import Column, Integer, Float, ForeignKey, UniqueConstraint, CheckConstraint, String
 from sqlalchemy.orm import relationship
 
 
@@ -33,14 +33,20 @@ class MetaInformation(orm.Base):
     __tablename__ = "meta_information"
 
     id = Column(Integer, primary_key=True)
-    coordinate_id = Column(Integer, ForeignKey('coordinate.id'), nullable=False)
+    genome_id = Column(Integer, ForeignKey('genome.id'), nullable=False)
 
-    coordinate = relationship('orm.Coordinate')
+    name = Column(String, nullable=False)
+    value = Column(Float, nullable=False)
+
+    genome = relationship('orm.Genome')
 
     __table_args__ = (
-        UniqueConstraint('coordinate_id', name='unique_coord'),
+        UniqueConstraint('name', 'genome_id', name='unique_meta_info_per_genome'),
     )
 
     def __repr__(self):
-        return '<MetaInformation {}, coord_id: {}>'.format(self.id, self.coordinate_id)
+        return '<MetaInformation {}, genome_id: {}, name: {}, value: {}>'.format(self.id,
+                                                                                 self.genome_id,
+                                                                                 self.name,
+                                                                                 self.value)
 

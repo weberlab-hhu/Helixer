@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 from glob import glob
 from shutil import copyfile
 from sqlalchemy import create_engine
@@ -7,12 +8,13 @@ from sqlalchemy.orm import sessionmaker
 import geenuff
 from geenuff.base.helpers import full_db_path, reverse_complement
 from geenuff.base.orm import Coordinate, Genome
-from helixerprep.core.orm import Mer
+from helixerprep.core.orm import Mer, MetaInformation
 
 
 class HelixerController(object):
-    def __init__(self, db_path_in, db_path_out, meta_info_root_path):
+    def __init__(self, db_path_in, db_path_out, meta_info_root_path, meta_info_csv_path):
         self.meta_info_root_path = meta_info_root_path
+        self.meta_info_csv_path = meta_info_csv_path
         self._setup_db(db_path_in, db_path_out)
         self._mk_session()
 
@@ -54,7 +56,6 @@ class HelixerController(object):
         """Tries to add all kmer counts it can find for each coordinate in the db
         Assumes the kmer file to contain non-collapsed kmers ordered by coordinate first and kmer
         sequence second"""
-        assert os.path.exists(self.meta_info_root_path)
         genomes_in_db = self.session.query(Genome).all()
         for i, genome in enumerate(genomes_in_db):
             kmer_file = os.path.join(self.meta_info_root_path, genomes_in_db[i].species,
@@ -86,3 +87,18 @@ class HelixerController(object):
                         seqid_mers[key] = count
                 self._add_mers_of_seqid(genome.species, last_seqid, seqid_mers)
                 print('Kmers from file {} added\n'.format(kmer_file))
+
+    def add_meta_info_to_db(self):
+        """For each genome found in the db, the function tries to insert meta data from the
+        csv file into the meta_information table."""
+        meta_df = pd.read_csv(self.meta_info_csv_path)
+        genomes_in_db = self.session.query(Genome).all()
+        for genome in genomes_in_db:
+            for key, value in meta_df[meta_df['species'] == genome.species].iteritems():
+                if key != 'species':
+                    meta_info = MetaInformation(genome=genome, name=key, value=value.iloc[0])
+                    self.session.add(meta_info)
+            print('Meta info added for {}'.format(genome.species))
+        self.session.commit()
+
+

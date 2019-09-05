@@ -1,4 +1,5 @@
 #! /usr/bin/env python3
+import os
 import argparse
 
 from helixerprep.core.controller import HelixerController
@@ -6,9 +7,11 @@ from helixerprep.core.controller import HelixerController
 
 def main(args):
     # insert additional tables
-    controller = HelixerController(args.db_path_in, args.db_path_out, args.meta_info_root_path)
+    controller = HelixerController(args.db_path_in, args.db_path_out, args.meta_info_root_path,
+                                   args.meta_info_csv_path)
     # lookup kmers and add what we find
     controller.add_mer_counts_to_db()
+    controller.add_meta_info_to_db()
 
 
 if __name__ == '__main__':
@@ -25,5 +28,10 @@ if __name__ == '__main__':
                                 help=('Absolute folder path from where the kmers files are in the '
                                       'subfolder {species}/meta_collection/kmers/kmers.tsv'),
                                 default='/mnt/data/ali/share/phytozome_organized/ready/train')
+    fasta_specific.add_argument('--meta-info-csv-path', type=str,
+                                help='Path to the csv file containing all the meta data',
+                                default='metadata.csv')
     args = parser.parse_args()
+    assert os.path.exists(args.meta_info_root_path)
+    assert os.path.exists(args.meta_info_csv_path)
     main(args)
