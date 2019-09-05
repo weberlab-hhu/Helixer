@@ -94,11 +94,13 @@ class HelixerController(object):
         meta_df = pd.read_csv(self.meta_info_csv_path)
         genomes_in_db = self.session.query(Genome).all()
         for genome in genomes_in_db:
-            for key, value in meta_df[meta_df['species'] == genome.species].iteritems():
-                if key != 'species':
-                    meta_info = MetaInformation(genome=genome, name=key, value=value.iloc[0])
-                    self.session.add(meta_info)
-            print('Meta info added for {}'.format(genome.species))
+            genome_meta_info = meta_df[meta_df['species'] == genome.species]
+            if len(genome_meta_info) > 0:
+                for key, value in genome_meta_info.iteritems():
+                    if key != 'species':
+                        meta_info = MetaInformation(genome=genome, name=key, value=value.iloc[0])
+                        self.session.add(meta_info)
+                print('Meta info added for {}'.format(genome.species))
+            else:
+                print('Meta info not found for {}'.format(genome.species))
         self.session.commit()
-
-
