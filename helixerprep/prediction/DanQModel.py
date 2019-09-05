@@ -19,12 +19,24 @@ class DanQSequence(HelixerSequence):
         sw = np.ones((y.shape[0], y.shape[1] // pool_size), dtype=np.int8)
 
         if pool_size > 1:
+            # copy of the input so the LSTM can attend to the raw input sequence after pooling
+            X_additional = np.copy(X)
+
             if y.shape[1] % pool_size != 0:
                 # add additional values and mask them so everything divides evenly
                 overhang = pool_size - (y.shape[1] % pool_size)
                 y = np.pad(y, ((0, 0), (0, overhang), (0, 0)), 'constant',
                            constant_values=(0, 0))
+                X_additional = np.pad(X_additional, ((0, 0), (0, overhang), (0, 0)), 'constant',
+                                      constant_values=(0, 0))
                 sw = np.pad(sw, ((0, 0), (0, 1)), 'constant', constant_values=(0, 0))
+
+            # put additional raw LSTM input into shape
+            # first merge last 2 axis so we can split axis 1 with reshape
+            shape = X_additional.shape
+            X_additional = X_additional.reshape((shape[0], -1))
+            X_additional = X_additional.reshape((shape[0], shape[1] // pool_size, -1))
+
             # make labels 2d so we can use the standard softmax / loss functions
             y = y.reshape((
                 y.shape[0],
@@ -39,16 +51,16 @@ class DanQSequence(HelixerSequence):
             lengths = np.stack(self.coord_lengths[usable_idx_slice])
             lengths = np.repeat(lengths[:, None], y.shape[1], axis=1)
             meta = np.stack([gc, lengths], axis=2)
-            return X, [y, meta], [sw, sw]
+            return [X, X_additional], [y, meta], [sw, sw]
         else:
-            return X, y, sw
+            return [X, X_additional], y, sw
 
 
 class DanQModel(HelixerModel):
     def __init__(self):
         super().__init__()
-        self.parser.add_argument('-u', '--units', type=int, default=128)
-        self.parser.add_argument('-f', '--filter-depth', type=int, default=128)
+        self.parser.add_argument('-u', '--units', type=int, default=32)
+        self.parser.add_argument('-f', '--filter-depth', type=int, default=32)
         self.parser.add_argument('-ks', '--kernel-size', type=int, default=26)
         self.parser.add_argument('-ps', '--pool-size', type=int, default=10)
         self.parser.add_argument('-dr1', '--dropout1', type=float, default=0.0)
@@ -76,8 +88,17 @@ class DanQModel(HelixerModel):
 
         if self.layer_normalization:
             x = LayerNormalization()(x)
-
         x = Dropout(self.dropout1)(x)
+
+        # set up additional input
+        len_after_pooling = int(np.ceil(self.shape_train[1] / self.pool_size))
+        add_input = Input(shape=(len_after_pooling, 4 * self.pool_size),
+                          dtype=self.float_precision,
+                          name='add_input')
+
+        # add additional input to output  of
+        x = concatenate([x, add_input])
+
         x = Bidirectional(CuDNNLSTM(self.units, return_sequences=True))(x)
         x = Dropout(self.dropout2)(x)
 
@@ -89,7 +110,7 @@ class DanQModel(HelixerModel):
         x = Activation('softmax', name='main_output')(x)
 
         outputs = [x, meta_output] if self.add_meta_losses else [x]
-        model = Model(inputs=[main_input], outputs=outputs)
+        model = Model(inputs=[main_input, add_input], outputs=outputs)
         return model
 
     def compile_model(self, model):
