@@ -196,11 +196,26 @@ class ExportController(object):
             genome_coords[c.genome_id].append(c)
         return genome_coords
 
-    def _split_coords_by_N75(self, coord_ids, val_size):
+    def _split_coords_by_N90(self, genome_coords , val_size):
         """Splits the given coordinates in a train and val set. It does so by doing it individually for
-        each the coordinates < N75 and >= N75 of each genome. It is inefficient to build this code
+        each the coordinates < N90 and >= N90 of each genome. It is inefficient to build this code
         on top of the output of self._get_coord_ids() but very convenient in terms of code structure."""
-        pass
+        def N90_index(coords):
+            len_90_perc = int(sum([c.length for c in coords]) * 0.9)
+            len_sum = 0
+            for i, coord in enumerate(coords):
+                len_sum += coord.length
+                if len_sum >= len_90_perc:
+                    return i
+
+        train_coords, val_coords = [], []
+        for coords in genome_coords.values():
+            n90_idx = N90_index(coords) + 1
+            for n90_split in [coords[:n90_idx], coords[n90_idx:]]:
+                genome_train_coords, genome_val_coords = train_test_split(n90_split, test_size=val_size)
+                train_coords += genome_train_coords
+                val_coords += genome_val_coords
+        return train_coords, val_coords
 
     def _add_data_attrs(self, genomes, exclude, one_hot, keep_errors):
         attrs = {
@@ -264,7 +279,7 @@ class ExportController(object):
         n_coords = sum([len(coords) for genome_id, coords in genome_coords.items()])
         print('\n{} coordinates chosen to numerify'.format(n_coords))
         if split_coordinates:
-            train_coord_ids, val_coord_ids = self._split_coords_by_N75(genome_coords, val_size)
+            train_coords, val_coords = self._split_coords_by_N90(genome_coords, val_size)
 
         n_coords_done = 1
         n_y_cols = 4 if one_hot else 3
@@ -274,7 +289,7 @@ class ExportController(object):
                 flat_data, coord, masked_bases_percent, intergenic_bases_percent = numerify_outputs
                 if split_coordinates or self.only_test_set:
                     if split_coordinates:
-                        if coord_id in train_coord_ids:
+                        if coord in train_coords:
                             self._save_data(self.h5_train, flat_data, chunk_size, n_y_cols)
                             assigned_set = 'train'
                         else:
