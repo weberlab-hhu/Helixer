@@ -5,6 +5,7 @@ import numpy as np
 import random
 import datetime
 from itertools import compress
+from collections import defaultdict
 from sklearn.model_selection import train_test_split
 
 from sqlalchemy import create_engine
@@ -171,25 +172,35 @@ class ExportController(object):
         coord_ids_with_features = self.session.query(Feature.coordinate_id).distinct()
         if genomes:
             print('Selecting the following genomes: {}'.format(genomes))
-            all_coord_ids = (self.session.query(Coordinate.id)
-                            .join(Genome, Genome.id == Coordinate.genome_id)
-                            .filter(Genome.species.in_(genomes))
-                            .filter(Coordinate.id.in_(coord_ids_with_features))
-                            .all())
+            all_coords = (self.session.query(Coordinate)
+                         .join(Genome, Genome.id == Coordinate.genome_id)
+                         .filter(Genome.species.in_(genomes))
+                         .filter(Coordinate.id.in_(coord_ids_with_features))
+                         .order_by(Coordinate.length.desc())
+                         .all())
         else:
             if exclude:
                 print('Selecting all genomes from {} except: {}'.format(self.db_path_in, exclude))
-                all_coord_ids = (self.session.query(Coordinate.id)
-                                .join(Genome, Genome.id == Coordinate.genome_id)
-                                .filter(Genome.species.notin_(exclude))
-                                .filter(Coordinate.id.in_(coord_ids_with_features))
-                                .all())
+                all_coords = (self.session.query(Coordinate)
+                             .join(Genome, Genome.id == Coordinate.genome_id)
+                             .filter(Genome.species.notin_(exclude))
+                             .filter(Coordinate.id.in_(coord_ids_with_features))
+                             .order_by(Coordinate.length.desc())
+                             .all())
             else:
                 print('Selecting all genomes from {}'.format(self.db_path_in))
-                all_coord_ids = coord_ids_with_features.all()
+                all_coords = coord_ids_with_features.order_by(Coordinate.length.desc()).all()
 
-        all_coord_ids = [c[0] for c in all_coord_ids]
-        return all_coord_ids
+        genome_coords = defaultdict(list)
+        for c in all_coords:
+            genome_coords[c.genome_id].append(c)
+        return genome_coords
+
+    def _split_coords_by_N75(self, coord_ids, val_size):
+        """Splits the given coordinates in a train and val set. It does so by doing it individually for
+        each the coordinates < N75 and >= N75 of each genome. It is inefficient to build this code
+        on top of the output of self._get_coord_ids() but very convenient in terms of code structure."""
+        pass
 
     def _add_data_attrs(self, genomes, exclude, one_hot, keep_errors):
         attrs = {
@@ -213,10 +224,9 @@ class ExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def _numerify_coord(self, coord_id, chunk_size, one_hot, keep_errors):
+    def _numerify_coord(self, coord, chunk_size, one_hot, keep_errors):
         list_in_list_out = ['inputs', 'labels', 'label_masks', 'start_ends']
         one_in_list_out = ['gc_contents', 'coord_lengths', 'species', 'seqids']
-        coord = self.session.query(Coordinate).filter(Coordinate.id == coord_id).one()
         # will pre-organize all data and metadata to have one entry per chunk in flat_data below
         flat_data = {}
         for key in list_in_list_out + one_in_list_out:
@@ -250,43 +260,48 @@ class ExportController(object):
 
     def export(self, chunk_size, genomes, exclude, val_size, one_hot, split_coordinates, keep_errors):
         self._check_genome_names(genomes, exclude)
-        all_coord_ids = self._get_coord_ids(genomes, exclude)
-        print('\n{} coordinates chosen to numerify'.format(len(all_coord_ids)))
+        genome_coords = self._get_coord_ids(genomes, exclude)
+        n_coords = sum([len(coords) for genome_id, coords in genome_coords.items()])
+        print('\n{} coordinates chosen to numerify'.format(n_coords))
         if split_coordinates:
-            train_coord_ids, val_coord_ids = train_test_split(all_coord_ids, test_size=val_size)
+            train_coord_ids, val_coord_ids = self._split_coords_by_N75(genome_coords, val_size)
 
+        n_coords_done = 1
         n_y_cols = 4 if one_hot else 3
-        for i, coord_id in enumerate(all_coord_ids):
-            numerify_outputs = self._numerify_coord(coord_id, chunk_size, one_hot, keep_errors)
-            flat_data, coord, masked_bases_percent, intergenic_bases_percent = numerify_outputs
-            if split_coordinates or self.only_test_set:
-                if split_coordinates:
-                    if coord_id in train_coord_ids:
-                        self._save_data(self.h5_train, flat_data, chunk_size, n_y_cols)
-                        assigned_set = 'train'
-                    else:
-                        self._save_data(self.h5_val, flat_data, chunk_size, n_y_cols)
-                        assigned_set = 'val'
-                elif self.only_test_set:
-                    self._save_data(self.h5_test, flat_data, chunk_size, n_y_cols)
-                    assigned_set = 'test'
-                print(('{}/{} Numerified {} of {} with {} features in {} chunks '
-                       'with an error rate of {:.2f}%, and intergenic rate of {:.2f}% ({})').format(
-                           i + 1, len(all_coord_ids), coord, coord.genome.species,
-                           len(coord.features), len(flat_data['inputs']), masked_bases_percent,
-                           intergenic_bases_percent, assigned_set))
-            else:
-                # split sequences
-                train_data, val_data = self._split_sequences(flat_data, val_size=val_size)
-                if train_data['inputs']:
-                    self._save_data(self.h5_train, train_data, chunk_size, n_y_cols)
-                if val_data['inputs']:
-                    self._save_data(self.h5_val, val_data, chunk_size, n_y_cols)
-                print(('{}/{} Numerified {} of {} with {} features in {} chunks '
-                       '(train: {}, test: {}) with an error rate of {:.2f}% and an '
-                       'intergenic rate of {:.2f}%').format(
-                           i + 1, len(all_coord_ids), coord, coord.genome.species,
-                           len(coord.features), len(flat_data['inputs']), len(train_data['inputs']),
-                           len(val_data['inputs']), masked_bases_percent, intergenic_bases_percent))
+        for coords in genome_coords.values():
+            for coord in coords:
+                numerify_outputs = self._numerify_coord(coord, chunk_size, one_hot, keep_errors)
+                flat_data, coord, masked_bases_percent, intergenic_bases_percent = numerify_outputs
+                if split_coordinates or self.only_test_set:
+                    if split_coordinates:
+                        if coord_id in train_coord_ids:
+                            self._save_data(self.h5_train, flat_data, chunk_size, n_y_cols)
+                            assigned_set = 'train'
+                        else:
+                            self._save_data(self.h5_val, flat_data, chunk_size, n_y_cols)
+                            assigned_set = 'val'
+                    elif self.only_test_set:
+                        self._save_data(self.h5_test, flat_data, chunk_size, n_y_cols)
+                        assigned_set = 'test'
+                    print(('{}/{} Numerified {} of {} with {} features in {} chunks '
+                           'with an error rate of {:.2f}%, and intergenic rate of {:.2f}% ({})').format(
+                               n_coords_done, n_coords,  coord, coord.genome.species,
+                               len(coord.features), len(flat_data['inputs']), masked_bases_percent,
+                               intergenic_bases_percent, assigned_set))
+                else:
+                    # split sequences
+                    train_data, val_data = self._split_sequences(flat_data, val_size=val_size)
+                    if train_data['inputs']:
+                        self._save_data(self.h5_train, train_data, chunk_size, n_y_cols)
+                    if val_data['inputs']:
+                        self._save_data(self.h5_val, val_data, chunk_size, n_y_cols)
+                    print(('{}/{} Numerified {} of {} with {} features in {} chunks '
+                           '(train: {}, test: {}) with an error rate of {:.2f}% and an '
+                           'intergenic rate of {:.2f}%').format(
+                               n_coords_done, n_coords, coord, coord.genome.species,
+                               len(coord.features), len(flat_data['inputs']), len(train_data['inputs']),
+                               len(val_data['inputs']), masked_bases_percent, intergenic_bases_percent))
+                n_coords_done += 1
+
         self._add_data_attrs(genomes, exclude, one_hot, keep_errors)
         self._close_files()
