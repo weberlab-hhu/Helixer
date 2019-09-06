@@ -2,8 +2,8 @@
 import random
 import numpy as np
 from keras.models import Sequential
-from keras.layers import LSTM, CuDNNLSTM, Dense, Bidirectional
-from HelixerModel import HelixerModel, HelixerSequence, acc_row, acc_g_row, acc_ig_row
+from keras.layers import LSTM, CuDNNLSTM, Dense, Bidirectional, Activation
+from HelixerModel import HelixerModel, HelixerSequence, acc_ig_oh, acc_g_oh
 
 
 class LSTMSequence(HelixerSequence):
@@ -11,8 +11,16 @@ class LSTMSequence(HelixerSequence):
         usable_idx_slice = self.usable_idx[idx * self.batch_size:(idx + 1) * self.batch_size]
         X = np.stack(self.x_dset[sorted(list(usable_idx_slice))])  # got to provide a sorted list of idx
         y = np.stack(self.y_dset[sorted(list(usable_idx_slice))])
-        sw = np.stack(self.sw_dset[sorted(list(usable_idx_slice))])
-        return X, y, sw
+        # sw = np.stack(self.sw_dset[sorted(list(usable_idx_slice))])
+
+        # make labels 2d so we can use the standard softmax / loss functions
+        y = y.reshape((
+            y.shape[0],
+            y.shape[1] // pool_size,
+            pool_size,
+            y.shape[-1],
+        ))
+        return X, y
 
 
 class LSTMModel(HelixerModel):
@@ -22,6 +30,7 @@ class LSTMModel(HelixerModel):
         self.parser.add_argument('-u', '--units', type=int, default=4)
         self.parser.add_argument('-l', '--layers', type=int, default=1)
         self.parse_args()
+        assert self.exclude_errors  # should make sense for performance and comparability
 
     def sequence_cls(self):
         return LSTMSequence
@@ -39,19 +48,13 @@ class LSTMModel(HelixerModel):
             for _ in range(self.layers - 1):
                 model.add(Bidirectional(CuDNNLSTM(self.units, return_sequences=True)))
 
-        model.add(Dense(3, activation='sigmoid'))
+        model.add(Dense(4, activation='softmax'))
         return model
 
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
-                      loss='binary_crossentropy',
-                      sample_weight_mode='temporal',
-                      metrics=[
-                          'accuracy',
-                          acc_row,
-                          acc_g_row,
-                          acc_ig_row,
-                      ])
+                      loss='categorical_crossentropy',
+                      metrics=['accuracy', acc_g_oh, acc_ig_oh])
 
 
 if __name__ == '__main__':

@@ -30,14 +30,21 @@ from F1Scores import F1Calculator
 from ConfusionMatrix import ConfusionMatrix
 
 def acc_g_oh(y_true, y_pred):
-    mask = y_true[:, :, :, 0] < 1
+    if len(y_true.shape) == 4:
+        mask = y_true[:, :, :, 0] < 1
+    else:
+        # flat case
+        mask = y_true[:, :, 0] < 1
     y_true = K.argmax(tf.boolean_mask(y_true, mask), axis=-1)
     y_pred = K.argmax(tf.boolean_mask(y_pred, mask), axis=-1)
     return K.cast(K.equal(y_true, y_pred), K.floatx())
 
 
 def acc_ig_oh(y_true, y_pred):
-    mask = y_true[:, :, :, 0] > 0
+    if len(y_true.shape) == 4:
+        mask = y_true[:, :, :, 0] > 0
+    else:
+        mask = y_true[:, :, 0] < 1
     y_true = K.argmax(tf.boolean_mask(y_true, mask), axis=-1)
     y_pred = K.argmax(tf.boolean_mask(y_pred, mask), axis=-1)
     return K.cast(K.equal(y_true, y_pred), K.floatx())
@@ -79,6 +86,8 @@ class HelixerSequence(Sequence):
         self.batch_size = self.model.batch_size
         self.float_precision = self.model.float_precision
         self.exclude_errors = self.model.exclude_errors
+        self.meta_losses = self.model.meta_losses
+        self.additional_input = self.model.additional_input
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
@@ -133,6 +142,8 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
+        self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
+        self.parser.add_argument('-additional-input', '--additional-input', action='store_true')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -234,7 +245,7 @@ class HelixerModel(ABC):
             return np.count_nonzero(ic_samples == True)
 
         def set_stopping_metric():
-            if self.add_meta_losses:
+            if self.meta_losses:
                 # the additional losses are not yet working with multi class predictions
                 self.stopping_metric = 'val_main_output_acc_g_oh'
             else:

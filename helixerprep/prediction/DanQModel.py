@@ -10,11 +10,6 @@ from HelixerModel import HelixerModel, HelixerSequence, acc_ig_oh, acc_g_oh
 
 
 class DanQSequence(HelixerSequence):
-    def __init__(self, model, h5_file, shuffle):
-        super().__init__(model, h5_file, shuffle)
-        self.add_meta_losses = self.model.add_meta_losses
-        self.additional_input = self.model.additional_input
-
     def __getitem__(self, idx):
         pool_size = self.model.pool_size
         usable_idx_slice = self.usable_idx[idx * self.batch_size:(idx + 1) * self.batch_size]
@@ -53,7 +48,7 @@ class DanQSequence(HelixerSequence):
                 y.shape[-1],
             ))
 
-        if self.add_meta_losses:
+        if self.meta_losses:
             gc = np.stack(self.gc_contents[usable_idx_slice])
             gc = np.repeat(gc[:, None], y.shape[1], axis=1)  # repeat for every time step
             lengths = np.stack(self.coord_lengths[usable_idx_slice])
@@ -81,8 +76,6 @@ class DanQModel(HelixerModel):
         self.parser.add_argument('-dr2', '--dropout2', type=float, default=0.0)
         self.parser.add_argument('-mlw', '--meta-loss-weight', type=float, default=5.0)
         self.parser.add_argument('-ln', '--layer-normalization', action='store_true')
-        self.parser.add_argument('-add-meta-losses', '--add-meta-losses', action='store_true')
-        self.parser.add_argument('-additional-input', '--additional-input', action='store_true')
         self.parse_args()
 
         if not self.exclude_errors:
@@ -116,7 +109,7 @@ class DanQModel(HelixerModel):
         x = Bidirectional(CuDNNLSTM(self.units, return_sequences=True))(x)
         x = Dropout(self.dropout2)(x)
 
-        if self.add_meta_losses:
+        if self.meta_losses:
             meta_output = Dense(2, activation='sigmoid', name='meta_output')(x)
 
         x = Dense(self.pool_size * self.label_dim)(x)
@@ -124,12 +117,12 @@ class DanQModel(HelixerModel):
         x = Activation('softmax', name='main_output')(x)
 
         inputs = [main_input, add_input] if self.additional_input else main_input
-        outputs = [x, meta_output] if self.add_meta_losses else [x]
+        outputs = [x, meta_output] if self.meta_losses else [x]
         model = Model(inputs=inputs, outputs=outputs)
         return model
 
     def compile_model(self, model):
-        if self.add_meta_losses:
+        if self.meta_losses:
             losses = ['categorical_crossentropy', 'mean_squared_error']
             loss_weights = [1.0, self.meta_loss_weight]
             metrics = {
