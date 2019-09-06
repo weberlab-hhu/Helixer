@@ -21,7 +21,7 @@ class ExportController(object):
         self.db_path_in = db_path_in
         self.only_test_set = only_test_set
         if not os.path.isdir(data_dir):
-            os.mkdir(data_dir)
+            os.makedirs(data_dir)
         elif os.listdir(data_dir):
             print('Output directory must be empty or not existing')
             exit()
