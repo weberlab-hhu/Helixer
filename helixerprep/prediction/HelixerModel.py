@@ -30,21 +30,14 @@ from F1Scores import F1Calculator
 from ConfusionMatrix import ConfusionMatrix
 
 def acc_g_oh(y_true, y_pred):
-    if len(y_true.shape) == 4:
-        mask = y_true[:, :, :, 0] < 1
-    else:
-        # flat case
-        mask = y_true[:, :, 0] < 1
+    mask = y_true[:, :, :, 0] < 1
     y_true = K.argmax(tf.boolean_mask(y_true, mask), axis=-1)
     y_pred = K.argmax(tf.boolean_mask(y_pred, mask), axis=-1)
     return K.cast(K.equal(y_true, y_pred), K.floatx())
 
 
 def acc_ig_oh(y_true, y_pred):
-    if len(y_true.shape) == 4:
-        mask = y_true[:, :, :, 0] > 0
-    else:
-        mask = y_true[:, :, 0] < 1
+    mask = y_true[:, :, :, 0] > 0
     y_true = K.argmax(tf.boolean_mask(y_true, mask), axis=-1)
     y_pred = K.argmax(tf.boolean_mask(y_pred, mask), axis=-1)
     return K.cast(K.equal(y_true, y_pred), K.floatx())
@@ -328,8 +321,8 @@ class HelixerModel(ABC):
 
             model.fit_generator(generator=self.gen_training_data(),
                                 epochs=self.epochs,
-                                # workers=0,  # run in main thread
-                                workers=1,
+                                workers=0,  # run in main thread
+                                # workers=1,
                                 validation_data=self.gen_validation_data(),
                                 callbacks=self.generate_callbacks(),
                                 verbose=True)
