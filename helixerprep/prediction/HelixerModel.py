@@ -78,7 +78,6 @@ class HelixerSequence(Sequence):
         self.h5_file = h5_file
         self.batch_size = self.model.batch_size
         self.float_precision = self.model.float_precision
-        self.add_meta_losses = self.model.add_meta_losses
         self.exclude_errors = self.model.exclude_errors
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
@@ -327,8 +326,8 @@ class HelixerModel(ABC):
 
             model.fit_generator(generator=self.gen_training_data(),
                                 epochs=self.epochs,
-                                workers=0,  # run in main thread
-                                # workers=1,
+                                # workers=0,  # run in main thread
+                                workers=1,
                                 validation_data=self.gen_validation_data(),
                                 callbacks=self.generate_callbacks(),
                                 verbose=True)
