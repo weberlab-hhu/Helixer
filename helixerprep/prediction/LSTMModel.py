@@ -28,25 +28,16 @@ class LSTMModel(HelixerModel):
 
     def model(self):
         model = Sequential()
-        # input layer
-        if self.only_cpu:
-            model.add(Bidirectional(
-                LSTM(self.units, return_sequences=True, input_shape=(None, 4)),
-                input_shape=(None, 4)
-            ))
-        else:
-            model.add(Bidirectional(
-                CuDNNLSTM(self.units, return_sequences=True, input_shape=(None, 4)),
-                input_shape=(None, 4)
-            ))
+
+        model.add(Bidirectional(
+            CuDNNLSTM(self.units, return_sequences=True, input_shape=(None, 4)),
+            input_shape=(None, 4)
+        ))
 
         # potential next layers
         if self.layers > 1:
             for _ in range(self.layers - 1):
-                if self.only_cpu:
-                    model.add(Bidirectional(LSTM(self.units, return_sequences=True)))
-                else:
-                    model.add(Bidirectional(CuDNNLSTM(self.units, return_sequences=True)))
+                model.add(Bidirectional(CuDNNLSTM(self.units, return_sequences=True)))
 
         model.add(Dense(3, activation='sigmoid'))
         return model
