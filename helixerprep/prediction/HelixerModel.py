@@ -340,9 +340,6 @@ class HelixerModel(ABC):
 
             model = load_model(self.load_model_path, custom_objects = {
                 'LayerNormalization': LayerNormalization,
-                'acc_row': acc_row,
-                'acc_g_row': acc_g_row,
-                'acc_ig_row': acc_ig_row,
                 'acc_g_oh': acc_g_oh,
                 'acc_ig_oh': acc_ig_oh,
             })
@@ -371,9 +368,11 @@ class HelixerModel(ABC):
                 for i in range(len(test_sequence)):
                     if self.verbose:
                         print(i, '/', len(test_sequence))
-                    predictions = model.predict_on_batch(test_sequence[i][0]).astype(np.float16)
+                    predictions = model.predict_on_batch(test_sequence[i][0])
+                    if type(predictions) is list:
+                        predictions, meta_predictions = predictions
                     # join last two dims when predicting one hot labels
-                    predictions = predictions.reshape(predictions.shape[:2] + (-1,))
+                    predictions = predictions.reshape(predictions.shape[:2] + (-1,)).astype(np.float16)
                     # reshape when predicting more than one point at a time
                     if predictions.shape[2] != self.label_dim:
                         n_points = predictions.shape[2] // self.label_dim
