@@ -20,22 +20,25 @@ class DanQSequence(HelixerSequence):
 
         if pool_size > 1:
             # copy of the input so the LSTM can attend to the raw input sequence after pooling
-            X_additional = np.copy(X)
+            if self.additional_input:
+                X_additional = np.copy(X)
 
             if y.shape[1] % pool_size != 0:
                 # add additional values and mask them so everything divides evenly
                 overhang = pool_size - (y.shape[1] % pool_size)
                 y = np.pad(y, ((0, 0), (0, overhang), (0, 0)), 'constant',
                            constant_values=(0, 0))
-                X_additional = np.pad(X_additional, ((0, 0), (0, overhang), (0, 0)), 'constant',
-                                      constant_values=(0, 0))
+                if self.additional_input:
+                    X_additional = np.pad(X_additional, ((0, 0), (0, overhang), (0, 0)), 'constant',
+                                          constant_values=(0, 0))
                 sw = np.pad(sw, ((0, 0), (0, 1)), 'constant', constant_values=(0, 0))
 
-            # put additional raw LSTM input into shape
-            # first merge last 2 axis so we can split axis 1 with reshape
-            shape = X_additional.shape
-            X_additional = X_additional.reshape((shape[0], -1))
-            X_additional = X_additional.reshape((shape[0], shape[1] // pool_size, -1))
+            if self.additional_input:
+                # put additional raw LSTM input into shape
+                # first merge last 2 axis so we can split axis 1 with reshape
+                shape = X_additional.shape
+                X_additional = X_additional.reshape((shape[0], -1))
+                X_additional = X_additional.reshape((shape[0], shape[1] // pool_size, -1))
 
             # make labels 2d so we can use the standard softmax / loss functions
             y = y.reshape((
@@ -45,15 +48,21 @@ class DanQSequence(HelixerSequence):
                 y.shape[-1],
             ))
 
-        if self.add_meta_losses:
+        if self.meta_losses:
             gc = np.stack(self.gc_contents[usable_idx_slice])
             gc = np.repeat(gc[:, None], y.shape[1], axis=1)  # repeat for every time step
             lengths = np.stack(self.coord_lengths[usable_idx_slice])
             lengths = np.repeat(lengths[:, None], y.shape[1], axis=1)
             meta = np.stack([gc, lengths], axis=2)
-            return [X, X_additional], [y, meta], [sw, sw]
+            if self.additional_input:
+                return [X, X_additional], [y, meta], [sw, sw]
+            else:
+                return X, [y, meta], [sw, sw]
         else:
-            return [X, X_additional], y, sw
+            if self.additional_input:
+                return [X, X_additional], y, sw
+            else:
+                return X, y, sw
 
 
 class DanQModel(HelixerModel):
@@ -67,7 +76,6 @@ class DanQModel(HelixerModel):
         self.parser.add_argument('-dr2', '--dropout2', type=float, default=0.0)
         self.parser.add_argument('-mlw', '--meta-loss-weight', type=float, default=5.0)
         self.parser.add_argument('-ln', '--layer-normalization', action='store_true')
-        self.parser.add_argument('-meta-output', '--add-meta-losses', action='store_true')
         self.parse_args()
 
         if not self.exclude_errors:
@@ -90,31 +98,31 @@ class DanQModel(HelixerModel):
             x = LayerNormalization()(x)
         x = Dropout(self.dropout1)(x)
 
-        # set up additional input
-        len_after_pooling = int(np.ceil(self.shape_train[1] / self.pool_size))
-        add_input = Input(shape=(len_after_pooling, 4 * self.pool_size),
-                          dtype=self.float_precision,
-                          name='add_input')
-
-        # add additional input to output  of
-        x = concatenate([x, add_input])
+        if self.additional_input:
+            len_after_pooling = int(np.ceil(self.shape_train[1] / self.pool_size))
+            add_input = Input(shape=(len_after_pooling, 4 * self.pool_size),
+                              dtype=self.float_precision,
+                              name='add_input')
+            # add additional input to output  of
+            x = concatenate([x, add_input])
 
         x = Bidirectional(CuDNNLSTM(self.units, return_sequences=True))(x)
         x = Dropout(self.dropout2)(x)
 
-        if self.add_meta_losses:
+        if self.meta_losses:
             meta_output = Dense(2, activation='sigmoid', name='meta_output')(x)
 
         x = Dense(self.pool_size * self.label_dim)(x)
         x = Reshape((-1, self.pool_size, self.label_dim))(x)
         x = Activation('softmax', name='main_output')(x)
 
-        outputs = [x, meta_output] if self.add_meta_losses else [x]
-        model = Model(inputs=[main_input, add_input], outputs=outputs)
+        inputs = [main_input, add_input] if self.additional_input else main_input
+        outputs = [x, meta_output] if self.meta_losses else [x]
+        model = Model(inputs=inputs, outputs=outputs)
         return model
 
     def compile_model(self, model):
-        if self.add_meta_losses:
+        if self.meta_losses:
             losses = ['categorical_crossentropy', 'mean_squared_error']
             loss_weights = [1.0, self.meta_loss_weight]
             metrics = {

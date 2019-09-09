@@ -78,8 +78,9 @@ class HelixerSequence(Sequence):
         self.h5_file = h5_file
         self.batch_size = self.model.batch_size
         self.float_precision = self.model.float_precision
-        self.add_meta_losses = self.model.add_meta_losses
         self.exclude_errors = self.model.exclude_errors
+        self.meta_losses = self.model.meta_losses
+        self.additional_input = self.model.additional_input
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
@@ -134,6 +135,8 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
+        self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
+        self.parser.add_argument('-additional-input', '--additional-input', action='store_true')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -144,7 +147,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('-gpus', '--gpus', type=int, default=1)
         self.parser.add_argument('-cpus', '--cpus', type=int, default=8)
         self.parser.add_argument('--specific-gpu-id', type=int, default=-1)
-        self.parser.add_argument('-only-cpu', '--only-cpu', action='store_true')
         # misc flags
         self.parser.add_argument('-nocm', '--no-confusion-matrix', action='store_true')
         self.parser.add_argument('-plot', '--plot', action='store_true')
@@ -183,15 +185,7 @@ class HelixerModel(ABC):
 
     def set_resources(self):
         K.set_floatx(self.float_precision)
-        if self.only_cpu:
-            device_count = {'CPU': self.cpus, 'GPU': 0}
-            config = tf.ConfigProto(intra_op_parallelism_threads=self.cpus,
-                                    inter_op_parallelism_threads=self.cpus,
-                                    allow_soft_placement=True,
-                                    device_count=device_count)
-            session = tf.Session(config=config)
-            K.set_session(session)
-        elif self.specific_gpu_id > -1:
+        if self.specific_gpu_id > -1:
             os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID';
             os.environ['CUDA_VISIBLE_DEVICES'] = str(self.specific_gpu_id)
 
@@ -244,7 +238,7 @@ class HelixerModel(ABC):
             return np.count_nonzero(ic_samples == True)
 
         def set_stopping_metric():
-            if self.add_meta_losses:
+            if self.meta_losses:
                 # the additional losses are not yet working with multi class predictions
                 self.stopping_metric = 'val_main_output_acc_g_oh'
             else:
@@ -311,7 +305,7 @@ class HelixerModel(ABC):
         # we either train or predict
         if not self.load_model_path:
             model = self.model()
-            if not self.only_cpu and self.gpus >= 2:
+            if self.gpus >= 2:
                 model = multi_gpu_model(model, gpus=self.gpus)
 
             if self.verbose:
