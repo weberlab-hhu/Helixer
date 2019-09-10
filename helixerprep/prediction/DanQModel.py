@@ -16,29 +16,20 @@ class DanQSequence(HelixerSequence):
         usable_idx_slice = sorted(list(usable_idx_slice))  # got to always provide a sorted list of idx
         X = np.stack(self.x_dset[usable_idx_slice])
         y = np.stack(self.y_dset[usable_idx_slice])
-        sw = np.ones((y.shape[0], y.shape[1] // pool_size), dtype=np.int8)
 
         if pool_size > 1:
-            # copy of the input so the LSTM can attend to the raw input sequence after pooling
-            if self.additional_input:
-                X_additional = np.copy(X)
-
             if y.shape[1] % pool_size != 0:
-                # add additional values and mask them so everything divides evenly
-                overhang = pool_size - (y.shape[1] % pool_size)
-                y = np.pad(y, ((0, 0), (0, overhang), (0, 0)), 'constant',
-                           constant_values=(0, 0))
-                if self.additional_input:
-                    X_additional = np.pad(X_additional, ((0, 0), (0, overhang), (0, 0)), 'constant',
-                                          constant_values=(0, 0))
-                sw = np.pad(sw, ((0, 0), (0, 1)), 'constant', constant_values=(0, 0))
+                # clip to maximum size possible with the pooling length
+                overhang = y.shape[1] % pool_size
+                X = X[:, :-overhang]
+                y = y[:, :-overhang]
 
             if self.additional_input:
-                # put additional raw LSTM input into shape
+                # copy of the input so the LSTM can attend to the raw input sequence after pooling
                 # first merge last 2 axis so we can split axis 1 with reshape
-                shape = X_additional.shape
-                X_additional = X_additional.reshape((shape[0], -1))
-                X_additional = X_additional.reshape((shape[0], shape[1] // pool_size, -1))
+                X_add = np.copy(X)
+                X_add = X_add.reshape((X_add.shape[0], -1))
+                X_add = X_add.reshape((X_add.shape[0], X_add.shape[1] // (pool_size * 4), -1))
 
             # make labels 2d so we can use the standard softmax / loss functions
             y = y.reshape((
@@ -55,14 +46,14 @@ class DanQSequence(HelixerSequence):
             lengths = np.repeat(lengths[:, None], y.shape[1], axis=1)
             meta = np.stack([gc, lengths], axis=2)
             if self.additional_input:
-                return [X, X_additional], [y, meta], [sw, sw]
+                return [X, X_add], [y, meta]
             else:
-                return X, [y, meta], [sw, sw]
+                return X, [y, meta]
         else:
             if self.additional_input:
-                return [X, X_additional], y, sw
+                return [X, X_add], y
             else:
-                return X, y, sw
+                return X, y
 
 
 class DanQModel(HelixerModel):
@@ -85,7 +76,9 @@ class DanQModel(HelixerModel):
         return DanQSequence
 
     def model(self):
-        main_input = Input(shape=(self.shape_train[1], 4), dtype=self.float_precision, name='main_input')
+        overhang = self.shape_train[1] % self.pool_size
+        main_input = Input(shape=(self.shape_train[1] - overhang, 4), dtype=self.float_precision,
+                           name='main_input')
         x = Conv1D(filters=self.filter_depth,
                    kernel_size=self.kernel_size,
                    padding="same",
@@ -99,7 +92,7 @@ class DanQModel(HelixerModel):
         x = Dropout(self.dropout1)(x)
 
         if self.additional_input:
-            len_after_pooling = int(np.ceil(self.shape_train[1] / self.pool_size))
+            len_after_pooling = self.shape_train[1] // self.pool_size
             add_input = Input(shape=(len_after_pooling, 4 * self.pool_size),
                               dtype=self.float_precision,
                               name='add_input')
@@ -131,7 +124,7 @@ class DanQModel(HelixerModel):
         else:
             losses = ['categorical_crossentropy']
             loss_weights = [1.0]
-            metrics=['accuracy', acc_g_oh, acc_ig_oh]
+            metrics = ['accuracy', acc_g_oh, acc_ig_oh]
 
         model.compile(optimizer=self.optimizer,
                       loss=losses,
