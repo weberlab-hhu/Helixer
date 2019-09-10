@@ -35,7 +35,7 @@ def acc_region(y_true, y_pred, col, value):
     y_true = K.argmax(tf.boolean_mask(y_true, mask), axis=-1)
     y_pred = K.argmax(tf.boolean_mask(y_pred, mask), axis=-1)
     error = K.cast(K.equal(y_true, y_pred), K.floatx())
-    error_return = tf.cond(tf.reduce_any(tf.is_nan(error)),
+    error_return = tf.cond(tf.equal(tf.size(error), 0),
                            lambda: tf.constant(0.0), lambda: error)
     return error_return
 
