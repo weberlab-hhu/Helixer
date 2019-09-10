@@ -96,10 +96,15 @@ class Visualization():
         self.seq_info_seqid.grid(row=2, column=7)
         self.seq_info_start_end.grid(row=3, column=7)
 
+        self.species_var = tk.StringVar(self.frame)
+        self.species_var.set('test1')
+        self.species_drop_down = tk.OptionMenu(self.frame, self.species_var, 'test1', 'test2')
+        self.species_drop_down.grid(row=1, column=8)
+
         self.toggle_dna_state = tk.IntVar()
         self.toggle_dna_sequence = tk.Checkbutton(self.frame, text='show DNA', command=self.redraw,
                                                   variable=self.toggle_dna_state)
-        self.toggle_dna_sequence.grid(row=1, column=8)
+        self.toggle_dna_sequence.grid(row=1, column=9)
 
         self.error_label = tk.Label(self.frame)
         self.error_label.grid(row=4, column=1)
