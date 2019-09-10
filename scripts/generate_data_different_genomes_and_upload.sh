@@ -20,7 +20,7 @@ do
 	folder_out="$local_main_folder_output$genome/h5_data_$len_in_k""k"
 
 	echo -e "\nGenerating $genome"
-	../export.py --db-path-in $db_path --out-dir $folder_out --chunk-size "$len_in_k"000 --genomes $genome --only-test-set
+	../export.py --db-path-in $db_path --out-dir $folder_out --chunk-size "$len_in_k"000 --genomes $genome --one-hot --only-test-set
 
 	echo -e "\nSending $genome"
 	rsync -rvz --progress "$folder_out" "$clc_login:$remote_main_folder_clc$genome/"
