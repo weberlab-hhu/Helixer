@@ -29,18 +29,23 @@ from keras.utils import multi_gpu_model, Sequence
 from F1Scores import F1Calculator
 from ConfusionMatrix import ConfusionMatrix
 
-def acc_g_oh(y_true, y_pred):
-    mask = y_true[:, :, :, 0] < 1
+
+def acc_region(y_true, y_pred, col, value):
+    mask = tf.equal(y_true[:, :, :, col], tf.constant(value))
     y_true = K.argmax(tf.boolean_mask(y_true, mask), axis=-1)
     y_pred = K.argmax(tf.boolean_mask(y_pred, mask), axis=-1)
-    return K.cast(K.equal(y_true, y_pred), K.floatx())
+    error = K.cast(K.equal(y_true, y_pred), K.floatx())
+    error_return = tf.cond(tf.reduce_any(tf.is_nan(error)),
+                           lambda: tf.constant(0.0), lambda: error)
+    return error_return
+
+
+def acc_g_oh(y_true, y_pred):
+    return acc_region(y_true, y_pred, 0, 0.0)
 
 
 def acc_ig_oh(y_true, y_pred):
-    mask = y_true[:, :, :, 0] > 0
-    y_true = K.argmax(tf.boolean_mask(y_true, mask), axis=-1)
-    y_pred = K.argmax(tf.boolean_mask(y_pred, mask), axis=-1)
-    return K.cast(K.equal(y_true, y_pred), K.floatx())
+    return acc_region(y_true, y_pred, 0, 1.0)
 
 
 class ReportIntermediateResult(Callback):
