@@ -47,6 +47,7 @@ class Visualization():
 
         fully_intergenic_bool = self.h5_data['/data/fully_intergenic_samples']
         self.genic_indexes = np.squeeze(np.argwhere(np.array(fully_intergenic_bool) == False))
+        self.load_sequence_infos()
 
         if self.args.exclude_errors:
             self.genic_indexes = np.setdiff1d(self.genic_indexes, self.err_idx)
@@ -89,17 +90,17 @@ class Visualization():
         self.seq_offset_input.grid(row=2, column=1)
         self.seq_offset_button.grid(row=2, column=2)
 
+        self.species_var = tk.StringVar(self.frame)
+        self.species_drop_down = tk.OptionMenu(self.frame, self.species_var, *self.all_species_names,
+                                               command=self.jump_to_species)
+        self.species_drop_down.grid(row=1, column=7)
+
         self.seq_info_species = tk.Label(self.frame, padx=100)
         self.seq_info_seqid = tk.Label(self.frame)
         self.seq_info_start_end = tk.Label(self.frame)
-        self.seq_info_species.grid(row=1, column=7)
-        self.seq_info_seqid.grid(row=2, column=7)
-        self.seq_info_start_end.grid(row=3, column=7)
-
-        self.species_var = tk.StringVar(self.frame)
-        self.species_var.set('test1')
-        self.species_drop_down = tk.OptionMenu(self.frame, self.species_var, 'test1', 'test2')
-        self.species_drop_down.grid(row=1, column=8)
+        self.seq_info_species.grid(row=1, column=8)
+        self.seq_info_seqid.grid(row=2, column=8)
+        self.seq_info_start_end.grid(row=3, column=8)
 
         self.toggle_dna_state = tk.IntVar()
         self.toggle_dna_sequence = tk.Checkbutton(self.frame, text='show DNA', command=self.redraw,
@@ -126,6 +127,13 @@ class Visualization():
         self.canvas_summary.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         self.redraw(changed_seq=True)
+
+    def load_sequence_infos(self):
+        """parses the /data/species and /data/seqid datasets into a usable dict format"""
+        all_species_raw, start_idx = np.unique(np.array(self.h5_data['/data/species']),
+                                               return_index=True)
+        self.all_species_names = [n.decode('utf-8') for n in all_species_raw]
+        self.species_start_idx = {n:i for n, i in zip(self.all_species_names, start_idx)}
 
     def load_sequence(self, offset, seq_len, include_dummy=True):
         """loads data for the heatmap and possibly inputs dummy data that serves as margin"""
@@ -236,7 +244,8 @@ class Visualization():
                         ax=self.ax_summary)
         self.canvas_summary.draw()
 
-    def update_seq_info(self):
+    def update_widgets(self):
+        # update text display
         species = self.h5_data['/data/species'][self.seq_index].decode('utf-8')
         seqid = self.h5_data['/data/seqids'][self.seq_index].decode('utf-8')
         start_end = list(self.h5_data['/data/start_ends'][self.seq_index])
@@ -244,6 +253,9 @@ class Visualization():
         self.seq_info_species.config(text=species)
         self.seq_info_seqid.config(text=seqid)
         self.seq_info_start_end.config(text=str(start_end))
+
+        # update drop down widgets
+        self.species_var.set(species)
 
     def next(self, event):
         self.offset = (self.offset + self.BASE_COUNT_SCREEN) % self.chunk_len
@@ -264,17 +276,20 @@ class Visualization():
         next_genic_index = np.searchsorted(self.genic_indexes, self.seq_index, side='right')
         self.load_seq_index(self.genic_indexes[next_genic_index])
 
+    def jump_to_species(self, event):
+        self.load_seq_index(self.species_start_idx[self.species_var.get()])
+
     def load_seq_index(self, new_seq_index):
-        if self.args.exclude_errors and new_seq_index not in self.err_idx:
-            if new_seq_index <= self.n_seq:
-                self.seq_index = new_seq_index
-                self.offset = 0
-                self.redraw(changed_seq=True)
-                self.error_label.config(text='')
-            else:
-                self.error_label.config(text='ERROR: End of data reached')
+        if new_seq_index <= self.n_seq:
+            self.seq_index = new_seq_index
+            self.offset = 0
+            self.redraw(changed_seq=True)
+            self.error_label.config(text='')
         else:
-            self.error_label.config(text='ERROR: Sequence has errors')
+            self.error_label.config(text='ERROR: End of data reached')
+
+        if self.args.exclude_errors and new_seq_index in self.err_idx:
+            self.error_label.config(text='WARNING: Sequence has errors')
 
     def go_seq_index(self, event):
         new_seq_index = int(self.seq_index_input.get())
@@ -305,7 +320,7 @@ class Visualization():
         self.draw_main_heatmap()
         if changed_seq:
             self.draw_summary_heatmap()
-            self.update_seq_info()
+            self.update_widgets()
 
 
 if __name__ == '__main__':
