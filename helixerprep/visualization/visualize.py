@@ -94,6 +94,10 @@ class Visualization():
         self.species_drop_down = tk.OptionMenu(self.frame, self.species_var, *self.all_species_names,
                                                command=self.jump_to_species)
         self.species_drop_down.grid(row=1, column=7)
+        self.seqid_var = tk.StringVar(self.frame)
+        self.seqid_drop_down = tk.OptionMenu(self.frame, self.seqid_var, 'none',
+                                             command=self.jump_to_seqid)
+        self.seqid_drop_down.grid(row=2, column=7)
 
         self.seq_info_species = tk.Label(self.frame, padx=100)
         self.seq_info_seqid = tk.Label(self.frame)
@@ -129,11 +133,25 @@ class Visualization():
         self.redraw(changed_seq=True)
 
     def load_sequence_infos(self):
+        def start_idx_dict(arr):
+            data_raw, start_idx = np.unique(arr, return_index=True)
+            data = [d.decode('utf-8') for d in data_raw]
+            d = {d:i for d, i in zip(data, start_idx)}
+            return d
+
         """parses the /data/species and /data/seqid datasets into a usable dict format"""
-        all_species_raw, start_idx = np.unique(np.array(self.h5_data['/data/species']),
-                                               return_index=True)
-        self.all_species_names = [n.decode('utf-8') for n in all_species_raw]
-        self.species_start_idx = {n:i for n, i in zip(self.all_species_names, start_idx)}
+        species_arr = np.array(self.h5_data['/data/species'])
+        seqids_arr = np.array(self.h5_data['/data/seqids'])
+
+        # construct species start dict
+        self.species_start_idx = start_idx_dict(species_arr)
+        self.all_species_names = list(self.species_start_idx.keys())
+
+        # construct seqid dict
+        self.seqids_start_idx = {}
+        for species in self.all_species_names:
+            species_idx = np.where(species_arr == species.encode())[0]
+            self.seqids_start_idx[species] = start_idx_dict(seqids_arr[species_idx])
 
     def load_sequence(self, offset, seq_len, include_dummy=True):
         """loads data for the heatmap and possibly inputs dummy data that serves as margin"""
@@ -257,6 +275,7 @@ class Visualization():
         # update drop down widgets
         self.species_var.set(species)
 
+
     def next(self, event):
         self.offset = (self.offset + self.BASE_COUNT_SCREEN) % self.chunk_len
         if self.offset < self.BASE_COUNT_SCREEN:
@@ -278,6 +297,9 @@ class Visualization():
 
     def jump_to_species(self, event):
         self.load_seq_index(self.species_start_idx[self.species_var.get()])
+
+    def jump_to_seqid(self, event):
+        self.load_seq_index(self.seqid_start_idx[self.seqid_var.get()])
 
     def load_seq_index(self, new_seq_index):
         if new_seq_index <= self.n_seq:
