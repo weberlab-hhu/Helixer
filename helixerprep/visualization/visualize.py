@@ -76,11 +76,16 @@ class Visualization():
         self.seq_index_random_button.bind('<ButtonPress-1>', self.go_seq_index_random)
         self.seq_index_random_genic_button = tk.Button(self.frame, text='random genic')
         self.seq_index_random_genic_button.bind('<ButtonPress-1>', self.go_seq_index_random_genic)
+        self.seq_index_random_genic_in_genome_button = tk.Button(self.frame,
+                                                                 text='random genic in genome')
+        self.seq_index_random_genic_in_genome_button.bind('<ButtonPress-1>',
+                                                          self.go_seq_index_random_genic_in_genome)
         self.seq_index_label.grid(row=1, column=0)
         self.seq_index_input.grid(row=1, column=1)
         self.seq_index_button.grid(row=1, column=2)
         self.seq_index_random_button.grid(row=1, column=3)
         self.seq_index_random_genic_button.grid(row=1, column=4)
+        self.seq_index_random_genic_in_genome_button.grid(row=2, column=4)
 
         self.seq_offset_label = tk.Label(self.frame)
         self.seq_offset_input = tk.Entry(self.frame, width=6)
@@ -334,6 +339,13 @@ class Visualization():
 
     def go_seq_index_random_genic(self, event):
         random_genic_seq_index = np.random.choice(self.genic_indexes)
+        self.load_seq_index(random_genic_seq_index)
+
+    def go_seq_index_random_genic_in_genome(self, event):
+        species_arr = np.array(self.h5_data['/data/species'])
+        species_idx = np.where(species_arr == self.species_var.get().encode())[0]
+        idx_pool = np.intersect1d(species_idx, self.genic_indexes)
+        random_genic_seq_index = np.random.choice(idx_pool)
         self.load_seq_index(random_genic_seq_index)
 
     def go_seq_offset(self, event):
