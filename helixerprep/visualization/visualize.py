@@ -92,24 +92,25 @@ class Visualization():
 
         self.species_var = tk.StringVar(self.frame)
         self.species_drop_down = tk.OptionMenu(self.frame, self.species_var, *self.all_species_names,
-                                               command=self.jump_to_species)
+                                               command=self.go_species)
+        self.seqid_jump_input = tk.Entry(self.frame, width=10)
+        self.seqid_jump_button = tk.Button(self.frame, text='go')
+        self.seqid_jump_button.bind('<ButtonPress-1>', self.go_seqid)
         self.species_drop_down.grid(row=1, column=7)
-        self.seqid_var = tk.StringVar(self.frame)
-        self.seqid_drop_down = tk.OptionMenu(self.frame, self.seqid_var, 'none',
-                                             command=self.jump_to_seqid)
-        self.seqid_drop_down.grid(row=2, column=7)
+        self.seqid_jump_input.grid(row=2, column=7)
+        self.seqid_jump_button.grid(row=2, column=8)
 
         self.seq_info_species = tk.Label(self.frame, padx=100)
         self.seq_info_seqid = tk.Label(self.frame)
         self.seq_info_start_end = tk.Label(self.frame)
-        self.seq_info_species.grid(row=1, column=8)
-        self.seq_info_seqid.grid(row=2, column=8)
-        self.seq_info_start_end.grid(row=3, column=8)
+        self.seq_info_species.grid(row=1, column=9)
+        self.seq_info_seqid.grid(row=2, column=9)
+        self.seq_info_start_end.grid(row=3, column=9)
 
         self.toggle_dna_state = tk.IntVar()
         self.toggle_dna_sequence = tk.Checkbutton(self.frame, text='show DNA', command=self.redraw,
                                                   variable=self.toggle_dna_state)
-        self.toggle_dna_sequence.grid(row=1, column=9)
+        self.toggle_dna_sequence.grid(row=1, column=10)
 
         self.error_label = tk.Label(self.frame)
         self.error_label.grid(row=4, column=1)
@@ -272,9 +273,9 @@ class Visualization():
         self.seq_info_seqid.config(text=seqid)
         self.seq_info_start_end.config(text=str(start_end))
 
-        # update drop down widgets
         self.species_var.set(species)
-
+        self.seqid_jump_input.delete(0, 'end')
+        self.seqid_jump_input.insert(0, seqid)
 
     def next(self, event):
         self.offset = (self.offset + self.BASE_COUNT_SCREEN) % self.chunk_len
@@ -286,7 +287,7 @@ class Visualization():
     def previous(self, event):
         if self.offset < self.BASE_COUNT_SCREEN:
             self.offset = self.chunk_len + self.offset - self.BASE_COUNT_SCREEN
-            self.load_seq_index(self.seq_index - 1)
+            self.load_seq_index(self.seq_index - 1, keep_offset=True)
         else:
             self.offset -= self.BASE_COUNT_SCREEN
             self.redraw(changed_seq=False)
@@ -295,16 +296,22 @@ class Visualization():
         next_genic_index = np.searchsorted(self.genic_indexes, self.seq_index, side='right')
         self.load_seq_index(self.genic_indexes[next_genic_index])
 
-    def jump_to_species(self, event):
+    def go_species(self, event):
         self.load_seq_index(self.species_start_idx[self.species_var.get()])
 
-    def jump_to_seqid(self, event):
-        self.load_seq_index(self.seqid_start_idx[self.seqid_var.get()])
+    def go_seqid(self, event):
+        seqid = self.seqid_jump_input.get().strip()
+        species = self.species_var.get()
+        if seqid in self.seqids_start_idx[species]:
+            self.load_seq_index(self.seqids_start_idx[species][seqid])
+        else:
+            self.error_label.config(text='ERROR: Seqid not found for this species')
 
-    def load_seq_index(self, new_seq_index):
+    def load_seq_index(self, new_seq_index, keep_offset=False):
         if new_seq_index <= self.n_seq:
             self.seq_index = new_seq_index
-            self.offset = 0
+            if not keep_offset:
+                self.offset = 0
             self.redraw(changed_seq=True)
             self.error_label.config(text='')
         else:
