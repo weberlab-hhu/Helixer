@@ -139,13 +139,13 @@ class Visualization():
         self.redraw(changed_seq=True)
 
     def load_sequence_infos(self):
+        """parses the /data/species and /data/seqid datasets into a usable dict format"""
         def start_idx_dict(arr):
             data_raw, start_idx = np.unique(arr, return_index=True)
             data = [d.decode('utf-8') for d in data_raw]
             d = {d:i for d, i in zip(data, start_idx)}
             return d
 
-        """parses the /data/species and /data/seqid datasets into a usable dict format"""
         species_arr = np.array(self.h5_data['/data/species'])
         seqids_arr = np.array(self.h5_data['/data/seqids'])
 
