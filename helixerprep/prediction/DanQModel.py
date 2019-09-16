@@ -26,6 +26,11 @@ class DanQSequence(HelixerSequence):
                 y = y[:, :-overhang]
                 sw = sw[:, :-overhang]
 
+            # reshape sample weights
+            # mark any multi-base timestep as error if any base has an error
+            sw = sw.reshape((sw.shape[0], -1, pool_size))
+            sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
+
             if self.additional_input:
                 # copy of the input so the LSTM can attend to the raw input sequence after pooling
                 # first merge last 2 axis so we can split axis 1 with reshape
