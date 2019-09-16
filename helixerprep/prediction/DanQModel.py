@@ -16,6 +16,7 @@ class DanQSequence(HelixerSequence):
         usable_idx_slice = sorted(list(usable_idx_slice))  # got to always provide a sorted list of idx
         X = np.stack(self.x_dset[usable_idx_slice])
         y = np.stack(self.y_dset[usable_idx_slice])
+        sw = np.stack(self.sw_dset[usable_idx_slice])
 
         if pool_size > 1:
             if y.shape[1] % pool_size != 0:
@@ -23,6 +24,7 @@ class DanQSequence(HelixerSequence):
                 overhang = y.shape[1] % pool_size
                 X = X[:, :-overhang]
                 y = y[:, :-overhang]
+                sw = sw[:, :-overhang]
 
             if self.additional_input:
                 # copy of the input so the LSTM can attend to the raw input sequence after pooling
@@ -46,14 +48,14 @@ class DanQSequence(HelixerSequence):
             lengths = np.repeat(lengths[:, None], y.shape[1], axis=1)
             meta = np.stack([gc, lengths], axis=2)
             if self.additional_input:
-                return [X, X_add], [y, meta]
+                return [X, X_add], [y, meta], [sw, sw]
             else:
-                return X, [y, meta]
+                return X, [y, meta], [sw, sw]
         else:
             if self.additional_input:
-                return [X, X_add], y
+                return [X, X_add], y, sw
             else:
-                return X, y
+                return X, y, sw
 
 
 class DanQModel(HelixerModel):
@@ -130,7 +132,8 @@ class DanQModel(HelixerModel):
                       loss=losses,
                       loss_weights=loss_weights,
                       sample_weight_mode='temporal',
-                      metrics=metrics)
+                      metrics=metrics,
+                      weighted_metrics=['accuracy'])
 
 
 if __name__ == '__main__':

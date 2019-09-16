@@ -185,6 +185,7 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
             # Introns
             one_hot_matrix[:, 3] = np.logical_and(col_0, col_2)
             self.matrix = one_hot_matrix.astype(np.int8)
+            assert np.all(np.count_nonzero(self.matrix, axis=1) == 1)
 
 
 class CoordNumerifier(object):
