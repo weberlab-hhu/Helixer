@@ -27,11 +27,17 @@ class ConfusionMatrix():
                 y_pred, meta_pred = y_pred
                 y_true, meta_true = y_true
 
+            # remove possible zero padding
+            non_padded_idx = np.any(y_true, axis=-1)
+            y_pred = y_pred[non_padded_idx]
+            y_true = y_true[non_padded_idx]
+
             y_pred = self._reshape_data(y_pred, X.shape[1])
             y_true = self._reshape_data(y_true, X.shape[1])
             confusion_matrix_sum += confusion_matrix(y_true, y_pred, labels=range(self.label_dim))
 
         # divide columns in confusion matrix by # of predictions made per class
-        confusion_matrix_sum /= np.sum(confusion_matrix_sum, axis=0)
+        class_sums = np.sum(confusion_matrix_sum, axis=1)
+        confusion_matrix_sum /= class_sums[:, None]  # expand by one dim so broadcast work properly
         pprint(confusion_matrix_sum)
 
