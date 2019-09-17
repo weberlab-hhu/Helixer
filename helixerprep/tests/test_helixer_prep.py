@@ -899,5 +899,4 @@ def test_confusion_matrix():
         [0, 0, 1 / 2, 1 / 2]
     ])
 
-    cm._normalize_cm()
-    assert np.allclose(cm_true_normalized, cm.cm)
+    assert np.allclose(cm_true_normalized, cm._get_normalized_cm())

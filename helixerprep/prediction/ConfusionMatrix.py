@@ -26,15 +26,11 @@ class ConfusionMatrix():
         y_true = self._reshape_data(y_true)
         self.cm += confusion_matrix(y_true, y_pred, labels=range(self.label_dim))
 
-    def _normalize_cm(self):
+    def _get_normalized_cm(self):
         """Put in extra function to be testable"""
         class_sums = np.sum(self.cm, axis=1)
-        self.cm /= class_sums[:, None]  # expand by one dim so broadcast work properly
-
-    def _print_cm(self):
-        print()
-        pprint(self.cm)
-        print()
+        normalized_cm = self.cm / class_sums[:, None]  # expand by one dim so broadcast work properly
+        return normalized_cm
 
     def calculate_cm(self, model):
         for i in range(len(self.generator)):
@@ -47,9 +43,10 @@ class ConfusionMatrix():
                 y_pred, meta_pred = y_pred
                 y_true, meta_true = y_true
 
-            self._add_to_cm(y_true, y_pred, X)
+            self._add_to_cm(y_true, y_pred)
 
-        self._print_cm()
-        self._normalize_cm()
-        self._print_cm()
-
+        print()
+        pprint(self.cm)
+        print()
+        pprint(self._get_normalized_cm())
+        print()

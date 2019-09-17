@@ -31,9 +31,13 @@ from ConfusionMatrix import ConfusionMatrix
 
 
 def acc_region(y_true, y_pred, col, value):
-    mask = tf.equal(y_true[:, :, :, col], tf.constant(value))
+    zero_pad_mask = K.all(tf.equal(y_true, tf.constant(0.0)), axis=-1)
+    content_mask = tf.equal(y_true[:, :, :, col], tf.constant(value))
+    mask = tf.logical_or(zero_pad_mask, content_mask)
+
     y_true = K.argmax(tf.boolean_mask(y_true, mask), axis=-1)
     y_pred = K.argmax(tf.boolean_mask(y_pred, mask), axis=-1)
+
     error = K.cast(K.equal(y_true, y_pred), K.floatx())
     error_return = tf.cond(tf.equal(tf.size(error), 0),
                            lambda: tf.constant(0.0), lambda: error)
@@ -61,20 +65,22 @@ class ReportIntermediateResult(Callback):
 # is buggy currently
 class ConfusionMatrixTest(Callback):
     def __init__(self, generator, label_dim):
-        self.cm_calculator = ConfusionMatrix(generator, label_dim)
-        super(ConfusionMatrixTest, self).__init__()
+        self.generator = generator
+        self.label_dim = label_dim
 
     def on_test_end(self, logs=None):
-        self.cm_calculator.calculate_cm(self.model)
+        cm_calculator = ConfusionMatrix(self.generator, self.label_dim)
+        cm_calculator.calculate_cm(self.model)
 
 
 class ConfusionMatrixTrain(Callback):
     def __init__(self, generator, label_dim):
-        self.cm_calculator = ConfusionMatrix(generator, label_dim)
-        super(ConfusionMatrixTrain, self).__init__()
+        self.generator = generator
+        self.label_dim = label_dim
 
     def on_epoch_end(self, epoch, logs=None):
-        self.cm_calculator.calculate_cm(self.model)
+        cm_calculator = ConfusionMatrix(self.generator, self.label_dim)
+        cm_calculator.calculate_cm(self.model)
 
 
 class HelixerSequence(Sequence):
@@ -116,8 +122,8 @@ class HelixerSequence(Sequence):
         assert np.all(np.logical_and(self.coord_lengths >= 0.0, self.coord_lengths <= 1.0))
 
     def __len__(self):
-        # return 2
-        return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
+        return 2
+        # return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
 
     @abstractmethod
     def __getitem__(self, idx):
