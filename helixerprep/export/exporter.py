@@ -170,30 +170,28 @@ class ExportController(object):
 
     def _get_coord_ids(self, genomes, exclude):
         coord_ids_with_features = self.session.query(Feature.coordinate_id).distinct()
+        base_query = (self.session.query(Coordinate.id, Coordinate.length, Coordinate.genome_id)
+                         .join(Genome, Genome.id == Coordinate.genome_id)
+                         .filter(Coordinate.id.in_(coord_ids_with_features)))
         if genomes:
             print('Selecting the following genomes: {}'.format(genomes))
-            all_coords = (self.session.query(Coordinate)
-                         .join(Genome, Genome.id == Coordinate.genome_id)
-                         .filter(Genome.species.in_(genomes))
-                         .filter(Coordinate.id.in_(coord_ids_with_features))
-                         .order_by(Coordinate.length.desc())
-                         .all())
+            query = base_query.filter(Genome.species.in_(genomes))
         else:
             if exclude:
                 print('Selecting all genomes from {} except: {}'.format(self.db_path_in, exclude))
-                all_coords = (self.session.query(Coordinate)
-                             .join(Genome, Genome.id == Coordinate.genome_id)
-                             .filter(Genome.species.notin_(exclude))
-                             .filter(Coordinate.id.in_(coord_ids_with_features))
-                             .order_by(Coordinate.length.desc())
-                             .all())
+                query = base_query.filter(Genome.species.notin_(exclude))
             else:
                 print('Selecting all genomes from {}'.format(self.db_path_in))
-                all_coords = coord_ids_with_features.order_by(Coordinate.length.desc()).all()
+                query = base_query
+
+        all_coords = (query
+                        .order_by(Genome.species)
+                        .order_by(Coordinate.length.desc())
+                        .all())
 
         genome_coords = defaultdict(list)
         for c in all_coords:
-            genome_coords[c.genome_id].append(c)
+            genome_coords[c[2]].append(c[:2])  # append (id, length)
         return genome_coords
 
     def _split_coords_by_N90(self, genome_coords , val_size):
@@ -201,10 +199,10 @@ class ExportController(object):
         each the coordinates < N90 and >= N90 of each genome. It is inefficient to build this code
         on top of the output of self._get_coord_ids() but very convenient in terms of code structure."""
         def N90_index(coords):
-            len_90_perc = int(sum([c.length for c in coords]) * 0.9)
+            len_90_perc = int(sum([c[1] for c in coords]) * 0.9)
             len_sum = 0
             for i, coord in enumerate(coords):
-                len_sum += coord.length
+                len_sum += coord[1]
                 if len_sum >= len_90_perc:
                     return i
 
@@ -212,9 +210,14 @@ class ExportController(object):
         for coords in genome_coords.values():
             n90_idx = N90_index(coords) + 1
             for n90_split in [coords[:n90_idx], coords[n90_idx:]]:
-                genome_train_coords, genome_val_coords = train_test_split(n90_split, test_size=val_size)
-                train_coords += genome_train_coords
-                val_coords += genome_val_coords
+                if len(n90_split) < 2:
+                    # if there is no way to split a half only add to training data
+                    train_coords += n90_split
+                else:
+                    genome_train_coords, genome_val_coords = train_test_split(n90_split,
+                                                                              test_size=val_size)
+                    train_coords += genome_train_coords
+                    val_coords += genome_val_coords
         return train_coords, val_coords
 
     def _add_data_attrs(self, genomes, exclude, one_hot, keep_errors):
@@ -284,7 +287,8 @@ class ExportController(object):
         n_coords_done = 1
         n_y_cols = 4 if one_hot else 3
         for coords in genome_coords.values():
-            for coord in coords:
+            for (coord_id, _) in coords:
+                coord = self.session.query(Coordinate).filter(Coordinate.id == coord_id).one()
                 numerify_outputs = self._numerify_coord(coord, chunk_size, one_hot, keep_errors)
                 flat_data, coord, masked_bases_percent, intergenic_bases_percent = numerify_outputs
                 if split_coordinates or self.only_test_set:

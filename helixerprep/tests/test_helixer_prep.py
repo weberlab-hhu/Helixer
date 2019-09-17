@@ -64,7 +64,7 @@ def mk_controllers(source_db, helixer_db=TMP_DB, h5_out=H5_OUT_FOLDER, only_test
         if os.path.exists(p):
             os.remove(p)
 
-    mer_controller = HelixerController(source_db, helixer_db, '')
+    mer_controller = HelixerController(source_db, helixer_db, '', '')
     export_controller = ExportController(helixer_db, h5_out, only_test_set=only_test_set)
     return mer_controller, export_controller
 
