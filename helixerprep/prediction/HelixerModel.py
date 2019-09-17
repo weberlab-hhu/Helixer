@@ -31,9 +31,9 @@ from ConfusionMatrix import ConfusionMatrix
 
 
 def acc_region(y_true, y_pred, col, value):
-    zero_pad_mask = K.all(tf.equal(y_true, tf.constant(0.0)), axis=-1)
+    zero_pad_mask = K.any(tf.equal(y_true, tf.constant(1.0)), axis=-1)
     content_mask = tf.equal(y_true[:, :, :, col], tf.constant(value))
-    mask = tf.logical_or(zero_pad_mask, content_mask)
+    mask = tf.logical_and(zero_pad_mask, content_mask)
 
     y_true = K.argmax(tf.boolean_mask(y_true, mask), axis=-1)
     y_pred = K.argmax(tf.boolean_mask(y_pred, mask), axis=-1)
@@ -122,8 +122,8 @@ class HelixerSequence(Sequence):
         assert np.all(np.logical_and(self.coord_lengths >= 0.0, self.coord_lengths <= 1.0))
 
     def __len__(self):
-        return 2
-        # return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
+        # return 2
+        return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
 
     @abstractmethod
     def __getitem__(self, idx):
