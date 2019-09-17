@@ -206,19 +206,20 @@ class ExportController(object):
                 if len_sum >= len_90_perc:
                     return i
 
-        train_coords, val_coords = [], []
+        train_coord_ids, val_coord_ids = [], []
         for coords in genome_coords.values():
             n90_idx = N90_index(coords) + 1
-            for n90_split in [coords[:n90_idx], coords[n90_idx:]]:
+            coord_ids = [c[0] for c in coords]
+            for n90_split in [coord_ids[:n90_idx], coord_ids[n90_idx:]]:
                 if len(n90_split) < 2:
                     # if there is no way to split a half only add to training data
-                    train_coords += n90_split
+                    train_coord_ids += n90_split
                 else:
-                    genome_train_coords, genome_val_coords = train_test_split(n90_split,
-                                                                              test_size=val_size)
-                    train_coords += genome_train_coords
-                    val_coords += genome_val_coords
-        return train_coords, val_coords
+                    genome_train_coord_ids, genome_val_coord_ids = train_test_split(n90_split,
+                                                                                    test_size=val_size)
+                    train_coord_ids += genome_train_coord_ids
+                    val_coord_ids += genome_val_coord_ids
+        return train_coord_ids, val_coord_ids
 
     def _add_data_attrs(self, genomes, exclude, one_hot, keep_errors):
         attrs = {
@@ -293,7 +294,7 @@ class ExportController(object):
                 flat_data, coord, masked_bases_percent, intergenic_bases_percent = numerify_outputs
                 if split_coordinates or self.only_test_set:
                     if split_coordinates:
-                        if coord in train_coords:
+                        if coord_id in train_coords:
                             self._save_data(self.h5_train, flat_data, chunk_size, n_y_cols)
                             assigned_set = 'train'
                         else:
