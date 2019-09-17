@@ -54,6 +54,7 @@ class Stepper(object):
             yield self.step()
 
 
+
 class Numerifier(ABC):
     def __init__(self, n_cols, coord, is_plus_strand, max_len, dtype=np.float32):
         assert isinstance(n_cols, int)
