@@ -126,7 +126,7 @@ class DanQModel(HelixerModel):
             losses = ['categorical_crossentropy', 'mean_squared_error']
             loss_weights = [1.0, self.meta_loss_weight]
             metrics = {
-                'main_output': ['accuracy', acc_g_oh, acc_ig_oh],
+                'main': ['accuracy', acc_g_oh, acc_ig_oh],
             }
         else:
             losses = ['categorical_crossentropy']

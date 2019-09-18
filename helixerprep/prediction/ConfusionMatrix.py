@@ -32,6 +32,16 @@ class ConfusionMatrix():
         normalized_cm = self.cm / class_sums[:, None]  # expand by one dim so broadcast work properly
         return normalized_cm
 
+    def _print_results(self):
+        normalized_cm = self._get_normalized_cm()
+        genic_acc = (self.cm[1, 1] + self.cm[2, 2] + self.cm[3, 3]) / np.sum(self.cm[1:])
+
+        print('\n')
+        pprint(self.cm)
+        print()
+        pprint(normalized_cm)
+        print('\ngenic_acc: {:.4f}\n'.format(genic_acc))
+
     def calculate_cm(self, model):
         for i in range(len(self.generator)):
             print(i, '/', len(self.generator), end="\r")
@@ -44,10 +54,4 @@ class ConfusionMatrix():
                 y_true, meta_true = y_true
 
             self._add_to_cm(y_true, y_pred)
-
-        print()
-        print()
-        pprint(self.cm)
-        print()
-        pprint(self._get_normalized_cm())
-        print()
+        self._print_results()
