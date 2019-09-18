@@ -110,11 +110,11 @@ class DanQModel(HelixerModel):
         x = Dropout(self.dropout2)(x)
 
         if self.meta_losses:
-            meta_output = Dense(2, activation='sigmoid', name='meta_output')(x)
+            meta_output = Dense(2, activation='sigmoid', name='meta')(x)
 
         x = Dense(self.pool_size * self.label_dim)(x)
         x = Reshape((-1, self.pool_size, self.label_dim))(x)
-        x = Activation('softmax', name='main_output')(x)
+        x = Activation('softmax', name='main')(x)
 
         inputs = [main_input, add_input] if self.additional_input else main_input
         outputs = [x, meta_output] if self.meta_losses else [x]
