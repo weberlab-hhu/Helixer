@@ -133,12 +133,18 @@ class DanQModel(HelixerModel):
             loss_weights = [1.0]
             metrics = ['accuracy', acc_g_oh, acc_ig_oh]
 
+        # only weigh accuracy if we include errors (otherwise as sample weights are 1)
+        if self.exclude_errors:
+            weighted_metrics = []
+        else:
+            weighted_metrics = ['accuracy']
+
         model.compile(optimizer=self.optimizer,
                       loss=losses,
                       loss_weights=loss_weights,
                       sample_weight_mode='temporal',
                       metrics=metrics,
-                      weighted_metrics=['accuracy'])
+                      weighted_metrics=weighted_metrics)
 
 
 if __name__ == '__main__':
