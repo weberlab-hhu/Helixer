@@ -5,7 +5,7 @@ import numpy as np
 from keras_layer_normalization import LayerNormalization
 from keras.models import Sequential, Model
 from keras.layers import (Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
-                          Activation, concatenate, Input)
+                          Activation, concatenate, Input, BatchNormalization)
 from HelixerModel import HelixerModel, HelixerSequence, acc_ig_oh, acc_g_oh
 
 
@@ -69,6 +69,7 @@ class DanQModel(HelixerModel):
         self.parser.add_argument('-u', '--units', type=int, default=32)
         self.parser.add_argument('-f', '--filter-depth', type=int, default=32)
         self.parser.add_argument('-ks', '--kernel-size', type=int, default=26)
+        self.parser.add_argument('-cl', '--cnn-layers', type=int, default=1)
         self.parser.add_argument('-ps', '--pool-size', type=int, default=10)
         self.parser.add_argument('-dr1', '--dropout1', type=float, default=0.0)
         self.parser.add_argument('-dr2', '--dropout2', type=float, default=0.0)
@@ -90,6 +91,14 @@ class DanQModel(HelixerModel):
                    kernel_size=self.kernel_size,
                    padding="same",
                    activation="relu")(main_input)
+
+        # if there are additional CNN layers
+        for _ in range(self.cnn_layers - 1):
+            x = BatchNormalization()(x)
+            x = Conv1D(filters=self.filter_depth,
+                       kernel_size=self.kernel_size,
+                       padding="same",
+                       activation="relu")(x)
 
         if self.pool_size > 1:
             x = MaxPooling1D(pool_size=self.pool_size, padding='same')(x)
