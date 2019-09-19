@@ -40,7 +40,7 @@ class ConfusionMatrix():
         pprint(self.cm)
         print()
         pprint(normalized_cm)
-        print('\ngenic_acc: {:.4f}\n'.format(genic_acc))
+        print('\ngenic_acc: {:.4f}'.format(genic_acc))
 
     def calculate_cm(self, model):
         for i in range(len(self.generator)):
