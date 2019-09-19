@@ -87,9 +87,10 @@ class ConfusionMatrixTrain(Callback):
 
 
 class HelixerSequence(Sequence):
-    def __init__(self, model, h5_file, is_validation, shuffle):
+    def __init__(self, model, h5_file, shuffle):
         self.model = model
         self.h5_file = h5_file
+        self.batch_size = self.model.batch_size
         self.float_precision = self.model.float_precision
         self.exclude_errors = self.model.exclude_errors
         self.meta_losses = self.model.meta_losses
@@ -99,11 +100,6 @@ class HelixerSequence(Sequence):
         self.sw_dset = h5_file['/data/sample_weights']
         self.label_dim = self.y_dset.shape[-1]
         self._load_and_scale_meta_info()
-
-        if is_validation:
-            self.batch_size = 128
-        else:
-            self.batch_size = self.model.batch_size
 
         # set array of usable indexes
         if self.exclude_errors:
@@ -211,7 +207,6 @@ class HelixerModel(ABC):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_train,
-                           is_validation=False,
                            shuffle=True)
 
     def gen_validation_data(self):
@@ -221,14 +216,12 @@ class HelixerModel(ABC):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_val,
-                           is_validation=True,
                            shuffle=False)
 
     def gen_test_data(self):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_test,
-                           is_validation=False,
                            shuffle=False)
 
     @abstractmethod

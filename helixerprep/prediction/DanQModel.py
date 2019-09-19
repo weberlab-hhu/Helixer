@@ -18,6 +18,9 @@ class DanQSequence(HelixerSequence):
         y = np.stack(self.y_dset[usable_idx_slice])
         sw = np.stack(self.sw_dset[usable_idx_slice])
 
+        # if np.all(y[:, :, 0]):
+            # print(idx, 'fully intergenic batch')
+
         if pool_size > 1:
             if y.shape[1] % pool_size != 0:
                 # clip to maximum size possible with the pooling length
