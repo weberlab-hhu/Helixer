@@ -8,6 +8,7 @@ try:
     import nni
 except ImportError:
     pass
+import time
 import h5py
 import random
 import argparse
@@ -38,7 +39,7 @@ def acc_region(y_true, y_pred, col, value):
     y_true = K.argmax(tf.boolean_mask(y_true, mask), axis=-1)
     y_pred = K.argmax(tf.boolean_mask(y_pred, mask), axis=-1)
 
-    error = K.cast(K.equal(y_true, y_pred), K.floatx())
+    error = K.mean(K.cast(K.equal(y_true, y_pred), K.floatx()))
     error_return = tf.cond(tf.equal(tf.size(error), 0),
                            lambda: tf.constant(0.0), lambda: error)
     return error_return
@@ -79,15 +80,16 @@ class ConfusionMatrixTrain(Callback):
         self.label_dim = label_dim
 
     def on_epoch_end(self, epoch, logs=None):
+        start = time.time()
         cm_calculator = ConfusionMatrix(self.generator, self.label_dim)
         cm_calculator.calculate_cm(self.model)
+        print('cm calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
 
 
 class HelixerSequence(Sequence):
-    def __init__(self, model, h5_file, shuffle):
+    def __init__(self, model, h5_file, is_validation, shuffle):
         self.model = model
         self.h5_file = h5_file
-        self.batch_size = self.model.batch_size
         self.float_precision = self.model.float_precision
         self.exclude_errors = self.model.exclude_errors
         self.meta_losses = self.model.meta_losses
@@ -97,6 +99,11 @@ class HelixerSequence(Sequence):
         self.sw_dset = h5_file['/data/sample_weights']
         self.label_dim = self.y_dset.shape[-1]
         self._load_and_scale_meta_info()
+
+        if is_validation:
+            self.batch_size = 128
+        else:
+            self.batch_size = self.model.batch_size
 
         # set array of usable indexes
         if self.exclude_errors:
@@ -204,6 +211,7 @@ class HelixerModel(ABC):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_train,
+                           is_validation=False,
                            shuffle=True)
 
     def gen_validation_data(self):
@@ -213,12 +221,14 @@ class HelixerModel(ABC):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_val,
+                           is_validation=True,
                            shuffle=False)
 
     def gen_test_data(self):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_test,
+                           is_validation=False,
                            shuffle=False)
 
     @abstractmethod
@@ -251,7 +261,7 @@ class HelixerModel(ABC):
         def set_stopping_metric():
             if self.meta_losses:
                 # the additional losses are not yet working with multi class predictions
-                self.stopping_metric = 'val_main_output_acc_g_oh'
+                self.stopping_metric = 'val_main_acc_g_oh'
             else:
                 self.stopping_metric = 'val_acc_g_oh'
 
