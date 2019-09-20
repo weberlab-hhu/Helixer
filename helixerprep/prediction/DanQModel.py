@@ -19,7 +19,7 @@ class DanQSequence(HelixerSequence):
         sw = np.stack(self.sw_dset[usable_idx_slice])
 
         # if np.all(y[:, :, 0]):
-            # print(idx, 'fully intergenic batch')
+            # print('\n', idx, 'fully intergenic batch\n')
 
         if pool_size > 1:
             if y.shape[1] % pool_size != 0:

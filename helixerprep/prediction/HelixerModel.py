@@ -149,6 +149,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
+        self.parser.add_argument('-cw', '--class-weights', action='store_true')
         self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
         self.parser.add_argument('-additional-input', '--additional-input', action='store_true')
         # testing
@@ -333,12 +334,14 @@ class HelixerModel(ABC):
             self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
             self.compile_model(model)
 
+            class_weights = 'auto' if self.class_weights else None
             model.fit_generator(generator=self.gen_training_data(),
                                 epochs=self.epochs,
                                 workers=0,  # run in main thread
                                 # workers=1,
                                 validation_data=self.gen_validation_data(),
                                 callbacks=self.generate_callbacks(),
+                                class_weight=class_weights,
                                 verbose=True)
 
             if self.nni:
