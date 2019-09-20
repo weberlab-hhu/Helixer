@@ -381,7 +381,7 @@ class HelixerModel(ABC):
                 test_sequence = self.gen_test_data()
                 for i in range(len(test_sequence)):
                     if self.verbose:
-                        print(i, '/', len(test_sequence))
+                        print(i, '/', len(test_sequence), end='\r')
                     predictions = model.predict_on_batch(test_sequence[i][0])
                     if type(predictions) is list:
                         predictions, meta_predictions = predictions
