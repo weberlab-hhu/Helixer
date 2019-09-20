@@ -10,6 +10,10 @@ from HelixerModel import HelixerModel, HelixerSequence, acc_ig_oh, acc_g_oh
 
 
 class DanQSequence(HelixerSequence):
+    def __init__(self, model, h5_file, shuffle):
+        super().__init__(model, h5_file, shuffle)
+        assert self.test_time or self.exclude_errors  # exclude errors when training or validating
+
     def __getitem__(self, idx):
         pool_size = self.model.pool_size
         usable_idx_slice = self.usable_idx[idx * self.batch_size:(idx + 1) * self.batch_size]
@@ -49,21 +53,29 @@ class DanQSequence(HelixerSequence):
                 y.shape[-1],
             ))
 
+        # put together returned inputs/outputs
+        if self.additional_input:
+            inputs = [X, X_add]
+        else:
+            inputs = X
+
         if self.meta_losses:
             gc = np.stack(self.gc_contents[usable_idx_slice])
             gc = np.repeat(gc[:, None], y.shape[1], axis=1)  # repeat for every time step
             lengths = np.stack(self.coord_lengths[usable_idx_slice])
             lengths = np.repeat(lengths[:, None], y.shape[1], axis=1)
             meta = np.stack([gc, lengths], axis=2)
-            if self.additional_input:
-                return [X, X_add], [y, meta], [sw, sw]
-            else:
-                return X, [y, meta], [sw, sw]
+            labels = [y, meta]
+            sample_weights = [sw, sw]
         else:
-            if self.additional_input:
-                return [X, X_add], y, sw
-            else:
-                return X, y, sw
+            labels = y
+            sample_weights = sw
+
+        if self.test_time:
+            # only use sample weights during test time so class weights can be used
+            return inputs, labels, sample_weights
+        else:
+            return inputs, labels
 
 
 class DanQModel(HelixerModel):

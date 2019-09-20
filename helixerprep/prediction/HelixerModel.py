@@ -90,6 +90,7 @@ class HelixerSequence(Sequence):
     def __init__(self, model, h5_file, shuffle):
         self.model = model
         self.h5_file = h5_file
+        self.test_time = self.model.load_model_path
         self.batch_size = self.model.batch_size
         self.float_precision = self.model.float_precision
         self.exclude_errors = self.model.exclude_errors
