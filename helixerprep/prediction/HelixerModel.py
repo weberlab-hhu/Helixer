@@ -334,7 +334,7 @@ class HelixerModel(ABC):
             self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
             self.compile_model(model)
 
-            class_weights = 'auto' if self.class_weights else None
+            class_weights = {'main': 'auto'} if self.class_weights else None
             model.fit_generator(generator=self.gen_training_data(),
                                 epochs=self.epochs,
                                 workers=0,  # run in main thread
