@@ -338,12 +338,7 @@ class HelixerModel(ABC):
             if self.auto_class_weights:
                 class_weights = {'main': 'auto'}
             else:
-                class_weights = {
-                    0: 0.01,
-                    1: 0.5,
-                    2: 0.2,
-                    3: 0.2
-                }
+                class_weights = None
 
             model.fit_generator(generator=self.gen_training_data(),
                                 epochs=self.epochs,
