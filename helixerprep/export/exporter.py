@@ -16,7 +16,7 @@ from geenuff.base.helpers import full_db_path
 from .numerify import CoordNumerifier
 
 
-class ExportController(object):
+class HelixerExportController(object):
     def __init__(self, db_path_in, data_dir, only_test_set=False):
         self.db_path_in = db_path_in
         self.only_test_set = only_test_set

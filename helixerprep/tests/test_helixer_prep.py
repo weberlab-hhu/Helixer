@@ -15,7 +15,7 @@ from ..core.orm import Mer
 from ..export import numerify
 from ..export.numerify import (SequenceNumerifier, BasePairAnnotationNumerifier, Stepper,
                                AMBIGUITY_DECODE)
-from ..export.exporter import ExportController
+from ..export.exporter import HelixerExportController
 from ..prediction.F1Scores import F1Calculator
 from ..prediction.ConfusionMatrix import ConfusionMatrix
 
@@ -65,7 +65,7 @@ def mk_controllers(source_db, helixer_db=TMP_DB, h5_out=H5_OUT_FOLDER, only_test
             os.remove(p)
 
     mer_controller = HelixerController(source_db, helixer_db, '', '')
-    export_controller = ExportController(helixer_db, h5_out, only_test_set=only_test_set)
+    export_controller = HelixerExportController(helixer_db, h5_out, only_test_set=only_test_set)
     return mer_controller, export_controller
 
 
