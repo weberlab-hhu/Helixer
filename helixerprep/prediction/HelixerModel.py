@@ -94,6 +94,7 @@ class HelixerSequence(Sequence):
         self.batch_size = self.model.batch_size
         self.float_precision = self.model.float_precision
         self.exclude_errors = self.model.exclude_errors
+        self.class_weights = self.model.class_weights
         self.meta_losses = self.model.meta_losses
         self.additional_input = self.model.additional_input
         self.x_dset = h5_file['/data/X']
@@ -150,9 +151,9 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
+        self.parser.add_argument('-cw', '--class-weights', action='store_true')
         self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
         self.parser.add_argument('-additional-input', '--additional-input', action='store_true')
-        self.parser.add_argument('-acw', '--auto-class-weights', action='store_true')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -335,18 +336,12 @@ class HelixerModel(ABC):
             self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
             self.compile_model(model)
 
-            if self.auto_class_weights:
-                class_weights = {'main': 'auto'}
-            else:
-                class_weights = None
-
             model.fit_generator(generator=self.gen_training_data(),
                                 epochs=self.epochs,
                                 workers=0,  # run in main thread
                                 # workers=1,
                                 validation_data=self.gen_validation_data(),
                                 callbacks=self.generate_callbacks(),
-                                class_weight=class_weights,
                                 verbose=True)
 
             if self.nni:

@@ -13,6 +13,8 @@ class DanQSequence(HelixerSequence):
     def __init__(self, model, h5_file, shuffle):
         super().__init__(model, h5_file, shuffle)
         assert self.test_time or self.exclude_errors  # exclude errors when training or validating
+        if self.class_weights:
+            assert not self.test_time  # only use class weights during training
 
     def __getitem__(self, idx):
         pool_size = self.model.pool_size
@@ -33,11 +35,6 @@ class DanQSequence(HelixerSequence):
                 y = y[:, :-overhang]
                 sw = sw[:, :-overhang]
 
-            # reshape sample weights
-            # mark any multi-base timestep as error if any base has an error
-            sw = sw.reshape((sw.shape[0], -1, pool_size))
-            sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
-
             if self.additional_input:
                 # copy of the input so the LSTM can attend to the raw input sequence after pooling
                 # first merge last 2 axis so we can split axis 1 with reshape
@@ -52,6 +49,23 @@ class DanQSequence(HelixerSequence):
                 pool_size,
                 y.shape[-1],
             ))
+
+            if self.class_weights:
+                # class weights are additive for the individual timestep predictions
+                # giving even more weight to transition points
+                # class weights without pooling not supported yet
+                cw = np.array([0.02, 1.0, 0.5, 0.5], dtype=np.float32)
+                cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
+                cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
+                # add class weights to applicable timesteps
+                cw_arrays = np.multiply(cls_arrays, np.tile(cw, y.shape[:2] + (1,)))
+                sw = np.sum(cw_arrays, axis=2)
+            else:
+                # code is only reached during test time where --exclude-errors is enforced
+                # mark any multi-base timestep as error if any base has an error
+                sw = sw.reshape((sw.shape[0], -1, pool_size))
+                sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
+
 
         # put together returned inputs/outputs
         if self.additional_input:
@@ -71,11 +85,7 @@ class DanQSequence(HelixerSequence):
             labels = y
             sample_weights = sw
 
-        if self.test_time:
-            # only use sample weights during test time so class weights can be used
-            return inputs, labels, sample_weights
-        else:
-            return inputs, labels
+        return inputs, labels, sample_weights
 
 
 class DanQModel(HelixerModel):
