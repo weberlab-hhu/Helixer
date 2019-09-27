@@ -193,10 +193,10 @@ class CoordNumerifier(object):
     to ensure consistent parameters.
     Currently just selects all Features of the given Coordinate.
     """
-    def __init__(self, session, coord, is_plus_strand, max_len, one_hot):
+    def __init__(self, geenuff_exporter, coord, is_plus_strand, max_len, one_hot):
         assert isinstance(is_plus_strand, bool)
         assert isinstance(max_len, int) and max_len > 0
-        self.session = session
+        self.geenuff_exporter = geenuff_exporter
         self.coord = coord
 
         if not self.coord.features:
@@ -223,7 +223,8 @@ class CoordNumerifier(object):
             start_ends = [(x[1], x[0]) for x in self.anno_numerifier.paired_steps]
 
         try:
-            gc_content = (self.session.query(Mer.count)
+            # need to hijack the session from geenuff_exporter as the Mer table does not exist there
+            gc_content = (self.geenuff_exporter.session.query(Mer.count)
                 .filter(Mer.coordinate == self.coord)
                 .filter(Mer.mer_sequence == 'C')
                 .one()[0])
