@@ -98,7 +98,6 @@ class DanQModel(HelixerModel):
         self.parser.add_argument('-ps', '--pool-size', type=int, default=10)
         self.parser.add_argument('-dr1', '--dropout1', type=float, default=0.0)
         self.parser.add_argument('-dr2', '--dropout2', type=float, default=0.0)
-        self.parser.add_argument('-mlw', '--meta-loss-weight', type=float, default=5.0)
         self.parser.add_argument('-ln', '--layer-normalization', action='store_true')
         self.parse_args()
 
@@ -157,8 +156,9 @@ class DanQModel(HelixerModel):
 
     def compile_model(self, model):
         if self.meta_losses:
+            meta_loss_weight = 2.0 if self.class_weights else 5.0  # adjust loss weight to class weights
             losses = ['categorical_crossentropy', 'mean_squared_error']
-            loss_weights = [1.0, self.meta_loss_weight]
+            loss_weights = [1.0, meta_loss_weight]
             metrics = {
                 'main': ['accuracy', acc_g_oh, acc_ig_oh],
             }
