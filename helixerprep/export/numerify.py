@@ -124,33 +124,23 @@ class AnnotationNumerifier(Numerifier, ABC):
     fits the sequence length of the coordinate but only for the provided features.
     This is done to support alternative splicing in the future.
     """
-    def __init__(self, n_cols, coord, features, is_plus_strand, max_len):
-        Numerifier.__init__(self, n_cols=n_cols, coord=coord, is_plus_strand=is_plus_strand,
-                            max_len=max_len, dtype=np.int8)
-        ABC.__init__(self)
-        self.features = features
-
-    def _unflipped_coord_to_matrix(self):
-        self._zero_matrix()
-        self.update_matrix_and_error_mask()
-
-    @abstractmethod
-    def update_matrix_and_error_mask(self):
-        pass
-
-
-class BasePairAnnotationNumerifier(AnnotationNumerifier):
     feature_to_col = {
         types.GeenuffFeature.geenuff_transcript: 0,
         types.GeenuffFeature.geenuff_cds: 1,
         types.GeenuffFeature.geenuff_intron: 2,
-     }
+    }
     error_type_values = [t.value for t in types.Errors]
+    def __init__(self, coord, features, is_plus_strand, max_len, one_hot_transitions):
+        Numerifier.__init__(self, n_cols=3, coord=coord, is_plus_strand=is_plus_strand,
+                            max_len=max_len, dtype=np.int8)
+        ABC.__init__(self)
+        self.features = features
+        self.one_hot_transitions = one_hot_transitions
 
-    def __init__(self, coord, features, is_plus_strand, max_len, one_hot):
-        self.one_hot = one_hot
-        super().__init__(n_cols=3, coord=coord, features=features,
-                         is_plus_strand=is_plus_strand, max_len=max_len)
+    def _unflipped_coord_to_matrix(self):
+        self._zero_matrix()
+        self.update_matrix_and_error_mask()
+        self.encode()
 
     def update_matrix_and_error_mask(self):
         for feature in self.features:
@@ -161,32 +151,56 @@ class BasePairAnnotationNumerifier(AnnotationNumerifier):
             end = feature.end
             if not self.is_plus_strand:
                 start, end = end + 1, start + 1
-            if feature.type in BasePairAnnotationNumerifier.feature_to_col.keys():
-                col = BasePairAnnotationNumerifier.feature_to_col[feature.type]
+            if feature.type in AnnotationNumerifier.feature_to_col.keys():
+                col = AnnotationNumerifier.feature_to_col[feature.type]
                 self.matrix[start:end, col] = 1
-            elif feature.type.value in BasePairAnnotationNumerifier.error_type_values:
+            elif feature.type.value in AnnotationNumerifier.error_type_values:
                 self.error_mask[start:end] = 0
             else:
                 raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
 
-        # transform matrix into one-hot encoding for classical classification if desired
-        if self.one_hot:
-            # Class order: Intergenic, UTR, CDS, (non-coding Intron), Intron
-            # This could be done in a more efficient way, but this way we may catch bugs
-            # where non-standard classes are output in the multiclass output
-            one_hot_matrix = np.zeros((self.matrix.shape[0], 4), dtype=bool)
-            col_0, col_1, col_2 = self.matrix[:, 0], self.matrix[:, 1], self.matrix[:, 2]
-            # Intergenic
-            one_hot_matrix[:, 0] = np.logical_not(col_0)
-            # UTR
-            genic_non_coding = np.logical_and(col_0, np.logical_not(col_1))
-            one_hot_matrix[:, 1] = np.logical_and(genic_non_coding, np.logical_not(col_2))
-            # CDS
-            one_hot_matrix[:, 2] = np.logical_and(np.logical_and(col_0, col_1), np.logical_not(col_2))
-            # Introns
-            one_hot_matrix[:, 3] = np.logical_and(col_0, col_2)
-            self.matrix = one_hot_matrix.astype(np.int8)
-            assert np.all(np.count_nonzero(self.matrix, axis=1) == 1)
+
+    @abstractmethod
+    def encode(self):
+        pass
+
+
+class OneHot_Features(AnnotationNumerifier):
+
+    def encode(self):
+        # Class order: Intergenic, UTR, CDS, (non-coding Intron), Intron
+        # This could be done in a more efficient way, but this way we may catch bugs
+        # where non-standard classes are output in the multiclass output
+        one_hot_matrix = np.zeros((self.matrix.shape[0], 4), dtype=bool)
+        col_0, col_1, col_2 = self.matrix[:, 0], self.matrix[:, 1], self.matrix[:, 2]
+        # Intergenic
+        one_hot_matrix[:, 0] = np.logical_not(col_0)
+        # UTR
+        genic_non_coding = np.logical_and(col_0, np.logical_not(col_1))
+        one_hot_matrix[:, 1] = np.logical_and(genic_non_coding, np.logical_not(col_2))
+        # CDS
+        one_hot_matrix[:, 2] = np.logical_and(np.logical_and(col_0, col_1), np.logical_not(col_2))
+        # Introns
+        one_hot_matrix[:, 3] = np.logical_and(col_0, col_2)
+        self.matrix = one_hot_matrix.astype(np.int8)
+        assert np.all(np.count_nonzero(self.matrix, axis=1) == 1)
+
+
+class OneHot_Transitions(AnnotationNumerifier):
+
+    def encode(self):
+        add = np.array([[0, 0, 0]])
+        shifted_feature_matrix = np.vstack((self.matrix[1:], add))
+
+        y_isTransition = np.logical_xor(self.matrix[:-1], shifted_feature_matrix[:-1]).astype(np.int8)
+        y_direction_zero_to_one = np.logical_and(y_isTransition, self.matrix[1:]).astype(np.int8)
+        y_direction_one_to_zero = np.logical_and(y_isTransition, self.matrix[:-1]).astype(np.int8)
+        stack = np.hstack((y_direction_zero_to_one, y_direction_one_to_zero))
+        y_is_no_Transition = np.all(np.logical_not(y_isTransition), axis=-1).astype(np.int8)
+
+        onehot_feature_transitions = np.concatenate((stack, y_is_no_Transition[:, None]), axis=1)
+        self.matrix = onehot_feature_transitions.astype(np.int8)
+        assert np.all(np.count_nonzero(self.matrix, axis=1) == 1)
 
 
 class CoordNumerifier(object):
@@ -194,7 +208,7 @@ class CoordNumerifier(object):
     to ensure consistent parameters.
     Currently just selects all Features of the given Coordinate.
     """
-    def __init__(self, session, coord, is_plus_strand, max_len, one_hot):
+    def __init__(self, session, coord, is_plus_strand, max_len, one_hot_transitions):
         assert isinstance(is_plus_strand, bool)
         assert isinstance(max_len, int) and max_len > 0
         self.session = session
@@ -203,11 +217,20 @@ class CoordNumerifier(object):
         if not self.coord.features:
             logging.warning('Sequence {} has no annoations'.format(self.coord.seqid))
 
-        self.anno_numerifier = BasePairAnnotationNumerifier(coord=self.coord,
-                                                            features=self.coord.features,
-                                                            is_plus_strand=is_plus_strand,
-                                                            max_len=max_len,
-                                                            one_hot=one_hot)
+
+        if one_hot_transitions:
+            self.anno_numerifier = OneHot_Transitions(coord=self.coord,
+                                                                features=self.coord.features,
+                                                                is_plus_strand=is_plus_strand,
+                                                                max_len=max_len,
+                                                                one_hot_transitions=one_hot_transitions)
+
+        else:
+            self.anno_numerifier = OneHot_Features(coord=self.coord,
+                                                      features=self.coord.features,
+                                                      is_plus_strand=is_plus_strand,
+                                                      max_len=max_len,
+                                                      one_hot_transitions=one_hot_transitions)
 
         self.seq_numerifier = SequenceNumerifier(coord=self.coord,
                                                  is_plus_strand=is_plus_strand,

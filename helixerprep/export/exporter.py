@@ -217,12 +217,12 @@ class ExportController(object):
                 val_coords += genome_val_coords
         return train_coords, val_coords
 
-    def _add_data_attrs(self, genomes, exclude, one_hot, keep_errors):
+    def _add_data_attrs(self, genomes, exclude, one_hot_transitions, keep_errors):
         attrs = {
             'timestamp': str(datetime.datetime.now()),
             'genomes': ','.join(genomes),
             'exclude': ','.join(exclude),
-            'one_hot': str(one_hot),
+            'one_hot_transitions': str(one_hot_transitions),
             'keep_errors': str(keep_errors),
         }
         for key, value in attrs.items():
@@ -239,7 +239,7 @@ class ExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def _numerify_coord(self, coord, chunk_size, one_hot, keep_errors):
+    def _numerify_coord(self, coord, chunk_size, one_hot_transitions, keep_errors):
         list_in_list_out = ['inputs', 'labels', 'label_masks', 'start_ends']
         one_in_list_out = ['gc_contents', 'coord_lengths', 'species', 'seqids']
         # will pre-organize all data and metadata to have one entry per chunk in flat_data below
@@ -249,12 +249,12 @@ class ExportController(object):
 
         n_masked_bases, n_intergenic_bases = 0, 0
         for is_plus_strand in [True, False]:
-            numerifier = CoordNumerifier(self.session, coord, is_plus_strand, chunk_size, one_hot)
+            numerifier = CoordNumerifier(self.session, coord, is_plus_strand, chunk_size, one_hot_transitions)
             coord_data = numerifier.numerify()
             # keep track of variables
             n_masked_bases += sum(
                 [np.count_nonzero(m == 0) for m in coord_data['label_masks']])
-            if one_hot:
+            if one_hot_transitions:
                 n_intergenic_bases += sum([np.count_nonzero(l[:, 0] == 1) for l in coord_data['labels']])
             else:
                 n_intergenic_bases += sum(
@@ -273,7 +273,7 @@ class ExportController(object):
         intergenic_bases_percent = n_intergenic_bases / (coord.length * 2) * 100
         return flat_data, coord, masked_bases_percent, intergenic_bases_percent
 
-    def export(self, chunk_size, genomes, exclude, val_size, one_hot, split_coordinates, keep_errors):
+    def export(self, chunk_size, genomes, exclude, val_size, one_hot_transitions, split_coordinates, keep_errors):
         self._check_genome_names(genomes, exclude)
         genome_coords = self._get_coord_ids(genomes, exclude)
         n_coords = sum([len(coords) for genome_id, coords in genome_coords.items()])
@@ -282,10 +282,11 @@ class ExportController(object):
             train_coords, val_coords = self._split_coords_by_N90(genome_coords, val_size)
 
         n_coords_done = 1
-        n_y_cols = 4 if one_hot else 3
+        n_y_cols = 7 if one_hot_transitions else 4
+
         for coords in genome_coords.values():
             for coord in coords:
-                numerify_outputs = self._numerify_coord(coord, chunk_size, one_hot, keep_errors)
+                numerify_outputs = self._numerify_coord(coord, chunk_size, one_hot_transitions, keep_errors)
                 flat_data, coord, masked_bases_percent, intergenic_bases_percent = numerify_outputs
                 if split_coordinates or self.only_test_set:
                     if split_coordinates:
@@ -318,5 +319,5 @@ class ExportController(object):
                                len(val_data['inputs']), masked_bases_percent, intergenic_bases_percent))
                 n_coords_done += 1
 
-        self._add_data_attrs(genomes, exclude, one_hot, keep_errors)
+        self._add_data_attrs(genomes, exclude, one_hot_transitions, keep_errors)
         self._close_files()
