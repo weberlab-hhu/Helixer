@@ -202,8 +202,9 @@ class CoordNumerifier(object):
         if not self.coord.features:
             logging.warning('Sequence {} has no annoations'.format(self.coord.seqid))
 
+        longest_features = self.geenuff_exporter.longest_transcript_features_of_coord(self.coord.id)
         self.anno_numerifier = BasePairAnnotationNumerifier(coord=self.coord,
-                                                            features=self.coord.features,
+                                                            features=longest_features,
                                                             is_plus_strand=is_plus_strand,
                                                             max_len=max_len,
                                                             one_hot=one_hot)
