@@ -1,5 +1,6 @@
 import numpy as np
 from pprint import pprint
+from collections import defaultdict
 from sklearn.metrics import confusion_matrix
 
 
@@ -9,6 +10,7 @@ class ConfusionMatrix():
         self.generator = generator
         self.label_dim = label_dim
         self.cm = np.zeros((self.label_dim, self.label_dim))
+        self.col_names = {0: 'ig', 1: 'utr', 2: 'exon', 3: 'intron'}
 
     def _reshape_data(self, arr):
         arr = np.argmax(arr, axis=-1).astype(np.int8)
@@ -32,15 +34,41 @@ class ConfusionMatrix():
         normalized_cm = self.cm / class_sums[:, None]  # expand by one dim so broadcast work properly
         return normalized_cm
 
+    def _precision_recall_f1(self, tp, fp, fn):
+        precision  = tp / (tp + fp)
+        recall = tp / (tp + fn)
+        f1 = 2 * precision * recall / (precision + recall)
+        return precision, recall, f1
+
+    def _get_composite_scores(self):
+        scores = defaultdict(dict)
+        for col, name in self.col_names.items():
+            scores[col]['TP'] = self.cm[col, col]
+            scores[col]['FP'] = np.sum(self.cm[np.arange(self.label_dim) != col, col])
+            scores[col]['FN'] = np.sum(self.cm[col, np.arange(self.label_dim) != col])
+            metrics = self._precision_recall_f1(scores[col]['TP'], scores[col]['FP'], scores[col]['FN'])
+            scores[col]['precision'], scores[col]['recall'], scores[col]['f1'] = metrics
+
+        tp_cds = scores[2]['TP'] + scores[3]['TP']
+        fp_cds = scores[2]['FP'] + scores[3]['FP']
+        fn_cds = scores[2]['FN'] + scores[3]['FN']
+        _, _, f1_cds = self._precision_recall_f1(tp_cds, fp_cds, fn_cds)
+        genic_acc = (self.cm[1, 1] + self.cm[2, 2] + self.cm[3, 3]) / np.sum(self.cm[1:])
+        return scores, f1_cds, genic_acc
+
     def _print_results(self):
         normalized_cm = self._get_normalized_cm()
-        genic_acc = (self.cm[1, 1] + self.cm[2, 2] + self.cm[3, 3]) / np.sum(self.cm[1:])
-
         print('\n')
         pprint(self.cm)
         print()
         pprint(normalized_cm)
+        print()
+
+        scores, f1_cds, genic_acc = self._get_composite_scores()
+        for col, values in scores.items():
+            print(self.col_names[col], 'f1: {:.4f}'.format(values['f1']))
         print('\ngenic_acc: {:.4f}'.format(genic_acc))
+        print('f1_cds: {:.4f}\n'.format(f1_cds))
 
     def calculate_cm(self, model):
         for i in range(len(self.generator)):
