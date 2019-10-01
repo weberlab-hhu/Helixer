@@ -78,7 +78,7 @@ def memory_import_fasta(fasta_path):
 
 def setup_dummyloci(only_test_set=True):
     _, export_controller = mk_controllers(DUMMYLOCI_DB, only_test_set=only_test_set)
-    session = export_controller.session
+    session = export_controller.geenuff_exporter.session
     coordinate = session.query(Coordinate).first()
     return session, export_controller, coordinate
 
@@ -107,7 +107,8 @@ def setup_simpler_numerifier():
 ### db import from GeenuFF ###
 def test_copy_n_import():
     _, controller = mk_controllers(source_db=DUMMYLOCI_DB)
-    sl = controller.session.query(SuperLocus).filter(SuperLocus.given_name == 'gene0').one()
+    session = controller.geenuff_exporter.session
+    sl = session.query(SuperLocus).filter(SuperLocus.given_name == 'gene0').one()
     assert len(sl.transcripts) == 3
     assert len(sl.proteins) == 3
     all_features = []
@@ -371,6 +372,7 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     label_expect = np.flip(label_expect, axis=0)
     label_expect = np.insert(label_expect, 178, np.zeros((22, 3)), axis=0)
     label_expect = np.insert(label_expect, 200 + 177, np.zeros((23, 3)), axis=0)
+    # todo fix for selection of longest transcript
     assert np.array_equal(labels[0], label_expect[:200])
     assert np.array_equal(labels[1][:50], label_expect[200:250])
 
@@ -900,3 +902,11 @@ def test_confusion_matrix():
     ])
 
     assert np.allclose(cm_true_normalized, cm._get_normalized_cm())
+
+    # test other metrics
+    precision_true, recall_true, f1_true, _ = f1_scores(np.argmax(y_true, axis=-1),
+                                                        np.argmax(y_pred, axis=-1))
+    scores, f1_cds, genic_acc = cm._get_composite_scores()
+
+
+
