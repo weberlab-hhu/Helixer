@@ -193,18 +193,17 @@ class CoordNumerifier(object):
     to ensure consistent parameters.
     Currently just selects all Features of the given Coordinate.
     """
-    def __init__(self, geenuff_exporter, coord, is_plus_strand, max_len, one_hot):
+    def __init__(self, geenuff_exporter, coord, coord_features, is_plus_strand, max_len, one_hot):
         assert isinstance(is_plus_strand, bool)
         assert isinstance(max_len, int) and max_len > 0
         self.geenuff_exporter = geenuff_exporter
         self.coord = coord
 
-        if not self.coord.features:
+        if not coord_features:
             logging.warning('Sequence {} has no annoations'.format(self.coord.seqid))
 
-        longest_features = self.geenuff_exporter.longest_transcript_features_of_coord(self.coord.id)
         self.anno_numerifier = BasePairAnnotationNumerifier(coord=self.coord,
-                                                            features=longest_features,
+                                                            features=coord_features,
                                                             is_plus_strand=is_plus_strand,
                                                             max_len=max_len,
                                                             one_hot=one_hot)
