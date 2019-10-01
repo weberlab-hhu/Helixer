@@ -252,11 +252,9 @@ class HelixerExportController(object):
         for genome_id, coords in genome_coords.items():
             for (coord_id, coord_len) in coords:
                 coord = self.geenuff_exporter.get_coord_by_id(coord_id)
-                start = time.time()
                 coord_features = genome_coord_features[genome_id][(coord_id, coord_len)]
                 numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size, one_hot,
                                                         keep_errors)
-                print('numerify', time.time() - start, 's')
                 flat_data, coord, masked_bases_percent, intergenic_bases_percent = numerify_outputs
                 if split_coordinates or self.only_test_set:
                     if split_coordinates:
