@@ -34,7 +34,8 @@ class ConfusionMatrix():
         normalized_cm = self.cm / class_sums[:, None]  # expand by one dim so broadcast work properly
         return normalized_cm
 
-    def _precision_recall_f1(self, tp, fp, fn):
+    @staticmethod
+    def _precision_recall_f1(tp, fp, fn):
         precision  = tp / (tp + fp)
         recall = tp / (tp + fn)
         f1 = 2 * precision * recall / (precision + recall)
@@ -46,13 +47,15 @@ class ConfusionMatrix():
             scores[col]['TP'] = self.cm[col, col]
             scores[col]['FP'] = np.sum(self.cm[np.arange(self.label_dim) != col, col])
             scores[col]['FN'] = np.sum(self.cm[col, np.arange(self.label_dim) != col])
-            metrics = self._precision_recall_f1(scores[col]['TP'], scores[col]['FP'], scores[col]['FN'])
+            metrics = ConfusionMatrix._precision_recall_f1(scores[col]['TP'],
+                                                           scores[col]['FP'],
+                                                           scores[col]['FN'])
             scores[col]['precision'], scores[col]['recall'], scores[col]['f1'] = metrics
 
         tp_cds = scores[2]['TP'] + scores[3]['TP']
         fp_cds = scores[2]['FP'] + scores[3]['FP']
         fn_cds = scores[2]['FN'] + scores[3]['FN']
-        _, _, f1_cds = self._precision_recall_f1(tp_cds, fp_cds, fn_cds)
+        _, _, f1_cds = ConfusionMatrix._precision_recall_f1(tp_cds, fp_cds, fn_cds)
         genic_acc = (self.cm[1, 1] + self.cm[2, 2] + self.cm[3, 3]) / np.sum(self.cm[1:])
         return scores, f1_cds, genic_acc
 
