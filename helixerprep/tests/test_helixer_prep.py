@@ -325,6 +325,7 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
 
 
 def test_coord_numerifier_and_h5_gen_minus_strand():
+    """Tests numerification of test case 8 on coordinate 2"""
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=200, genomes='', exclude='', val_size=0.2, one_hot=False,
@@ -366,9 +367,8 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
 
     label_expect = np.zeros((955, 3), dtype=np.float16)
     label_expect[749:950, 0] = 1.  # genic region
-    label_expect[774:930, 1] = 1.  # transcript (2 overlapping ones)
+    label_expect[774:925, 1] = 1.  # transcript (only the first one due to longest transcript rule)
     label_expect[850:919, 2] = 1.  # intron first transcript
-    label_expect[800:879, 2] = 1.  # intron second transcript
     label_expect = np.flip(label_expect, axis=0)
     label_expect = np.insert(label_expect, 178, np.zeros((22, 3)), axis=0)
     label_expect = np.insert(label_expect, 200 + 177, np.zeros((23, 3)), axis=0)
