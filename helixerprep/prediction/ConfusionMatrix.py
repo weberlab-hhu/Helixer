@@ -1,6 +1,7 @@
 import numpy as np
 from pprint import pprint
 from collections import defaultdict
+from terminaltables import AsciiTable
 from sklearn.metrics import confusion_matrix
 
 
@@ -42,22 +43,30 @@ class ConfusionMatrix():
         return precision, recall, f1
 
     def _get_composite_scores(self):
-        scores = defaultdict(dict)
-        for col, name in self.col_names.items():
-            scores[col]['TP'] = self.cm[col, col]
-            scores[col]['FP'] = np.sum(self.cm[np.arange(self.label_dim) != col, col])
-            scores[col]['FN'] = np.sum(self.cm[col, np.arange(self.label_dim) != col])
-            metrics = ConfusionMatrix._precision_recall_f1(scores[col]['TP'],
-                                                           scores[col]['FP'],
-                                                           scores[col]['FN'])
-            scores[col]['precision'], scores[col]['recall'], scores[col]['f1'] = metrics
+        def add_to_scores(d):
+            metrics = ConfusionMatrix._precision_recall_f1(d['TP'], d['FP'], d['FN'])
+            d['precision'], d['recall'], d['f1'] = metrics
 
-        tp_cds = scores[2]['TP'] + scores[3]['TP']
-        fp_cds = scores[2]['FP'] + scores[3]['FP']
-        fn_cds = scores[2]['FN'] + scores[3]['FN']
-        _, _, f1_cds = ConfusionMatrix._precision_recall_f1(tp_cds, fp_cds, fn_cds)
-        genic_acc = (self.cm[1, 1] + self.cm[2, 2] + self.cm[3, 3]) / np.sum(self.cm[1:])
-        return scores, f1_cds, genic_acc
+        scores = defaultdict(dict)
+        # single column metrics
+        for col in range(self.label_dim):
+            d = scores[self.col_names[col]]
+            d['TP'] = self.cm[col, col]
+            d['FP'] = np.sum(self.cm[np.arange(self.label_dim) != col, col])
+            d['FN'] = np.sum(self.cm[col, np.arange(self.label_dim) != col])
+            add_to_scores(d)
+
+        composite_metrics = {
+            'cds': ['exon', 'intron'],
+            'genic': ['utr', 'exon', 'intron'],
+        }
+        for c_metric, parts in composite_metrics.items():
+            d = scores[c_metric]
+            for base_metric in ['TP', 'FP', 'FN']:
+                d[base_metric] = sum([scores[m][base_metric] for m in parts])
+            add_to_scores(d)
+
+        return scores
 
     def _print_results(self):
         normalized_cm = self._get_normalized_cm()
@@ -67,11 +76,14 @@ class ConfusionMatrix():
         pprint(normalized_cm)
         print()
 
-        scores, f1_cds, genic_acc = self._get_composite_scores()
-        for col, values in scores.items():
-            print(self.col_names[col], 'f1: {:.4f}'.format(values['f1']))
-        print('\ngenic_acc: {:.4f}'.format(genic_acc))
-        print('f1_cds: {:.4f}\n'.format(f1_cds))
+        scores = self._get_composite_scores()
+        table = [['', 'Precision', 'Recall', 'F1-Score']]
+        for i, (name, values) in enumerate(scores.items()):
+            metrics = ['{:.4f}'.format(s) for s in list(values.values())[3:]]
+            table.append([name] + metrics)
+            if i == 3:
+                table.append([''] * 4)
+        print('\n', AsciiTable(table, '').table, sep='')
 
     def calculate_cm(self, model):
         for i in range(len(self.generator)):
