@@ -127,8 +127,8 @@ class HelixerSequence(Sequence):
         assert np.all(np.logical_and(self.coord_lengths >= 0.0, self.coord_lengths <= 1.0))
 
     def __len__(self):
-        # return 2
-        return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
+        return 2
+        # return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
 
     @abstractmethod
     def __getitem__(self, idx):
@@ -337,9 +337,12 @@ class HelixerModel(ABC):
                     predictions.shape[1] * n_points,
                     self.label_dim,
                 )
-                # remove overhang if existing
-                if predictions.shape[1] > self.shape_test[1]:
-                    predictions = predictions[:, :self.shape_test[1], :]
+                # add 0-padding if needed
+                n_removed = self.shape_test[1] - predictions.shape[1]
+                if n_removed > 0:
+                    zero_padding = np.zeros((predictions.shape[0], n_removed, predictions.shape[2]),
+                                            dtype=np.float16)
+                    predictions = np.concatenate((predictions, zero_padding), axis=1)
             # create or expand dataset
             if i == 0:
                 old_len = 0
@@ -359,6 +362,7 @@ class HelixerModel(ABC):
         # add model config and other attributes to predictions
         h5_model = h5py.File(self.load_model_path, 'r')
         pred_out.attrs['model_config'] = h5_model.attrs['model_config']
+        pred_out.attrs['n_bases_removed'] = n_removed
         pred_out.attrs['test_data_path'] = self.test_data
         pred_out.attrs['timestamp'] = str(datetime.datetime.now())
         pred_out.close()
