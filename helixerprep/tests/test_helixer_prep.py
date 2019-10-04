@@ -908,11 +908,12 @@ def test_confusion_matrix():
     y_true = np.argmax(y_true[non_padded_idx], axis=-1)
     y_pred = np.argmax(y_pred[non_padded_idx], axis=-1)
     precision_true, recall_true, f1_true, _ = f1_scores(y_true, y_pred)
-    scores, f1_cds, genic_acc = cm._get_composite_scores()
+    scores = cm._get_composite_scores()
 
-    assert np.allclose(precision_true, np.array([s['precision'] for s in scores.values()]))
-    assert np.allclose(recall_true, np.array([s['recall'] for s in scores.values()]))
-    assert np.allclose(f1_true, np.array([s['f1'] for s in scores.values()]))
+    one_col_values = list(scores.values())[:4]  # excluding composite metrics
+    assert np.allclose(precision_true, np.array([s['precision'] for s in one_col_values]))
+    assert np.allclose(recall_true, np.array([s['recall'] for s in one_col_values]))
+    assert np.allclose(f1_true, np.array([s['f1'] for s in one_col_values]))
 
     # test f1_cds
     tp_cds = cm_true[2, 2] + cm_true[3, 3]
@@ -921,4 +922,4 @@ def test_confusion_matrix():
     fn_cds = (cm_true[0, 2] + cm_true[1, 2] + cm_true[3, 2] +
               cm_true[0, 3] + cm_true[1, 3] + cm_true[2, 3])
     _, _, f1_cds_true = ConfusionMatrix._precision_recall_f1(tp_cds, fp_cds, fn_cds)
-    assert np.allclose(f1_cds_true, f1_cds)
+    assert np.allclose(f1_cds_true, scores['cds']['f1'])
