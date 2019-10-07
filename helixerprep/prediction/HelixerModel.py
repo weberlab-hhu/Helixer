@@ -316,6 +316,66 @@ class HelixerModel(ABC):
                 print('Fully correct test seqs: {:.2f}%\n'.format(
                     n_test_correct_seqs / self.shape_test[0] * 100))
 
+    def _make_predictions(self, model):
+        # loop through batches and continously expand output dataset as everything might
+        # not fit in memory
+        pred_out = h5py.File(self.prediction_output_path, 'w')
+        test_sequence = self.gen_test_data()
+        for i in range(len(test_sequence)):
+            if self.verbose:
+                print(i, '/', len(test_sequence), end='\r')
+            predictions = model.predict_on_batch(test_sequence[i][0])
+            if type(predictions) is list:
+                predictions, meta_predictions = predictions
+            # join last two dims when predicting one hot labels
+            predictions = predictions.reshape(predictions.shape[:2] + (-1,)).astype(np.float16)
+            # reshape when predicting more than one point at a time
+            if predictions.shape[2] != self.label_dim:
+                n_points = predictions.shape[2] // self.label_dim
+                predictions = predictions.reshape(
+                    predictions.shape[0],
+                    predictions.shape[1] * n_points,
+                    self.label_dim,
+                )
+                # add 0-padding if needed
+                n_removed = self.shape_test[1] - predictions.shape[1]
+                if n_removed > 0:
+                    zero_padding = np.zeros((predictions.shape[0], n_removed, predictions.shape[2]),
+                                            dtype=np.float16)
+                    predictions = np.concatenate((predictions, zero_padding), axis=1)
+            # create or expand dataset
+            if i == 0:
+                old_len = 0
+                pred_out.create_dataset('/predictions',
+                                        data=predictions,
+                                        maxshape=(None,) + predictions.shape[1:],
+                                        chunks=(1,) + predictions.shape[1:],
+                                        dtype='float16',
+                                        compression='lzf',
+                                        shuffle=True)
+            else:
+                old_len = pred_out['/predictions'].shape[0]
+                pred_out['/predictions'].resize(old_len + predictions.shape[0], axis=0)
+            # save predictions
+            pred_out['/predictions'][old_len:] = predictions
+
+        # add model config and other attributes to predictions
+        h5_model = h5py.File(self.load_model_path, 'r')
+        pred_out.attrs['model_config'] = h5_model.attrs['model_config']
+        pred_out.attrs['n_bases_removed'] = n_removed
+        pred_out.attrs['test_data_path'] = self.test_data
+        pred_out.attrs['timestamp'] = str(datetime.datetime.now())
+        pred_out.close()
+        h5_model.close()
+
+    def _load_helixer_model(self):
+        model = load_model(self.load_model_path, custom_objects = {
+            'LayerNormalization': LayerNormalization,
+            'acc_g_oh': acc_g_oh,
+            'acc_ig_oh': acc_ig_oh,
+        })
+        return model
+
     def run(self):
         self.set_resources()
         self.open_data_files()
@@ -347,6 +407,18 @@ class HelixerModel(ABC):
             if self.nni:
                 nni.report_final_result(max(model.history.history[self.stopping_metric]))
 
+            # set all model instance variables so predictions are made on the validation set
+            self.h5_test = self.h5_val
+            self.shape_test = self.shape_val
+            self.load_model_path = self.save_model_path
+            self.test_data = os.path.join(self.data_dir, 'validation_data.h5')
+            self.class_weights = False
+            model = self._load_helixer_model()
+            self._make_predictions(model)
+            print('Predictions made with {} on {} and saved to {}'.format(self.load_model_path,
+                                                                          self.test_data,
+                                                                          self.prediction_output_path))
+
             self.h5_train.close()
             self.h5_val.close()
 
@@ -354,12 +426,8 @@ class HelixerModel(ABC):
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
+            model = self._load_helixer_model()
 
-            model = load_model(self.load_model_path, custom_objects = {
-                'LayerNormalization': LayerNormalization,
-                'acc_g_oh': acc_g_oh,
-                'acc_ig_oh': acc_ig_oh,
-            })
             if self.eval:
                 if self.no_confusion_matrix:
                     callback = []
@@ -377,52 +445,6 @@ class HelixerModel(ABC):
                     ))
                 if self.exclude_errors:
                     print('WARNING: --exclude-errors used in test mode')
-
-                # loop through batches and continously expand output dataset as everything might
-                # not fit in memory
-                pred_out = h5py.File(self.prediction_output_path, 'w')
-                test_sequence = self.gen_test_data()
-                for i in range(len(test_sequence)):
-                    if self.verbose:
-                        print(i, '/', len(test_sequence), end='\r')
-                    predictions = model.predict_on_batch(test_sequence[i][0])
-                    if type(predictions) is list:
-                        predictions, meta_predictions = predictions
-                    # join last two dims when predicting one hot labels
-                    predictions = predictions.reshape(predictions.shape[:2] + (-1,)).astype(np.float16)
-                    # reshape when predicting more than one point at a time
-                    if predictions.shape[2] != self.label_dim:
-                        n_points = predictions.shape[2] // self.label_dim
-                        predictions = predictions.reshape(
-                            predictions.shape[0],
-                            predictions.shape[1] * n_points,
-                            self.label_dim,
-                        )
-                        # remove overhang if existing
-                        if predictions.shape[1] > self.shape_test[1]:
-                            predictions = predictions[:, :self.shape_test[1], :]
-                    # create or expand dataset
-                    if i == 0:
-                        old_len = 0
-                        pred_out.create_dataset('/predictions',
-                                                data=predictions,
-                                                maxshape=(None,) + predictions.shape[1:],
-                                                chunks=(1,) + predictions.shape[1:],
-                                                dtype='float16',
-                                                compression='lzf',
-                                                shuffle=True)
-                    else:
-                        old_len = pred_out['/predictions'].shape[0]
-                        pred_out['/predictions'].resize(old_len + predictions.shape[0], axis=0)
-                    # save predictions
-                    pred_out['/predictions'][old_len:] = predictions
-
-                # add model config and other attributes to predictions
-                h5_model = h5py.File(self.load_model_path, 'r')
-                pred_out.attrs['model_config'] = h5_model.attrs['model_config']
-                pred_out.attrs['test_data_path'] = self.test_data
-                pred_out.attrs['timestamp'] = str(datetime.datetime.now())
-                pred_out.close()
-                h5_model.close()
+                self._make_predictions(model)
 
             self.h5_test.close()
