@@ -199,8 +199,37 @@ class OneHot_Transitions(AnnotationNumerifier):
         y_is_no_Transition = np.all(np.logical_not(y_isTransition), axis=-1).astype(np.int8)
 
         onehot_feature_transitions = np.concatenate((stack, y_is_no_Transition[:, None]), axis=1)
-        self.matrix = onehot_feature_transitions.astype(np.int8)
+        # Adding a NO-TRANSITION-row to keep shape
+        add2 = np.array([[0, 0, 0, 0, 0, 0, 1]])
+        final_trans = np.insert(onehot_feature_transitions, 0, add2, axis=0)
+        #finish OneHot-Transition-Matrix by removing double transitions [Intron > CDS > TR]
+        self.matrix = OneHot_Transitions.mask_double_transitions(final_trans.astype(np.int8))
         assert np.all(np.count_nonzero(self.matrix, axis=1) == 1)
+        #import pudb; pudb.set_trace()
+    
+
+    def mask_double_transitions(arr):
+
+        cds_to_intron = np.where((arr == ( 0, 0, 1, 0, 1, 0, 0 )).all(axis=1))
+        arr[cds_to_intron, :] = [ 0, 0, 1, 0, 0, 0, 0 ]
+
+        intron_to_cds = np.where((arr == ( 0, 1, 0, 0, 0, 1, 0 )).all(axis=1))
+        arr[intron_to_cds, :] = [ 0, 0, 0, 0, 0, 1, 0 ]
+
+        cds_to_ig = np.where((arr == ( 0, 0, 0, 1, 1, 0, 0 )).all(axis=1))
+        arr[cds_to_ig, :] = [ 0, 0, 0, 0, 1, 0, 0 ]
+
+        ig_to_cds = np.where((arr == ( 1, 1, 0, 0, 0, 0, 0 )).all(axis=1))
+        arr[ig_to_cds, :] = [ 0, 1, 0, 0, 0, 0, 0 ]
+
+        intron_to_ig = np.where((arr == ( 0, 0, 0, 1, 0, 1, 0 )).all(axis=1))
+        arr[intron_to_ig, :] = [ 0, 0, 0, 0, 0, 1, 0 ]
+
+        ig_to_intron = np.where((arr == ( 1, 0, 1, 0, 0, 0, 0 )).all(axis=1))
+        arr[ig_to_intron, :] = [ 0, 0, 1, 0, 0, 0, 0 ]
+
+        return arr
+
 
 
 class CoordNumerifier(object):

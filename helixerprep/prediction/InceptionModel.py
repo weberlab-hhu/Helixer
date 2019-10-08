@@ -38,7 +38,7 @@ class InceptionModel(HelixerModel):
         kernel_size_vals = self._parse_kernel_sizes(self.kernel_stem)
         to_pool = [True, False, False]
 
-        input = Input(shape=(self.shape_train[1], 4))
+        input = Input(shape=(self.shape_train[1], 7))
 
         # pre-inception stem (3X convolution)
         current = input
