@@ -3,7 +3,7 @@ import random
 import numpy as np
 from keras.models import Sequential
 from keras.layers import Conv1D, Dense, Flatten
-from HelixerModel import HelixerModel, HelixerSequence, acc_row, acc_g_row, acc_ig_row
+from HelixerModel import HelixerModel, HelixerSequence
 
 
 class CNNSequence(HelixerSequence):
@@ -43,7 +43,7 @@ class CNNModel(HelixerModel):
                              padding="same",
                              activation="relu"))
 
-        model.add(Conv1D(filters=3,
+        model.add(Conv1D(filters=4,
                          kernel_size=self.final_kernel_size,
                          activation="sigmoid",
                          padding="same"))
@@ -52,12 +52,7 @@ class CNNModel(HelixerModel):
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
                       loss='binary_crossentropy',
-                      metrics=[
-                          'accuracy',
-                          acc_row,
-                          acc_g_row,
-                          acc_ig_row,
-                      ])
+                      metrics=['accuracy'])
 
 
 if __name__ == '__main__':
