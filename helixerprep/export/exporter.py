@@ -58,7 +58,7 @@ class ExportController(object):
                     val_arrays[key].append(flat_data[key][i])
         return train_arrays, val_arrays
 
-    def _save_data(self, h5_file, flat_data, chunk_size, n_y_cols):
+    def _save_data(self, h5_file, flat_data, chunk_size, n_y_cols, one_hot_transitions):
         inputs = flat_data['inputs']
         labels = flat_data['labels']
         label_masks = flat_data['label_masks']
@@ -72,9 +72,12 @@ class ExportController(object):
         y = np.zeros((n_seq, chunk_size, n_y_cols), dtype=labels[0].dtype)
         sample_weights = np.zeros((n_seq, chunk_size), dtype=label_masks[0].dtype)
         for j in range(n_seq):
-            sample_len = len(inputs[j])
+            sample_len = len(labels[j])
             X[j, :sample_len, :] = inputs[j]
             y[j, :sample_len, :] = labels[j]
+            #import pudb;
+            #pudb.set_trace()
+
             sample_weights[j, :sample_len] = label_masks[j]
         err_samples = np.any(sample_weights == 0, axis=1)
         # just one entry per chunk
@@ -291,13 +294,13 @@ class ExportController(object):
                 if split_coordinates or self.only_test_set:
                     if split_coordinates:
                         if coord in train_coords:
-                            self._save_data(self.h5_train, flat_data, chunk_size, n_y_cols)
+                            self._save_data(self.h5_train, flat_data, chunk_size, n_y_cols, one_hot_transitions)
                             assigned_set = 'train'
                         else:
-                            self._save_data(self.h5_val, flat_data, chunk_size, n_y_cols)
+                            self._save_data(self.h5_val, flat_data, chunk_size, n_y_cols, one_hot_transitions)
                             assigned_set = 'val'
                     elif self.only_test_set:
-                        self._save_data(self.h5_test, flat_data, chunk_size, n_y_cols)
+                        self._save_data(self.h5_test, flat_data, chunk_size, n_y_cols, one_hot_transitions)
                         assigned_set = 'test'
                     print(('{}/{} Numerified {} of {} with {} features in {} chunks '
                            'with an error rate of {:.2f}%, and intergenic rate of {:.2f}% ({})').format(
@@ -308,9 +311,9 @@ class ExportController(object):
                     # split sequences
                     train_data, val_data = self._split_sequences(flat_data, val_size=val_size)
                     if train_data['inputs']:
-                        self._save_data(self.h5_train, train_data, chunk_size, n_y_cols)
+                        self._save_data(self.h5_train, train_data, chunk_size, n_y_cols, one_hot_transitions)
                     if val_data['inputs']:
-                        self._save_data(self.h5_val, val_data, chunk_size, n_y_cols)
+                        self._save_data(self.h5_val, val_data, chunk_size, n_y_cols, one_hot_transitions)
                     print(('{}/{} Numerified {} of {} with {} features in {} chunks '
                            '(train: {}, test: {}) with an error rate of {:.2f}% and an '
                            'intergenic rate of {:.2f}%').format(
