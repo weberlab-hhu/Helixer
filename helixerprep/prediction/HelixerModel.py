@@ -248,11 +248,17 @@ class HelixerModel(ABC):
     def open_data_files(self):
         def get_n_correct_seqs(h5_file):
             err_samples = np.array(h5_file['/data/err_samples'])
-            return np.count_nonzero(err_samples == False)
+            n_correct = np.count_nonzero(err_samples == False)
+            if n_correct == 0:
+                print('WARNING: no fully correct sample found')
+            return n_correct
 
         def get_n_intergenic_seqs(h5_file):
             ic_samples = np.array(h5_file['/data/fully_intergenic_samples'])
-            return np.count_nonzero(ic_samples == True)
+            n_fully_ig = np.count_nonzero(ic_samples == True)
+            if n_fully_ig == 0:
+                print('WARNING: no fully intergenic samples found')
+            return n_fully_ig
 
         def set_stopping_metric():
             if self.meta_losses:
