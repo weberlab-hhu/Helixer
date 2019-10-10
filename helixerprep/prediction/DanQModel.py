@@ -24,9 +24,6 @@ class DanQSequence(HelixerSequence):
         y = np.stack(self.y_dset[usable_idx_slice])
         sw = np.stack(self.sw_dset[usable_idx_slice])
 
-        # if np.all(y[:, :, 0]):
-            # print('\n', idx, 'fully intergenic batch\n')
-
         if pool_size > 1:
             if y.shape[1] % pool_size != 0:
                 # clip to maximum size possible with the pooling length
@@ -40,7 +37,7 @@ class DanQSequence(HelixerSequence):
                 # first merge last 2 axis so we can split axis 1 with reshape
                 X_add = np.copy(X)
                 X_add = X_add.reshape((X_add.shape[0], -1))
-                X_add = X_add.reshape((X_add.shape[0], X_add.shape[1] // (pool_size * self.label_dim), -1))
+                X_add = X_add.reshape((X_add.shape[0], X_add.shape[1] // (pool_size * 4), -1))
 
             # make labels 2d so we can use the standard softmax / loss functions
             y = y.reshape((
@@ -113,7 +110,7 @@ class DanQModel(HelixerModel):
 
     def model(self):
         overhang = self.shape_train[1] % self.pool_size
-        main_input = Input(shape=(self.shape_train[1] - overhang, self.label_dim), dtype=self.float_precision,
+        main_input = Input(shape=(self.shape_train[1] - overhang, 4), dtype=self.float_precision,
                            name='main_input')
         x = Conv1D(filters=self.filter_depth,
                    kernel_size=self.kernel_size,
@@ -137,7 +134,7 @@ class DanQModel(HelixerModel):
 
         if self.additional_input:
             len_after_pooling = self.shape_train[1] // self.pool_size
-            add_input = Input(shape=(len_after_pooling, self.label_dim * self.pool_size),
+            add_input = Input(shape=(len_after_pooling, 4 * self.pool_size),
                               dtype=self.float_precision,
                               name='add_input')
             # add additional input to output  of
