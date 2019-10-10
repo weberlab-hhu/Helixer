@@ -32,7 +32,7 @@ class CNNModel(HelixerModel):
         model = Sequential()
         model.add(Conv1D(filters=self.filter_depth,
                          kernel_size=self.kernel_size,
-                         input_shape=(self.shape_train[1], 4),
+                         input_shape=(self.shape_train[1], self.label_dim),
                          padding="same",
                          activation="relu"))
 
@@ -43,15 +43,15 @@ class CNNModel(HelixerModel):
                              padding="same",
                              activation="relu"))
 
-        model.add(Conv1D(filters=4,
+        model.add(Conv1D(filters=7,
                          kernel_size=self.final_kernel_size,
-                         activation="sigmoid",
+                         activation="relu",
                          padding="same"))
         return model
 
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
-                      loss='binary_crossentropy',
+                      loss='categorical_crossentropy',
                       metrics=['accuracy'])
 
 
