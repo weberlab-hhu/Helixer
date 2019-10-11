@@ -55,6 +55,8 @@ class ConfusionMatrixTrain(Callback):
         start = time.time()
         cm_calculator = ConfusionMatrix(self.generator, self.label_dim)
         genic_f1 = cm_calculator.calculate_cm(self.model)
+        if np.isnan(genic_f1):
+            genic_f1 = 0.0
         print('cm calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
         if self.report_to_nni:
             nni.report_intermediate_result(genic_f1)
@@ -159,13 +161,16 @@ class HelixerModel(ABC):
             self.class_weights = np.array(self.class_weights, dtype=np.float32)
 
         if self.nni:
-            nni_save_model_path = os.path.expandvars('$NNI_OUTPUT_DIR/best_model.h5')
             hyperopt_args = nni.get_next_parameter()
             self.__dict__.update(hyperopt_args)
+            nni_save_model_path = os.path.expandvars('$NNI_OUTPUT_DIR/best_model.h5')
+            nni_pred_output_path = os.path.expandvars('$NNI_OUTPUT_DIR/predictions.h5')
             self.__dict__['save_model_path'] = nni_save_model_path
+            self.__dict__['prediction_output_path'] = nni_pred_output_path
             args.update(hyperopt_args)
             # for the print out
             args['save_model_path'] = nni_save_model_path
+            args['prediction_output_path'] = nni_pred_output_path
         if self.verbose:
             print()
             pprint(args)
@@ -346,8 +351,6 @@ class HelixerModel(ABC):
     def _load_helixer_model(self):
         model = load_model(self.load_model_path, custom_objects = {
             'LayerNormalization': LayerNormalization,
-            'acc_g_oh': acc_g_oh,
-            'acc_ig_oh': acc_ig_oh,
         })
         return model
 
