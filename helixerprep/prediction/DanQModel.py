@@ -6,7 +6,7 @@ from keras_layer_normalization import LayerNormalization
 from keras.models import Sequential, Model
 from keras.layers import (Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
                           Activation, concatenate, Input, BatchNormalization)
-from HelixerModel import HelixerModel, HelixerSequence, acc_ig_oh, acc_g_oh
+from HelixerModel import HelixerModel, HelixerSequence
 
 
 class DanQSequence(HelixerSequence):
@@ -24,9 +24,6 @@ class DanQSequence(HelixerSequence):
         y = np.stack(self.y_dset[usable_idx_slice])
         sw = np.stack(self.sw_dset[usable_idx_slice])
 
-        # if np.all(y[:, :, 0]):
-            # print('\n', idx, 'fully intergenic batch\n')
-
         if pool_size > 1:
             if y.shape[1] % pool_size != 0:
                 # clip to maximum size possible with the pooling length
@@ -34,13 +31,6 @@ class DanQSequence(HelixerSequence):
                 X = X[:, :-overhang]
                 y = y[:, :-overhang]
                 sw = sw[:, :-overhang]
-
-            if self.additional_input:
-                # copy of the input so the LSTM can attend to the raw input sequence after pooling
-                # first merge last 2 axis so we can split axis 1 with reshape
-                X_add = np.copy(X)
-                X_add = X_add.reshape((X_add.shape[0], -1))
-                X_add = X_add.reshape((X_add.shape[0], X_add.shape[1] // (pool_size * 4), -1))
 
             # make labels 2d so we can use the standard softmax / loss functions
             y = y.reshape((
@@ -50,19 +40,15 @@ class DanQSequence(HelixerSequence):
                 y.shape[-1],
             ))
 
-            if self.class_weights:
+            if self.class_weights is not None:
                 # class weights are additive for the individual timestep predictions
                 # giving even more weight to transition points
                 # class weights without pooling not supported yet
-
-                # cw = np.array([0.02, 1.0, 0.5, 0.5], dtype=np.float32)
-                # cw = np.array([0.1, 1.0, 0.6, 0.7], dtype=np.float32)
-                cw = np.array([1.0, 1.2, 1.0, 0.8], dtype=np.float32)
-
+                # cw = np.array([1.0, 1.2, 1.0, 0.8], dtype=np.float32)
                 cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
                 cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
                 # add class weights to applicable timesteps
-                cw_arrays = np.multiply(cls_arrays, np.tile(cw, y.shape[:2] + (1,)))
+                cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
                 sw = np.sum(cw_arrays, axis=2)
             else:
                 # code is only reached during test time where --exclude-errors is enforced
@@ -72,11 +58,6 @@ class DanQSequence(HelixerSequence):
 
 
         # put together returned inputs/outputs
-        if self.additional_input:
-            inputs = [X, X_add]
-        else:
-            inputs = X
-
         if self.meta_losses:
             gc = np.stack(self.gc_contents[usable_idx_slice])
             gc = np.repeat(gc[:, None], y.shape[1], axis=1)  # repeat for every time step
@@ -89,7 +70,7 @@ class DanQSequence(HelixerSequence):
             labels = y
             sample_weights = sw
 
-        return inputs, labels, sample_weights
+        return X, labels, sample_weights
 
 
 class DanQModel(HelixerModel):
@@ -164,12 +145,12 @@ class DanQModel(HelixerModel):
             losses = ['categorical_crossentropy', 'mean_squared_error']
             loss_weights = [1.0, meta_loss_weight]
             metrics = {
-                'main': ['accuracy', acc_g_oh, acc_ig_oh],
+                'main': ['accuracy'],
             }
         else:
             losses = ['categorical_crossentropy']
             loss_weights = [1.0]
-            metrics = ['accuracy', acc_g_oh, acc_ig_oh]
+            metrics = ['accuracy']
 
         # only weigh accuracy if we include errors (otherwise as sample weights are 1)
         if self.exclude_errors:
