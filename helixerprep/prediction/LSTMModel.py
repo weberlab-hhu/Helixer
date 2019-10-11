@@ -38,7 +38,7 @@ class LSTMModel(HelixerModel):
         self.parser.add_argument('-l', '--layers', type=int, default=1)
         self.parser.add_argument('-ps', '--pool-size', type=int, default=10)
         self.parse_args()
-        assert self.exclude_errors
+        assert self.exclude_errors or self.load_model_path
 
     def sequence_cls(self):
         return LSTMSequence
