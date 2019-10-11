@@ -40,16 +40,15 @@ class DanQSequence(HelixerSequence):
                 y.shape[-1],
             ))
 
-            if self.class_weights:
+            if self.class_weights is not None:
                 # class weights are additive for the individual timestep predictions
                 # giving even more weight to transition points
                 # class weights without pooling not supported yet
-                cw = np.array([1.0, 1.2, 1.0, 0.8], dtype=np.float32)
-
+                # cw = np.array([1.0, 1.2, 1.0, 0.8], dtype=np.float32)
                 cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
                 cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
                 # add class weights to applicable timesteps
-                cw_arrays = np.multiply(cls_arrays, np.tile(cw, y.shape[:2] + (1,)))
+                cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
                 sw = np.sum(cw_arrays, axis=2)
             else:
                 # code is only reached during test time where --exclude-errors is enforced

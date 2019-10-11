@@ -149,8 +149,8 @@ class HelixerModel(ABC):
         self.parser.add_argument('-loss', '--loss', type=str, default='')
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
+        self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
-        self.parser.add_argument('-cw', '--class-weights', action='store_true')
         self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
@@ -171,6 +171,9 @@ class HelixerModel(ABC):
     def parse_args(self):
         args = vars(self.parser.parse_args())
         self.__dict__.update(args)
+        self.class_weights = eval(self.class_weights)
+        if type(self.class_weights) is list:
+            self.class_weights = np.array(self.class_weights, dtype=np.float32)
 
         if self.nni:
             nni_save_model_path = os.path.expandvars('$NNI_OUTPUT_DIR/best_model.h5')
@@ -416,7 +419,7 @@ class HelixerModel(ABC):
             self.shape_test = self.shape_val
             self.load_model_path = self.save_model_path
             self.test_data = os.path.join(self.data_dir, 'validation_data.h5')
-            self.class_weights = False
+            self.class_weights = None
             model = self._load_helixer_model()
             self._make_predictions(model)
             print('Predictions made with {} on {} and saved to {}'.format(self.load_model_path,
