@@ -1,10 +1,8 @@
+import argparse
 import HTSeq
 import h5py
 import numpy as np
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from geenuff.base.helpers import full_db_path
-from geenuff.base import orm
+from helixerprep.core.helpers import mk_keys
 
 
 def skippable(read):
@@ -74,7 +72,7 @@ def get_sense_cov_intervals(read, chromosome, d_utp):
 
     out = []
     for arr in [standard_raw, spliced_raw]:
-        out.append([HTSeq.GenomicInterval(chromosome, x.start, x.end, strand) for x in arr])
+        out.append([HTSeq.GenomicInterval(chromosome, x.ref_iv.start, x.ref_iv.end, strand) for x in arr])
     return out  # list [standard, spliced] of coverage intervals
 
 
@@ -84,7 +82,9 @@ def cov_by_chrom(chromosome, length, htseqbam, d_utp=False):
 
     cov_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage="ndarray")
     spliced_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage="ndarray")
-    for read in htseqbam.fetch(region="{}:0-{}".format(chromosome, length)):
+    # 1 below because "pysam uses 0-based coordinates...The only exception is the region string in the fetch() and
+    # pileup() methods. This string follows the convention of the samtools command line utilities." oh well.
+    for read in htseqbam.fetch(region="{}:1-{}".format(chromosome, length)):
         if not skippable(read):
             standard_ivs, spliced_ivs = get_sense_cov_intervals(read, chromosome, d_utp)
             for iv in standard_ivs:
@@ -95,16 +95,16 @@ def cov_by_chrom(chromosome, length, htseqbam, d_utp=False):
     return cov_array, spliced_array
 
 
-def extract_np_arrays(cov_array, coord):
-    plus = cov_array[HTSeq.GenomicInterval(coord.seqid, 0, coord.length, "+")].array
-    minus = cov_array[HTSeq.GenomicInterval(coord.seqid, 0, coord.length, "-")].array
+def extract_np_arrays(cov_array, seqid, length):
+    plus = cov_array[HTSeq.GenomicInterval(seqid, 0, length, "+")].array
+    minus = cov_array[HTSeq.GenomicInterval(seqid, 0, length, "-")].array
     return plus, minus
 
 
-def stranded_cov_by_chromosome(htseqbam, coord, d_utp=False):
-    cov_array, spliced_array = cov_by_chrom(coord.seqid, coord.length, htseqbam, d_utp)
-    cp, cm = extract_np_arrays(cov_array, coord)
-    sp, sm = extract_np_arrays(spliced_array, coord)
+def stranded_cov_by_chromosome(htseqbam, seqid, length, d_utp=False):
+    cov_array, spliced_array = cov_by_chrom(seqid, length, htseqbam, d_utp)
+    cp, cm = extract_np_arrays(cov_array, seqid, length)
+    sp, sm = extract_np_arrays(spliced_array, seqid, length)
     return cp, cm, sp, sm
 
 
@@ -118,6 +118,7 @@ def setup_output4species(new_h5_path, h5_data, h5_preds, species):
     # get output size
     b_species = species.encode("utf-8")  # todo, right encoding?
     length = len([x for x in h5_data['data/species'] if x == b_species])
+
 
     # setup empty datasets
     # data
@@ -146,7 +147,33 @@ def setup_output4species(new_h5_path, h5_data, h5_preds, species):
                                maxshape=(None, chunk_len),
                                dtype="int",
                                compression="lzf")
+
+    # get output mask & sort
+    mask, lexsort = mask_and_sort(h5_data, species)
+    print(length)
+    print(mask.shape)
+    print(lexsort.shape)
+
+    # and copy relevant data in
+    for key in h5_data['data'].keys():
+        full_key = 'data/' + key
+        h5_file[full_key][:] = h5_data[full_key][mask][lexsort]
+    h5_file['predictions'][:] = h5_preds[mask][lexsort]
+
     return h5_file
+
+
+def mask_and_sort(h5_data, species):
+    mask = np.array(h5_data['/data/species'][:] == species.encode('utf-8'))
+    print(np.sum(mask))
+    print(mask)
+    pre_seq_keys = list(mk_keys(h5_data))
+    seq_keys = np.array(pre_seq_keys)[mask]
+    print(seq_keys, 'seq_keys')
+    lexsort = np.lexsort(np.flip(seq_keys.T, axis=0))
+    print(lexsort, 'lexsort')
+    print(lexsort.shape)
+    return mask, lexsort
 
 
 def write_next_4(h5_out, slices, i):
@@ -154,12 +181,28 @@ def write_next_4(h5_out, slices, i):
         h5_out['evaluation/' + key][i] = slices[j]
 
 
-def main(species, geenuff, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
-    # setup chromosome names & lengths
-    engine = create_engine(full_db_path(geenuff), echo=False)
-    session = sessionmaker(bind=engine)()
-    genome = session.query(orm.Genome).filter(orm.Genome.species == species)
+def gen_coords(h5_sorted):
+    """gets unique seqids, range, and seq length from h5 file"""
+    # uses tuple with (seqid, max_coord)
+    previous, highest = id_and_max(h5_sorted, 0)
+    start_i, i = 0, 0
+    for i in range(1, h5_sorted['data/seqids'].shape[0]):
+        current, max_coord = id_and_max(h5_sorted, i)
+        if current != previous:
+            yield previous, highest, start_i, i
+            start_i = i
+            highest = max_coord
+        else:
+            previous = current
+            highest = max(highest, max_coord)
+    yield previous, highest, start_i, i
 
+
+def id_and_max(h5, i):
+    return h5['data/seqids'][i], max(h5['data/start_ends'])
+
+
+def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
     # open data in files
     bam = HTSeq.BAM_Reader(bamfile)
     h5_data = h5py.File(h5_input, "r")
@@ -167,12 +210,17 @@ def main(species, geenuff, bamfile, h5_input, h5_predictions, h5_output, d_utp=F
 
     # setup output file
     h5_out = setup_output4species(h5_output, h5_data, h5_preds, species)
+    h5_data.close()
+    h5_preds.close()
+    # setup chromosome names & lengths
+    coords = gen_coords(h5_out)
 
     # get coverage by chromosome
-    for coord in genome.coordinates:
-        cov_arrays = stranded_cov_by_chromosome(bam, coord, d_utp)
+    for seqid, length, start_i, end_i in coords:
+        print(seqid)
+        cov_arrays = stranded_cov_by_chromosome(bam, seqid, length, d_utp)
         # split into pieces matching start/ends
-        b_seqid = coord.seqid.encode("utf-8")
+        b_seqid = seqid.encode("utf-8")
         for i in range(h5_out['data/species'].shape[0]):
             if h5_out['data/seqids'][i] == b_seqid:  # if output were sorted, this could be more efficient
                 start, end = h5_out['data/start_ends'][i]
@@ -186,4 +234,24 @@ def main(species, geenuff, bamfile, h5_input, h5_predictions, h5_output, d_utp=F
                     slices = [np.flip(x, axis=0) for x in slices]
                 # export
                 write_next_4(h5_out, slices, i)
+    h5_out.close()
 
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-s', '--species', help="species name, matching geenuff db and h5 files", required=True)
+    parser.add_argument('-b', '--bam', help='sorted (and probably indexed) bam file', required=True)
+    parser.add_argument('-d', '--h5_data', help='h5 data file (with data/{X, y, species, seqids, etc...})',
+                        required=True)
+    parser.add_argument('-p', '--h5_predictions', help='h5 predictions file with /predictions matching data file',
+                        required=True)
+    parser.add_argument('-o', '--out', help='output h5 file', required=True)
+    parser.add_argument('-u', '--dUTP', help='bam contains stranded (from typical dUTP protocol) reads',
+                        action='store_true')
+    args = parser.parse_args()
+    main(args.species,
+         args.bam,
+         args.h5_data,
+         args.h5_predictions,
+         args.out,
+         args.dUTP)

@@ -5,6 +5,7 @@ import argparse
 from terminaltables import AsciiTable
 from helixerprep.prediction.F1Scores import F1Calculator
 import sys
+from helixerprep.core.helpers import mk_keys, mk_seqonly_keys
 
 
 class AccuracyCalculator(object):
@@ -248,18 +249,6 @@ def chunk(h5_data, h5_pred):
     out[:, 2] = p_starts
     out[:, 3] = p_starts + p_counts
     return out
-
-
-def mk_seqonly_keys(h5):
-    return [a + b for a, b in zip(h5['data/species'],
-                                  h5['data/seqids'])]
-
-
-def mk_keys(h5):
-    return zip(h5['data/species'],
-               h5['data/seqids'],
-               h5['data/start_ends'][:, 0],
-               h5['data/start_ends'][:, 1])
 
 
 if __name__ == "__main__":
