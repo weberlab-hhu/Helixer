@@ -96,7 +96,6 @@ class HelixerSequence(Sequence):
         self.exclude_errors = self.model.exclude_errors
         self.class_weights = self.model.class_weights
         self.meta_losses = self.model.meta_losses
-        self.additional_input = self.model.additional_input
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
@@ -153,7 +152,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         self.parser.add_argument('-cw', '--class-weights', action='store_true')
         self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
-        self.parser.add_argument('-additional-input', '--additional-input', action='store_true')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')

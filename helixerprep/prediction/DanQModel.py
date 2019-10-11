@@ -24,9 +24,6 @@ class DanQSequence(HelixerSequence):
         y = np.stack(self.y_dset[usable_idx_slice])
         sw = np.stack(self.sw_dset[usable_idx_slice])
 
-        # if np.all(y[:, :, 0]):
-            # print('\n', idx, 'fully intergenic batch\n')
-
         if pool_size > 1:
             if y.shape[1] % pool_size != 0:
                 # clip to maximum size possible with the pooling length
@@ -34,13 +31,6 @@ class DanQSequence(HelixerSequence):
                 X = X[:, :-overhang]
                 y = y[:, :-overhang]
                 sw = sw[:, :-overhang]
-
-            if self.additional_input:
-                # copy of the input so the LSTM can attend to the raw input sequence after pooling
-                # first merge last 2 axis so we can split axis 1 with reshape
-                X_add = np.copy(X)
-                X_add = X_add.reshape((X_add.shape[0], -1))
-                X_add = X_add.reshape((X_add.shape[0], X_add.shape[1] // (pool_size * 4), -1))
 
             # make labels 2d so we can use the standard softmax / loss functions
             y = y.reshape((
@@ -72,11 +62,6 @@ class DanQSequence(HelixerSequence):
 
 
         # put together returned inputs/outputs
-        if self.additional_input:
-            inputs = [X, X_add]
-        else:
-            inputs = X
-
         if self.meta_losses:
             gc = np.stack(self.gc_contents[usable_idx_slice])
             gc = np.repeat(gc[:, None], y.shape[1], axis=1)  # repeat for every time step
@@ -89,7 +74,7 @@ class DanQSequence(HelixerSequence):
             labels = y
             sample_weights = sw
 
-        return inputs, labels, sample_weights
+        return X, labels, sample_weights
 
 
 class DanQModel(HelixerModel):
