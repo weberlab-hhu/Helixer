@@ -31,37 +31,6 @@ from F1Scores import F1Calculator
 from ConfusionMatrix import ConfusionMatrix
 
 
-def acc_region(y_true, y_pred, col, value):
-    non_zero_pad_mask = K.any(tf.equal(y_true, tf.constant(1.0)), axis=-1)
-    content_mask = tf.equal(y_true[:, :, :, col], tf.constant(value))
-    mask = tf.logical_and(non_zero_pad_mask, content_mask)
-
-    y_true = K.argmax(tf.boolean_mask(y_true, mask), axis=-1)
-    y_pred = K.argmax(tf.boolean_mask(y_pred, mask), axis=-1)
-
-    errors = K.cast(K.equal(y_true, y_pred), K.floatx())
-    error_return = tf.cond(tf.equal(tf.size(errors), 0),
-                           lambda: tf.constant(0.0), lambda: K.mean(errors))
-    return error_return
-
-
-def acc_g_oh(y_true, y_pred):
-    return acc_region(y_true, y_pred, 0, 0.0)
-
-
-def acc_ig_oh(y_true, y_pred):
-    return acc_region(y_true, y_pred, 0, 1.0)
-
-
-class ReportIntermediateResult(Callback):
-    def __init__(self, metric):
-        self.metric = metric
-        super(ReportIntermediateResult, self).__init__()
-
-    def on_epoch_end(self, epoch, logs=None):
-        nni.report_intermediate_result(logs[self.metric])
-
-
 # Callbacks have to be done seperately for train/test as the way they are called by Keras
 # is buggy currently
 class ConfusionMatrixTest(Callback):
@@ -75,15 +44,29 @@ class ConfusionMatrixTest(Callback):
 
 
 class ConfusionMatrixTrain(Callback):
-    def __init__(self, generator, label_dim):
+    def __init__(self, generator, label_dim, save_model_path, report_to_nni=False):
         self.generator = generator
         self.label_dim = label_dim
+        self.save_model_path = save_model_path
+        self.report_to_nni = report_to_nni
+        self.best_genic_f1 = 0.0
 
     def on_epoch_end(self, epoch, logs=None):
         start = time.time()
         cm_calculator = ConfusionMatrix(self.generator, self.label_dim)
-        cm_calculator.calculate_cm(self.model)
+        genic_f1 = cm_calculator.calculate_cm(self.model)
         print('cm calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
+        if self.report_to_nni:
+            nni.report_intermediate_result(genic_f1)
+        if genic_f1 > self.best_genic_f1:
+            self.best_genic_f1 = genic_f1
+            self.model.save(self.save_model_path)
+            print('saved new best model with genic f1 of {} at {}'.format(self.best_genic_f1,
+                                                                          self.save_model_path))
+
+    def on_train_end(self, logs=None):
+        if self.report_to_nni:
+            nni.report_final_result(self.best_genic_f1)
 
 
 class HelixerSequence(Sequence):
@@ -126,8 +109,8 @@ class HelixerSequence(Sequence):
         assert np.all(np.logical_and(self.coord_lengths >= 0.0, self.coord_lengths <= 1.0))
 
     def __len__(self):
-        # return 2
-        return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
+        return 2
+        # return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
 
     @abstractmethod
     def __getitem__(self, idx):
@@ -144,7 +127,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-sm', '--save-model-path', type=str, default='./best_model.h5')
         # training params
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
-        self.parser.add_argument('-p', '--patience', type=int, default=10)
+        # self.parser.add_argument('-p', '--patience', type=int, default=10)
         self.parser.add_argument('-bs', '--batch-size', type=int, default=8)
         self.parser.add_argument('-loss', '--loss', type=str, default='')
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
@@ -188,18 +171,12 @@ class HelixerModel(ABC):
             pprint(args)
 
     def generate_callbacks(self):
-        callbacks = [
-            History(),
-            CSVLogger('history.log'),
-            EarlyStopping(monitor=self.stopping_metric, patience=self.patience, verbose=1),
-            ModelCheckpoint(self.save_model_path, monitor=self.stopping_metric, mode='max',
-                            save_best_only=True, verbose=1),
-        ]
         if not self.no_confusion_matrix:
-            callbacks.append(ConfusionMatrixTrain(self.gen_validation_data(), self.label_dim))
-        if self.nni:
-            callbacks.append(ReportIntermediateResult(self.stopping_metric))
-        return callbacks
+            cm_cb = ConfusionMatrixTrain(self.gen_validation_data(), self.label_dim,
+                                         self.save_model_path, report_to_nni=self.nni)
+            return [cm_cb]
+        else:
+            return []
 
     def set_resources(self):
         K.set_floatx(self.float_precision)
@@ -261,13 +238,6 @@ class HelixerModel(ABC):
                 print('WARNING: no fully intergenic samples found')
             return n_fully_ig
 
-        def set_stopping_metric():
-            if self.meta_losses:
-                # the additional losses are not yet working with multi class predictions
-                self.stopping_metric = 'val_main_acc_g_oh'
-            else:
-                self.stopping_metric = 'val_acc_g_oh'
-
         self.label_dim = 4  # if we every enable multiple possible dimension again, here is the switch
         if not self.load_model_path:
             self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
@@ -287,8 +257,6 @@ class HelixerModel(ABC):
 
             n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
             n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_val)
-
-            set_stopping_metric()
         else:
             self.h5_test = h5py.File(self.test_data, 'r')
             self.shape_test = self.h5_test['/data/X'].shape
@@ -410,9 +378,6 @@ class HelixerModel(ABC):
                                 validation_data=self.gen_validation_data(),
                                 callbacks=self.generate_callbacks(),
                                 verbose=True)
-
-            if self.nni:
-                nni.report_final_result(max(model.history.history[self.stopping_metric]))
 
             # set all model instance variables so predictions are made on the validation set
             self.h5_test = self.h5_val

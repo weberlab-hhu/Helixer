@@ -6,7 +6,7 @@ from keras_layer_normalization import LayerNormalization
 from keras.models import Sequential, Model
 from keras.layers import (Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
                           Activation, concatenate, Input, BatchNormalization)
-from HelixerModel import HelixerModel, HelixerSequence, acc_ig_oh, acc_g_oh
+from HelixerModel import HelixerModel, HelixerSequence
 
 
 class DanQSequence(HelixerSequence):
@@ -145,12 +145,12 @@ class DanQModel(HelixerModel):
             losses = ['categorical_crossentropy', 'mean_squared_error']
             loss_weights = [1.0, meta_loss_weight]
             metrics = {
-                'main': ['accuracy', acc_g_oh, acc_ig_oh],
+                'main': ['accuracy'],
             }
         else:
             losses = ['categorical_crossentropy']
             loss_weights = [1.0]
-            metrics = ['accuracy', acc_g_oh, acc_ig_oh]
+            metrics = ['accuracy']
 
         # only weigh accuracy if we include errors (otherwise as sample weights are 1)
         if self.exclude_errors:

@@ -5,7 +5,7 @@ import numpy as np
 from keras_layer_normalization import LayerNormalization
 from keras.models import Sequential
 from keras.layers import LSTM, CuDNNLSTM, Dense, Bidirectional, Activation, Reshape
-from HelixerModel import HelixerModel, HelixerSequence, acc_ig_oh, acc_g_oh
+from HelixerModel import HelixerModel, HelixerSequence
 
 
 class LSTMSequence(HelixerSequence):
@@ -94,7 +94,7 @@ class LSTMModel(HelixerModel):
         model.compile(optimizer=self.optimizer,
                       loss='categorical_crossentropy',
                       sample_weight_mode='temporal',
-                      metrics=['accuracy', acc_g_oh, acc_ig_oh])
+                      metrics=['accuracy'])
 
 
 if __name__ == '__main__':
