@@ -1,3 +1,4 @@
+import sys
 import argparse
 import HTSeq
 import h5py
@@ -146,34 +147,32 @@ def setup_output4species(new_h5_path, h5_data, h5_preds, species):
                                shape=(length, chunk_len),
                                maxshape=(None, chunk_len),
                                dtype="int",
-                               compression="lzf")
+                               compression="lzf",
+                               data=np.full(fill_value=-1, shape=(length, chunk_len)))
 
     # get output mask & sort
     mask, lexsort = mask_and_sort(h5_data, species)
-    print(length)
-    print(mask.shape)
-    print(lexsort.shape)
 
     # and copy relevant data in
     for key in h5_data['data'].keys():
         full_key = 'data/' + key
-        h5_file[full_key][:] = h5_data[full_key][mask][lexsort]
-    h5_file['predictions'][:] = h5_preds[mask][lexsort]
-
+        tosave = h5_data[full_key][:]
+        tosave = tosave[mask]
+        tosave = tosave[lexsort]
+        h5_file[full_key][:] = tosave
+    h5_file['predictions'][:] = h5_preds['predictions'][:][mask][lexsort]
+    print("finished sub-setting and sorting existing data", file=sys.stderr)
     return h5_file
 
 
 def mask_and_sort(h5_data, species):
     mask = np.array(h5_data['/data/species'][:] == species.encode('utf-8'))
-    print(np.sum(mask))
-    print(mask)
     pre_seq_keys = list(mk_keys(h5_data))
     seq_keys = np.array(pre_seq_keys)[mask]
-    print(seq_keys, 'seq_keys')
     lexsort = np.lexsort(np.flip(seq_keys.T, axis=0))
-    print(lexsort, 'lexsort')
-    print(lexsort.shape)
+    print(lexsort)
     return mask, lexsort
+    # todo, something in the sorting and / or saving is not working (AKA h5 sample datasets don't match later)
 
 
 def write_next_4(h5_out, slices, i):
@@ -199,7 +198,7 @@ def gen_coords(h5_sorted):
 
 
 def id_and_max(h5, i):
-    return h5['data/seqids'][i], max(h5['data/start_ends'])
+    return h5['data/seqids'][i], max(h5['data/start_ends'][i])
 
 
 def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
@@ -217,6 +216,7 @@ def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
 
     # get coverage by chromosome
     for seqid, length, start_i, end_i in coords:
+        seqid = seqid.decode('utf-8')
         print(seqid)
         cov_arrays = stranded_cov_by_chromosome(bam, seqid, length, d_utp)
         # split into pieces matching start/ends
@@ -232,6 +232,7 @@ def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
                 slices = [x[start:end] for x in cov_arrays]
                 if not is_plus_strand:
                     slices = [np.flip(x, axis=0) for x in slices]
+                # todo, slices needs to padded so it matches how the coordinates were numerified x_X
                 # export
                 write_next_4(h5_out, slices, i)
     h5_out.close()
