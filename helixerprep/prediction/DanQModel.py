@@ -44,9 +44,6 @@ class DanQSequence(HelixerSequence):
                 # class weights are additive for the individual timestep predictions
                 # giving even more weight to transition points
                 # class weights without pooling not supported yet
-
-                # cw = np.array([0.02, 1.0, 0.5, 0.5], dtype=np.float32)
-                # cw = np.array([0.1, 1.0, 0.6, 0.7], dtype=np.float32)
                 cw = np.array([1.0, 1.2, 1.0, 0.8], dtype=np.float32)
 
                 cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
