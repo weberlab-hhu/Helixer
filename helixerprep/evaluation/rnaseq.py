@@ -1,4 +1,6 @@
 import HTSeq
+import h5py
+import numpy as np
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from geenuff.base.helpers import full_db_path
@@ -93,8 +95,26 @@ def cov_by_chrom(chromosome, length, htseqbam, d_utp=False):
     return cov_array, spliced_array
 
 
-def split_coverage(start, end, chromosome, coverage_array):
-    # returns np array of coverage
+def extract_np_arrays(cov_array, coord):
+    plus = cov_array[HTSeq.GenomicInterval(coord.seqid, 0, coord.length, "+")].array
+    minus = cov_array[HTSeq.GenomicInterval(coord.seqid, 0, coord.length, "-")].array
+    return plus, minus
+
+
+def stranded_cov_by_chromosome(htseqbam, coord, d_utp=False):
+    cov_array, spliced_array = cov_by_chrom(coord.seqid, coord.length, htseqbam, d_utp)
+    cp, cm = extract_np_arrays(cov_array, coord)
+    sp, sm = extract_np_arrays(spliced_array, coord)
+    return cp, cm, sp, sm
+
+
+def setup_output4species(new_h5_path, h5_data, h5_preds, species):
+    # get output size
+    b_species = species.encode("utf-8")  # todo, right encoding?
+    length = len([x for x in h5_data['data/species'] if x == species])
+
+
+def write_next_4(h5_out, slices):
     pass
 
 
@@ -104,13 +124,30 @@ def main(species, geenuff, bamfile, h5_input, h5_predictions, h5_output, d_utp=F
     session = sessionmaker(bind=engine)()
     genome = session.query(orm.Genome).filter(orm.Genome.species == species)
 
-    # open bam
+    # open data in files
     bam = HTSeq.BAM_Reader(bamfile)
+    h5_data = h5py.File(h5_input, "r")
+    h5_preds = h5py.File(h5_predictions, "r")
+
+    # setup output file
+    h5_out = setup_output4species(h5_output, h5_data, h5_preds, species)
 
     # get coverage by chromosome
     for coord in genome.coordinates:
-        cov_array, spliced_array = cov_by_chrom(coord.seqid, coord.length, bam, d_utp)
+        cov_arrays = stranded_cov_by_chromosome(bam, coord, d_utp)
         # split into pieces matching start/ends
-
-        # write back to h5 (ori dat, predictions, coverage) subset for species
+        b_seqid = coord.seqid.encode("utf-8")
+        for i in range(h5_out['data/species'].shape[0]):
+            if h5_out['data/seqids'][i] == b_seqid:  # if output were sorted, this could be more efficient
+                start, end = h5_out['data/start_ends'][i]
+                # subset and flip to match existing h5 chunks
+                is_plus_strand = True
+                if end < start:
+                    is_plus_strand = False
+                    start, end = end, start
+                slices = [x[start:end] for x in cov_arrays]
+                if not is_plus_strand:
+                    slices = [np.flip(x, axis=0) for x in slices]
+                # export
+                write_next_4(h5_out, slices)
 
