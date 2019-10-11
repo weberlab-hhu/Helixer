@@ -108,14 +108,50 @@ def stranded_cov_by_chromosome(htseqbam, coord, d_utp=False):
     return cp, cm, sp, sm
 
 
+COVERAGE_SETS = ['coverage+', 'coverage-', 'spliced_coverage+', 'spliced_coverage-']
+
+
 def setup_output4species(new_h5_path, h5_data, h5_preds, species):
+    # open output file
+    h5_file = h5py.File(new_h5_path, "w")
+
     # get output size
     b_species = species.encode("utf-8")  # todo, right encoding?
-    length = len([x for x in h5_data['data/species'] if x == species])
+    length = len([x for x in h5_data['data/species'] if x == b_species])
+
+    # setup empty datasets
+    # data
+    h5_file.create_group('data')
+    for key in h5_data['data'].keys():
+        dset = h5_data['data/' + key]
+        shape = list(dset.shape)
+        shape[0] = length
+        h5_file.create_dataset('data/' + key,
+                               shape=shape,
+                               maxshape=[None] + shape[1:],
+                               dtype=dset.dtype,
+                               compression="lzf")
+    # predictions
+    h5_file.create_dataset('predictions',
+                           shape=[length] + list(h5_preds['predictions'].shape[1:]),
+                           maxshape=[None] + list(h5_preds['predictions'].shape[1:]),
+                           dtype='f',
+                           compression='lzf')
+    # evaluation (coverage)
+    h5_file.create_group('evaluation')
+    chunk_len = h5_data['data/X'].shape[1]
+    for key in COVERAGE_SETS:
+        h5_file.create_dataset('evaluation/' + key,
+                               shape=(length, chunk_len),
+                               maxshape=(None, chunk_len),
+                               dtype="int",
+                               compression="lzf")
+    return h5_file
 
 
-def write_next_4(h5_out, slices):
-    pass
+def write_next_4(h5_out, slices, i):
+    for j, key in enumerate(COVERAGE_SETS):
+        h5_out['evaluation/' + key][i] = slices[j]
 
 
 def main(species, geenuff, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
@@ -149,5 +185,5 @@ def main(species, geenuff, bamfile, h5_input, h5_predictions, h5_output, d_utp=F
                 if not is_plus_strand:
                     slices = [np.flip(x, axis=0) for x in slices]
                 # export
-                write_next_4(h5_out, slices)
+                write_next_4(h5_out, slices, i)
 
