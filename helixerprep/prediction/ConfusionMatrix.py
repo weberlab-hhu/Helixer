@@ -46,8 +46,8 @@ class ConfusionMatrix():
             if type(y_true) is list:
                 y_pred, meta_pred = y_pred
                 y_true, meta_true = y_true
-
-            self._add_to_cm(y_true, y_pred, X)
+            #import pudb; pudb.set_trace()
+            self._add_to_cm(y_true, y_pred)
 
         self._print_cm()
         self._normalize_cm()

@@ -146,6 +146,7 @@ class DanQModel(HelixerModel):
         if self.meta_losses:
             meta_output = Dense(2, activation='sigmoid', name='meta')(x)
 
+        
         x = Dense(self.pool_size * self.label_dim)(x)
         x = Reshape((-1, self.pool_size, self.label_dim))(x)
         x = Activation('softmax', name='main')(x)

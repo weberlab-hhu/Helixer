@@ -32,7 +32,7 @@ class CNNModel(HelixerModel):
         model = Sequential()
         model.add(Conv1D(filters=self.filter_depth,
                          kernel_size=self.kernel_size,
-                         input_shape=(self.shape_train[1], self.label_dim),
+                         input_shape=(self.shape_train[1], 4),
                          padding="same",
                          activation="relu"))
 

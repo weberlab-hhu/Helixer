@@ -261,12 +261,12 @@ class HelixerModel(ABC):
             else:
                 self.stopping_metric = 'val_acc_g_oh'
 
-        self.label_dim = 4  # if we every enable multiple possible dimension again, here is the switch
         if not self.load_model_path:
             self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
             self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
             self.shape_train = self.h5_train['/data/X'].shape
             self.shape_val = self.h5_val['/data/X'].shape
+            self.label_dim = self.h5_train['/data/y'].shape[-1]
 
             n_train_correct_seqs = get_n_correct_seqs(self.h5_train)
             n_val_correct_seqs = get_n_correct_seqs(self.h5_val)
@@ -285,6 +285,8 @@ class HelixerModel(ABC):
         else:
             self.h5_test = h5py.File(self.test_data, 'r')
             self.shape_test = self.h5_test['/data/X'].shape
+            self.label_dim = self.h5_test['/data/y'].shape[-1]
+
             n_test_correct_seqs = get_n_correct_seqs(self.h5_test)
 
             if self.exclude_errors:
