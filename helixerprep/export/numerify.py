@@ -160,6 +160,7 @@ class AnnotationNumerifier(Numerifier, ABC):
                 raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
 
 
+
     @abstractmethod
     def encode(self):
         pass
@@ -232,19 +233,22 @@ class OneHot_Transitions(AnnotationNumerifier):
 
 
 
+
 class CoordNumerifier(object):
     """Combines the different Numerifiers which need to operate on the same Coordinate
     to ensure consistent parameters.
     Currently just selects all Features of the given Coordinate.
     """
-    def __init__(self, session, coord, is_plus_strand, max_len, one_hot_transitions):
+
+    def __init__(self, geenuff_exporter, coord, coord_features, is_plus_strand, max_len, one_hot_transitions):
         assert isinstance(is_plus_strand, bool)
         assert isinstance(max_len, int) and max_len > 0
-        self.session = session
+        self.geenuff_exporter = geenuff_exporter
         self.coord = coord
 
-        if not self.coord.features:
+        if not coord_features:
             logging.warning('Sequence {} has no annoations'.format(self.coord.seqid))
+
 
 
         if one_hot_transitions:
@@ -261,6 +265,7 @@ class CoordNumerifier(object):
                                                       max_len=max_len,
                                                       one_hot_transitions=one_hot_transitions)
 
+
         self.seq_numerifier = SequenceNumerifier(coord=self.coord,
                                                  is_plus_strand=is_plus_strand,
                                                  max_len=max_len)
@@ -276,7 +281,8 @@ class CoordNumerifier(object):
             start_ends = [(x[1], x[0]) for x in self.anno_numerifier.paired_steps]
 
         try:
-            gc_content = (self.session.query(Mer.count)
+            # need to hijack the session from geenuff_exporter as the Mer table does not exist there
+            gc_content = (self.geenuff_exporter.session.query(Mer.count)
                 .filter(Mer.coordinate == self.coord)
                 .filter(Mer.mer_sequence == 'C')
                 .one()[0])

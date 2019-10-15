@@ -1,6 +1,8 @@
 import os
+import gc
 import h5py
 import copy
+import time
 import numpy as np
 import random
 import datetime
@@ -8,18 +10,17 @@ from itertools import compress
 from collections import defaultdict
 from sklearn.model_selection import train_test_split
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from geenuff.base.orm import Coordinate, Genome, Feature
 from geenuff.base.helpers import full_db_path
+from geenuff.applications.exporter import GeenuffExportController
 from .numerify import CoordNumerifier
 
 
-class ExportController(object):
+class HelixerExportController(object):
     def __init__(self, db_path_in, data_dir, only_test_set=False):
         self.db_path_in = db_path_in
         self.only_test_set = only_test_set
+        self.geenuff_exporter = GeenuffExportController(self.db_path_in, longest=True)
         if not os.path.isdir(data_dir):
             os.makedirs(data_dir)
         elif os.listdir(data_dir):
@@ -32,11 +33,6 @@ class ExportController(object):
             print('Splitting data into training_data.h5 and validation_data.h5')
             self.h5_train = h5py.File(os.path.join(data_dir, 'training_data.h5'), 'w')
             self.h5_val = h5py.File(os.path.join(data_dir, 'validation_data.h5'), 'w')
-        self._mk_session()
-
-    def _mk_session(self):
-        self.engine = create_engine(full_db_path(self.db_path_in), echo=False)
-        self.session = sessionmaker(bind=self.engine)()
 
     @staticmethod
     def _split_sequences(flat_data, val_size):
@@ -163,62 +159,31 @@ class ExportController(object):
             h5_file['/data/' + dset_key][old_len:] = data
         h5_file.flush()
 
-    def _check_genome_names(self, *argv):
-        for names in argv:
-            if names:
-                genome_ids = self.session.query(Genome.id).filter(Genome.species.in_(names)).all()
-                if len(genome_ids) != len(names):
-                    print('One or more of the given genome names can not be found in the database')
-                    exit()
-
-    def _get_coord_ids(self, genomes, exclude):
-        coord_ids_with_features = self.session.query(Feature.coordinate_id).distinct()
-        if genomes:
-            print('Selecting the following genomes: {}'.format(genomes))
-            all_coords = (self.session.query(Coordinate)
-                         .join(Genome, Genome.id == Coordinate.genome_id)
-                         .filter(Genome.species.in_(genomes))
-                         .filter(Coordinate.id.in_(coord_ids_with_features))
-                         .order_by(Coordinate.length.desc())
-                         .all())
-        else:
-            if exclude:
-                print('Selecting all genomes from {} except: {}'.format(self.db_path_in, exclude))
-                all_coords = (self.session.query(Coordinate)
-                             .join(Genome, Genome.id == Coordinate.genome_id)
-                             .filter(Genome.species.notin_(exclude))
-                             .filter(Coordinate.id.in_(coord_ids_with_features))
-                             .order_by(Coordinate.length.desc())
-                             .all())
-            else:
-                print('Selecting all genomes from {}'.format(self.db_path_in))
-                all_coords = coord_ids_with_features.order_by(Coordinate.length.desc()).all()
-
-        genome_coords = defaultdict(list)
-        for c in all_coords:
-            genome_coords[c.genome_id].append(c)
-        return genome_coords
-
-    def _split_coords_by_N90(self, genome_coords , val_size):
+    def _split_coords_by_N90(self, genome_coords, val_size):
         """Splits the given coordinates in a train and val set. It does so by doing it individually for
-        each the coordinates < N90 and >= N90 of each genome. It is inefficient to build this code
-        on top of the output of self._get_coord_ids() but very convenient in terms of code structure."""
+        each the coordinates < N90 and >= N90 of each genome."""
         def N90_index(coords):
-            len_90_perc = int(sum([c.length for c in coords]) * 0.9)
+            len_90_perc = int(sum([c[1] for c in coords]) * 0.9)
             len_sum = 0
             for i, coord in enumerate(coords):
-                len_sum += coord.length
+                len_sum += coord[1]
                 if len_sum >= len_90_perc:
                     return i
 
-        train_coords, val_coords = [], []
+        train_coord_ids, val_coord_ids = [], []
         for coords in genome_coords.values():
             n90_idx = N90_index(coords) + 1
-            for n90_split in [coords[:n90_idx], coords[n90_idx:]]:
-                genome_train_coords, genome_val_coords = train_test_split(n90_split, test_size=val_size)
-                train_coords += genome_train_coords
-                val_coords += genome_val_coords
-        return train_coords, val_coords
+            coord_ids = [c[0] for c in coords]
+            for n90_split in [coord_ids[:n90_idx], coord_ids[n90_idx:]]:
+                if len(n90_split) < 2:
+                    # if there is no way to split a half only add to training data
+                    train_coord_ids += n90_split
+                else:
+                    genome_train_coord_ids, genome_val_coord_ids = train_test_split(n90_split,
+                                                                                    test_size=val_size)
+                    train_coord_ids += genome_train_coord_ids
+                    val_coord_ids += genome_val_coord_ids
+        return train_coord_ids, val_coord_ids
 
     def _add_data_attrs(self, genomes, exclude, one_hot_transitions, keep_errors):
         attrs = {
@@ -242,7 +207,11 @@ class ExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
+<<<<<<< HEAD
     def _numerify_coord(self, coord, chunk_size, one_hot_transitions, keep_errors):
+=======
+    def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, keep_errors):
+>>>>>>> dev
         list_in_list_out = ['inputs', 'labels', 'label_masks', 'start_ends']
         one_in_list_out = ['gc_contents', 'coord_lengths', 'species', 'seqids']
         # will pre-organize all data and metadata to have one entry per chunk in flat_data below
@@ -252,7 +221,12 @@ class ExportController(object):
 
         n_masked_bases, n_intergenic_bases = 0, 0
         for is_plus_strand in [True, False]:
+<<<<<<< HEAD
             numerifier = CoordNumerifier(self.session, coord, is_plus_strand, chunk_size, one_hot_transitions)
+=======
+            numerifier = CoordNumerifier(self.geenuff_exporter, coord, coord_features, is_plus_strand,
+                                         chunk_size, one_hot)
+>>>>>>> dev
             coord_data = numerifier.numerify()
             # keep track of variables
             n_masked_bases += sum(
@@ -276,15 +250,23 @@ class ExportController(object):
         intergenic_bases_percent = n_intergenic_bases / (coord.length * 2) * 100
         return flat_data, coord, masked_bases_percent, intergenic_bases_percent
 
+<<<<<<< HEAD
     def export(self, chunk_size, genomes, exclude, val_size, one_hot_transitions, split_coordinates, keep_errors):
         self._check_genome_names(genomes, exclude)
         genome_coords = self._get_coord_ids(genomes, exclude)
+=======
+    def export(self, chunk_size, genomes, exclude, val_size, one_hot, split_coordinates, keep_errors):
+        genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude)
+        # make version without features for shorter downstream code
+        genome_coords = {g_id: list(values.keys()) for g_id, values in genome_coord_features.items()}
+>>>>>>> dev
         n_coords = sum([len(coords) for genome_id, coords in genome_coords.items()])
         print('\n{} coordinates chosen to numerify'.format(n_coords))
         if split_coordinates:
             train_coords, val_coords = self._split_coords_by_N90(genome_coords, val_size)
 
         n_coords_done = 1
+<<<<<<< HEAD
         n_y_cols = 7 if one_hot_transitions else 4
 
         for coords in genome_coords.values():
@@ -295,6 +277,20 @@ class ExportController(object):
                     if split_coordinates:
                         if coord in train_coords:
                             self._save_data(self.h5_train, flat_data, chunk_size, n_y_cols, one_hot_transitions)
+=======
+        n_y_cols = 4 if one_hot else 3
+        for genome_id, coords in genome_coords.items():
+            for (coord_id, coord_len) in coords:
+                coord = self.geenuff_exporter.get_coord_by_id(coord_id)
+                coord_features = genome_coord_features[genome_id][(coord_id, coord_len)]
+                numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size, one_hot,
+                                                        keep_errors)
+                flat_data, coord, masked_bases_percent, intergenic_bases_percent = numerify_outputs
+                if split_coordinates or self.only_test_set:
+                    if split_coordinates:
+                        if coord_id in train_coords:
+                            self._save_data(self.h5_train, flat_data, chunk_size, n_y_cols)
+>>>>>>> dev
                             assigned_set = 'train'
                         else:
                             self._save_data(self.h5_val, flat_data, chunk_size, n_y_cols, one_hot_transitions)
@@ -321,6 +317,7 @@ class ExportController(object):
                                len(coord.features), len(flat_data['inputs']), len(train_data['inputs']),
                                len(val_data['inputs']), masked_bases_percent, intergenic_bases_percent))
                 n_coords_done += 1
+                # gc.collect()
 
         self._add_data_attrs(genomes, exclude, one_hot_transitions, keep_errors)
         self._close_files()

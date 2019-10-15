@@ -15,7 +15,7 @@ from ..core.orm import Mer
 from ..export import numerify
 from ..export.numerify import (SequenceNumerifier, BasePairAnnotationNumerifier, Stepper,
                                AMBIGUITY_DECODE)
-from ..export.exporter import ExportController
+from ..export.exporter import HelixerExportController
 from ..prediction.F1Scores import F1Calculator
 from ..prediction.ConfusionMatrix import ConfusionMatrix
 
@@ -64,8 +64,8 @@ def mk_controllers(source_db, helixer_db=TMP_DB, h5_out=H5_OUT_FOLDER, only_test
         if os.path.exists(p):
             os.remove(p)
 
-    mer_controller = HelixerController(source_db, helixer_db, '')
-    export_controller = ExportController(helixer_db, h5_out, only_test_set=only_test_set)
+    mer_controller = HelixerController(source_db, helixer_db, '', '')
+    export_controller = HelixerExportController(helixer_db, h5_out, only_test_set=only_test_set)
     return mer_controller, export_controller
 
 
@@ -78,7 +78,7 @@ def memory_import_fasta(fasta_path):
 
 def setup_dummyloci(only_test_set=True):
     _, export_controller = mk_controllers(DUMMYLOCI_DB, only_test_set=only_test_set)
-    session = export_controller.session
+    session = export_controller.geenuff_exporter.session
     coordinate = session.query(Coordinate).first()
     return session, export_controller, coordinate
 
@@ -107,7 +107,8 @@ def setup_simpler_numerifier():
 ### db import from GeenuFF ###
 def test_copy_n_import():
     _, controller = mk_controllers(source_db=DUMMYLOCI_DB)
-    sl = controller.session.query(SuperLocus).filter(SuperLocus.given_name == 'gene0').one()
+    session = controller.geenuff_exporter.session
+    sl = session.query(SuperLocus).filter(SuperLocus.given_name == 'gene0').one()
     assert len(sl.transcripts) == 3
     assert len(sl.proteins) == 3
     all_features = []
@@ -324,6 +325,7 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
 
 
 def test_coord_numerifier_and_h5_gen_minus_strand():
+    """Tests numerification of test case 8 on coordinate 2"""
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=200, genomes='', exclude='', val_size=0.2, one_hot=False,
@@ -365,12 +367,12 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
 
     label_expect = np.zeros((955, 3), dtype=np.float16)
     label_expect[749:950, 0] = 1.  # genic region
-    label_expect[774:930, 1] = 1.  # transcript (2 overlapping ones)
+    label_expect[774:925, 1] = 1.  # transcript (only the first one due to longest transcript rule)
     label_expect[850:919, 2] = 1.  # intron first transcript
-    label_expect[800:879, 2] = 1.  # intron second transcript
     label_expect = np.flip(label_expect, axis=0)
     label_expect = np.insert(label_expect, 178, np.zeros((22, 3)), axis=0)
     label_expect = np.insert(label_expect, 200 + 177, np.zeros((23, 3)), axis=0)
+    # todo fix for selection of longest transcript
     assert np.array_equal(labels[0], label_expect[:200])
     assert np.array_equal(labels[1][:50], label_expect[200:250])
 
@@ -899,5 +901,25 @@ def test_confusion_matrix():
         [0, 0, 1 / 2, 1 / 2]
     ])
 
-    cm._normalize_cm()
-    assert np.allclose(cm_true_normalized, cm.cm)
+    assert np.allclose(cm_true_normalized, cm._get_normalized_cm())
+
+    # test other metrics
+    non_padded_idx = np.any(y_true, axis=-1)
+    y_true = np.argmax(y_true[non_padded_idx], axis=-1)
+    y_pred = np.argmax(y_pred[non_padded_idx], axis=-1)
+    precision_true, recall_true, f1_true, _ = f1_scores(y_true, y_pred)
+    scores = cm._get_composite_scores()
+
+    one_col_values = list(scores.values())[:4]  # excluding composite metrics
+    assert np.allclose(precision_true, np.array([s['precision'] for s in one_col_values]))
+    assert np.allclose(recall_true, np.array([s['recall'] for s in one_col_values]))
+    assert np.allclose(f1_true, np.array([s['f1'] for s in one_col_values]))
+
+    # test f1_cds
+    tp_cds = cm_true[2, 2] + cm_true[3, 3]
+    fp_cds = (cm_true[2, 0] + cm_true[2, 1] + cm_true[2, 3] +
+              cm_true[3, 0] + cm_true[3, 1] + cm_true[3, 2])
+    fn_cds = (cm_true[0, 2] + cm_true[1, 2] + cm_true[3, 2] +
+              cm_true[0, 3] + cm_true[1, 3] + cm_true[2, 3])
+    _, _, f1_cds_true = ConfusionMatrix._precision_recall_f1(tp_cds, fp_cds, fn_cds)
+    assert np.allclose(f1_cds_true, scores['cds']['f1'])

@@ -2,11 +2,11 @@
 import argparse
 from pprint import pprint
 
-from helixerprep.export.exporter import ExportController
+from helixerprep.export.exporter import HelixerExportController
 
 
 def main(args):
-    controller = ExportController(args.db_path_in, args.out_dir, args.only_test_set)
+    controller = HelixerExportController(args.db_path_in, args.out_dir, args.only_test_set)
 
     if args.genomes != '':
         args.genomes = args.genomes.split(',')
@@ -28,7 +28,9 @@ if __name__ == '__main__':
     genomes = parser.add_argument_group("Genome selection")
     genomes.add_argument('--genomes', type=str, default='',
                          help=('Comma seperated list of species names to be exported. '
-                               'If empty all genomes in the db are used.'))
+                               'If empty all genomes in the db are used except the ones specified '
+                               ' with --exclude-genomes. Can only be used when --exclude-genomes '
+                               ' is empty'))
     genomes.add_argument('--exclude-genomes', type=str, default='',
                          help=('Comma seperated list of species names to be excluded. '
                                'Can only be used when --genomes is empty'))

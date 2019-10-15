@@ -40,7 +40,9 @@ class Visualization():
         # than labels, due to the data generator in keras
         self.n_seq = self.h5_predictions['/predictions'].shape[0]
         self.chunk_len = self.h5_predictions['/predictions'].shape[1]
-        assert self.chunk_len % self.BASE_COUNT_SCREEN == 0
+        self.cutoff = self.BASE_COUNT_SCREEN - (self.chunk_len % self.BASE_COUNT_SCREEN)
+        if self.cutoff > 0:
+            self.chunk_len += self.cutoff
 
         if self.args.exclude_errors:
             self.err_idx = np.squeeze(np.argwhere(np.array(self.h5_data['/data/err_samples']) == True))
@@ -171,12 +173,14 @@ class Visualization():
 
         off_lim = offset + seq_len
         labels = np.array(self.h5_data['/data/y'][self.seq_index][offset:off_lim])
-
         predictions = np.array(self.h5_predictions['/predictions'][self.seq_index][offset:off_lim])
-        errors = np.abs(labels - predictions)
+        label_masks = np.array(self.h5_data['/data/sample_weights'][self.seq_index][offset:off_lim])
 
-        dset = self.h5_data['/data/sample_weights']
-        label_masks = np.array(dset[self.seq_index][offset:off_lim])
+        if off_lim > self.chunk_len - self.cutoff:
+            # append 0-padding and set sample weights at the very end to make everything evenly long
+            predictions = np.pad(predictions, ((0, self.cutoff), (0, 0)), constant_values=(0, 0))
+
+        errors = np.abs(labels - predictions)
         label_masks = np.repeat(label_masks[:, np.newaxis], self.label_dim, axis=1)
         label_masks = ([1] - label_masks).astype(bool)
 
