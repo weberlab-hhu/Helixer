@@ -33,7 +33,7 @@ def is_spliced_coverage(cigar_entry):
         return False
 
 
-def get_sense_strand(read):
+def get_sense_strand_custom(read):
     """returns strand of original mRNA
 
     assumes dUTP protocol, that is, 2nd read is sense strand"""
@@ -57,6 +57,11 @@ def get_sense_strand(read):
             strand = "+"
 
     return strand
+
+
+def get_sense_strand(read):
+    # todo, be sure htseq really is taking care of this, as it would seem
+    return read.strand
 
 
 def get_sense_cov_intervals(read, chromosome, d_utp):
@@ -109,7 +114,7 @@ def stranded_cov_by_chromosome(htseqbam, seqid, length, d_utp=False):
     return cp, cm, sp, sm
 
 
-COVERAGE_SETS = ['coverage+', 'coverage-', 'spliced_coverage+', 'spliced_coverage-']
+COVERAGE_SETS = ['coverage', 'spliced_coverage']
 
 
 def setup_output4species(new_h5_path, h5_data, h5_preds, species):
@@ -180,7 +185,7 @@ def for_sorting(four):
     return zero, one, two, four[2], four[3]
 
 
-def write_next_4(h5_out, slices, i):
+def write_next_2(h5_out, slices, i):
     for j, key in enumerate(COVERAGE_SETS):
         h5_out['evaluation/' + key][i] = slices[j]
 
@@ -225,12 +230,13 @@ def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
 
     # setup chromosome names & lengths
     coords = gen_coords(h5_out)
-    pad_to = h5_out['evaluation/coverage+'].shape[1]
+    pad_to = h5_out['evaluation/coverage'].shape[1]
 
     # get coverage by chromosome
     for seqid, length, start_i, end_i in coords:
         seqid = seqid.decode('utf-8')
         print(seqid, file=sys.stderr)
+        # coverage+, coverage-, spliced_coverage+, spliced_coverage-
         cov_arrays = stranded_cov_by_chromosome(bam, seqid, length, d_utp)
         # split into pieces matching start/ends
         b_seqid = seqid.encode("utf-8")
@@ -238,22 +244,21 @@ def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
         for i in range(start_i, end_i):
             print(i, h5_out['data/seqids'][i])
             assert h5_out['data/seqids'][i] == b_seqid
-            if True:
-                start, end = h5_out['data/start_ends'][i]
-                # subset and flip to match existing h5 chunks
-                is_plus_strand = True
-                if end < start:
-                    is_plus_strand = False
-                    start, end = end, start
-                slices = [x[start:end] for x in cov_arrays]
-                if not is_plus_strand:
-                    slices = [np.flip(x, axis=0) for x in slices]
-                # todo, slices needs to padded so it matches how the coordinates were numerified x_X
-                if end - start != pad_to:
-                    slices = [pad_cov_right(x, pad_to) for x in slices]
-                    print('padding {}-{} + is {}'.format(start, end, is_plus_strand))
-                # export
-                write_next_4(h5_out, slices, i)
+            start, end = h5_out['data/start_ends'][i]
+            # subset and flip to match existing h5 chunks
+            is_plus_strand = True
+            if end < start:
+                is_plus_strand = False
+                start, end = end, start
+            if is_plus_strand:
+                slices = [cov_arrays[i][start:end] for i in [0, 2]]
+            else:
+                slices = [np.flip(cov_arrays[i][start:end], axis=0) for i in [1, 3]]
+            if end - start != pad_to:
+                slices = [pad_cov_right(x, pad_to) for x in slices]
+                print('padding {}-{} + is {}'.format(start, end, is_plus_strand))
+            # export
+            write_next_2(h5_out, slices, i)
     h5_out.close()
 
 
