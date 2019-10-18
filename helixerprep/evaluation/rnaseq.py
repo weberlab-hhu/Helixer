@@ -33,7 +33,7 @@ def is_spliced_coverage(cigar_entry):
         return False
 
 
-def get_sense_strand_custom(read):
+def get_sense_strand(read):
     """returns strand of original mRNA
 
     assumes dUTP protocol, that is, 2nd read is sense strand"""
@@ -57,11 +57,6 @@ def get_sense_strand_custom(read):
             strand = "+"
 
     return strand
-
-
-def get_sense_strand(read):
-    # todo, be sure htseq really is taking care of this, as it would seem
-    return read.strand
 
 
 def get_sense_cov_intervals(read, chromosome, d_utp):
@@ -271,7 +266,7 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--h5_predictions', help='h5 predictions file with /predictions matching data file',
                         required=True)
     parser.add_argument('-o', '--out', help='output h5 file', required=True)
-    parser.add_argument('-u', '--dUTP', help='bam contains stranded (from typical dUTP protocol) reads',
+    parser.add_argument('-x', '--not_dUTP', help='bam contains stranded (from typical dUTP protocol) reads',
                         action='store_true')
     args = parser.parse_args()
     main(args.species,
@@ -279,4 +274,4 @@ if __name__ == "__main__":
          args.h5_data,
          args.h5_predictions,
          args.out,
-         args.dUTP)
+         not args.not_dUTP)
