@@ -1,5 +1,4 @@
 import os
-import gc
 import h5py
 import copy
 import time
@@ -287,7 +286,10 @@ class HelixerExportController(object):
                                len(coord.features), len(flat_data['inputs']), len(train_data['inputs']),
                                len(val_data['inputs']), masked_bases_percent, intergenic_bases_percent))
                 n_coords_done += 1
-                # gc.collect()
+                # free all datasets so we don't keep two all the time
+                dset_keys = list(flat_data.keys())
+                for key in dset_keys:
+                    del flat_data[key]
 
         self._add_data_attrs(genomes, exclude, one_hot, keep_errors)
         self._close_files()
