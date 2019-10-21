@@ -21,7 +21,7 @@ class CoverageCounter(object):
 
     def get_latest_arrays(self, i, h5):
         for h5_key, key in CoverageCounter.ARRAYS:
-            self.latest[key] = h5[key][i]
+            self.latest[key] = h5[h5_key][i]
 
     @staticmethod
     def setup_fully_binned_counts(lab_dim, n_cov_bins):
@@ -45,15 +45,16 @@ class CoverageCounter(object):
         return [0] + [base**i for i in range(n - 1)]
 
     def pre_filter_arrays(self):
-        # ignore any padded bases
-        x = self.latest['X']
-        not_padded = np.sum(x, axis=0) > 0
-        for key, array in self.latest.items():
-            self.latest[key] = array[not_padded]
         # truncate to length of predictions
         pred_len = self.latest['predictions'].shape[0]
         for key, array in self.latest.items():
             self.latest[key] = array[:pred_len]
+
+        # ignore any padded bases
+        x = self.latest['X']
+        not_padded = np.sum(x, axis=1) > 0
+        for key, array in self.latest.items():
+            self.latest[key] = array[not_padded]
 
     @staticmethod
     def mask_filtered_set(input_dict, mask_fn):
@@ -67,7 +68,7 @@ class CoverageCounter(object):
     @staticmethod
     def mask_by_argmax(key, i):
         def fn(input_dict):
-            return np.argmax(input_dict[key], axis=0) == i
+            return np.argmax(input_dict[key], axis=1) == i
         return fn
 
     @staticmethod
@@ -89,7 +90,7 @@ class CoverageCounter(object):
                     for i_sc in range(self.n_cov_bins):
                         filter_sc_fn = self.mask_by_coverage('spliced_coverage',
                                                              self.coverage_bins[i_sc])
-                        mask_sc = filter_sc_fn(filtered_c['spliced_coverage'])
+                        mask_sc = filter_sc_fn(filtered_c)
                         self.counts[i_y][i_p][i_c][i_sc] += np.sum(mask_sc)
 
     def flatten(self):
@@ -109,15 +110,18 @@ class CoverageCounter(object):
 def main(h5_file, out_file):
     h5_data = h5py.File(h5_file, 'r')
     cov_counter = CoverageCounter(lab_dim=4, n_cov_bins=6, base_cov_bins=3)
-    for i in range(h5_data['data/X'].shape[0]):
+    n = h5_data['data/X'].shape[0]
+    for i in range(n):
         cov_counter.get_latest_arrays(i, h5_data)
         cov_counter.pre_filter_arrays()
         cov_counter.increment()
+        if not i % 100:
+            print('{} chunks of {} finished'.format(i, n))
 
     with open(out_file, 'w') as f:
         writer = csv.writer(f)
         writer.writerows(cov_counter.flatten())
-            
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
