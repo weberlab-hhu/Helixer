@@ -23,8 +23,8 @@ class AccuracyCalculator(object):
 
 
 class AllAccuracyCalculator(object):
-    DIMENSIONS = (0, 1, 2, (0, 1, 2))
-    NAMES = ("tr", "cds", "intron", "total")
+    DIMENSIONS = (0, 1, 2, 3, (0, 1, 2, 3))
+    NAMES = ("intergenic", "utr", "cds", "intron", "total")
 
     def __init__(self):
         self.calculators = []

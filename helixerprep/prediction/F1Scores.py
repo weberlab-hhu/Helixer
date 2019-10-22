@@ -31,21 +31,26 @@ class F1Calculator():
         self.generator = generator
         self.counters = {
             'Genic': {
-                'cds': (1, F1Counter(), F1Counter()),  # (col_id, counter for class 0, class 1)
-                'intron': (2, F1Counter(), F1Counter()),
+                'intergenic': (0, F1Counter(), F1Counter()),  # (col_id, counter for class 0, class 1)
+                'utr': (1, F1Counter(), F1Counter()),
+                'cds': (2, F1Counter(), F1Counter()),
+                'intron': (3, F1Counter(), F1Counter()),
                 'total': (None, F1Counter(), F1Counter())  # None for simpler implementation
             },
             'Intergenic': {
-                'cds': (1, F1Counter(), F1Counter()),
-                'intron': (2, F1Counter(), F1Counter()),
-                'total': (None, F1Counter(), F1Counter())
+               'intergenic': (0, F1Counter(), F1Counter()),  # (col_id, counter for class 0, class 1)
+               'utr': (1, F1Counter(), F1Counter()),
+               'cds': (2, F1Counter(), F1Counter()),
+               'intron': (3, F1Counter(), F1Counter()),
+               'total': (None, F1Counter(), F1Counter())
             },
             'Global': {
-                'tr': (0, F1Counter(), F1Counter()),
-                'cds': (1, F1Counter(), F1Counter()),
-                'intron': (2, F1Counter(), F1Counter()),
-                'total': (None, F1Counter(), F1Counter())
-            }
+               'intergenic': (0, F1Counter(), F1Counter()),  # (col_id, counter for class 0, class 1)
+               'utr': (1, F1Counter(), F1Counter()),
+               'cds': (2, F1Counter(), F1Counter()),
+               'intron': (3, F1Counter(), F1Counter()),
+               'total': (None, F1Counter(), F1Counter())
+           }
         }
 
     def print_f1_scores(self):
