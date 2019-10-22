@@ -51,7 +51,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     assert not (args.genomes and args.exclude_genomes), 'Can not include and exclude together'
-    assert not args.split_coordinates and args.only_test_set, 'Can not split and not split'
+    print(args.split_coordinates, args.only_test_set, not args.split_coordinates and args.only_test_set)
+    assert not (args.split_coordinates and args.only_test_set), 'Can not split and not split'
     pprint(vars(args))
     print()
 

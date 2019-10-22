@@ -13,7 +13,7 @@ from geenuff.base.helpers import reverse_complement
 from ..core.controller import HelixerController
 from ..core.orm import Mer
 from ..export import numerify
-from ..export.numerify import (SequenceNumerifier, BasePairAnnotationNumerifier, Stepper,
+from ..export.numerify import (SequenceNumerifier, AnnotationNumerifier, Stepper,
                                AMBIGUITY_DECODE)
 from ..export.exporter import HelixerExportController
 from ..prediction.F1Scores import F1Calculator
@@ -171,7 +171,7 @@ def test_short_sequence_numerify():
 
 def test_base_level_annotation_numerify():
     _, _, coord = setup_dummyloci()
-    numerifier = BasePairAnnotationNumerifier(coord=coord,
+    numerifier = AnnotationNumerifier(coord=coord,
                                               features=coord.features,
                                               is_plus_strand=True,
                                               max_len=5000,
@@ -209,7 +209,7 @@ def test_coherent_slicing():
     seq_numerifier = SequenceNumerifier(coord=coord,
                                         is_plus_strand=True,
                                         max_len=100)
-    anno_numerifier = BasePairAnnotationNumerifier(coord=coord,
+    anno_numerifier = AnnotationNumerifier(coord=coord,
                                                    features=coord.features,
                                                    is_plus_strand=True,
                                                    max_len=100,
@@ -237,7 +237,7 @@ def test_coherent_slicing():
 def test_minus_strand_numerify():
     # setup a very basic -strand locus
     _, coord = setup_simpler_numerifier()
-    numerifier = BasePairAnnotationNumerifier(coord=coord,
+    numerifier = AnnotationNumerifier(coord=coord,
                                               features=coord.features,
                                               is_plus_strand=True,
                                               max_len=1000,
@@ -247,7 +247,7 @@ def test_minus_strand_numerify():
     expect = np.zeros([100, 3], dtype=np.float32)
     assert np.array_equal(nums, expect)
 
-    numerifier = BasePairAnnotationNumerifier(coord=coord,
+    numerifier = AnnotationNumerifier(coord=coord,
                                               features=coord.features,
                                               is_plus_strand=False,
                                               max_len=1000,
@@ -261,7 +261,7 @@ def test_minus_strand_numerify():
     assert np.array_equal(nums, expect)
 
     # minus strand and actual cutting
-    numerifier = BasePairAnnotationNumerifier(coord=coord,
+    numerifier = AnnotationNumerifier(coord=coord,
                                               features=coord.features,
                                               is_plus_strand=False,
                                               max_len=50,
@@ -388,7 +388,7 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
 
 def test_numerify_with_end_neg1():
     def check_one(coord, is_plus_strand, expect, maskexpect):
-        numerifier = BasePairAnnotationNumerifier(coord=coord,
+        numerifier = AnnotationNumerifier(coord=coord,
                                                   features=coord.features,
                                                   is_plus_strand=is_plus_strand,
                                                   max_len=1000,
@@ -758,7 +758,7 @@ def test_one_hot_encodings():
 
     # make normal encoding (multi class)
     _, _, coord = setup_dummyloci()
-    numerifier = BasePairAnnotationNumerifier(coord=coord,
+    numerifier = AnnotationNumerifier(coord=coord,
                                               features=coord.features,
                                               is_plus_strand=True,
                                               max_len=5000,
@@ -769,7 +769,7 @@ def test_one_hot_encodings():
     uniques_multi = np.unique(y_multi, return_counts=True, axis=0)
 
     # make one hot encoding
-    numerifier = BasePairAnnotationNumerifier(coord=coord,
+    numerifier = AnnotationNumerifier(coord=coord,
                                               features=coord.features,
                                               is_plus_strand=True,
                                               max_len=5000,
