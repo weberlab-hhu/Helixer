@@ -54,7 +54,6 @@ class Stepper(object):
             yield self.step()
 
 
-
 class Numerifier(ABC):
     def __init__(self, n_cols, coord, is_plus_strand, max_len, dtype=np.float32):
         assert isinstance(n_cols, int)
@@ -67,6 +66,8 @@ class Numerifier(ABC):
         self.error_mask = None
         self.paired_steps = None
         self._gen_steps()  # sets self.paired_steps
+        self.transitions_matrix = None
+
         super().__init__()
 
     @abstractmethod
@@ -141,6 +142,8 @@ class AnnotationNumerifier(Numerifier, ABC):
         self._zero_matrix()
         self.update_matrix_and_error_mask()
         self.encode()
+        if self.one_hot_transitions:
+            self.encode_transitions()
 
     def update_matrix_and_error_mask(self):
         for feature in self.features:
@@ -158,15 +161,6 @@ class AnnotationNumerifier(Numerifier, ABC):
                 self.error_mask[start:end] = 0
             else:
                 raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
-
-
-
-    @abstractmethod
-    def encode(self):
-        pass
-
-
-class OneHot_Features(AnnotationNumerifier):
 
     def encode(self):
         # Class order: Intergenic, UTR, CDS, (non-coding Intron), Intron
@@ -186,10 +180,7 @@ class OneHot_Features(AnnotationNumerifier):
         self.matrix = one_hot_matrix.astype(np.int8)
         assert np.all(np.count_nonzero(self.matrix, axis=1) == 1)
 
-
-class OneHot_Transitions(AnnotationNumerifier):
-
-    def encode(self):
+    def encode_transitions(self):
         add = np.array([[0, 0, 0]])
         shifted_feature_matrix = np.vstack((self.matrix[1:], add))
 
@@ -204,34 +195,29 @@ class OneHot_Transitions(AnnotationNumerifier):
         add2 = np.array([[0, 0, 0, 0, 0, 0, 1]])
         final_trans = np.insert(onehot_feature_transitions, 0, add2, axis=0)
         #finish OneHot-Transition-Matrix by removing double transitions [Intron > CDS > TR]
-        self.matrix = OneHot_Transitions.mask_double_transitions(final_trans.astype(np.int8))
-        assert np.all(np.count_nonzero(self.matrix, axis=1) == 1)
-        #import pudb; pudb.set_trace()
-    
+        self.transitions_matrix = _mask_double_transitions(final_trans.astype(np.int8))
+        assert np.all(np.count_nonzero(self.transitions_matrix, axis=1) == 1)
 
-    def mask_double_transitions(arr):
+def _mask_double_transitions(arr):
+    cds_to_intron = np.where((arr == ( 0, 0, 1, 0, 1, 0, 0 )).all(axis=1))
+    arr[cds_to_intron, :] = [ 0, 0, 1, 0, 0, 0, 0 ]
 
-        cds_to_intron = np.where((arr == ( 0, 0, 1, 0, 1, 0, 0 )).all(axis=1))
-        arr[cds_to_intron, :] = [ 0, 0, 1, 0, 0, 0, 0 ]
+    intron_to_cds = np.where((arr == ( 0, 1, 0, 0, 0, 1, 0 )).all(axis=1))
+    arr[intron_to_cds, :] = [ 0, 0, 0, 0, 0, 1, 0 ]
 
-        intron_to_cds = np.where((arr == ( 0, 1, 0, 0, 0, 1, 0 )).all(axis=1))
-        arr[intron_to_cds, :] = [ 0, 0, 0, 0, 0, 1, 0 ]
+    cds_to_ig = np.where((arr == ( 0, 0, 0, 1, 1, 0, 0 )).all(axis=1))
+    arr[cds_to_ig, :] = [ 0, 0, 0, 0, 1, 0, 0 ]
 
-        cds_to_ig = np.where((arr == ( 0, 0, 0, 1, 1, 0, 0 )).all(axis=1))
-        arr[cds_to_ig, :] = [ 0, 0, 0, 0, 1, 0, 0 ]
+    ig_to_cds = np.where((arr == ( 1, 1, 0, 0, 0, 0, 0 )).all(axis=1))
+    arr[ig_to_cds, :] = [ 0, 1, 0, 0, 0, 0, 0 ]
 
-        ig_to_cds = np.where((arr == ( 1, 1, 0, 0, 0, 0, 0 )).all(axis=1))
-        arr[ig_to_cds, :] = [ 0, 1, 0, 0, 0, 0, 0 ]
+    intron_to_ig = np.where((arr == ( 0, 0, 0, 1, 0, 1, 0 )).all(axis=1))
+    arr[intron_to_ig, :] = [ 0, 0, 0, 0, 0, 1, 0 ]
 
-        intron_to_ig = np.where((arr == ( 0, 0, 0, 1, 0, 1, 0 )).all(axis=1))
-        arr[intron_to_ig, :] = [ 0, 0, 0, 0, 0, 1, 0 ]
+    ig_to_intron = np.where((arr == ( 1, 0, 1, 0, 0, 0, 0 )).all(axis=1))
+    arr[ig_to_intron, :] = [ 0, 0, 1, 0, 0, 0, 0 ]
 
-        ig_to_intron = np.where((arr == ( 1, 0, 1, 0, 0, 0, 0 )).all(axis=1))
-        arr[ig_to_intron, :] = [ 0, 0, 1, 0, 0, 0, 0 ]
-
-        return arr
-
-
+    return arr
 
 
 class CoordNumerifier(object):
@@ -251,15 +237,8 @@ class CoordNumerifier(object):
 
 
 
-        if one_hot_transitions:
-            self.anno_numerifier = OneHot_Transitions(coord=self.coord,
-                                                                features=self.coord.features,
-                                                                is_plus_strand=is_plus_strand,
-                                                                max_len=max_len,
-                                                                one_hot_transitions=one_hot_transitions)
 
-        else:
-            self.anno_numerifier = OneHot_Features(coord=self.coord,
+        self.anno_numerifier = AnnotationNumerifier(coord=self.coord,
                                                       features=self.coord.features,
                                                       is_plus_strand=is_plus_strand,
                                                       max_len=max_len,
@@ -300,5 +279,6 @@ class CoordNumerifier(object):
             'species': self.coord.genome.species.encode('ASCII'),
             'seqids': self.coord.seqid.encode('ASCII'),
             'start_ends': start_ends,
+            'transitions': self.transitions_matrix
         }
         return out
