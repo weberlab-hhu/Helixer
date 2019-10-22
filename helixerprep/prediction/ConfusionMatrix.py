@@ -68,20 +68,7 @@ class ConfusionMatrix():
 
         return scores
 
-    def calculate_cm(self, model):
-        for i in range(len(self.generator)):
-            print(i, '/', len(self.generator), end="\r")
-            X, y_true = self.generator[i][:2]
-            y_pred = model.predict_on_batch(X)
-
-            # throw away additional outputs
-            if type(y_true) is list:
-                y_pred, meta_pred = y_pred
-                y_true, meta_true = y_true
-
-            self._add_to_cm(y_true, y_pred)
-
-        # print results
+    def _print_results(self):
         normalized_cm = self._get_normalized_cm()
         print('\n')
         pprint(self.cm)
@@ -100,3 +87,17 @@ class ConfusionMatrix():
 
         # return genic f1 for model saving in custom callback
         return scores['genic']['f1']
+
+    def calculate_cm(self, model):
+        for i in range(len(self.generator)):
+            print(i, '/', len(self.generator), end="\r")
+            X, y_true = self.generator[i][:2]  # throw away sample weights if there are any
+            y_pred = model.predict_on_batch(X)
+
+            # throw away additional outputs
+            if type(y_true) is list:
+                y_pred, meta_pred = y_pred
+                y_true, meta_true = y_true
+
+            self._add_to_cm(y_true, y_pred)
+        return self._print_results()
