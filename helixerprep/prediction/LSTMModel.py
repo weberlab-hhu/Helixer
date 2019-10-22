@@ -9,6 +9,12 @@ from HelixerModel import HelixerModel, HelixerSequence
 
 
 class LSTMSequence(HelixerSequence):
+    def __init__(self, model, h5_file, shuffle):
+        super().__init__(model, h5_file, shuffle)
+        assert self.test_time or self.exclude_errors  # exclude errors when training or validating
+        if self.class_weights:
+            assert not self.test_time  # only use class weights during training
+
     def __getitem__(self, idx):
         pool_size = self.model.pool_size
         usable_idx_slice = self.usable_idx[idx * self.batch_size:(idx + 1) * self.batch_size]

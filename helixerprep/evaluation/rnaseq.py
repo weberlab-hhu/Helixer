@@ -109,7 +109,7 @@ def stranded_cov_by_chromosome(htseqbam, seqid, length, d_utp=False):
     return cp, cm, sp, sm
 
 
-COVERAGE_SETS = ['coverage+', 'coverage-', 'spliced_coverage+', 'spliced_coverage-']
+COVERAGE_SETS = ['coverage', 'spliced_coverage']
 
 
 def setup_output4species(new_h5_path, h5_data, h5_preds, species):
@@ -167,15 +167,20 @@ def setup_output4species(new_h5_path, h5_data, h5_preds, species):
 
 def mask_and_sort(h5_data, species):
     mask = np.array(h5_data['/data/species'][:] == species.encode('utf-8'))
-    pre_seq_keys = list(mk_keys(h5_data))
+    pre_seq_keys = [for_sorting(x) for x in mk_keys(h5_data)]
     seq_keys = np.array(pre_seq_keys)[mask]
     lexsort = np.lexsort(np.flip(seq_keys.T, axis=0))
-    print(lexsort)
     return mask, lexsort
-    # todo, something in the sorting and / or saving is not working (AKA h5 sample datasets don't match later)
 
 
-def write_next_4(h5_out, slices, i):
+def for_sorting(four):
+    zero = int(''.join([str(x) for x in four[0]]))
+    one = int(''.join([str(x) for x in four[1]]))
+    two = int(four[3] < four[2])  # is_not_plus_strand (so plus strand gets 0 and sorts first)
+    return zero, one, two, four[2], four[3]
+
+
+def write_next_2(h5_out, slices, i):
     for j, key in enumerate(COVERAGE_SETS):
         h5_out['evaluation/' + key][i] = slices[j]
 
@@ -191,14 +196,20 @@ def gen_coords(h5_sorted):
             yield previous, highest, start_i, i
             start_i = i
             highest = max_coord
-        else:
             previous = current
+        else:
             highest = max(highest, max_coord)
     yield previous, highest, start_i, i
 
 
 def id_and_max(h5, i):
     return h5['data/seqids'][i], max(h5['data/start_ends'][i])
+
+
+def pad_cov_right(short_arr, length, fill_value=-1.):
+    out = np.full(shape=(length,), fill_value=fill_value)
+    out[:short_arr.shape[0]] = short_arr
+    return out
 
 
 def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
@@ -211,30 +222,38 @@ def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
     h5_out = setup_output4species(h5_output, h5_data, h5_preds, species)
     h5_data.close()
     h5_preds.close()
+
     # setup chromosome names & lengths
     coords = gen_coords(h5_out)
+    pad_to = h5_out['evaluation/coverage'].shape[1]
 
     # get coverage by chromosome
     for seqid, length, start_i, end_i in coords:
         seqid = seqid.decode('utf-8')
-        print(seqid)
+        print(seqid, file=sys.stderr)
+        # coverage+, coverage-, spliced_coverage+, spliced_coverage-
         cov_arrays = stranded_cov_by_chromosome(bam, seqid, length, d_utp)
         # split into pieces matching start/ends
         b_seqid = seqid.encode("utf-8")
-        for i in range(h5_out['data/species'].shape[0]):
-            if h5_out['data/seqids'][i] == b_seqid:  # if output were sorted, this could be more efficient
-                start, end = h5_out['data/start_ends'][i]
-                # subset and flip to match existing h5 chunks
-                is_plus_strand = True
-                if end < start:
-                    is_plus_strand = False
-                    start, end = end, start
-                slices = [x[start:end] for x in cov_arrays]
-                if not is_plus_strand:
-                    slices = [np.flip(x, axis=0) for x in slices]
-                # todo, slices needs to padded so it matches how the coordinates were numerified x_X
-                # export
-                write_next_4(h5_out, slices, i)
+        print('end at {}'.format(end_i))
+        for i in range(start_i, end_i):
+            print(i, h5_out['data/seqids'][i])
+            assert h5_out['data/seqids'][i] == b_seqid
+            start, end = h5_out['data/start_ends'][i]
+            # subset and flip to match existing h5 chunks
+            is_plus_strand = True
+            if end < start:
+                is_plus_strand = False
+                start, end = end, start
+            if is_plus_strand:
+                slices = [cov_arrays[i][start:end] for i in [0, 2]]
+            else:
+                slices = [np.flip(cov_arrays[i][start:end], axis=0) for i in [1, 3]]
+            if end - start != pad_to:
+                slices = [pad_cov_right(x, pad_to) for x in slices]
+                print('padding {}-{} + is {}'.format(start, end, is_plus_strand))
+            # export
+            write_next_2(h5_out, slices, i)
     h5_out.close()
 
 
@@ -247,7 +266,7 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--h5_predictions', help='h5 predictions file with /predictions matching data file',
                         required=True)
     parser.add_argument('-o', '--out', help='output h5 file', required=True)
-    parser.add_argument('-u', '--dUTP', help='bam contains stranded (from typical dUTP protocol) reads',
+    parser.add_argument('-x', '--not_dUTP', help='bam contains stranded (from typical dUTP protocol) reads',
                         action='store_true')
     args = parser.parse_args()
     main(args.species,
@@ -255,4 +274,4 @@ if __name__ == "__main__":
          args.h5_data,
          args.h5_predictions,
          args.out,
-         args.dUTP)
+         not args.not_dUTP)
