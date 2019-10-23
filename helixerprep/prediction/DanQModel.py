@@ -10,11 +10,10 @@ from HelixerModel import HelixerModel, HelixerSequence
 
 
 class DanQSequence(HelixerSequence):
-    def __init__(self, model, h5_file, shuffle):
-        super().__init__(model, h5_file, shuffle)
-        assert self.test_time or self.exclude_errors  # exclude errors when training or validating
-        if self.class_weights:
-            assert not self.test_time  # only use class weights during training
+    def __init__(self, model, h5_file, mode, shuffle):
+        super().__init__(model, h5_file, mode, shuffle)
+        if self.class_weights is not None:
+            assert not mode == 'test'  # only use class weights during training and validation
 
     def __getitem__(self, idx):
         pool_size = self.model.pool_size
@@ -40,22 +39,22 @@ class DanQSequence(HelixerSequence):
                 y.shape[-1],
             ))
 
+            # mark any multi-base timestep as error if any base has an error
+            sw = sw.reshape((sw.shape[0], -1, pool_size))
+            sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
+
             if self.class_weights is not None:
-                # class weights are additive for the individual timestep predictions
+                # class weights are only used during training and validation to keep the loss
+                # comparable and are additive for the individual timestep predictions
                 # giving even more weight to transition points
                 # class weights without pooling not supported yet
-                # cw = np.array([1.0, 1.2, 1.0, 0.8], dtype=np.float32)
                 cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
                 cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
                 # add class weights to applicable timesteps
                 cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
-                sw = np.sum(cw_arrays, axis=2)
-            else:
-                # code is only reached during test time where --exclude-errors is enforced
-                # mark any multi-base timestep as error if any base has an error
-                sw = sw.reshape((sw.shape[0], -1, pool_size))
-                sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
-
+                cw = np.sum(cw_arrays, axis=2)
+                # multiply with previous sample weights
+                sw = np.multiply(sw, cw)
 
         # put together returned inputs/outputs
         if self.meta_losses:
@@ -86,9 +85,6 @@ class DanQModel(HelixerModel):
         self.parser.add_argument('-ln', '--layer-normalization', action='store_true')
         self.parse_args()
 
-        if not self.exclude_errors:
-            print('\nRunning DanQ without --exclude-errors. This should only be done in test mode.')
-
     def sequence_cls(self):
         return DanQSequence
 
@@ -116,14 +112,6 @@ class DanQModel(HelixerModel):
             x = LayerNormalization()(x)
         x = Dropout(self.dropout1)(x)
 
-        if self.additional_input:
-            len_after_pooling = self.shape_train[1] // self.pool_size
-            add_input = Input(shape=(len_after_pooling, 4 * self.pool_size),
-                              dtype=self.float_precision,
-                              name='add_input')
-            # add additional input to output  of
-            x = concatenate([x, add_input])
-
         x = Bidirectional(CuDNNLSTM(self.units, return_sequences=True))(x)
         x = Dropout(self.dropout2)(x)
 
@@ -134,9 +122,8 @@ class DanQModel(HelixerModel):
         x = Reshape((-1, self.pool_size, self.label_dim))(x)
         x = Activation('softmax', name='main')(x)
 
-        inputs = [main_input, add_input] if self.additional_input else main_input
         outputs = [x, meta_output] if self.meta_losses else [x]
-        model = Model(inputs=inputs, outputs=outputs)
+        model = Model(inputs=main_input, outputs=outputs)
         return model
 
     def compile_model(self, model):
@@ -152,18 +139,12 @@ class DanQModel(HelixerModel):
             loss_weights = [1.0]
             metrics = ['accuracy']
 
-        # only weigh accuracy if we include errors (otherwise as sample weights are 1)
-        if self.exclude_errors:
-            weighted_metrics = []
-        else:
-            weighted_metrics = ['accuracy']
-
         model.compile(optimizer=self.optimizer,
                       loss=losses,
                       loss_weights=loss_weights,
                       sample_weight_mode='temporal',
                       metrics=metrics,
-                      weighted_metrics=weighted_metrics)
+                      weighted_metrics=['accuracy'])
 
 
 if __name__ == '__main__':

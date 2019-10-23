@@ -72,10 +72,13 @@ class ConfusionMatrixTrain(Callback):
 
 
 class HelixerSequence(Sequence):
-    def __init__(self, model, h5_file, shuffle):
+    def __init__(self, model, h5_file, mode, shuffle):
+        assert mode in ['train', 'val', 'test']
+        assert mode != 'test' or model.load_model_path  # assure that the mode param is correct
+        assert mode != 'train' or model.exclude_errors  # assure -ee during training
         self.model = model
         self.h5_file = h5_file
-        self.test_time = self.model.load_model_path
+        self.mode = mode
         self.batch_size = self.model.batch_size
         self.float_precision = self.model.float_precision
         self.exclude_errors = self.model.exclude_errors
@@ -193,21 +196,21 @@ class HelixerModel(ABC):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_train,
+                           mode='train',
                            shuffle=True)
 
     def gen_validation_data(self):
-        # reasons for the parameter setup of the generator: no need to shuffle, when we exclude
-        # errorneous seqs during training we should do it here and we probably also want to
-        # have a comparable validation set accross all possible parameters
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_val,
+                           mode='val',
                            shuffle=False)
 
     def gen_test_data(self):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_test,
+                           mode='test',
                            shuffle=False)
 
     @abstractmethod

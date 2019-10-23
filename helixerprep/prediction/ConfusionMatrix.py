@@ -85,7 +85,7 @@ class ConfusionMatrix():
                 table.append([''] * 4)
         print('\n', AsciiTable(table, '').table, sep='')
 
-        # return genic f1 for model saving in custom callback
+        # return genic f1 for model saving in custom callback or other uses
         return scores['genic']['f1']
 
     def calculate_cm(self, model):
