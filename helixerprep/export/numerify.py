@@ -71,7 +71,7 @@ class Numerifier(ABC):
         super().__init__()
 
     @abstractmethod
-    def _unflipped_coord_to_matrix(self):
+    def coord_to_matrices(self):
         pass
 
     def _gen_steps(self):
@@ -80,16 +80,12 @@ class Numerifier(ABC):
         if not self.is_plus_strand:
             self.paired_steps.reverse()
 
-    def coord_to_matrices(self):
-        """This works only when each bp has it's own annotation In other cases
-        (e.g. where transitions are encoded) this method must be overwritten
-        """
-        self._unflipped_coord_to_matrix()
+    def _slice_matrix(self, matrix, error_mask):
         data = []
         error_masks = []
         for prev, current in self.paired_steps:
-            data_slice = self.matrix[prev:current]
-            error_mask_slice = self.error_mask[prev:current]
+            data_slice = matrix[prev:current]
+            error_mask_slice = error_mask[prev:current]
             if not self.is_plus_strand:
                 # invert directions
                 data_slice = np.flip(data_slice, axis=0)
@@ -110,14 +106,16 @@ class SequenceNumerifier(Numerifier):
         super().__init__(n_cols=4, coord=coord, is_plus_strand=is_plus_strand,
                          max_len=max_len, dtype=np.float16)
 
-    def _unflipped_coord_to_matrix(self):
+    def coord_to_matrices(self):
         """Does not alter the error mask unlike in AnnotationNumerifier"""
         self._zero_matrix()
         for i, bp in enumerate(self.coord.sequence):
             self.matrix[i] = AMBIGUITY_DECODE[bp]
         if not self.is_plus_strand:
             self.matrix = np.flip(self.matrix, axis=1)  # invert base
-        return self.matrix
+
+        data, error_mask = self._slice_matrix(self.matrix, self.error_mask)
+        return data, error_mask
 
 
 class AnnotationNumerifier(Numerifier, ABC):
@@ -131,22 +129,25 @@ class AnnotationNumerifier(Numerifier, ABC):
         types.GeenuffFeature.geenuff_intron: 2,
     }
     error_type_values = [t.value for t in types.Errors]
+
     def __init__(self, coord, features, is_plus_strand, max_len, one_hot_transitions):
         Numerifier.__init__(self, n_cols=3, coord=coord, is_plus_strand=is_plus_strand,
                             max_len=max_len, dtype=np.int8)
         ABC.__init__(self)
         self.features = features
-        self.one_hot_transitions = one_hot_transitions
+        self.onehot4_matrix = None
+        self.onehot7_matrix = None
 
-    def _unflipped_coord_to_matrix(self):
+    def coord_to_matrices(self):
         self._zero_matrix()
-        self.update_matrix_and_error_mask()
+        self._update_matrix_and_error_mask()
+        self._encode_onehot4()
+        self._encode_onehot7()
+        onehot4_chunks, error_mask_chunks = self._slice_matrix(self.onehot4_matrix, self.error_mask)
+        onehot7_chunks, _ = self._slice_matrix(self.onehot7_matrix, self.error_mask)
+        return onehot4_chunks, onehot7_chunks, error_mask_chunks
 
-        #if self.one_hot_transitions:
-        #self.encode_transitions()
-        #self.encode()
-
-    def update_matrix_and_error_mask(self):
+    def _update_matrix_and_error_mask(self):
         for feature in self.features:
             # don't include features from the other strand
             if not feature.is_plus_strand == self.is_plus_strand:
@@ -163,13 +164,12 @@ class AnnotationNumerifier(Numerifier, ABC):
             else:
                 raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
 
-    @staticmethod
-    def encode(matrix_in):
+    def _encode_onehot4(self):
         # Class order: Intergenic, UTR, CDS, (non-coding Intron), Intron
         # This could be done in a more efficient way, but this way we may catch bugs
         # where non-standard classes are output in the multiclass output
-        one_hot_matrix = np.zeros((matrix_in.shape[0], 4), dtype=bool)
-        col_0, col_1, col_2 = matrix_in[:, 0], matrix_in[:, 1], matrix_in[:, 2]
+        one_hot_matrix = np.zeros((self.matrix.shape[0], 4), dtype=bool)
+        col_0, col_1, col_2 = self.matrix[:, 0], self.matrix[:, 1], self.matrix[:, 2]
         # Intergenic
         one_hot_matrix[:, 0] = np.logical_not(col_0)
         # UTR
@@ -179,18 +179,16 @@ class AnnotationNumerifier(Numerifier, ABC):
         one_hot_matrix[:, 2] = np.logical_and(np.logical_and(col_0, col_1), np.logical_not(col_2))
         # Introns
         one_hot_matrix[:, 3] = np.logical_and(col_0, col_2)
-        one_hot_matrix = one_hot_matrix.astype(np.int8)
+        self.onehot4_matrix = one_hot_matrix.astype(np.int8)
         assert np.all(np.count_nonzero(one_hot_matrix, axis=1) == 1)
-        return one_hot_matrix
 
-    @staticmethod
-    def encode_transitions(matrix_in):
+    def _encode_onehot7(self):
         add = np.array([[0, 0, 0]])
-        shifted_feature_matrix = np.vstack((matrix_in[1:], add))
+        shifted_feature_matrix = np.vstack((self.matrix[1:], add))
 
-        y_isTransition = np.logical_xor(matrix_in[:-1], shifted_feature_matrix[:-1]).astype(np.int8)
-        y_direction_zero_to_one = np.logical_and(y_isTransition, matrix_in[1:]).astype(np.int8)
-        y_direction_one_to_zero = np.logical_and(y_isTransition, matrix_in[:-1]).astype(np.int8)
+        y_isTransition = np.logical_xor(self.matrix[:-1], shifted_feature_matrix[:-1]).astype(np.int8)
+        y_direction_zero_to_one = np.logical_and(y_isTransition, self.matrix[1:]).astype(np.int8)
+        y_direction_one_to_zero = np.logical_and(y_isTransition, self.matrix[:-1]).astype(np.int8)
         stack = np.hstack((y_direction_zero_to_one, y_direction_one_to_zero))
         y_is_no_Transition = np.all(np.logical_not(y_isTransition), axis=-1).astype(np.int8)
 
@@ -199,9 +197,8 @@ class AnnotationNumerifier(Numerifier, ABC):
         add2 = np.array([[0, 0, 0, 0, 0, 0, 1]])
         final_trans = np.insert(onehot_feature_transitions, 0, add2, axis=0)
         #finish OneHot-Transition-Matrix by removing double transitions [Intron > CDS > TR]
-        transitions_matrix = _mask_double_transitions(final_trans.astype(np.int8))
-        assert np.all(np.count_nonzero(transitions_matrix, axis=1) == 1)
-        return transitions_matrix
+        self.onehot7_matrix = _mask_double_transitions(final_trans.astype(np.int8))
+        assert np.all(np.count_nonzero(self.onehot7_matrix, axis=1) == 1)
 
 
 def _mask_double_transitions(arr):
@@ -232,7 +229,8 @@ class CoordNumerifier(object):
     Currently just selects all Features of the given Coordinate.
     """
 
-    def __init__(self, geenuff_exporter, coord, coord_features, is_plus_strand, max_len, one_hot_transitions):
+    def __init__(self, geenuff_exporter, coord, coord_features, is_plus_strand, max_len,
+                 one_hot_transitions):
         assert isinstance(is_plus_strand, bool)
         assert isinstance(max_len, int) and max_len > 0
         self.geenuff_exporter = geenuff_exporter
@@ -242,15 +240,11 @@ class CoordNumerifier(object):
         if not coord_features:
             logging.warning('Sequence {} has no annoations'.format(self.coord.seqid))
 
-
-
-
         self.anno_numerifier = AnnotationNumerifier(coord=self.coord,
                                                       features=self.coord.features,
                                                       is_plus_strand=is_plus_strand,
                                                       max_len=max_len,
                                                       one_hot_transitions=one_hot_transitions)
-
 
         self.seq_numerifier = SequenceNumerifier(coord=self.coord,
                                                  is_plus_strand=is_plus_strand,
@@ -258,17 +252,7 @@ class CoordNumerifier(object):
 
     def numerify(self):
         inputs, input_masks = self.seq_numerifier.coord_to_matrices()
-        labels, label_masks = self.anno_numerifier.coord_to_matrices()
-        # todo, Ali is ignoring any options on what to encode and encoding everything, paramaterize later
-        onehot4 = np.zeros(shape=[len(labels), self.max_len, 4])
-        onehot7 = np.zeros(shape=[len(labels), self.max_len, 7])
-        for i, chunk in enumerate(labels):
-            # pads here, todo, double check it's the same as the other padding
-            onehot4[i, :chunk.shape[0]] = self.anno_numerifier.encode(chunk)
-            onehot7[i, :chunk.shape[0]] = self.anno_numerifier.encode_transitions(chunk)
-        # todo, don't convert back to list for compatibility with downstream _save_data code, but fix/check said code
-        onehot4 = [x for x in onehot4]
-        onehot7 = [x for x in onehot7]
+        onehot4_labels, onehot7_labels, label_masks = self.anno_numerifier.coord_to_matrices()
 
         # flip the start ends back for - strand
         if self.anno_numerifier.is_plus_strand:
@@ -289,13 +273,13 @@ class CoordNumerifier(object):
         # do not output the input_masks as it is not used for anything
         out = {
             'inputs': inputs,
-            'labels': onehot4,
+            'labels': onehot4_labels,
+            'transitions': onehot7_labels,
             'label_masks': label_masks,
             'gc_contents': gc_content,
             'coord_lengths': self.coord.length,
             'species': self.coord.genome.species.encode('ASCII'),
             'seqids': self.coord.seqid.encode('ASCII'),
             'start_ends': start_ends,
-            'transitions': onehot7
         }
         return out
