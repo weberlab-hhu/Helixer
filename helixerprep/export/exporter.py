@@ -69,7 +69,6 @@ class HelixerExportController(object):
         y_transitions = np.zeros((n_seq, chunk_size, 7), dtype=transitions[0].dtype)
         sample_weights = np.zeros((n_seq, chunk_size), dtype=label_masks[0].dtype)
 
-        import pudb; pudb.set_trace()
         for j in range(n_seq):
             sample_len = len(inputs[j])
             X[j, :sample_len, :] = inputs[j]
@@ -228,16 +227,12 @@ class HelixerExportController(object):
 
         n_masked_bases, n_intergenic_bases = 0, 0
         for is_plus_strand in [True, False]:
-            numerifier = CoordNumerifier(self.geenuff_exporter, coord, coord_features, is_plus_strand, chunk_size, one_hot_transitions)
+            numerifier = CoordNumerifier(self.geenuff_exporter, coord, coord_features, is_plus_strand,
+                                         chunk_size, one_hot_transitions)
             coord_data = numerifier.numerify()
             # keep track of variables
-            n_masked_bases += sum(
-                [np.count_nonzero(m == 0) for m in coord_data['label_masks']])
-            if one_hot_transitions:
-                n_intergenic_bases += sum([np.count_nonzero(l[:, 0] == 1) for l in coord_data['labels']])
-            else:
-                n_intergenic_bases += sum(
-                    [np.count_nonzero(np.all(l == 0, axis=1)) for l in coord_data['labels']])
+            n_masked_bases += sum([np.count_nonzero(m == 0) for m in coord_data['label_masks']])
+            n_intergenic_bases += sum([np.count_nonzero(l[:, 0] == 1) for l in coord_data['labels']])
             # filter out sequences that are completely masked as error
             if not keep_errors:
                 valid_data = [s.any() for s in coord_data['label_masks']]
