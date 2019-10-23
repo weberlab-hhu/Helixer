@@ -54,6 +54,11 @@ class F1Calculator():
         }
 
     def print_f1_scores(self):
+        for table, region_name in self.prep_tables():
+            print('\n', AsciiTable(table, region_name).table, sep='')
+
+    def prep_tables(self):
+        out = []
         for region_name, counters in self.counters.items():
             table = [['', 'Precision', 'Recall', 'F1-Score']]
             for col_name, (_, counter0, counter1) in counters.items():
@@ -63,7 +68,8 @@ class F1Calculator():
                     precision, recall, f1 = F1Calculator._calculate_f1(*counter.get_values())
                     name = [col_name + ' ' + str(cls)]
                     table.append(name + ['{:.4f}'.format(s) for s in [precision, recall, f1]])
-            print('\n', AsciiTable(table, region_name).table, sep='')
+            out.append((table, region_name))
+        return out
 
     @staticmethod
     def _calculate_base_metrics(y_true, y_pred, cls):

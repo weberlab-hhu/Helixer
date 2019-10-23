@@ -7,6 +7,8 @@ from helixerprep.prediction.F1Scores import F1Calculator
 from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
 import sys
 from helixerprep.core.helpers import mk_keys, mk_seqonly_keys
+import os
+import csv
 
 
 class AccuracyCalculator(object):
@@ -30,6 +32,33 @@ class ConfusionMatrixCalculator(ConfusionMatrix):
     def print_cm(self):
         print(self._print_results())
 
+    def prep_tables(self):
+        out = []
+
+        names = ['intergenic', 'utr', 'coding_exon', 'intron']
+        # confusion matrix
+        cm = [[''] + [x + '_pred' for x in names]]
+        for i, row in enumerate(self.cm.tolist()):
+            cm.append([names[i] + '_ref'] + row)
+        out.append((cm, 'confusion_matrix'))
+
+        # normalized
+        normalized_cm = [cm[0]]
+        for i, row in enumerate(self._get_normalized_cm().tolist()):
+            normalized_cm.append([names[i] + '_ref'] + row)
+        out.append((cm, 'normalized_confusion_matrix'))
+
+        # F1
+        scores = self._get_composite_scores()
+        table = [['', 'Precision', 'Recall', 'F1-Score']]
+        for i, (name, values) in enumerate(scores.items()):
+            metrics = ['{:.4f}'.format(s) for s in list(values.values())[3:]]
+            table.append([name] + metrics)
+            if i == 3:
+                table.append([''] * 4)
+        out.append((table, 'F1_summary'))
+        return out
+
 
 class AllAccuracyCalculator(object):
     DIMENSIONS = (0, 1, 2, 3, (0, 1, 2, 3))
@@ -44,13 +73,17 @@ class AllAccuracyCalculator(object):
         for i, dim in enumerate(AllAccuracyCalculator.DIMENSIONS):
             self.calculators[i].count_and_calculate_one_batch(y[:, :, dim], preds[:, :, dim])
 
-    def print_accuracy(self):
+    def prep_tables(self):
         table_name = "Accuracy"
         table = [["region", "accuracy", "count"]]
         for i, name in enumerate(AllAccuracyCalculator.NAMES):
             acc = self.calculators[i].cal_accuracy()
             table.append([name, '{:.4f}'.format(acc), self.calculators[i].total])
-        print('\n', AsciiTable(table, table_name).table, sep='')
+        return [[table, table_name]]
+
+    def print_accuracy(self):
+        for table, table_name in self.prep_tables():
+            print('\n', AsciiTable(table, table_name).table, sep='')
 
 
 class Exporter(object):
@@ -104,6 +137,22 @@ class Exporter(object):
 
     def close(self):
         self.h5_file.close()
+
+
+def maybe_export(counters, pathout):
+    if pathout is not None:
+        if not os.path.exists(pathout):
+            os.mkdir(pathout)
+        for counter in counters:
+            export_csvs(pathout, counter)
+
+
+def export_csvs(pathout, counter):
+    for table, table_name in counter.prep_tables():
+        with open('{}/{}.csv'.format(pathout, table_name), 'w') as f:
+            writer = csv.writer(f)
+            for row in table:
+                writer.writerow(row)
 
 
 def main(args):
@@ -180,6 +229,8 @@ def main(args):
     f1_calc.print_f1_scores()
     acc_calc.print_accuracy()
     cm_calc.print_cm()
+
+    maybe_export([f1_calc, acc_calc, cm_calc], args.stats_dir)
 
 
 def all_coords_match(h5_data, h5_pred, data_start_end, pred_start_end):
@@ -279,4 +330,6 @@ if __name__ == "__main__":
                         help="take a random sample of the data of this many chunks per sequence")
     parser.add_argument('--save_to', type=str, help="set this to output the newly sorted matches to a h5 file")
     parser.add_argument('--label_dim', type=int, default=4, help="number of classes, 4 (default) or 7")
+    parser.add_argument('--stats_dir', type=str,
+                        help="export several csv files of the calculated stats in this directory")
     main(parser.parse_args())
