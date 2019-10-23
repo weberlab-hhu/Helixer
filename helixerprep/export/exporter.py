@@ -67,15 +67,16 @@ class HelixerExportController(object):
         X = np.zeros((n_seq, chunk_size, 4), dtype=inputs[0].dtype)
         y = np.zeros((n_seq, chunk_size, n_y_cols), dtype=labels[0].dtype)
         y_transitions = np.zeros((n_seq, chunk_size, 7), dtype=transitions[0].dtype)
-
         sample_weights = np.zeros((n_seq, chunk_size), dtype=label_masks[0].dtype)
+
+        import pudb; pudb.set_trace()
         for j in range(n_seq):
             sample_len = len(inputs[j])
             X[j, :sample_len, :] = inputs[j]
-            y[j, :, :] = labels[j]
-            y_transitions[j, :, :] = transitions[j]
-
+            y[j, :sample_len, :] = labels[j]
+            y_transitions[j, :sample_len, :] = transitions[j]
             sample_weights[j, :sample_len] = label_masks[j]
+
         err_samples = np.any(sample_weights == 0, axis=1)
         # just one entry per chunk
         if n_y_cols > 3:
@@ -85,6 +86,7 @@ class HelixerExportController(object):
         gc_contents = np.array(flat_data['gc_contents'], dtype=np.uint64)
         coord_lengths = np.array(flat_data['coord_lengths'], dtype=np.uint64)
         start_ends = np.array(flat_data['start_ends'], dtype=np.int64)
+
         # check if this is the first batch to save
         dset_keys = [
             'X', 'y', 'sample_weights', 'gc_contents', 'coord_lengths', 'err_samples',
