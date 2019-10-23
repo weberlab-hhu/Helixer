@@ -4,6 +4,7 @@ import numpy as np
 import argparse
 from terminaltables import AsciiTable
 from helixerprep.prediction.F1Scores import F1Calculator
+from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
 import sys
 from helixerprep.core.helpers import mk_keys, mk_seqonly_keys
 
@@ -20,6 +21,14 @@ class AccuracyCalculator(object):
 
     def cal_accuracy(self):
         return self.right / self.total * 100
+
+
+class ConfusionMatrixCalculator(ConfusionMatrix):
+    def count_and_calculate_one_batch(self, y_true, y_pred):
+        self._add_to_cm(y_true, y_pred)
+
+    def print_cm(self):
+        print(self._print_results())
 
 
 class AllAccuracyCalculator(object):
@@ -103,6 +112,7 @@ def main(args):
 
     # and score
     f1_calc = F1Calculator(None)
+    cm_calc = ConfusionMatrixCalculator(None, args.label_dim)
     acc_calc = AllAccuracyCalculator()
     # prep keys
     lab_keys = list(mk_keys(h5_data))
@@ -161,12 +171,15 @@ def main(args):
                                                   h5_pred_y[i:(i + size)])
             acc_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
                                                    h5_pred_y[i:(i + size)])
+            cm_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
+                                                  h5_pred_y[i:(i + size)])
             i += size
 
     if args.save_to is not None:
         exporter.close()
     f1_calc.print_f1_scores()
     acc_calc.print_accuracy()
+    cm_calc.print_cm()
 
 
 def all_coords_match(h5_data, h5_pred, data_start_end, pred_start_end):
@@ -265,4 +278,5 @@ if __name__ == "__main__":
     parser.add_argument('--sample', type=int, default=None,
                         help="take a random sample of the data of this many chunks per sequence")
     parser.add_argument('--save_to', type=str, help="set this to output the newly sorted matches to a h5 file")
+    parser.add_argument('--label_dim', type=int, default=4, help="number of classes, 4 (default) or 7")
     main(parser.parse_args())
