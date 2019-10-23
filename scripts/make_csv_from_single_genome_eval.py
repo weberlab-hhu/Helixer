@@ -4,20 +4,20 @@ import numpy as np
 import h5py
 from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
 
-nni_base = '/mnt/data/experiments_backup/nni_cluster/nni/experiments/'
-nni_id = 'mlJqtS8t'
+nni_base = '/mnt/data/experiments_backup/nni_clc_server/nni/experiments/'
+nni_id = 'XWPVurip'
 trials_folder = '{}/{}/trials'.format(nni_base, nni_id)
 
 print(','.join(['genome', 'loss', 'acc_overall', 'f1_ig', 'f1_utr', 'f1_exon', 'f1_intron',
                 'f1_cds', 'f1_genic', 'old_f1_cds_1', 'error_rate', 'nni_id']))
 for folder in os.listdir(trials_folder):
-   # if folder in ['GIIy0', 'I7aBF', 'BSYjB', 'T4PJz', 'KpTHB', 'NsRRV']:  # folder with errors
-    if folder in ['wFecg', 'GR0mU', 'QqMDX', 'FAQyQ']:
+    if folder in ['g8EKR', 'rPxUg']:
         continue
     # get genome name
     parameters = eval(open('{}/{}/parameter.cfg'.format(trials_folder, folder)).read())
     path = parameters['parameters']['test_data']
-    genome = path.split('/')[5]
+    # genome = path.split('/')[5]  # when from cluster
+    genome = path.split('/')[6]
 
     # get error rate
     f = h5py.File('/home/felix/Desktop/data/single_genomes/' + genome + '/h5_data_20k/test_data.h5')
@@ -59,7 +59,7 @@ for folder in os.listdir(trials_folder):
 
     # parse keras metrics
     keras_metrics = eval(''.join(line.strip().split(' ')[4:]))
-    selected_keras_metrics = [keras_metrics['loss'], keras_metrics['main_acc']]
+    selected_keras_metrics = [keras_metrics['loss'], keras_metrics['acc']]
     str_rows = [genome] + ['{:.4f}'.format(n) for n in selected_keras_metrics] + f1_scores
     str_rows += ['{:.4f}'.format(n) for n in [old_f1_cds_1, error_rate]] + [folder]
     print(','.join(str_rows))
