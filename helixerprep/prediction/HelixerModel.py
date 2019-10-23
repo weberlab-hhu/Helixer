@@ -90,7 +90,7 @@ class HelixerSequence(Sequence):
         self.sw_dset = h5_file['/data/sample_weights']
         self.label_dim = self.y_dset.shape[-1]
         self._load_and_scale_meta_info()
-
+        self.transitions_dset = h5_file['data/transitions']
         # set array of usable indexes
         if self.exclude_errors:
             self.usable_idx = np.flatnonzero(np.array(h5_file['/data/err_samples']) == False)
@@ -141,6 +141,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
+        self.parser.add_argument('-t', '--transitions', action='store_true')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')

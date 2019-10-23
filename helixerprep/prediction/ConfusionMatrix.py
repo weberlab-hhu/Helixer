@@ -11,8 +11,8 @@ class ConfusionMatrix():
         self.generator = generator
         self.label_dim = label_dim
         self.cm = np.zeros((self.label_dim, self.label_dim))
-        #self.col_names = {0: 'IG', 1: 'utr', 2: 'exon', 3: 'intron'}
-        self.col_names = {0: "+TR", 1: "+CDS",2: "+Intron",3: "-TR",4: "-CDS",5: "-Intron",6: "None",}
+        self.col_names = {0: 'IG', 1: 'utr', 2: 'exon', 3: 'intron'}
+        #self.col_names = {0: "+TR", 1: "+CDS",2: "+Intron",3: "-TR",4: "-CDS",5: "-Intron",6: "None",}
 
     def _reshape_data(self, arr):
         arr = np.argmax(arr, axis=-1).astype(np.int8)
@@ -57,13 +57,15 @@ class ConfusionMatrix():
             d['FN'] = np.sum(self.cm[col, np.arange(self.label_dim) != col])
             add_to_scores(d)
 
-        composite_metrics = {'genic': ['+TR', '+CDS', '+Intron', '-TR', '-CDS', '-Intron', 'None']}
+        composite_metrics = {
+            'cds': ['exon', 'intron'],
+            'genic': ['utr', 'exon', 'intron'],
+        }
 
 
         for c_metric, parts in composite_metrics.items():
             d = scores[c_metric]
             for base_metric in ['TP', 'FP', 'FN']:
-                #import pudb; pudb.set_trace()
                 d[base_metric] = sum([scores[m][base_metric] for m in parts])
             add_to_scores(d)
 
