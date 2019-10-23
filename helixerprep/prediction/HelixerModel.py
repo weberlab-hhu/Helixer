@@ -72,13 +72,14 @@ class ConfusionMatrixTrain(Callback):
 
 
 class HelixerSequence(Sequence):
-    def __init__(self, model, h5_file, shuffle):
+    def __init__(self, model, h5_file, mode, shuffle):
+        assert mode in ['train', 'val', 'test']
+        assert mode != 'test' or model.load_model_path  # assure that the mode param is correct
         self.model = model
         self.h5_file = h5_file
-        self.test_time = self.model.load_model_path
+        self.mode = mode
         self.batch_size = self.model.batch_size
         self.float_precision = self.model.float_precision
-        self.exclude_errors = self.model.exclude_errors
         self.class_weights = self.model.class_weights
         self.meta_losses = self.model.meta_losses
         self.x_dset = h5_file['/data/X']
@@ -87,8 +88,8 @@ class HelixerSequence(Sequence):
         self.label_dim = self.y_dset.shape[-1]
         self._load_and_scale_meta_info()
 
-        # set array of usable indexes
-        if self.exclude_errors:
+        # set array of usable indexes, always exclude all erroneous sequences during training
+        if mode == 'train':
             self.usable_idx = np.flatnonzero(np.array(h5_file['/data/err_samples']) == False)
         else:
             self.usable_idx = list(range(self.x_dset.shape[0]))
@@ -135,7 +136,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
         self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
-        self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
@@ -193,21 +193,21 @@ class HelixerModel(ABC):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_train,
+                           mode='train',
                            shuffle=True)
 
     def gen_validation_data(self):
-        # reasons for the parameter setup of the generator: no need to shuffle, when we exclude
-        # errorneous seqs during training we should do it here and we probably also want to
-        # have a comparable validation set accross all possible parameters
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_val,
+                           mode='val',
                            shuffle=False)
 
     def gen_test_data(self):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_test,
+                           mode='test',
                            shuffle=False)
 
     @abstractmethod
@@ -253,25 +253,17 @@ class HelixerModel(ABC):
             n_train_correct_seqs = get_n_correct_seqs(self.h5_train)
             n_val_correct_seqs = get_n_correct_seqs(self.h5_val)
 
-            if self.exclude_errors:
-                n_train_seqs = n_train_correct_seqs
-                n_val_seqs = n_val_correct_seqs
-            else:
-                n_train_seqs = self.shape_train[0]
-                n_val_seqs = self.shape_val[0]
+            n_train_seqs = n_train_correct_seqs
+            n_val_seqs = self.shape_val[0]  # always validate on all
 
             n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
             n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_val)
         else:
             self.h5_test = h5py.File(self.test_data, 'r')
             self.shape_test = self.h5_test['/data/X'].shape
+
             n_test_correct_seqs = get_n_correct_seqs(self.h5_test)
-
-            if self.exclude_errors:
-                n_test_seqs_with_intergenic = n_test_correct_seqs
-            else:
-                n_test_seqs_with_intergenic = self.shape_test[0]
-
+            n_test_seqs_with_intergenic = self.shape_test[0]
             n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_test)
 
         if self.verbose:

@@ -18,12 +18,12 @@ class ConfusionMatrix():
         arr = arr.reshape((arr.shape[0], -1)).ravel()
         return arr
 
-    def _add_to_cm(self, y_true, y_pred):
+    def _add_to_cm(self, y_true, y_pred, sw):
         """Put in extra function to be testable"""
-        # remove possible zero padding
-        non_padded_idx = np.any(y_true, axis=-1)
-        y_pred = y_pred[non_padded_idx]
-        y_true = y_true[non_padded_idx]
+        # remove bases marked as errors, should also remove zero padding
+        sw = sw.astype(np.bool)
+        y_pred = y_pred[sw]
+        y_true = y_true[sw]
 
         y_pred = self._reshape_data(y_pred)
         y_true = self._reshape_data(y_true)
@@ -85,13 +85,13 @@ class ConfusionMatrix():
                 table.append([''] * 4)
         print('\n', AsciiTable(table, '').table, sep='')
 
-        # return genic f1 for model saving in custom callback
+        # return genic f1 for model saving in custom callback or other uses
         return scores['genic']['f1']
 
     def calculate_cm(self, model):
         for i in range(len(self.generator)):
             print(i, '/', len(self.generator), end="\r")
-            X, y_true = self.generator[i][:2]  # throw away sample weights if there are any
+            X, y_true, sw = self.generator[i]
             y_pred = model.predict_on_batch(X)
 
             # throw away additional outputs
@@ -99,5 +99,5 @@ class ConfusionMatrix():
                 y_pred, meta_pred = y_pred
                 y_true, meta_true = y_true
 
-            self._add_to_cm(y_true, y_pred)
+            self._add_to_cm(y_true, y_pred, sw)
         return self._print_results()
