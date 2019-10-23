@@ -4,7 +4,7 @@ import numpy as np
 import argparse
 from terminaltables import AsciiTable
 from helixerprep.prediction.F1Scores import F1Calculator
-from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
+from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix as ConfusionMatrixCalculator
 import sys
 from helixerprep.core.helpers import mk_keys, mk_seqonly_keys
 import os
@@ -23,41 +23,6 @@ class AccuracyCalculator(object):
 
     def cal_accuracy(self):
         return self.right / self.total * 100
-
-
-class ConfusionMatrixCalculator(ConfusionMatrix):
-    def count_and_calculate_one_batch(self, y_true, y_pred):
-        self._add_to_cm(y_true, y_pred)
-
-    def print_cm(self):
-        print(self._print_results())
-
-    def prep_tables(self):
-        out = []
-
-        names = ['intergenic', 'utr', 'coding_exon', 'intron']
-        # confusion matrix
-        cm = [[''] + [x + '_pred' for x in names]]
-        for i, row in enumerate(self.cm.tolist()):
-            cm.append([names[i] + '_ref'] + row)
-        out.append((cm, 'confusion_matrix'))
-
-        # normalized
-        normalized_cm = [cm[0]]
-        for i, row in enumerate(self._get_normalized_cm().tolist()):
-            normalized_cm.append([names[i] + '_ref'] + row)
-        out.append((cm, 'normalized_confusion_matrix'))
-
-        # F1
-        scores = self._get_composite_scores()
-        table = [['', 'Precision', 'Recall', 'F1-Score']]
-        for i, (name, values) in enumerate(scores.items()):
-            metrics = ['{:.4f}'.format(s) for s in list(values.values())[3:]]
-            table.append([name] + metrics)
-            if i == 3:
-                table.append([''] * 4)
-        out.append((table, 'F1_summary'))
-        return out
 
 
 class AllAccuracyCalculator(object):
@@ -92,7 +57,7 @@ class Exporter(object):
         self.saved1 = False
         self.length_added = 0
 
-    def add_data(self, h5_in, labs, preds, lab_mask, lab_lexsort, start, end):
+    def add_data(self, h5_in, labs, preds, lab_mask, lab_lexsort, sample_weights, start, end):
         if not self.saved1:
             self.saved1 = True
             self.mk_datasets(h5_in, labs)
@@ -101,15 +66,21 @@ class Exporter(object):
         for key in h5_in['data'].keys():
             fullkey = 'data/' + key
             dset = h5_in[fullkey][start:end]
-            if key != "y":
-                cleanup = np.array(dset)[lab_mask]
-                cleanup = cleanup[lab_lexsort]
-            else:
+            if key not in  ["y", 'sample_weights']:
+                cleanup = self.cleanup(dset, lab_mask, lab_lexsort)
+            elif key == "y":
                 cleanup = labs
+            else:
+                cleanup = sample_weights
             self.append(fullkey, cleanup, length)
 
         self.append('predictions', preds, length)
         self.length_added += length
+
+    @staticmethod
+    def cleanup(dset, lab_mask, lab_lexsort):
+        cleanup = np.array(dset)[lab_mask]
+        return cleanup[lab_lexsort]
 
     def append(self, fullkey, data, length):
         assert data.shape[0] == length
@@ -180,12 +151,13 @@ def main(args):
             h5_pred_y = np.array(h5_pred[args.h5_prediction_dataset][p_start:p_end])
             lab_mask = [True] * length
             lab_lexsort = np.arange(length)
+            h5_sample_weights = np.array(h5_data['/data/sample_weights'][d_start:d_end])
         else:
-            h5_data_y, h5_pred_y, lab_mask, lab_lexsort = match_up(h5_data, h5_pred,
-                                                                   lab_keys, pred_keys,
-                                                                   args.h5_prediction_dataset,
-                                                                   data_start_end=(d_start, d_end),
-                                                                   pred_start_end=(p_start, p_end))
+            h5_data_y, h5_pred_y, lab_mask, lab_lexsort, h5_sample_weights = match_up(h5_data, h5_pred,
+                                                                                      lab_keys, pred_keys,
+                                                                                      args.h5_prediction_dataset,
+                                                                                      data_start_end=(d_start, d_end),
+                                                                                      pred_start_end=(p_start, p_end))
 
         # truncate (for devel efficiency, when we don't need the whole answer)
         if args.truncate is not None:
@@ -207,6 +179,7 @@ def main(args):
         if args.save_to is not None:
             exporter.add_data(h5_in=h5_data, labs=h5_data_y, preds=h5_pred_y,
                               lab_mask=lab_mask, lab_lexsort=lab_lexsort,
+                              sample_weights=h5_sample_weights,
                               start=d_start, end=d_end)
 
         # for all subsequent analysis round predictions
@@ -221,7 +194,8 @@ def main(args):
             acc_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
                                                    h5_pred_y[i:(i + size)])
             cm_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
-                                                  h5_pred_y[i:(i + size)])
+                                                  h5_pred_y[i:(i + size)],
+                                                  h5_sample_weights[i:(i + size)])
             i += size
 
     if args.save_to is not None:
@@ -266,7 +240,7 @@ def match_up(h5_data, h5_pred, lab_keys, pred_keys, h5_prediction_dataset, data_
     # setup output arrays (with shared indexes)
     labs = np.array(h5_data['data/y'][data_start_end[0]:data_start_end[1]])[lab_mask]
     preds = np.array(h5_pred[h5_prediction_dataset][pred_start_end[0]:pred_start_end[1]])[pred_mask]
-
+    sample_weights = np.array(h5_data['data/sample_weights'][data_start_end[0]:data_start_end[1]][lab_mask])
     # check if sorting matches
     shared_lab_keys = np.array(lab_keys)[lab_mask]
     shared_pred_keys = np.array(pred_keys)[pred_mask]
@@ -276,10 +250,11 @@ def match_up(h5_data, h5_pred, lab_keys, pred_keys, h5_prediction_dataset, data_
     if not sorting_matches:
         lab_lexsort = np.lexsort(np.flip(shared_lab_keys.T, axis=0))
         labs = labs[lab_lexsort]
+        sample_weights = sample_weights[lab_lexsort]
         preds = preds[np.lexsort(np.flip(shared_pred_keys.T, axis=0))]
     else:
         lab_lexsort = np.arange(labs.shape[0])
-    return labs, preds, lab_mask, lab_lexsort
+    return labs, preds, lab_mask, lab_lexsort, sample_weights
 
 
 def np_unique_checksort(an_array):

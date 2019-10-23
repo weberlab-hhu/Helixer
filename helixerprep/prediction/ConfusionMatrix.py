@@ -37,7 +37,7 @@ class ConfusionMatrix():
 
     @staticmethod
     def _precision_recall_f1(tp, fp, fn):
-        precision  = tp / (tp + fp)
+        precision = tp / (tp + fp)
         recall = tp / (tp + fn)
         f1 = 2 * precision * recall / (precision + recall)
         return precision, recall, f1
@@ -46,47 +46,77 @@ class ConfusionMatrix():
         def add_to_scores(d):
             metrics = ConfusionMatrix._precision_recall_f1(d['TP'], d['FP'], d['FN'])
             d['precision'], d['recall'], d['f1'] = metrics
+            d['accuracy'] = (d['TP'] + d['TN']) / (d['FP'] + d['FN']) * 100
 
         scores = defaultdict(dict)
         # single column metrics
         for col in range(self.label_dim):
             d = scores[self.col_names[col]]
+            not_col = np.arange(self.label_dim) != col
             d['TP'] = self.cm[col, col]
-            d['FP'] = np.sum(self.cm[np.arange(self.label_dim) != col, col])
-            d['FN'] = np.sum(self.cm[col, np.arange(self.label_dim) != col])
+            d['FP'] = np.sum(self.cm[not_col, col])
+            d['FN'] = np.sum(self.cm[col, not_col])
+            d['TN'] = np.sum(self.cm[not_col, not_col])
             add_to_scores(d)
 
         composite_metrics = {
             'cds': ['exon', 'intron'],
             'genic': ['utr', 'exon', 'intron'],
+            'total': ['utr', 'exon', 'intron', 'ig']
         }
         for c_metric, parts in composite_metrics.items():
             d = scores[c_metric]
-            for base_metric in ['TP', 'FP', 'FN']:
+            for base_metric in ['TP', 'FP', 'FN', 'TN']:
                 d[base_metric] = sum([scores[m][base_metric] for m in parts])
             add_to_scores(d)
 
         return scores
 
     def _print_results(self):
-        normalized_cm = self._get_normalized_cm()
-        print('\n')
-        pprint(self.cm)
-        print()
-        pprint(normalized_cm)
-        print()
 
         scores = self._get_composite_scores()
-        table = [['', 'Precision', 'Recall', 'F1-Score']]
-        for i, (name, values) in enumerate(scores.items()):
-            metrics = ['{:.4f}'.format(s) for s in list(values.values())[3:]]
-            table.append([name] + metrics)
-            if i == 3:
-                table.append([''] * 4)
-        print('\n', AsciiTable(table, '').table, sep='')
+        for table, table_name in self.prep_tables():
+            print('\n', AsciiTable(table, table_name).table, sep='')
 
         # return genic f1 for model saving in custom callback or other uses
         return scores['genic']['f1']
+
+    def count_and_calculate_one_batch(self, y_true, y_pred, sw):
+        self._add_to_cm(y_true, y_pred, sw)
+
+    def print_cm(self):
+        print(self._print_results())
+
+    def prep_tables(self):
+        out = []
+
+        names = ['intergenic', 'utr', 'coding_exon', 'intron']
+        # confusion matrix
+        cm = [[''] + [x + '_pred' for x in names]]
+        for i, row in enumerate(self.cm.tolist()):
+            cm.append([names[i] + '_ref'] + row)
+        out.append((cm, 'confusion_matrix'))
+
+        # normalized
+        normalized_cm = [cm[0]]
+        for i, row in enumerate(self._get_normalized_cm().tolist()):
+            normalized_cm.append([names[i] + '_ref'] + row)
+        out.append((normalized_cm, 'normalized_confusion_matrix'))
+
+        # F1
+        scores = self._get_composite_scores()
+        table = [['', 'Precision', 'Recall', 'F1-Score', 'Accuracy']]
+        for i, (name, values) in enumerate(scores.items()):
+            metrics = ['{:.4f}'.format(s) for s in list(values.values())[3:]]
+            print(values.keys())
+            table.append([name] + metrics)
+            if i == 3:
+                table.append([''] * 4)
+        out.append((table, 'F1_summary'))
+
+        # accuracy
+
+        return out
 
     def calculate_cm(self, model):
         for i in range(len(self.generator)):
