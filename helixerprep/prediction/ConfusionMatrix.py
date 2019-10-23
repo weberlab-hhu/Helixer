@@ -20,10 +20,10 @@ class ConfusionMatrix():
 
     def _add_to_cm(self, y_true, y_pred, sw):
         """Put in extra function to be testable"""
-        # remove possible zero padding
-        non_padded_idx = np.any(y_true, axis=-1)
-        y_pred = y_pred[non_padded_idx]
-        y_true = y_true[non_padded_idx]
+        # remove bases marked as errors, should also remove zero padding
+        sw = sw.astype(np.bool)
+        y_pred = y_pred[sw]
+        y_true = y_true[sw]
 
         y_pred = self._reshape_data(y_pred)
         y_true = self._reshape_data(y_true)
