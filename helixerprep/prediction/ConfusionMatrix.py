@@ -46,11 +46,13 @@ class ConfusionMatrix():
         f1 = 2 * precision * recall / (precision + recall)
         return precision, recall, f1
 
+    def _total_accuracy(self):
+        return np.trace(self.cm) / np.sum(self.cm)
+
     def _get_composite_scores(self):
         def add_to_scores(d):
             metrics = ConfusionMatrix._precision_recall_f1(d['TP'], d['FP'], d['FN'])
             d['precision'], d['recall'], d['f1'] = metrics
-            d['accuracy'] = (d['TP'] + d['TN']) / (d['FP'] + d['FN'] + d['TP'] + d['TN']) * 100
 
         scores = defaultdict(dict)
         # single column metrics
@@ -60,19 +62,22 @@ class ConfusionMatrix():
             d['TP'] = self.cm[col, col]
             d['FP'] = np.sum(self.cm[not_col, col])
             d['FN'] = np.sum(self.cm[col, not_col])
-            d['TN'] = np.sum(self.cm[not_col, not_col])
             add_to_scores(d)
 
-        composite_metrics = {
-            'cds': ['exon', 'intron'],
-            'genic': ['utr', 'exon', 'intron'],
-            'total': ['utr', 'exon', 'intron', 'ig']
-        }
-        for c_metric, parts in composite_metrics.items():
-            d = scores[c_metric]
-            for base_metric in ['TP', 'FP', 'FN', 'TN']:
-                d[base_metric] = sum([scores[m][base_metric] for m in parts])
-            add_to_scores(d)
+        # legacy cds score that works the same as the cds_f1 with the 3 column multi class encoding
+        # essentiall merging the predictions as if error between exon and intron did not matter
+        d = scores['legacy_cds']
+        d['TP'] = self.cm[2, 2] + self.cm[3, 3] + self.cm[2, 3] + self.cm[3, 2]
+        d['FP'] = self.cm[0, 2] + self.cm[0, 3] + self.cm[1, 2] + self.cm[1, 3]
+        d['FN'] = self.cm[2, 0] + self.cm[3, 0] + self.cm[2, 1] + self.cm[3, 1]
+        add_to_scores(d)
+
+        # genic metrics are calculated by summing up TP, FP, FN, essentially calculating a weighted
+        # sum for the individual metrics. TP of the intergenic class are not taken into account
+        d = scores['genic']
+        for base_metric in ['TP', 'FP', 'FN']:
+            d[base_metric] = sum([scores[m][base_metric] for m in ['utr', 'exon', 'intron']])
+        add_to_scores(d)
 
         return scores
 
@@ -96,6 +101,7 @@ class ConfusionMatrix():
         scores = self._get_composite_scores()
         for table, table_name in self.prep_tables():
             print('\n', AsciiTable(table, table_name).table, sep='')
+        print('Total acc:', self._total_accuracy())
 
         # return genic f1 for model saving in custom callback or other uses
         return scores['genic']['f1']
@@ -121,10 +127,10 @@ class ConfusionMatrix():
 
         # F1
         scores = self._get_composite_scores()
-        table = [['', 'Precision', 'Recall', 'F1-Score', 'Accuracy']]
+        table = [['', 'Precision', 'Recall', 'F1-Score']]
         for i, (name, values) in enumerate(scores.items()):
-            # 4: below to skip TP, FP, FN, and TN
-            metrics = ['{:.4f}'.format(s) for s in list(values.values())[4:]]
+            # 3: below to skip TP, FP, FN
+            metrics = ['{:.4f}'.format(s) for s in list(values.values())[3:]]
             table.append([name] + metrics)
             if i == 3:
                 table.append([''] * 4)

@@ -52,6 +52,7 @@ def acc_g_oh(y_true, y_pred):
 def acc_ig_oh(y_true, y_pred):
     return acc_region(y_true, y_pred, 0, 1.0)
 
+
 # Callbacks have to be done seperately for train/test as the way they are called by Keras
 # is buggy currently
 class ConfusionMatrixTest(Callback):
@@ -133,7 +134,7 @@ class HelixerSequence(Sequence):
         assert np.all(np.logical_and(self.coord_lengths >= 0.0, self.coord_lengths <= 1.0))
 
     def __len__(self):
-        # return 2
+        # return 1
         return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
 
     @abstractmethod

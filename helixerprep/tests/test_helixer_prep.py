@@ -1,6 +1,7 @@
 import os
 from shutil import copy
 from sklearn.metrics import precision_recall_fscore_support as f1_scores
+from sklearn.metrics import accuracy_score
 import numpy as np
 import pytest
 import h5py
