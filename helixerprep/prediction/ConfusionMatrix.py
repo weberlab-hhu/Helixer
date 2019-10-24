@@ -30,6 +30,9 @@ class ConfusionMatrix():
         y_true = self._reshape_data(y_true)
         self.cm += confusion_matrix(y_true, y_pred, labels=range(self.label_dim))
 
+    def count_and_calculate_one_batch(self, y_true, y_pred, sw):
+        self._add_to_cm(y_true, y_pred, sw)
+
     def _get_normalized_cm(self):
         """Put in extra function to be testable"""
         class_sums = np.sum(self.cm, axis=1)
@@ -73,8 +76,23 @@ class ConfusionMatrix():
 
         return scores
 
-    def _print_results(self):
+    def calculate_cm(self, model):
+        for i in range(len(self.generator)):
+            print(i, '/', len(self.generator), end="\r")
+            X, y_true, sw = self.generator[i]
+            y_pred = model.predict_on_batch(X)
 
+            # throw away additional outputs
+            if type(y_true) is list:
+                y_pred, meta_pred = y_pred
+                y_true, meta_true = y_true
+            if type(sw) is list:
+                sw = sw[0]
+
+            self._add_to_cm(y_true, y_pred, sw)
+        return self._print_results()
+
+    def _print_results(self):
         scores = self._get_composite_scores()
         for table, table_name in self.prep_tables():
             print('\n', AsciiTable(table, table_name).table, sep='')
@@ -82,16 +100,13 @@ class ConfusionMatrix():
         # return genic f1 for model saving in custom callback or other uses
         return scores['genic']['f1']
 
-    def count_and_calculate_one_batch(self, y_true, y_pred, sw):
-        self._add_to_cm(y_true, y_pred, sw)
-
     def print_cm(self):
         self._print_results()
 
     def prep_tables(self):
         out = []
-
         names = ['intergenic', 'utr', 'coding_exon', 'intron']
+
         # confusion matrix
         cm = [[''] + [x + '_pred' for x in names]]
         for i, row in enumerate(self.cm.astype(int).tolist()):
@@ -116,20 +131,6 @@ class ConfusionMatrix():
         out.append((table, 'F1_summary'))
 
         return out
-
-    def calculate_cm(self, model):
-        for i in range(len(self.generator)):
-            print(i, '/', len(self.generator), end="\r")
-            X, y_true, sw = self.generator[i]
-            y_pred = model.predict_on_batch(X)
-
-            # throw away additional outputs
-            if type(y_true) is list:
-                y_pred, meta_pred = y_pred
-                y_true, meta_true = y_true
-
-            self._add_to_cm(y_true, y_pred, sw)
-        return self._print_results()
 
     def export_to_csvs(self, pathout):
         if pathout is not None:
