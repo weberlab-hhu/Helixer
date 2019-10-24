@@ -880,6 +880,8 @@ def test_confusion_matrix():
         [0.0320586, 0.08714432, 0.23688282, 0.64391426]
     ])
 
+    sample_weights = np.sum(y_true, axis=1)  # works bc, y_true is padded with ones
+
     cm_true = np.array([
         [8, 2, 0, 0],
         [2, 5, 1, 0],
@@ -889,8 +891,9 @@ def test_confusion_matrix():
 
     cm = ConfusionMatrix(None, 4)
     # add data in two parts
-    cm._add_to_cm(y_true[:15], y_pred[:15])
-    cm._add_to_cm(y_true[15:], y_pred[15:])
+    cm.count_and_calculate_one_batch(y_true[:15], y_pred[:15], sample_weights[:15])
+    cm.count_and_calculate_one_batch(y_true[15:], y_pred[15:], sample_weights[15:])
+    print(cm.cm)
     assert np.array_equal(cm_true, cm.cm)
 
     # test normalization
