@@ -918,11 +918,23 @@ def test_confusion_matrix():
     assert np.allclose(recall_true, np.array([s['recall'] for s in one_col_values]))
     assert np.allclose(f1_true, np.array([s['f1'] for s in one_col_values]))
 
-    # test f1_cds
+    # test cds metrics
     tp_cds = cm_true[2, 2] + cm_true[3, 3]
-    fp_cds = (cm_true[2, 0] + cm_true[2, 1] + cm_true[2, 3] +
-              cm_true[3, 0] + cm_true[3, 1] + cm_true[3, 2])
-    fn_cds = (cm_true[0, 2] + cm_true[1, 2] + cm_true[3, 2] +
+    fp_cds = (cm_true[0, 2] + cm_true[1, 2] + cm_true[3, 2] +
               cm_true[0, 3] + cm_true[1, 3] + cm_true[2, 3])
-    _, _, f1_cds_true = ConfusionMatrix._precision_recall_f1(tp_cds, fp_cds, fn_cds)
-    assert np.allclose(f1_cds_true, scores['cds']['f1'])
+    fn_cds = (cm_true[2, 0] + cm_true[2, 1] + cm_true[2, 3] +
+              cm_true[3, 0] + cm_true[3, 1] + cm_true[3, 2])
+    cds_true = ConfusionMatrix._precision_recall_f1(tp_cds, fp_cds, fn_cds)
+    assert np.allclose(cds_true[0], scores['cds']['precision'])
+    assert np.allclose(cds_true[1], scores['cds']['recall'])
+    assert np.allclose(cds_true[2], scores['cds']['f1'])
+
+    # test genic metrics
+    tp_genic = tp_cds + cm_true[1, 1]
+    fp_genic = fp_cds + cm_true[0, 1] + cm_true[2, 1] + cm_true[3, 1]
+    fn_genic = fn_cds + cm_true[1, 0] + cm_true[1, 2] + cm_true[1, 3]
+
+    genic_true = ConfusionMatrix._precision_recall_f1(tp_genic, fp_genic, fn_genic)
+    assert np.allclose(genic_true[0], scores['genic']['precision'])
+    assert np.allclose(genic_true[1], scores['genic']['recall'])
+    assert np.allclose(genic_true[2], scores['genic']['f1'])
