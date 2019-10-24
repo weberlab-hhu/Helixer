@@ -1,6 +1,5 @@
 import os
-import pandas as pd
-from glob import glob
+import csv
 from shutil import copyfile
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -91,14 +90,18 @@ class HelixerController(object):
     def add_meta_info_to_db(self):
         """For each genome found in the db, the function tries to insert meta data from the
         csv file into the meta_information table."""
-        meta_df = pd.read_csv(self.meta_info_csv_path)
+        with open(self.meta_info_csv_path) as f:
+            reader = csv.reader(f)
+            header = next(reader)
+            meta_data = list(reader)
+        species_i = [i for i in range(len(header)) if header[i] == "species"][0]
         genomes_in_db = self.session.query(Genome).all()
         for genome in genomes_in_db:
-            genome_meta_info = meta_df[meta_df['species'] == genome.species]
+            genome_meta_info = [row for row in meta_data if row[species_i] == genome.species][0]
             if len(genome_meta_info) > 0:
-                for key, value in genome_meta_info.iteritems():
+                for key, value in zip(header, genome_meta_info):
                     if key != 'species':
-                        meta_info = MetaInformation(genome=genome, name=key, value=value.iloc[0])
+                        meta_info = MetaInformation(genome=genome, name=key, value=value)
                         self.session.add(meta_info)
                 print('Meta info added for {}'.format(genome.species))
             else:
