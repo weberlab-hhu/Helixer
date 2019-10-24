@@ -2,53 +2,11 @@
 import h5py
 import numpy as np
 import argparse
-from terminaltables import AsciiTable
-from helixerprep.prediction.F1Scores import F1Calculator
-from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix as ConfusionMatrixCalculator
+from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix as ConfusionMatrix
 import sys
 from helixerprep.core.helpers import mk_keys, mk_seqonly_keys
 import os
 import csv
-
-
-class AccuracyCalculator(object):
-    def __init__(self, name):
-        self.right = 0
-        self.total = 0
-        self.name = name
-
-    def count_and_calculate_one_batch(self, y, preds):
-        self.right += np.sum(y == preds)
-        self.total += np.product(y.shape)
-
-    def cal_accuracy(self):
-        return self.right / self.total * 100
-
-
-class AllAccuracyCalculator(object):
-    DIMENSIONS = (0, 1, 2, 3, (0, 1, 2, 3))
-    NAMES = ("intergenic", "utr", "cds", "intron", "total")
-
-    def __init__(self):
-        self.calculators = []
-        for name in AllAccuracyCalculator.DIMENSIONS:
-            self.calculators.append(AccuracyCalculator(name))
-
-    def count_and_calculate_one_batch(self, y, preds):
-        for i, dim in enumerate(AllAccuracyCalculator.DIMENSIONS):
-            self.calculators[i].count_and_calculate_one_batch(y[:, :, dim], preds[:, :, dim])
-
-    def prep_tables(self):
-        table_name = "Accuracy"
-        table = [["region", "accuracy", "count"]]
-        for i, name in enumerate(AllAccuracyCalculator.NAMES):
-            acc = self.calculators[i].cal_accuracy()
-            table.append([name, '{:.4f}'.format(acc), self.calculators[i].total])
-        return [[table, table_name]]
-
-    def print_accuracy(self):
-        for table, table_name in self.prep_tables():
-            print('\n', AsciiTable(table, table_name).table, sep='')
 
 
 class Exporter(object):
@@ -110,30 +68,12 @@ class Exporter(object):
         self.h5_file.close()
 
 
-def maybe_export(counters, pathout):
-    if pathout is not None:
-        if not os.path.exists(pathout):
-            os.mkdir(pathout)
-        for counter in counters:
-            export_csvs(pathout, counter)
-
-
-def export_csvs(pathout, counter):
-    for table, table_name in counter.prep_tables():
-        with open('{}/{}.csv'.format(pathout, table_name), 'w') as f:
-            writer = csv.writer(f)
-            for row in table:
-                writer.writerow(row)
-
-
 def main(args):
     h5_data = h5py.File(args.data, 'r')
     h5_pred = h5py.File(args.predictions, 'r')
 
     # and score
-    f1_calc = F1Calculator(None)
-    cm_calc = ConfusionMatrixCalculator(None, args.label_dim)
-    acc_calc = AllAccuracyCalculator()
+    cm_calc = ConfusionMatrix(None, args.label_dim)
     # prep keys
     lab_keys = list(mk_keys(h5_data))
     pred_keys = list(mk_keys(h5_pred))
@@ -189,10 +129,6 @@ def main(args):
         i = 0
         size = 1000
         while i < h5_data_y.shape[0]:
-            f1_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
-                                                  h5_pred_y[i:(i + size)])
-            acc_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
-                                                   h5_pred_y[i:(i + size)])
             cm_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
                                                   h5_pred_y[i:(i + size)],
                                                   h5_sample_weights[i:(i + size)])
@@ -200,11 +136,8 @@ def main(args):
 
     if args.save_to is not None:
         exporter.close()
-    f1_calc.print_f1_scores()
-    acc_calc.print_accuracy()
     cm_calc.print_cm()
-
-    maybe_export([f1_calc, acc_calc, cm_calc], args.stats_dir)
+    cm_calc.export_to_csvs(args.stats_dir)
 
 
 def all_coords_match(h5_data, h5_pred, data_start_end, pred_start_end):

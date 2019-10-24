@@ -1,5 +1,6 @@
 import numpy as np
-from pprint import pprint
+import os
+import csv
 from collections import defaultdict
 from terminaltables import AsciiTable
 from sklearn.metrics import confusion_matrix
@@ -46,7 +47,7 @@ class ConfusionMatrix():
         def add_to_scores(d):
             metrics = ConfusionMatrix._precision_recall_f1(d['TP'], d['FP'], d['FN'])
             d['precision'], d['recall'], d['f1'] = metrics
-            d['accuracy'] = (d['TP'] + d['TN']) / (d['FP'] + d['FN']) * 100
+            d['accuracy'] = (d['TP'] + d['TN']) / (d['FP'] + d['FN'] + d['TP'] + d['TN']) * 100
 
         scores = defaultdict(dict)
         # single column metrics
@@ -85,7 +86,7 @@ class ConfusionMatrix():
         self._add_to_cm(y_true, y_pred, sw)
 
     def print_cm(self):
-        print(self._print_results())
+        self._print_results()
 
     def prep_tables(self):
         out = []
@@ -93,28 +94,26 @@ class ConfusionMatrix():
         names = ['intergenic', 'utr', 'coding_exon', 'intron']
         # confusion matrix
         cm = [[''] + [x + '_pred' for x in names]]
-        for i, row in enumerate(self.cm.tolist()):
+        for i, row in enumerate(self.cm.astype(int).tolist()):
             cm.append([names[i] + '_ref'] + row)
         out.append((cm, 'confusion_matrix'))
 
         # normalized
         normalized_cm = [cm[0]]
         for i, row in enumerate(self._get_normalized_cm().tolist()):
-            normalized_cm.append([names[i] + '_ref'] + row)
+            normalized_cm.append([names[i] + '_ref'] + [round(x, ndigits=4) for x in row])
         out.append((normalized_cm, 'normalized_confusion_matrix'))
 
         # F1
         scores = self._get_composite_scores()
         table = [['', 'Precision', 'Recall', 'F1-Score', 'Accuracy']]
         for i, (name, values) in enumerate(scores.items()):
-            metrics = ['{:.4f}'.format(s) for s in list(values.values())[3:]]
-            print(values.keys())
+            # 4: below to skip TP, FP, FN, and TN
+            metrics = ['{:.4f}'.format(s) for s in list(values.values())[4:]]
             table.append([name] + metrics)
             if i == 3:
                 table.append([''] * 4)
         out.append((table, 'F1_summary'))
-
-        # accuracy
 
         return out
 
@@ -131,3 +130,17 @@ class ConfusionMatrix():
 
             self._add_to_cm(y_true, y_pred, sw)
         return self._print_results()
+
+    def export_to_csvs(self, pathout):
+        if pathout is not None:
+            if not os.path.exists(pathout):
+                os.mkdir(pathout)
+
+            for table, table_name in self.prep_tables():
+                with open('{}/{}.csv'.format(pathout, table_name), 'w') as f:
+                    writer = csv.writer(f)
+                    for row in table:
+                        writer.writerow(row)
+
+
+
