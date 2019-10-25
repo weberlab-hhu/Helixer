@@ -14,20 +14,25 @@ class ConfusionMatrix():
         self.cm = np.zeros((self.label_dim, self.label_dim))
         self.col_names = {0: 'ig', 1: 'utr', 2: 'exon', 3: 'intron'}
 
-    def _reshape_data(self, arr):
+    @staticmethod
+    def _reshape_data(arr):
         arr = np.argmax(arr, axis=-1).astype(np.int8)
         arr = arr.reshape((arr.shape[0], -1)).ravel()
         return arr
 
-    def _add_to_cm(self, y_true, y_pred, sw):
-        """Put in extra function to be testable"""
-        # remove bases marked as errors, should also remove zero padding
+    @staticmethod
+    def _remove_masked_bases(y_true, y_pred, sw):
+        """Remove bases marked as errors, should also remove zero padding"""
         sw = sw.astype(np.bool)
         y_pred = y_pred[sw]
         y_true = y_true[sw]
+        return y_pred, y_true
 
-        y_pred = self._reshape_data(y_pred)
-        y_true = self._reshape_data(y_true)
+    def _add_to_cm(self, y_true, y_pred, sw):
+        """Put in extra function to be testable"""
+        y_pred, y_true = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
+        y_pred = ConfusionMatrix._reshape_data(y_pred)
+        y_true = ConfusionMatrix._reshape_data(y_true)
         self.cm += confusion_matrix(y_true, y_pred, labels=range(self.label_dim))
 
     def count_and_calculate_one_batch(self, y_true, y_pred, sw):
