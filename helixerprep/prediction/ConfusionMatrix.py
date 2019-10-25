@@ -115,7 +115,7 @@ class ConfusionMatrix():
 
     def prep_tables(self):
         out = []
-        names = ['intergenic', 'utr', 'coding_exon', 'intron']
+        names = ['ig', 'utr', 'exon', 'intron']
 
         # confusion matrix
         cm = [[''] + [x + '_pred' for x in names]]
