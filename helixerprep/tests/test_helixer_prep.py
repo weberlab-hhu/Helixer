@@ -17,7 +17,6 @@ from ..export import numerify
 from ..export.numerify import (SequenceNumerifier, BasePairAnnotationNumerifier, Stepper,
                                AMBIGUITY_DECODE)
 from ..export.exporter import HelixerExportController
-from ..prediction.F1Scores import F1Calculator
 from ..prediction.ConfusionMatrix import ConfusionMatrix
 
 TMP_DB = 'testdata/tmp.db'
@@ -573,176 +572,6 @@ def test_numerify_with_end_neg1():
     check_one(coord, True, expect, maskexpect)
 
 
-def test_f1_scores():
-    # 40 bases in total
-    y_true = np.array([
-        # 5 bases intergenic
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        # 4 bases UTR
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        # 8 bases exon
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        # 6 bases intron
-        [1, 1, 1],
-        [1, 1, 1],
-        [1, 1, 1],
-        [1, 1, 1],
-        [1, 1, 1],
-        [1, 1, 1],
-        # 5 bases exon
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        # 3 bases UTR
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        # 9 bases intergenic
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0]
-    ])
-    y_pred = np.array([
-        # 7 bases intergenic
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        # 4 bases UTR
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        # 6 bases exon
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        # 2 bases intron
-        [1, 1, 1],
-        [1, 1, 1],
-        # 10 bases exon
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        # 7 bases UTR
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        # 5 bases intergenic
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0]
-    ])
-
-    # stack arrays to create a "batch"
-    y_true = np.tile(y_true, (8, 1, 1))
-    y_pred = np.tile(y_pred, (8, 1, 1))
-
-    f1 = F1Calculator(None)  # params don't matter
-    f1.count_and_calculate_one_batch(y_true, y_pred)
-
-    # Total counters
-    total_0_counter = f1.counters['Global']['total'][1]
-    pred_values = F1Calculator._calculate_f1(*total_0_counter.get_values())
-    true_values = f1_scores(y_true.ravel(), y_pred.ravel(), average='binary', pos_label=0)[:3]
-
-    for pred, true in zip (pred_values, true_values):
-        assert pred == true
-
-    total_1_counter = f1.counters['Global']['total'][2]
-    pred_values = F1Calculator._calculate_f1(*total_1_counter.get_values())
-    true_values = f1_scores(y_true.ravel(), y_pred.ravel(), average='binary', pos_label=1)[:3]
-
-    for pred, true in zip (pred_values, true_values):
-        assert pred == true
-
-    # CDS in genic test
-    genic_mask = y_true[:, :, 0].astype(bool)
-    y_true_genic_cds = np.copy(y_true)[genic_mask, :][:, 1]
-    y_pred_genic_cds = np.copy(y_pred)[genic_mask, :][:, 1]
-
-    genic_cds_0_counter = f1.counters['Genic']['cds'][1]
-    pred_values = F1Calculator._calculate_f1(*genic_cds_0_counter.get_values())
-    true_values = f1_scores(y_true_genic_cds.ravel(), y_pred_genic_cds.ravel(),
-                            average='binary', pos_label=0)[:3]
-
-    for pred, true in zip (pred_values, true_values):
-        assert pred == true
-
-    genic_cds_1_counter = f1.counters['Genic']['cds'][2]
-    pred_values = F1Calculator._calculate_f1(*genic_cds_1_counter.get_values())
-    true_values = f1_scores(y_true_genic_cds.ravel(), y_pred_genic_cds.ravel(),
-                            average='binary', pos_label=1)[:3]
-
-    for pred, true in zip (pred_values, true_values):
-        assert pred == true
-
-    # Test f1 with more than one prediction per timestep
-    new_shape = (y_true.shape[0], y_true.shape[1] // 5, 3 * 5)
-    y_true_reshaped = np.copy(y_true).reshape(new_shape)
-    y_pred_reshaped = np.copy(y_pred).reshape(new_shape)
-
-    # New f1 counts
-    f1 = F1Calculator(None)
-    f1.count_and_calculate_one_batch(y_true_reshaped, y_pred_reshaped)
-
-    total_0_counter = f1.counters['Global']['total'][1]
-    pred_values = F1Calculator._calculate_f1(*total_0_counter.get_values())
-    true_values = f1_scores(y_true_reshaped.ravel(), y_pred_reshaped.ravel(),
-                            average='binary', pos_label=0)[:3]
-
-    for pred, true in zip (pred_values, true_values):
-        assert pred == true
-
-    total_1_counter = f1.counters['Global']['total'][2]
-    pred_values = F1Calculator._calculate_f1(*total_1_counter.get_values())
-    true_values = f1_scores(y_true_reshaped.ravel(), y_pred_reshaped.ravel(),
-                            average='binary', pos_label=1)[:3]
-
-    for pred, true in zip (pred_values, true_values):
-        assert pred == true
-
-
 def test_one_hot_encodings():
     classes_multi = [
         [0, 0, 0],
@@ -890,7 +719,7 @@ def test_confusion_matrix():
         [0, 0, 1, 1]
     ])
 
-    cm = ConfusionMatrix(None, 4)
+    cm = ConfusionMatrix(None)
     # add data in two parts
     cm.count_and_calculate_one_batch(y_true[:15], y_pred[:15], sample_weights[:15])
     cm.count_and_calculate_one_batch(y_true[15:], y_pred[15:], sample_weights[15:])
@@ -907,10 +736,12 @@ def test_confusion_matrix():
 
     assert np.allclose(cm_true_normalized, cm._get_normalized_cm())
 
+    # argmax and filter y_true and y_pred
+    y_pred, y_true = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sample_weights)
+    y_pred = ConfusionMatrix._reshape_data(y_pred)
+    y_true = ConfusionMatrix._reshape_data(y_true)
+
     # test other metrics
-    non_padded_idx = np.any(y_true, axis=-1)
-    y_true = np.argmax(y_true[non_padded_idx], axis=-1)
-    y_pred = np.argmax(y_pred[non_padded_idx], axis=-1)
     precision_true, recall_true, f1_true, _ = f1_scores(y_true, y_pred)
     scores = cm._get_composite_scores()
 
@@ -919,23 +750,30 @@ def test_confusion_matrix():
     assert np.allclose(recall_true, np.array([s['recall'] for s in one_col_values]))
     assert np.allclose(f1_true, np.array([s['f1'] for s in one_col_values]))
 
-    # test cds metrics
-    tp_cds = cm_true[2, 2] + cm_true[3, 3]
-    fp_cds = (cm_true[0, 2] + cm_true[1, 2] + cm_true[3, 2] +
-              cm_true[0, 3] + cm_true[1, 3] + cm_true[2, 3])
-    fn_cds = (cm_true[2, 0] + cm_true[2, 1] + cm_true[2, 3] +
-              cm_true[3, 0] + cm_true[3, 1] + cm_true[3, 2])
+    # test legacy cds metrics
+    # essentially done in the same way as in ConfusionMatrix.py but copied here in case
+    # it changes
+    tp_cds = cm_true[2, 2] + cm_true[3, 3] + cm_true[2, 3] + cm_true[3, 2]
+    fp_cds = cm_true[0, 2] + cm_true[1, 2] + cm_true[0, 3] + cm_true[1, 3]
+    fn_cds = cm_true[2, 0] + cm_true[2, 1] + cm_true[3, 0] + cm_true[3, 1]
     cds_true = ConfusionMatrix._precision_recall_f1(tp_cds, fp_cds, fn_cds)
-    assert np.allclose(cds_true[0], scores['cds']['precision'])
-    assert np.allclose(cds_true[1], scores['cds']['recall'])
-    assert np.allclose(cds_true[2], scores['cds']['f1'])
+    assert np.allclose(cds_true[0], scores['legacy_cds']['precision'])
+    assert np.allclose(cds_true[1], scores['legacy_cds']['recall'])
+    assert np.allclose(cds_true[2], scores['legacy_cds']['f1'])
 
     # test genic metrics
-    tp_genic = tp_cds + cm_true[1, 1]
-    fp_genic = fp_cds + cm_true[0, 1] + cm_true[2, 1] + cm_true[3, 1]
-    fn_genic = fn_cds + cm_true[1, 0] + cm_true[1, 2] + cm_true[1, 3]
-
+    tp_genic = cm_true[1, 1] + cm_true[2, 2] + cm_true[3, 3]
+    fp_genic = (cm_true[0, 1] + cm_true[2, 1] + cm_true[3, 1] +
+                cm_true[0, 2] + cm_true[1, 2] + cm_true[3, 2] +
+                cm_true[0, 3] + cm_true[1, 3] + cm_true[2, 3])
+    fn_genic = (cm_true[1, 0] + cm_true[1, 2] + cm_true[1, 3] +
+                cm_true[2, 0] + cm_true[2, 1] + cm_true[2, 3] +
+                cm_true[3, 0] + cm_true[3, 1] + cm_true[3, 2])
     genic_true = ConfusionMatrix._precision_recall_f1(tp_genic, fp_genic, fn_genic)
     assert np.allclose(genic_true[0], scores['genic']['precision'])
     assert np.allclose(genic_true[1], scores['genic']['recall'])
     assert np.allclose(genic_true[2], scores['genic']['f1'])
+
+    # test accuracy
+    acc_true = accuracy_score(y_pred, y_true)
+    assert np.allclose(acc_true, cm._total_accuracy())

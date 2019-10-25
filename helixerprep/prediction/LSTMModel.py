@@ -63,7 +63,6 @@ class LSTMSequence(HelixerSequence):
 
 
 class LSTMModel(HelixerModel):
-
     def __init__(self):
         super().__init__()
         self.parser.add_argument('-u', '--units', type=int, default=4)
@@ -90,18 +89,16 @@ class LSTMModel(HelixerModel):
                     model.add(LayerNormalization())
                 model.add(Bidirectional(CuDNNLSTM(self.units, return_sequences=True)))
 
-        model.add(Dense(self.pool_size * self.label_dim))
+        model.add(Dense(self.pool_size * 4))
         if self.pool_size > 1:
-            model.add(Reshape((-1, self.pool_size, self.label_dim)))
+            model.add(Reshape((-1, self.pool_size, 4)))
         model.add(Activation('softmax'))
         return model
 
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
                       loss='categorical_crossentropy',
-                      sample_weight_mode='temporal',
-                      metrics=['accuracy'],
-                      weighted_metrics=['accuracy'])
+                      sample_weight_mode='temporal')
 
 
 if __name__ == '__main__':

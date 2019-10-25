@@ -7,28 +7,32 @@ from sklearn.metrics import confusion_matrix
 
 
 class ConfusionMatrix():
-    def __init__(self, generator, label_dim):
+    def __init__(self, generator):
         np.set_printoptions(suppress=True)  # do not use scientific notation for the print out
         self.generator = generator
-        self.label_dim = label_dim
-        self.cm = np.zeros((self.label_dim, self.label_dim))
+        self.cm = np.zeros((4, 4))
         self.col_names = {0: 'ig', 1: 'utr', 2: 'exon', 3: 'intron'}
 
-    def _reshape_data(self, arr):
+    @staticmethod
+    def _reshape_data(arr):
         arr = np.argmax(arr, axis=-1).astype(np.int8)
         arr = arr.reshape((arr.shape[0], -1)).ravel()
         return arr
 
-    def _add_to_cm(self, y_true, y_pred, sw):
-        """Put in extra function to be testable"""
-        # remove bases marked as errors, should also remove zero padding
+    @staticmethod
+    def _remove_masked_bases(y_true, y_pred, sw):
+        """Remove bases marked as errors, should also remove zero padding"""
         sw = sw.astype(np.bool)
         y_pred = y_pred[sw]
         y_true = y_true[sw]
+        return y_pred, y_true
 
-        y_pred = self._reshape_data(y_pred)
-        y_true = self._reshape_data(y_true)
-        self.cm += confusion_matrix(y_true, y_pred, labels=range(self.label_dim))
+    def _add_to_cm(self, y_true, y_pred, sw):
+        """Put in extra function to be testable"""
+        y_pred, y_true = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
+        y_pred = ConfusionMatrix._reshape_data(y_pred)
+        y_true = ConfusionMatrix._reshape_data(y_true)
+        self.cm += confusion_matrix(y_true, y_pred, labels=range(4))
 
     def count_and_calculate_one_batch(self, y_true, y_pred, sw):
         self._add_to_cm(y_true, y_pred, sw)
@@ -56,9 +60,9 @@ class ConfusionMatrix():
 
         scores = defaultdict(dict)
         # single column metrics
-        for col in range(self.label_dim):
+        for col in range(4):
             d = scores[self.col_names[col]]
-            not_col = np.arange(self.label_dim) != col
+            not_col = np.arange(4) != col
             d['TP'] = self.cm[col, col]
             d['FP'] = np.sum(self.cm[not_col, col])
             d['FN'] = np.sum(self.cm[col, not_col])
@@ -101,7 +105,7 @@ class ConfusionMatrix():
         scores = self._get_composite_scores()
         for table, table_name in self.prep_tables():
             print('\n', AsciiTable(table, table_name).table, sep='')
-        print('Total acc:', self._total_accuracy())
+        print(f'Total acc: {self._total_accuracy():.4f}')
 
         # return genic f1 for model saving in custom callback or other uses
         return scores['genic']['f1']
@@ -111,7 +115,7 @@ class ConfusionMatrix():
 
     def prep_tables(self):
         out = []
-        names = ['intergenic', 'utr', 'coding_exon', 'intron']
+        names = ['ig', 'utr', 'exon', 'intron']
 
         # confusion matrix
         cm = [[''] + [x + '_pred' for x in names]]

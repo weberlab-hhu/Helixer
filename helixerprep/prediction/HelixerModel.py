@@ -27,7 +27,6 @@ from keras import backend as K
 from keras.models import load_model
 from keras.utils import multi_gpu_model, Sequence
 
-from F1Scores import F1Calculator
 from ConfusionMatrix import ConfusionMatrix
 
 
@@ -53,33 +52,15 @@ def acc_ig_oh(y_true, y_pred):
     return acc_region(y_true, y_pred, 0, 1.0)
 
 
-# Callbacks have to be done seperately for train/test as the way they are called by Keras
-# is buggy currently
-class ConfusionMatrixTest(Callback):
-    def __init__(self, generator, label_dim):
-        self.generator = generator
-        self.label_dim = label_dim
-
-    def on_test_end(self, logs=None):
-        cm_calculator = ConfusionMatrix(self.generator, self.label_dim)
-        cm_calculator.calculate_cm(self.model)
-
-
 class ConfusionMatrixTrain(Callback):
-    def __init__(self, generator, label_dim, save_model_path, report_to_nni=False):
+    def __init__(self, generator, save_model_path, report_to_nni=False):
         self.generator = generator
-        self.label_dim = label_dim
         self.save_model_path = save_model_path
         self.report_to_nni = report_to_nni
         self.best_genic_f1 = 0.0
 
     def on_epoch_end(self, epoch, logs=None):
-        start = time.time()
-        cm_calculator = ConfusionMatrix(self.generator, self.label_dim)
-        genic_f1 = cm_calculator.calculate_cm(self.model)
-        if np.isnan(genic_f1):
-            genic_f1 = 0.0
-        print('cm calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
+        genic_f1 = HelixerModel.run_confusion_matrix(self.generator, self.model)
         if self.report_to_nni:
             nni.report_intermediate_result(genic_f1)
         if genic_f1 > self.best_genic_f1:
@@ -107,7 +88,6 @@ class HelixerSequence(Sequence):
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
-        self.label_dim = self.y_dset.shape[-1]
         self._load_and_scale_meta_info()
 
         # set array of usable indexes, always exclude all erroneous sequences during training
@@ -170,7 +150,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cpus', '--cpus', type=int, default=8)
         self.parser.add_argument('--specific-gpu-id', type=int, default=-1)
         # misc flags
-        self.parser.add_argument('-nocm', '--no-confusion-matrix', action='store_true')
         self.parser.add_argument('-plot', '--plot', action='store_true')
         self.parser.add_argument('-nni', '--nni', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
@@ -198,12 +177,9 @@ class HelixerModel(ABC):
             pprint(args)
 
     def generate_callbacks(self):
-        if not self.no_confusion_matrix:
-            cm_cb = ConfusionMatrixTrain(self.gen_validation_data(), self.label_dim,
-                                         self.save_model_path, report_to_nni=self.nni)
-            return [cm_cb]
-        else:
-            return []
+        cm_cb = ConfusionMatrixTrain(self.gen_validation_data(), self.save_model_path,
+                                     report_to_nni=self.nni)
+        return [cm_cb]
 
     def set_resources(self):
         K.set_floatx(self.float_precision)
@@ -231,6 +207,16 @@ class HelixerModel(ABC):
                            h5_file=self.h5_test,
                            mode='test',
                            shuffle=False)
+
+    @staticmethod
+    def run_confusion_matrix(generator, model):
+        start = time.time()
+        cm_calculator = ConfusionMatrix(generator)
+        genic_f1 = cm_calculator.calculate_cm(model)
+        if np.isnan(genic_f1):
+            genic_f1 = 0.0
+        print('\ncm calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
+        return genic_f1
 
     @abstractmethod
     def sequence_cls(self):
@@ -265,7 +251,6 @@ class HelixerModel(ABC):
                 print('WARNING: no fully intergenic samples found')
             return n_fully_ig
 
-        self.label_dim = 4  # if we every enable multiple possible dimension again, here is the switch
         if not self.load_model_path:
             self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
             self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
@@ -324,12 +309,13 @@ class HelixerModel(ABC):
             # join last two dims when predicting one hot labels
             predictions = predictions.reshape(predictions.shape[:2] + (-1,)).astype(np.float16)
             # reshape when predicting more than one point at a time
-            if predictions.shape[2] != self.label_dim:
-                n_points = predictions.shape[2] // self.label_dim
+            label_dim = 4
+            if predictions.shape[2] != label_dim:
+                n_points = predictions.shape[2] // label_dim
                 predictions = predictions.reshape(
                     predictions.shape[0],
                     predictions.shape[1] * n_points,
-                    self.label_dim,
+                    label_dim,
                 )
                 # add 0-padding if needed
                 n_removed = self.shape_test[1] - predictions.shape[1]
@@ -420,15 +406,7 @@ class HelixerModel(ABC):
             model = self._load_helixer_model()
 
             if self.eval:
-                if self.no_confusion_matrix:
-                    callback = []
-                else:
-                    callback = [ConfusionMatrixTest(self.gen_test_data(), self.label_dim)]
-                metrics = model.evaluate_generator(generator=self.gen_test_data(),
-                                                   callbacks=callback,
-                                                   verbose=True)
-                metrics_names = model.metrics_names
-                print({z[0]: z[1] for z in zip(metrics_names, metrics)})
+                _ = HelixerModel.run_confusion_matrix(self.gen_test_data(), model)
             else:
                 if os.path.isfile(self.prediction_output_path):
                     print('{} already existing and will be overridden.'.format(
@@ -437,5 +415,4 @@ class HelixerModel(ABC):
                 if self.exclude_errors:
                     print('WARNING: --exclude-errors used in test mode')
                 self._make_predictions(model)
-
             self.h5_test.close()

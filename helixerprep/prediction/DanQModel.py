@@ -118,8 +118,8 @@ class DanQModel(HelixerModel):
         if self.meta_losses:
             meta_output = Dense(2, activation='sigmoid', name='meta')(x)
 
-        x = Dense(self.pool_size * self.label_dim)(x)
-        x = Reshape((-1, self.pool_size, self.label_dim))(x)
+        x = Dense(self.pool_size * 4)(x)
+        x = Reshape((-1, self.pool_size, 4))(x)
         x = Activation('softmax', name='main')(x)
 
         outputs = [x, meta_output] if self.meta_losses else [x]
@@ -131,20 +131,14 @@ class DanQModel(HelixerModel):
             meta_loss_weight = 2.0 if self.class_weights else 5.0  # adjust loss weight to class weights
             losses = ['categorical_crossentropy', 'mean_squared_error']
             loss_weights = [1.0, meta_loss_weight]
-            metrics = {
-                'main': ['accuracy'],
-            }
         else:
             losses = ['categorical_crossentropy']
             loss_weights = [1.0]
-            metrics = ['accuracy']
 
         model.compile(optimizer=self.optimizer,
                       loss=losses,
                       loss_weights=loss_weights,
-                      sample_weight_mode='temporal',
-                      metrics=metrics,
-                      weighted_metrics=['accuracy'])
+                      sample_weight_mode='temporal')
 
 
 if __name__ == '__main__':
