@@ -53,20 +53,10 @@ def acc_ig_oh(y_true, y_pred):
     return acc_region(y_true, y_pred, 0, 1.0)
 
 
-# Callbacks have to be done seperately for train/test as the way they are called by Keras
-# is buggy currently
-class ConfusionMatrixTest(Callback):
-    def __init__(self, generator, label_dim):
-        self.generator = generator
-        self.label_dim = label_dim
-
-    def on_test_end(self, logs=None):
-        cm_calculator = ConfusionMatrix(self.generator, self.label_dim)
-        cm_calculator.calculate_cm(self.model)
-
-
 class ConfusionMatrixTrain(Callback):
-    def __init__(self, generator, label_dim, save_model_path, report_to_nni=False):
+    def __init__(self, helixer_model, generator, label_dim, save_model_path, report_to_nni=False):
+        # so we can access the cm calculation, different from self.model
+        self.helixer_model = helixer_model
         self.generator = generator
         self.label_dim = label_dim
         self.save_model_path = save_model_path
@@ -74,12 +64,7 @@ class ConfusionMatrixTrain(Callback):
         self.best_genic_f1 = 0.0
 
     def on_epoch_end(self, epoch, logs=None):
-        start = time.time()
-        cm_calculator = ConfusionMatrix(self.generator, self.label_dim)
-        genic_f1 = cm_calculator.calculate_cm(self.model)
-        if np.isnan(genic_f1):
-            genic_f1 = 0.0
-        print('\ncm calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
+        genic_f1 = self.helixer_model.run_confusion_matrix(self.generator, self.model)
         if self.report_to_nni:
             nni.report_intermediate_result(genic_f1)
         if genic_f1 > self.best_genic_f1:
@@ -199,7 +184,7 @@ class HelixerModel(ABC):
 
     def generate_callbacks(self):
         if not self.no_confusion_matrix:
-            cm_cb = ConfusionMatrixTrain(self.gen_validation_data(), self.label_dim,
+            cm_cb = ConfusionMatrixTrain(self, self.gen_validation_data(), self.label_dim,
                                          self.save_model_path, report_to_nni=self.nni)
             return [cm_cb]
         else:
@@ -231,6 +216,15 @@ class HelixerModel(ABC):
                            h5_file=self.h5_test,
                            mode='test',
                            shuffle=False)
+
+    def run_confusion_matrix(self, generator, model):
+        start = time.time()
+        cm_calculator = ConfusionMatrix(generator, self.label_dim)
+        genic_f1 = cm_calculator.calculate_cm(model)
+        if np.isnan(genic_f1):
+            genic_f1 = 0.0
+        print('\ncm calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
+        return genic_f1
 
     @abstractmethod
     def sequence_cls(self):
@@ -417,18 +411,11 @@ class HelixerModel(ABC):
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
+            assert not (self.eval and self.no_confusion_matrix), 'Nothing to do'
             model = self._load_helixer_model()
 
             if self.eval:
-                if self.no_confusion_matrix:
-                    callback = []
-                else:
-                    callback = [ConfusionMatrixTest(self.gen_test_data(), self.label_dim)]
-                metrics = model.evaluate_generator(generator=self.gen_test_data(),
-                                                   callbacks=callback,
-                                                   verbose=True)
-                metrics_names = model.metrics_names
-                print({z[0]: z[1] for z in zip(metrics_names, metrics)})
+                _ = self.run_confusion_matrix(self.gen_test_data(), model)
             else:
                 if os.path.isfile(self.prediction_output_path):
                     print('{} already existing and will be overridden.'.format(
@@ -437,5 +424,4 @@ class HelixerModel(ABC):
                 if self.exclude_errors:
                     print('WARNING: --exclude-errors used in test mode')
                 self._make_predictions(model)
-
             self.h5_test.close()

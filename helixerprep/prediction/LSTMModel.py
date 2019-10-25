@@ -63,7 +63,6 @@ class LSTMSequence(HelixerSequence):
 
 
 class LSTMModel(HelixerModel):
-
     def __init__(self):
         super().__init__()
         self.parser.add_argument('-u', '--units', type=int, default=4)
