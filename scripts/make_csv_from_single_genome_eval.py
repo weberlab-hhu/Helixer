@@ -20,11 +20,10 @@ else:
     nni_base = '/mnt/data/experiments_backup/nni_cluster/nni/experiments/'
 
 trials_folder = '{}/{}/trials'.format(nni_base, args.nni_id)
-print(','.join(['genome', 'loss', 'acc_overall', 'f1_ig', 'f1_utr', 'f1_exon', 'f1_intron',
-                'f1_cds', 'f1_genic', 'old_f1_cds_1', 'base_level_error_rate', 'padded_bases_rate',
-                'sequence_error_rate', 'nni_id']))
+print(','.join(['genome', 'acc_overall', 'f1_ig', 'f1_utr', 'f1_exon', 'f1_intron', 'legacy_f1_cds',
+                'f1_genic', 'base_level_error_rate', 'padded_bases_rate', 'sequence_error_rate', 'nni_id']))
 for folder in os.listdir(trials_folder):
-    if folder in args.ignore:
+    if args.ignore and folder in args.ignore:
         continue
     # get genome name
     parameters = eval(open('{}/{}/parameter.cfg'.format(trials_folder, folder)).read())
@@ -54,27 +53,8 @@ for folder in os.listdir(trials_folder):
     base_level_error_rate = n_error_bases / sw_dset.size
     padded_bases_rate = n_padded_bases / sw_dset.size
 
-    log_file = open('{}/{}/trial.log'.format(trials_folder, folder))
-    # get confusion matrix from log to calculate cds f1 that is the same as before
-    for line in log_file:
-        if 'array([[' in line:  # cm table start
-            cm_str = line.split('array(')[1].strip()
-            for i in range(3):
-                cm_str += next(log_file).strip()
-            cm_str = cm_str[:-1]  # remove last round bracket
-            break
-    cm = np.array(eval(cm_str))
-    # change cm so we can get a comparable metric, merging intron and exon predictions
-    cm[2, :] = cm[2, :] + cm[3, :]
-    cm[:, 2] = cm[:, 2] + cm[:, 3]
-    cm = cm[:3, :3]
-    # make f1
-    tp = cm[2, 2]
-    fp = cm[0, 2] + cm[1, 2]
-    fn = cm[2, 0] + cm[2, 1]
-    _, _, old_f1_cds_1 = ConfusionMatrix._precision_recall_f1(tp, fp, fn)
-
     # parse metric table
+    log_file = open('{}/{}/trial.log'.format(trials_folder, folder))
     f1_scores = []
     for line in log_file:
         if 'Precision' in line:  # table start
@@ -84,11 +64,15 @@ for folder in os.listdir(trials_folder):
                 f1_scores.append(line.strip().split('|')[4].strip())
                 if i == 3:
                     next(log_file)  # skip line
+            break  # stop at the last line of the metric table
 
-    # parse keras metrics
-    keras_metrics = eval(''.join(line.strip().split(' ')[4:]))
-    selected_keras_metrics = [keras_metrics['loss'], keras_metrics['acc']]
-    str_rows = [genome] + ['{:.4f}'.format(n) for n in selected_keras_metrics] + f1_scores
-    other_numbers = [old_f1_cds_1, base_level_error_rate, padded_bases_rate, sequence_error_rate]
+    # parse total accuracy
+    next(log_file)
+    line = next(log_file)
+    acc_overall = line.strip().split(' ')[-1]
+
+    # merge everything into one string
+    str_rows = [genome, acc_overall] + f1_scores
+    other_numbers = [base_level_error_rate, padded_bases_rate, sequence_error_rate]
     str_rows += ['{:.4f}'.format(n) for n in other_numbers] + [folder]
     print(','.join(str_rows))
