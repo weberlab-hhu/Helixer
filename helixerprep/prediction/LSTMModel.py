@@ -99,9 +99,7 @@ class LSTMModel(HelixerModel):
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
                       loss='categorical_crossentropy',
-                      sample_weight_mode='temporal',
-                      metrics=['accuracy'],
-                      weighted_metrics=['accuracy'])
+                      sample_weight_mode='temporal')
 
 
 if __name__ == '__main__':

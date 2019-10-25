@@ -79,7 +79,7 @@ class ConfusionMatrixTrain(Callback):
         genic_f1 = cm_calculator.calculate_cm(self.model)
         if np.isnan(genic_f1):
             genic_f1 = 0.0
-        print('cm calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
+        print('\ncm calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
         if self.report_to_nni:
             nni.report_intermediate_result(genic_f1)
         if genic_f1 > self.best_genic_f1:
@@ -134,8 +134,8 @@ class HelixerSequence(Sequence):
         assert np.all(np.logical_and(self.coord_lengths >= 0.0, self.coord_lengths <= 1.0))
 
     def __len__(self):
-        # return 1
-        return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
+        return 1
+        # return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
 
     @abstractmethod
     def __getitem__(self, idx):
