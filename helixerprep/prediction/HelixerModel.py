@@ -54,11 +54,10 @@ def acc_ig_oh(y_true, y_pred):
 
 
 class ConfusionMatrixTrain(Callback):
-    def __init__(self, helixer_model, generator, label_dim, save_model_path, report_to_nni=False):
+    def __init__(self, helixer_model, generator, save_model_path, report_to_nni=False):
         # so we can access the cm calculation, different from self.model
         self.helixer_model = helixer_model
         self.generator = generator
-        self.label_dim = label_dim
         self.save_model_path = save_model_path
         self.report_to_nni = report_to_nni
         self.best_genic_f1 = 0.0
@@ -92,7 +91,6 @@ class HelixerSequence(Sequence):
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
-        self.label_dim = self.y_dset.shape[-1]
         self._load_and_scale_meta_info()
 
         # set array of usable indexes, always exclude all erroneous sequences during training
@@ -155,7 +153,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cpus', '--cpus', type=int, default=8)
         self.parser.add_argument('--specific-gpu-id', type=int, default=-1)
         # misc flags
-        self.parser.add_argument('-nocm', '--no-confusion-matrix', action='store_true')
         self.parser.add_argument('-plot', '--plot', action='store_true')
         self.parser.add_argument('-nni', '--nni', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
@@ -183,12 +180,9 @@ class HelixerModel(ABC):
             pprint(args)
 
     def generate_callbacks(self):
-        if not self.no_confusion_matrix:
-            cm_cb = ConfusionMatrixTrain(self, self.gen_validation_data(), self.label_dim,
-                                         self.save_model_path, report_to_nni=self.nni)
-            return [cm_cb]
-        else:
-            return []
+        cm_cb = ConfusionMatrixTrain(self, self.gen_validation_data(), self.save_model_path,
+                                     report_to_nni=self.nni)
+        return [cm_cb]
 
     def set_resources(self):
         K.set_floatx(self.float_precision)
@@ -219,7 +213,7 @@ class HelixerModel(ABC):
 
     def run_confusion_matrix(self, generator, model):
         start = time.time()
-        cm_calculator = ConfusionMatrix(generator, self.label_dim)
+        cm_calculator = ConfusionMatrix(generator)
         genic_f1 = cm_calculator.calculate_cm(model)
         if np.isnan(genic_f1):
             genic_f1 = 0.0
@@ -259,7 +253,6 @@ class HelixerModel(ABC):
                 print('WARNING: no fully intergenic samples found')
             return n_fully_ig
 
-        self.label_dim = 4  # if we every enable multiple possible dimension again, here is the switch
         if not self.load_model_path:
             self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
             self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
@@ -318,12 +311,13 @@ class HelixerModel(ABC):
             # join last two dims when predicting one hot labels
             predictions = predictions.reshape(predictions.shape[:2] + (-1,)).astype(np.float16)
             # reshape when predicting more than one point at a time
-            if predictions.shape[2] != self.label_dim:
-                n_points = predictions.shape[2] // self.label_dim
+            label_dim = 4
+            if predictions.shape[2] != label_dim:
+                n_points = predictions.shape[2] // label_dim
                 predictions = predictions.reshape(
                     predictions.shape[0],
                     predictions.shape[1] * n_points,
-                    self.label_dim,
+                    label_dim,
                 )
                 # add 0-padding if needed
                 n_removed = self.shape_test[1] - predictions.shape[1]
@@ -411,7 +405,6 @@ class HelixerModel(ABC):
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
-            assert not (self.eval and self.no_confusion_matrix), 'Nothing to do'
             model = self._load_helixer_model()
 
             if self.eval:

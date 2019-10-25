@@ -7,11 +7,10 @@ from sklearn.metrics import confusion_matrix
 
 
 class ConfusionMatrix():
-    def __init__(self, generator, label_dim):
+    def __init__(self, generator):
         np.set_printoptions(suppress=True)  # do not use scientific notation for the print out
         self.generator = generator
-        self.label_dim = label_dim
-        self.cm = np.zeros((self.label_dim, self.label_dim))
+        self.cm = np.zeros((4, 4))
         self.col_names = {0: 'ig', 1: 'utr', 2: 'exon', 3: 'intron'}
 
     @staticmethod
@@ -33,7 +32,7 @@ class ConfusionMatrix():
         y_pred, y_true = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
         y_pred = ConfusionMatrix._reshape_data(y_pred)
         y_true = ConfusionMatrix._reshape_data(y_true)
-        self.cm += confusion_matrix(y_true, y_pred, labels=range(self.label_dim))
+        self.cm += confusion_matrix(y_true, y_pred, labels=range(4))
 
     def count_and_calculate_one_batch(self, y_true, y_pred, sw):
         self._add_to_cm(y_true, y_pred, sw)
@@ -61,9 +60,9 @@ class ConfusionMatrix():
 
         scores = defaultdict(dict)
         # single column metrics
-        for col in range(self.label_dim):
+        for col in range(4):
             d = scores[self.col_names[col]]
-            not_col = np.arange(self.label_dim) != col
+            not_col = np.arange(4) != col
             d['TP'] = self.cm[col, col]
             d['FP'] = np.sum(self.cm[not_col, col])
             d['FN'] = np.sum(self.cm[col, not_col])

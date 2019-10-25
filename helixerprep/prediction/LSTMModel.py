@@ -89,9 +89,9 @@ class LSTMModel(HelixerModel):
                     model.add(LayerNormalization())
                 model.add(Bidirectional(CuDNNLSTM(self.units, return_sequences=True)))
 
-        model.add(Dense(self.pool_size * self.label_dim))
+        model.add(Dense(self.pool_size * 4))
         if self.pool_size > 1:
-            model.add(Reshape((-1, self.pool_size, self.label_dim)))
+            model.add(Reshape((-1, self.pool_size, 4)))
         model.add(Activation('softmax'))
         return model
 
