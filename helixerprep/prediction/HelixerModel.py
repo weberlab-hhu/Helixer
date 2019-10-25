@@ -27,7 +27,6 @@ from keras import backend as K
 from keras.models import load_model
 from keras.utils import multi_gpu_model, Sequence
 
-from F1Scores import F1Calculator
 from ConfusionMatrix import ConfusionMatrix
 
 
