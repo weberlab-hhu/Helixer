@@ -134,8 +134,8 @@ class HelixerSequence(Sequence):
         assert np.all(np.logical_and(self.coord_lengths >= 0.0, self.coord_lengths <= 1.0))
 
     def __len__(self):
-        return 1
-        # return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
+        # return 1
+        return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
 
     @abstractmethod
     def __getitem__(self, idx):
