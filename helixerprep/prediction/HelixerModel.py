@@ -54,16 +54,14 @@ def acc_ig_oh(y_true, y_pred):
 
 
 class ConfusionMatrixTrain(Callback):
-    def __init__(self, helixer_model, generator, save_model_path, report_to_nni=False):
-        # so we can access the cm calculation, different from self.model
-        self.helixer_model = helixer_model
+    def __init__(self, generator, save_model_path, report_to_nni=False):
         self.generator = generator
         self.save_model_path = save_model_path
         self.report_to_nni = report_to_nni
         self.best_genic_f1 = 0.0
 
     def on_epoch_end(self, epoch, logs=None):
-        genic_f1 = self.helixer_model.run_confusion_matrix(self.generator, self.model)
+        genic_f1 = HelixerModel.run_confusion_matrix(self.generator, self.model)
         if self.report_to_nni:
             nni.report_intermediate_result(genic_f1)
         if genic_f1 > self.best_genic_f1:
@@ -180,7 +178,7 @@ class HelixerModel(ABC):
             pprint(args)
 
     def generate_callbacks(self):
-        cm_cb = ConfusionMatrixTrain(self, self.gen_validation_data(), self.save_model_path,
+        cm_cb = ConfusionMatrixTrain(self.gen_validation_data(), self.save_model_path,
                                      report_to_nni=self.nni)
         return [cm_cb]
 
@@ -211,7 +209,8 @@ class HelixerModel(ABC):
                            mode='test',
                            shuffle=False)
 
-    def run_confusion_matrix(self, generator, model):
+    @staticmethod
+    def run_confusion_matrix(generator, model):
         start = time.time()
         cm_calculator = ConfusionMatrix(generator)
         genic_f1 = cm_calculator.calculate_cm(model)
@@ -408,7 +407,7 @@ class HelixerModel(ABC):
             model = self._load_helixer_model()
 
             if self.eval:
-                _ = self.run_confusion_matrix(self.gen_test_data(), model)
+                _ = HelixerModel.run_confusion_matrix(self.gen_test_data(), model)
             else:
                 if os.path.isfile(self.prediction_output_path):
                     print('{} already existing and will be overridden.'.format(
