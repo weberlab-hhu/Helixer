@@ -17,7 +17,6 @@ from ..export import numerify
 from ..export.numerify import (SequenceNumerifier, BasePairAnnotationNumerifier, Stepper,
                                AMBIGUITY_DECODE)
 from ..export.exporter import HelixerExportController
-from ..prediction.F1Scores import F1Calculator
 from ..prediction.ConfusionMatrix import ConfusionMatrix
 
 TMP_DB = 'testdata/tmp.db'
