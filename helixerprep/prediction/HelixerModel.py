@@ -150,7 +150,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cpus', '--cpus', type=int, default=8)
         self.parser.add_argument('--specific-gpu-id', type=int, default=-1)
         # misc flags
-        self.parser.add_argument('-plot', '--plot', action='store_true')
         self.parser.add_argument('-nni', '--nni', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
 
@@ -356,6 +355,12 @@ class HelixerModel(ABC):
         })
         return model
 
+    def _print_model_info(self, model):
+        if self.verbose:
+            print(model.summary())
+        else:
+            print('Total params: {:,}'.format(model.count_params()))
+
     def run(self):
         self.set_resources()
         self.open_data_files()
@@ -364,14 +369,7 @@ class HelixerModel(ABC):
             model = self.model()
             if self.gpus >= 2:
                 model = multi_gpu_model(model, gpus=self.gpus)
-
-            if self.verbose:
-                print(model.summary())
-            else:
-                print('Total params: {:,}'.format(model.count_params()))
-
-            if self.plot:
-                self.plot_model(model)
+            self._print_model_info(model)
 
             self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
             self.compile_model(model)
@@ -392,9 +390,8 @@ class HelixerModel(ABC):
             self.class_weights = None
             model = self._load_helixer_model()
             self._make_predictions(model)
-            print('Predictions made with {} on {} and saved to {}'.format(self.load_model_path,
-                                                                          self.test_data,
-                                                                          self.prediction_output_path))
+            print(f'Predictions made with {self.load_model_path} on {self.test_data} '
+                  + f'and saved to {self.prediction_output_path}')
 
             self.h5_train.close()
             self.h5_val.close()
@@ -404,15 +401,12 @@ class HelixerModel(ABC):
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
             model = self._load_helixer_model()
+            self._print_model_info(model)
 
             if self.eval:
                 _ = HelixerModel.run_confusion_matrix(self.gen_test_data(), model)
             else:
                 if os.path.isfile(self.prediction_output_path):
-                    print('{} already existing and will be overridden.'.format(
-                        self.prediction_output_path
-                    ))
-                if self.exclude_errors:
-                    print('WARNING: --exclude-errors used in test mode')
+                    print(f'{self.prediction_output_path} already existing and will be overridden.')
                 self._make_predictions(model)
             self.h5_test.close()
