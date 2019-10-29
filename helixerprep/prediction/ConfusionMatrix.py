@@ -105,7 +105,7 @@ class ConfusionMatrix():
         scores = self._get_composite_scores()
         for table, table_name in self.prep_tables():
             print('\n', AsciiTable(table, table_name).table, sep='')
-        print(f'Total acc: {self._total_accuracy():.4f}')
+        print('Total acc: {:.4f}'.format(self._total_accuracy()))
 
         # return genic f1 for model saving in custom callback or other uses
         return scores['genic']['f1']
