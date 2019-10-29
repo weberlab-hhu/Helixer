@@ -73,7 +73,7 @@ def main(args):
     h5_pred = h5py.File(args.predictions, 'r')
 
     # and score
-    cm_calc = ConfusionMatrix(None, args.label_dim)
+    cm_calc = ConfusionMatrix(None)
     # prep keys
     lab_keys = list(mk_keys(h5_data))
     pred_keys = list(mk_keys(h5_pred))
