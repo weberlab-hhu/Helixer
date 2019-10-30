@@ -66,7 +66,7 @@ class HelixerExportController(object):
         n_seq = len(inputs)
         X = np.zeros((n_seq, chunk_size, 4), dtype=inputs[0].dtype)
         y = np.zeros((n_seq, chunk_size, n_y_cols), dtype=labels[0].dtype)
-        y_transitions = np.zeros((n_seq, chunk_size, 7), dtype=transitions[0].dtype)
+        y_transitions = np.zeros((n_seq, chunk_size, 6), dtype=transitions[0].dtype)
         sample_weights = np.zeros((n_seq, chunk_size), dtype=label_masks[0].dtype)
 
         for j in range(n_seq):
@@ -155,9 +155,9 @@ class HelixerExportController(object):
                                    dtype='int64',
                                    compression='lzf')
             h5_file.create_dataset('/data/transitions',
-                                   shape=(n_seq, chunk_size, 7),
-                                   maxshape=(None, chunk_size, 7),
-                                   chunks=(1, chunk_size, 7),
+                                   shape=(n_seq, chunk_size, 6),
+                                   maxshape=(None, chunk_size, 6),
+                                   chunks=(1, chunk_size, 6),
                                    dtype='int8',  # guess we'll stick to int8
                                    compression='lzf',
                                    shuffle=True)
@@ -286,9 +286,9 @@ class HelixerExportController(object):
                     # split sequences
                     train_data, val_data = self._split_sequences(flat_data, val_size=val_size)
                     if train_data['inputs']:
-                        self._save_data(self.h5_train, train_data, chunk_size, n_y_cols, one_hot_transitions)
+                        self._save_data(self.h5_train, train_data, chunk_size, n_y_cols)
                     if val_data['inputs']:
-                        self._save_data(self.h5_val, val_data, chunk_size, n_y_cols, one_hot_transitions)
+                        self._save_data(self.h5_val, val_data, chunk_size, n_y_cols)
                     print(('{}/{} Numerified {} of {} with {} features in {} chunks '
                            '(train: {}, test: {}) with an error rate of {:.2f}% and an '
                            'intergenic rate of {:.2f}%').format(

@@ -91,6 +91,9 @@ class HelixerSequence(Sequence):
         self.label_dim = self.y_dset.shape[-1]
         self._load_and_scale_meta_info()
         self.transitions_dset = h5_file['data/transitions']
+        self.transitions = self.model.transitions
+        self.transition_multiplier = self.model.transition_multiplier
+        self.debug = self.model.debug
         # set array of usable indexes
         if self.exclude_errors:
             self.usable_idx = np.flatnonzero(np.array(h5_file['/data/err_samples']) == False)
@@ -115,8 +118,10 @@ class HelixerSequence(Sequence):
         assert np.all(np.logical_and(self.coord_lengths >= 0.0, self.coord_lengths <= 1.0))
 
     def __len__(self):
-        # return 2
-        return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
+        if self.debug:
+            return 1
+        else:
+            return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
 
     @abstractmethod
     def __getitem__(self, idx):
@@ -142,6 +147,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
         self.parser.add_argument('-t', '--transitions', action='store_true')
+        self.parser.add_argument('-t_m', '--transition-multiplier', type=int, default=1)
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -157,6 +163,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-plot', '--plot', action='store_true')
         self.parser.add_argument('-nni', '--nni', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
+        self.parser.add_argument('-db', '--debug', action='store_true')
 
     def parse_args(self):
         args = vars(self.parser.parse_args())

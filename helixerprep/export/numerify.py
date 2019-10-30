@@ -190,37 +190,15 @@ class AnnotationNumerifier(Numerifier, ABC):
         y_direction_zero_to_one = np.logical_and(y_isTransition, self.matrix[1:]).astype(np.int8)
         y_direction_one_to_zero = np.logical_and(y_isTransition, self.matrix[:-1]).astype(np.int8)
         stack = np.hstack((y_direction_zero_to_one, y_direction_one_to_zero))
-        y_is_no_Transition = np.all(np.logical_not(y_isTransition), axis=-1).astype(np.int8)
+        
+        add2 = np.array([[0, 0, 0, 0, 0, 0]]) 
+        shape_stack = np.insert(stack, 0, add2, axis=0).astype(np.int8)
+        shape_end_stack = np.insert(stack, len(stack), add2, axis=0).astype(np.int8)
+        self.onehot7_matrix = np.logical_or(shape_stack, shape_end_stack).astype(np.int8)
+        # ToDO maybe re-implement None-Transition if needed
+        #y_is_no_Transition = np.all(np.logical_not(merged_stacks), axis=-1).astype(np.int8)
 
-        onehot_feature_transitions = np.concatenate((stack, y_is_no_Transition[:, None]), axis=1)
-        # Adding a NO-TRANSITION-row to keep shape
-        add2 = np.array([[0, 0, 0, 0, 0, 0, 1]])
-        final_trans = np.insert(onehot_feature_transitions, 0, add2, axis=0)
-        #finish OneHot-Transition-Matrix by removing double transitions [Intron > CDS > TR]
-        self.onehot7_matrix = _mask_double_transitions(final_trans.astype(np.int8))
-        assert np.all(np.count_nonzero(self.onehot7_matrix, axis=1) == 1)
-
-
-def _mask_double_transitions(arr):
-    cds_to_intron = np.where((arr == ( 0, 0, 1, 0, 1, 0, 0 )).all(axis=1))
-    arr[cds_to_intron, :] = [ 0, 0, 1, 0, 0, 0, 0 ]
-
-    intron_to_cds = np.where((arr == ( 0, 1, 0, 0, 0, 1, 0 )).all(axis=1))
-    arr[intron_to_cds, :] = [ 0, 0, 0, 0, 0, 1, 0 ]
-
-    cds_to_ig = np.where((arr == ( 0, 0, 0, 1, 1, 0, 0 )).all(axis=1))
-    arr[cds_to_ig, :] = [ 0, 0, 0, 0, 1, 0, 0 ]
-
-    ig_to_cds = np.where((arr == ( 1, 1, 0, 0, 0, 0, 0 )).all(axis=1))
-    arr[ig_to_cds, :] = [ 0, 1, 0, 0, 0, 0, 0 ]
-
-    intron_to_ig = np.where((arr == ( 0, 0, 0, 1, 0, 1, 0 )).all(axis=1))
-    arr[intron_to_ig, :] = [ 0, 0, 0, 0, 0, 1, 0 ]
-
-    ig_to_intron = np.where((arr == ( 1, 0, 1, 0, 0, 0, 0 )).all(axis=1))
-    arr[ig_to_intron, :] = [ 0, 0, 1, 0, 0, 0, 0 ]
-
-    return arr
+        #self.onehot7_matrix = np.concatenate((merged_stacks, y_is_no_Transition[:, None]), axis=1)
 
 
 class CoordNumerifier(object):

@@ -25,6 +25,7 @@ class DanQSequence(HelixerSequence):
         X = np.stack(self.x_dset[usable_idx_slice])
         y = np.stack(self.y_dset[usable_idx_slice])
         sw = np.stack(self.sw_dset[usable_idx_slice])
+        transitions = np.stack(self.transitions_dset[usable_idx_slice])
         if pool_size > 1:
             if y.shape[1] % pool_size != 0:
                 # clip to maximum size possible with the pooling length
@@ -32,6 +33,7 @@ class DanQSequence(HelixerSequence):
                 X = X[:, :-overhang]
                 y = y[:, :-overhang]
                 sw = sw[:, :-overhang]
+                transitions = transitions[:, :-overhang]
 
 
             # make labels 2d so we can use the standard softmax / loss functions
@@ -42,22 +44,43 @@ class DanQSequence(HelixerSequence):
                 y.shape[-1],
             ))
 
+            transitions = transitions.reshape((
+                transitions.shape[0],
+                transitions.shape[1] // pool_size,
+                pool_size,
+                transitions.shape[-1],
+            ))
+
+            sw = sw.reshape((sw.shape[0], -1, pool_size))
+            sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
 
             if self.class_weights is not None:
                 # class weights are additive for the individual timestep predictions
                 # giving even more weight to transition points
                 # class weights without pooling not supported yet
                 # cw = np.array([1.0, 1.2, 1.0, 0.8], dtype=np.float32)
-                cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
+                cls_arrays = [np.any((y[:,:, :, col] == 1), axis=2) for col in range(4)]
                 cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
                 # add class weights to applicable timesteps
                 cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
                 sw = np.sum(cw_arrays, axis=2)
+            if self.transitions:
+                import pudb; pudb.set_trace()
+
+                sw_t= [np.any((transitions[:, :, :, col] == 1), axis=2) for col in range(6)]
+                sw_t = np.stack(sw_t, axis = 2).astype(np.int8)
+                sw_t = np.multiply(sw_t, self.transition_multiplier)
+                sw_t = np.sum(sw_t, axis = 2)
+                #where_are_ones = np.where(np.all(sw_t == [0,0,0,0,0,0], axis=2))
+                #sw_t[where_are_ones[0], where_are_ones[1]] = 1
+                sw = np.multiply(sw_t, sw)
             else:
                 # code is only reached during test time where --exclude-errors is enforced
                 # mark any multi-base timestep as error if any base has an error
                 sw = sw.reshape((sw.shape[0], -1, pool_size))
                 sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
+                import pudb;
+                pudb.set_trace()
 
 
         # put together returned inputs/outputs
@@ -70,9 +93,17 @@ class DanQSequence(HelixerSequence):
             meta = np.stack([gc, lengths], axis=2)
             labels = [y, meta]
             sample_weights = [sw, sw]
+        #elif self.transitions:
+           # transition_multiplier = self.transition_multiplier
+          #  adjusted_transitions = np.multiply(self.transitions_dset[usable_idx_slice], transition_multiplier)
+           # labels = [y, adjusted_transitions]
+         #   sw_t = np.ones(adjusted_transitions.shape) #TODO
+         #   sample_weights = [sw, sw_t]
+
         else:
             labels = y
             sample_weights = sw
+
 
         return X, labels, sample_weights
 
@@ -134,13 +165,19 @@ class DanQModel(HelixerModel):
         if self.meta_losses:
             meta_output = Dense(2, activation='sigmoid', name='meta')(x)
 
-        
+
         x = Dense(self.pool_size * self.label_dim)(x)
         x = Reshape((-1, self.pool_size, self.label_dim))(x)
         x = Activation('softmax', name='main')(x)
 
         inputs = main_input
+
+
         outputs = [x, meta_output] if self.meta_losses else [x]
+
+
+
+
         model = Model(inputs=inputs, outputs=outputs)
         return model
 
@@ -154,6 +191,7 @@ class DanQModel(HelixerModel):
                 'main': ['accuracy'],
 
             }
+
         else:
             losses = ['categorical_crossentropy']
             loss_weights = [1.0]
