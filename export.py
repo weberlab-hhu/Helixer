@@ -14,8 +14,7 @@ def main(args):
         args.exclude_genomes = args.exclude_genomes.split(',')
 
     controller.export(chunk_size=args.chunk_size, genomes=args.genomes, exclude=args.exclude_genomes,
-                      val_size=args.val_size, one_hot=args.one_hot,
-                      split_coordinates=args.split_coordinates, keep_errors=args.keep_errors)
+                      val_size=args.val_size, one_hot=args.one_hot, keep_errors=args.keep_errors)
 
 
 if __name__ == '__main__':
@@ -42,8 +41,6 @@ if __name__ == '__main__':
                       help='The chance for a sequence or coordinate to end up in validation_data.h5' )
     data.add_argument('--one-hot', action='store_true',
                       help='Whether to use a one-hot encoding instead of multi class output.')
-    data.add_argument('--split-coordinates', action='store_true',
-                      help='Whether to split on the level of coordinates instead of sequences.')
     data.add_argument('--only-test-set', action='store_true',
                       help='Whether to only output a single file named test_data.h5')
     data.add_argument('--keep_errors', action="store_true",
@@ -51,7 +48,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     assert not (args.genomes and args.exclude_genomes), 'Can not include and exclude together'
-    assert not args.split_coordinates and args.only_test_set, 'Can not split and not split'
     pprint(vars(args))
     print()
 
