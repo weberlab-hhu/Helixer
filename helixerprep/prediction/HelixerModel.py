@@ -92,7 +92,7 @@ class HelixerSequence(Sequence):
         self._load_and_scale_meta_info()
         self.transitions_dset = h5_file['data/transitions']
         self.transitions = self.model.transitions
-        self.transition_multiplier = self.model.transition_multiplier
+        #self.transition_multiplier = self.model.transition_multiplier
         self.debug = self.model.debug
         # set array of usable indexes
         if self.exclude_errors:
@@ -146,8 +146,8 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
-        self.parser.add_argument('-t', '--transitions', action='store_true')
-        self.parser.add_argument('-t_m', '--transition-multiplier', type=int, default=1)
+        self.parser.add_argument('-t', '--transitions', type=str, default='None')
+        #self.parser.add_argument('-t_m', '--transition-multiplier', type=int, default=1)
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -171,7 +171,9 @@ class HelixerModel(ABC):
         self.class_weights = eval(self.class_weights)
         if type(self.class_weights) is list:
             self.class_weights = np.array(self.class_weights, dtype=np.float32)
-
+        self.transitions = eval(self.transitions)
+        if type(self.transitions) is list:
+            self.transitions = np.array(self.transitions, dtype = np.float32)
         if self.nni:
             hyperopt_args = nni.get_next_parameter()
             self.__dict__.update(hyperopt_args)
