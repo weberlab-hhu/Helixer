@@ -65,24 +65,14 @@ class DanQSequence(HelixerSequence):
                 cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
                 sw = np.sum(cw_arrays, axis=2)
             if self.transitions is not None:
-               # import pudb; pudb.set_trace()
-
                 sw_t= [np.any((transitions[:, :, :, col] == 1), axis=2) for col in range(6)]
                 sw_t = np.stack(sw_t, axis = 2).astype(np.int8)
                 sw_t = np.multiply(sw_t, self.transitions)
-                #sw_t = np.mulitply(sw_t, np.tile(self.transitions, y.shape[:2] + (1,)))
+                
                 sw_t = np.sum(sw_t, axis = 2)
                 where_are_ones = np.where(sw_t == 0)
                 sw_t[where_are_ones[0], where_are_ones[1]] = 1
-                sw = np.multiply(sw_t, sw)
-            else:
-                # code is only reached during test time where --exclude-errors is enforced
-                # mark any multi-base timestep as error if any base has an error
-                sw = sw.reshape((sw.shape[0], -1, pool_size))
-                sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
-                import pudb;
-                pudb.set_trace()
-
+                sw = np.multiply(sw_t, sw) 
 
         # put together returned inputs/outputs
 

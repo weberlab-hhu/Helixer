@@ -130,7 +130,7 @@ class AnnotationNumerifier(Numerifier, ABC):
     }
     error_type_values = [t.value for t in types.Errors]
 
-    def __init__(self, coord, features, is_plus_strand, max_len, one_hot_transitions):
+    def __init__(self, coord, features, is_plus_strand, max_len):
         Numerifier.__init__(self, n_cols=3, coord=coord, is_plus_strand=is_plus_strand,
                             max_len=max_len, dtype=np.int8)
         ABC.__init__(self)
@@ -207,8 +207,7 @@ class CoordNumerifier(object):
     Currently just selects all Features of the given Coordinate.
     """
 
-    def __init__(self, geenuff_exporter, coord, coord_features, is_plus_strand, max_len,
-                 one_hot_transitions):
+    def __init__(self, geenuff_exporter, coord, coord_features, is_plus_strand, max_len):
         assert isinstance(is_plus_strand, bool)
         assert isinstance(max_len, int) and max_len > 0
         self.geenuff_exporter = geenuff_exporter
@@ -221,8 +220,7 @@ class CoordNumerifier(object):
         self.anno_numerifier = AnnotationNumerifier(coord=self.coord,
                                                       features=self.coord.features,
                                                       is_plus_strand=is_plus_strand,
-                                                      max_len=max_len,
-                                                      one_hot_transitions=one_hot_transitions)
+                                                      max_len=max_len)
 
         self.seq_numerifier = SequenceNumerifier(coord=self.coord,
                                                  is_plus_strand=is_plus_strand,

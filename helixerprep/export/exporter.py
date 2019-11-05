@@ -195,12 +195,11 @@ class HelixerExportController(object):
                     val_coord_ids += genome_val_coord_ids
         return train_coord_ids, val_coord_ids
 
-    def _add_data_attrs(self, genomes, exclude, one_hot_transitions, keep_errors):
+    def _add_data_attrs(self, genomes, exclude, keep_errors):
         attrs = {
             'timestamp': str(datetime.datetime.now()),
             'genomes': ','.join(genomes),
             'exclude': ','.join(exclude),
-            'one_hot_transitions': str(one_hot_transitions),
             'keep_errors': str(keep_errors),
         }
         for key, value in attrs.items():
@@ -217,7 +216,7 @@ class HelixerExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def _numerify_coord(self, coord, coord_features, chunk_size, one_hot_transitions, keep_errors):
+    def _numerify_coord(self, coord, coord_features, chunk_size, keep_errors):
         list_in_list_out = ['inputs', 'labels', 'label_masks', 'start_ends', 'transitions']
         one_in_list_out = ['gc_contents', 'coord_lengths', 'species', 'seqids']
         # will pre-organize all data and metadata to have one entry per chunk in flat_data below
@@ -228,7 +227,7 @@ class HelixerExportController(object):
         n_masked_bases, n_intergenic_bases = 0, 0
         for is_plus_strand in [True, False]:
             numerifier = CoordNumerifier(self.geenuff_exporter, coord, coord_features, is_plus_strand,
-                                         chunk_size, one_hot_transitions)
+                                         chunk_size)
             coord_data = numerifier.numerify()
             # keep track of variables
             n_masked_bases += sum([np.count_nonzero(m == 0) for m in coord_data['label_masks']])
@@ -247,7 +246,7 @@ class HelixerExportController(object):
         intergenic_bases_percent = n_intergenic_bases / (coord.length * 2) * 100
         return flat_data, coord, masked_bases_percent, intergenic_bases_percent
 
-    def export(self, chunk_size, genomes, exclude, val_size, one_hot_transitions, split_coordinates, keep_errors):
+    def export(self, chunk_size, genomes, exclude, val_size, split_coordinates, keep_errors):
         self.geenuff_exporter._check_genome_names(genomes, exclude)
         genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude)
         # make version without features for shorter downstream code
@@ -263,7 +262,7 @@ class HelixerExportController(object):
             for (coord_id, coord_len) in coords:
                 coord = self.geenuff_exporter.get_coord_by_id(coord_id)
                 coord_features = genome_coord_features[genome_id][(coord_id, coord_len)]
-                numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size, one_hot_transitions,
+                numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size,
                                                         keep_errors)
                 flat_data, coord, masked_bases_percent, intergenic_bases_percent = numerify_outputs
                 if split_coordinates or self.only_test_set:
@@ -301,5 +300,5 @@ class HelixerExportController(object):
                 for key in dset_keys:
                     del flat_data[key]
 
-        self._add_data_attrs(genomes, exclude, one_hot_transitions, keep_errors)
+        self._add_data_attrs(genomes, exclude, keep_errors)
         self._close_files()
