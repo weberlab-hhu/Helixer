@@ -4,7 +4,7 @@ import numpy as np
 
 from keras_layer_normalization import LayerNormalization
 from keras.models import Sequential
-from keras.layers import LSTM, CuDNNLSTM, Dense, Bidirectional, Activation, Reshape
+from keras.layers import LSTM, CuDNNLSTM, Dense, Bidirectional, Activation, Reshape, Dropout
 from HelixerModel import HelixerModel, HelixerSequence
 
 
@@ -68,6 +68,7 @@ class LSTMModel(HelixerModel):
         self.parser.add_argument('-u', '--units', type=int, default=4)
         self.parser.add_argument('-l', '--layers', type=int, default=1)
         self.parser.add_argument('-ps', '--pool-size', type=int, default=10)
+        self.parser.add_argument('-dr', '--dropout', type=float, default=0.0)
         self.parser.add_argument('-ln', '--layer-normalization', action='store_true')
         self.parse_args()
 
@@ -87,8 +88,10 @@ class LSTMModel(HelixerModel):
             for _ in range(self.layers - 1):
                 if self.layer_normalization:
                     model.add(LayerNormalization())
+                model.add(Dropout(self.dropout))
                 model.add(Bidirectional(CuDNNLSTM(self.units, return_sequences=True)))
 
+        model.add(Dropout(self.dropout))
         model.add(Dense(self.pool_size * 4))
         if self.pool_size > 1:
             model.add(Reshape((-1, self.pool_size, 4)))

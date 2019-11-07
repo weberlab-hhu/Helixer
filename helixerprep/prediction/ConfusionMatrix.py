@@ -45,9 +45,18 @@ class ConfusionMatrix():
 
     @staticmethod
     def _precision_recall_f1(tp, fp, fn):
-        precision = tp / (tp + fp)
-        recall = tp / (tp + fn)
-        f1 = 2 * precision * recall / (precision + recall)
+        if (tp + fp) > 0:
+            precision = tp / (tp + fp)
+        else:
+            precision = 0.0  # avoid an error due to division by 0
+        if (tp + fn) > 0:
+            recall = tp / (tp + fn)
+        else:
+            recall = 0.0
+        if (precision + recall) > 0:
+            f1 = 2 * precision * recall / (precision + recall)
+        else:
+            f1 = 0.0
         return precision, recall, f1
 
     def _total_accuracy(self):
