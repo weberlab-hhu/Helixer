@@ -55,7 +55,6 @@ def acc_ig_oh(y_true, y_pred):
 class ConfusionMatrixTrain(Callback):
     def __init__(self, generator, save_model_path, report_to_nni=False):
         self.generator = generator
-        self.label_dim = label_dim
         self.save_model_path = save_model_path
         self.report_to_nni = report_to_nni
         self.best_genic_f1 = 0.0
@@ -84,7 +83,6 @@ class HelixerSequence(Sequence):
         self.mode = mode
         self.batch_size = self.model.batch_size
         self.float_precision = self.model.float_precision
-        self.exclude_errors = self.model.exclude_errors
         self.class_weights = self.model.class_weights
         self.meta_losses = self.model.meta_losses
         self.x_dset = h5_file['/data/X']
@@ -368,6 +366,12 @@ class HelixerModel(ABC):
             'acc_ig_oh': acc_ig_oh,
         })
         return model
+
+    def _print_model_info(self, model):
+        if self.verbose:
+            print(model.summary())
+        else:
+            print('Total params: {:,}'.format(model.count_params()))
 
     def run(self):
         self.set_resources()
