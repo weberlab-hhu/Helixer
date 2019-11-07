@@ -40,9 +40,13 @@ class Visualization():
         # than labels, due to the data generator in keras
         self.n_seq = self.h5_predictions['/predictions'].shape[0]
         self.chunk_len = self.h5_predictions['/predictions'].shape[1]
-        self.cutoff = self.BASE_COUNT_SCREEN - (self.chunk_len % self.BASE_COUNT_SCREEN)
-        if self.cutoff > 0:
+
+        # set self.cutoff and self.chunk_len if things are not dividing nicely
+        if self.chunk_len % self.BASE_COUNT_SCREEN > 0:
+            self.cutoff = self.BASE_COUNT_SCREEN - (self.chunk_len % self.BASE_COUNT_SCREEN)
             self.chunk_len += self.cutoff
+        else:
+            self.cutoff = 0
 
         if self.args.exclude_errors:
             self.err_idx = np.squeeze(np.argwhere(np.array(self.h5_data['/data/err_samples']) == True))

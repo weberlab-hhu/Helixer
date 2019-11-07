@@ -1,6 +1,7 @@
 import os
 from shutil import copy
 from sklearn.metrics import precision_recall_fscore_support as f1_scores
+from sklearn.metrics import accuracy_score
 import numpy as np
 import pytest
 import h5py
@@ -13,10 +14,8 @@ from geenuff.base.helpers import reverse_complement
 from ..core.controller import HelixerController
 from ..core.orm import Mer
 from ..export import numerify
-from ..export.numerify import (SequenceNumerifier, AnnotationNumerifier, Stepper,
-                               AMBIGUITY_DECODE)
+from ..export.numerify import SequenceNumerifier, AnnotationNumerifier, Stepper, AMBIGUITY_DECODE
 from ..export.exporter import HelixerExportController
-from ..prediction.F1Scores import F1Calculator
 from ..prediction.ConfusionMatrix import ConfusionMatrix
 
 TMP_DB = 'testdata/tmp.db'
@@ -152,7 +151,7 @@ def test_stepper():
 
 def test_short_sequence_numerify():
     _, coords = memory_import_fasta('testdata/basic_sequences.fa')
-    numerifier = SequenceNumerifier(coord=coords[3], is_plus_strand=True, max_len=100)
+    numerifier = SequenceNumerifier(coord=coords[3], max_len=100)
     matrix = numerifier.coord_to_matrices()[0][0]
     # ATATATAT
     x = [0., 1, 0, 0, 0., 0, 1, 0]
@@ -160,7 +159,7 @@ def test_short_sequence_numerify():
     assert np.array_equal(expect, matrix)
 
     # on the minus strand
-    numerifier = SequenceNumerifier(coord=coords[3], is_plus_strand=False, max_len=100)
+    numerifier = SequenceNumerifier(coord=coords[3], max_len=100)
     matrix = numerifier.coord_to_matrices()[0][0]
 
     seq_comp = reverse_complement(coords[3].sequence)
@@ -172,10 +171,9 @@ def test_short_sequence_numerify():
 def test_base_level_annotation_numerify():
     _, _, coord = setup_dummyloci()
     numerifier = AnnotationNumerifier(coord=coord,
-                                              features=coord.features,
-                                              is_plus_strand=True,
-                                              max_len=5000,
-                                              one_hot=False)
+                                      features=coord.features,
+                                      max_len=5000,
+                                      one_hot=False)
     nums = numerifier.coord_to_matrices()[0][0][:405]
     expect = np.zeros([405, 3], dtype=np.float32)
     expect[0:400, 0] = 1.  # set genic/in raw transcript
@@ -187,11 +185,11 @@ def test_base_level_annotation_numerify():
 
 def test_sequence_slicing():
     _, coords = memory_import_fasta('testdata/basic_sequences.fa')
-    seq_numerifier = SequenceNumerifier(coord=coords[0], is_plus_strand=True, max_len=50)
+    seq_numerifier = SequenceNumerifier(coord=coords[0], max_len=50)
     num_list = seq_numerifier.coord_to_matrices()[0]
     print([x.shape for x in num_list])
     # [(50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (27, 4), (28, 4)]
-    assert len(num_list) == 9
+    assert len(num_list) == 9 * 2  # both strands
 
     for i in range(7):
         assert np.array_equal(num_list[i], np.full([50, 4], 0.25, dtype=np.float32))
@@ -207,79 +205,67 @@ def test_coherent_slicing():
     """
     _, _, coord = setup_dummyloci()
     seq_numerifier = SequenceNumerifier(coord=coord,
-                                        is_plus_strand=True,
                                         max_len=100)
     anno_numerifier = AnnotationNumerifier(coord=coord,
-                                                   features=coord.features,
-                                                   is_plus_strand=True,
-                                                   max_len=100,
-                                                   one_hot=False)
-    seq_slices = seq_numerifier.coord_to_matrices()[0]
-    anno_slices = anno_numerifier.coord_to_matrices()[0]
-    assert len(seq_slices) == len(anno_slices) == 19
+                                           features=coord.features,
+                                           max_len=100,
+                                           one_hot=False)
+    seq_slices, seq_error_masks = seq_numerifier.coord_to_matrices()
+    anno_slices, anno_error_masks = anno_numerifier.coord_to_matrices()
+    assert len(seq_slices) == len(anno_slices) == len(anno_error_masks) == len(seq_error_masks) == 19 * 2
 
-    for s, a in zip(seq_slices, anno_slices):
-        assert s.shape[0] == a.shape[0]
+    for s, a, se, ae in zip(seq_slices, anno_slices, seq_error_masks, anno_error_masks):
+        assert s.shape[0] == a.shape[0] == se.shape[0] == ae.shape[0]
 
     # testing sequence error masks
-    expect = np.ones((1801, ), dtype=np.int8)
+    expect = np.ones((1801 * 2, ), dtype=np.int8)
     # sequence error mask should be empty
-    assert np.array_equal(expect, seq_numerifier.error_mask)
+    assert np.array_equal(expect, np.concatenate(seq_error_masks))
     # annotation error mask of test case 1 should reflect faulty exon/CDS ranges
-    assert anno_numerifier.error_mask.shape == expect.shape
     expect[:110] = 0
     expect[120:499] = 0  # error from test case 1
     expect[499:1099] = 0  # error from test case 2
     # test equality for correct error ranges of first two test cases + some correct bases
-    assert np.array_equal(expect[:1150], anno_numerifier.error_mask[:1150])
+    assert np.array_equal(expect[:1150], np.concatenate(anno_error_masks)[:1150])
 
 
 def test_minus_strand_numerify():
     # setup a very basic -strand locus
     _, coord = setup_simpler_numerifier()
     numerifier = AnnotationNumerifier(coord=coord,
-                                              features=coord.features,
-                                              is_plus_strand=True,
-                                              max_len=1000,
-                                              one_hot=False)
-    nums = numerifier.coord_to_matrices()[0][0]
+                                      features=coord.features,
+                                      max_len=1000,
+                                      one_hot=False)
+    nums = numerifier.coord_to_matrices()[0]
     # first, we should make sure the opposite strand is unmarked when empty
     expect = np.zeros([100, 3], dtype=np.float32)
-    assert np.array_equal(nums, expect)
+    assert np.array_equal(nums[0], expect)
 
-    numerifier = AnnotationNumerifier(coord=coord,
-                                              features=coord.features,
-                                              is_plus_strand=False,
-                                              max_len=1000,
-                                              one_hot=False)
     # and now that we get the expect range on the minus strand,
     # keeping in mind the 40 is inclusive, and the 9, not
-    nums = numerifier.coord_to_matrices()[0][0]
-
     expect[10:41, 0] = 1.
     expect = np.flip(expect, axis=0)
-    assert np.array_equal(nums, expect)
+    assert np.array_equal(nums[1], expect)  # nums[1] is now from the minus strand
 
-    # minus strand and actual cutting
+    # with cutting
     numerifier = AnnotationNumerifier(coord=coord,
-                                              features=coord.features,
-                                              is_plus_strand=False,
-                                              max_len=50,
-                                              one_hot=False)
-    num_list = numerifier.coord_to_matrices()[0]
+                                      features=coord.features,
+                                      max_len=50,
+                                      one_hot=False)
+    nums = numerifier.coord_to_matrices()[0]
 
     expect = np.zeros([100, 3], dtype=np.float32)
     expect[10:41, 0] = 1.
 
-    assert np.array_equal(num_list[0], np.flip(expect[50:100], axis=0))
-    assert np.array_equal(num_list[1], np.flip(expect[0:50], axis=0))
+    assert np.array_equal(nums[2], np.flip(expect[50:100], axis=0))
+    assert np.array_equal(nums[3], np.flip(expect[0:50], axis=0))
 
 
 def test_coord_numerifier_and_h5_gen_plus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=400, genomes='', exclude='', val_size=0.2, one_hot=False,
-                      split_coordinates=False, keep_errors=False)
+                      keep_errors=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     inputs = f['/data/X']
@@ -329,7 +315,7 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=200, genomes='', exclude='', val_size=0.2, one_hot=False,
-                      split_coordinates=False, keep_errors=False)
+                      keep_errors=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     inputs = f['/data/X']
@@ -389,12 +375,14 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
 def test_numerify_with_end_neg1():
     def check_one(coord, is_plus_strand, expect, maskexpect):
         numerifier = AnnotationNumerifier(coord=coord,
-                                                  features=coord.features,
-                                                  is_plus_strand=is_plus_strand,
-                                                  max_len=1000,
-                                                  one_hot=False)
+                                          features=coord.features,
+                                          max_len=1000,
+                                          one_hot=False)
 
-        nums, masks = [x[0] for x in numerifier.coord_to_matrices()]
+        if is_plus_strand:
+            nums, masks = [x[0] for x in numerifier.coord_to_matrices()]
+        else:
+            nums, masks = [x[1] for x in numerifier.coord_to_matrices()]
 
         if not np.array_equal(nums, expect):
             for i in range(nums.shape[0]):
@@ -572,176 +560,6 @@ def test_numerify_with_end_neg1():
     check_one(coord, True, expect, maskexpect)
 
 
-def test_f1_scores():
-    # 40 bases in total
-    y_true = np.array([
-        # 5 bases intergenic
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        # 4 bases UTR
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        # 8 bases exon
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        # 6 bases intron
-        [1, 1, 1],
-        [1, 1, 1],
-        [1, 1, 1],
-        [1, 1, 1],
-        [1, 1, 1],
-        [1, 1, 1],
-        # 5 bases exon
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        # 3 bases UTR
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        # 9 bases intergenic
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0]
-    ])
-    y_pred = np.array([
-        # 7 bases intergenic
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        # 4 bases UTR
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        # 6 bases exon
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        # 2 bases intron
-        [1, 1, 1],
-        [1, 1, 1],
-        # 10 bases exon
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        [1, 1, 0],
-        # 7 bases UTR
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        [1, 0, 0],
-        # 5 bases intergenic
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0]
-    ])
-
-    # stack arrays to create a "batch"
-    y_true = np.tile(y_true, (8, 1, 1))
-    y_pred = np.tile(y_pred, (8, 1, 1))
-
-    f1 = F1Calculator(None)  # params don't matter
-    f1.count_and_calculate_one_batch(y_true, y_pred)
-
-    # Total counters
-    total_0_counter = f1.counters['Global']['total'][1]
-    pred_values = F1Calculator._calculate_f1(*total_0_counter.get_values())
-    true_values = f1_scores(y_true.ravel(), y_pred.ravel(), average='binary', pos_label=0)[:3]
-
-    for pred, true in zip (pred_values, true_values):
-        assert pred == true
-
-    total_1_counter = f1.counters['Global']['total'][2]
-    pred_values = F1Calculator._calculate_f1(*total_1_counter.get_values())
-    true_values = f1_scores(y_true.ravel(), y_pred.ravel(), average='binary', pos_label=1)[:3]
-
-    for pred, true in zip (pred_values, true_values):
-        assert pred == true
-
-    # CDS in genic test
-    genic_mask = y_true[:, :, 0].astype(bool)
-    y_true_genic_cds = np.copy(y_true)[genic_mask, :][:, 1]
-    y_pred_genic_cds = np.copy(y_pred)[genic_mask, :][:, 1]
-
-    genic_cds_0_counter = f1.counters['Genic']['cds'][1]
-    pred_values = F1Calculator._calculate_f1(*genic_cds_0_counter.get_values())
-    true_values = f1_scores(y_true_genic_cds.ravel(), y_pred_genic_cds.ravel(),
-                            average='binary', pos_label=0)[:3]
-
-    for pred, true in zip (pred_values, true_values):
-        assert pred == true
-
-    genic_cds_1_counter = f1.counters['Genic']['cds'][2]
-    pred_values = F1Calculator._calculate_f1(*genic_cds_1_counter.get_values())
-    true_values = f1_scores(y_true_genic_cds.ravel(), y_pred_genic_cds.ravel(),
-                            average='binary', pos_label=1)[:3]
-
-    for pred, true in zip (pred_values, true_values):
-        assert pred == true
-
-    # Test f1 with more than one prediction per timestep
-    new_shape = (y_true.shape[0], y_true.shape[1] // 5, 3 * 5)
-    y_true_reshaped = np.copy(y_true).reshape(new_shape)
-    y_pred_reshaped = np.copy(y_pred).reshape(new_shape)
-
-    # New f1 counts
-    f1 = F1Calculator(None)
-    f1.count_and_calculate_one_batch(y_true_reshaped, y_pred_reshaped)
-
-    total_0_counter = f1.counters['Global']['total'][1]
-    pred_values = F1Calculator._calculate_f1(*total_0_counter.get_values())
-    true_values = f1_scores(y_true_reshaped.ravel(), y_pred_reshaped.ravel(),
-                            average='binary', pos_label=0)[:3]
-
-    for pred, true in zip (pred_values, true_values):
-        assert pred == true
-
-    total_1_counter = f1.counters['Global']['total'][2]
-    pred_values = F1Calculator._calculate_f1(*total_1_counter.get_values())
-    true_values = f1_scores(y_true_reshaped.ravel(), y_pred_reshaped.ravel(),
-                            average='binary', pos_label=1)[:3]
-
-    for pred, true in zip (pred_values, true_values):
-        assert pred == true
-
-
 def test_one_hot_encodings():
     classes_multi = [
         [0, 0, 0],
@@ -759,10 +577,9 @@ def test_one_hot_encodings():
     # make normal encoding (multi class)
     _, _, coord = setup_dummyloci()
     numerifier = AnnotationNumerifier(coord=coord,
-                                              features=coord.features,
-                                              is_plus_strand=True,
-                                              max_len=5000,
-                                              one_hot=False)
+                                      features=coord.features,
+                                      max_len=5000,
+                                      one_hot=False)
 
     y_multi = numerifier.coord_to_matrices()[0][0]
     # count classes
@@ -770,10 +587,9 @@ def test_one_hot_encodings():
 
     # make one hot encoding
     numerifier = AnnotationNumerifier(coord=coord,
-                                              features=coord.features,
-                                              is_plus_strand=True,
-                                              max_len=5000,
-                                              one_hot=True)
+                                      features=coord.features,
+                                      max_len=5000,
+                                      one_hot=True)
     y_one_hot_4 = numerifier.coord_to_matrices()[0][0]
     uniques_4 = np.unique(y_one_hot_4, return_counts=True, axis=0)
     # this loop has to be changed when using accounting for non-coding introns as well
@@ -880,6 +696,8 @@ def test_confusion_matrix():
         [0.0320586, 0.08714432, 0.23688282, 0.64391426]
     ])
 
+    sample_weights = np.sum(y_true, axis=1)  # works bc, y_true is padded with ones
+
     cm_true = np.array([
         [8, 2, 0, 0],
         [2, 5, 1, 0],
@@ -887,10 +705,11 @@ def test_confusion_matrix():
         [0, 0, 1, 1]
     ])
 
-    cm = ConfusionMatrix(None, 4)
+    cm = ConfusionMatrix(None)
     # add data in two parts
-    cm._add_to_cm(y_true[:15], y_pred[:15])
-    cm._add_to_cm(y_true[15:], y_pred[15:])
+    cm.count_and_calculate_one_batch(y_true[:15], y_pred[:15], sample_weights[:15])
+    cm.count_and_calculate_one_batch(y_true[15:], y_pred[15:], sample_weights[15:])
+    print(cm.cm)
     assert np.array_equal(cm_true, cm.cm)
 
     # test normalization
@@ -903,10 +722,12 @@ def test_confusion_matrix():
 
     assert np.allclose(cm_true_normalized, cm._get_normalized_cm())
 
+    # argmax and filter y_true and y_pred
+    y_pred, y_true = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sample_weights)
+    y_pred = ConfusionMatrix._reshape_data(y_pred)
+    y_true = ConfusionMatrix._reshape_data(y_true)
+
     # test other metrics
-    non_padded_idx = np.any(y_true, axis=-1)
-    y_true = np.argmax(y_true[non_padded_idx], axis=-1)
-    y_pred = np.argmax(y_pred[non_padded_idx], axis=-1)
     precision_true, recall_true, f1_true, _ = f1_scores(y_true, y_pred)
     scores = cm._get_composite_scores()
 
@@ -915,11 +736,30 @@ def test_confusion_matrix():
     assert np.allclose(recall_true, np.array([s['recall'] for s in one_col_values]))
     assert np.allclose(f1_true, np.array([s['f1'] for s in one_col_values]))
 
-    # test f1_cds
-    tp_cds = cm_true[2, 2] + cm_true[3, 3]
-    fp_cds = (cm_true[2, 0] + cm_true[2, 1] + cm_true[2, 3] +
-              cm_true[3, 0] + cm_true[3, 1] + cm_true[3, 2])
-    fn_cds = (cm_true[0, 2] + cm_true[1, 2] + cm_true[3, 2] +
-              cm_true[0, 3] + cm_true[1, 3] + cm_true[2, 3])
-    _, _, f1_cds_true = ConfusionMatrix._precision_recall_f1(tp_cds, fp_cds, fn_cds)
-    assert np.allclose(f1_cds_true, scores['cds']['f1'])
+    # test legacy cds metrics
+    # essentially done in the same way as in ConfusionMatrix.py but copied here in case
+    # it changes
+    tp_cds = cm_true[2, 2] + cm_true[3, 3] + cm_true[2, 3] + cm_true[3, 2]
+    fp_cds = cm_true[0, 2] + cm_true[1, 2] + cm_true[0, 3] + cm_true[1, 3]
+    fn_cds = cm_true[2, 0] + cm_true[2, 1] + cm_true[3, 0] + cm_true[3, 1]
+    cds_true = ConfusionMatrix._precision_recall_f1(tp_cds, fp_cds, fn_cds)
+    assert np.allclose(cds_true[0], scores['legacy_cds']['precision'])
+    assert np.allclose(cds_true[1], scores['legacy_cds']['recall'])
+    assert np.allclose(cds_true[2], scores['legacy_cds']['f1'])
+
+    # test genic metrics
+    tp_genic = cm_true[1, 1] + cm_true[2, 2] + cm_true[3, 3]
+    fp_genic = (cm_true[0, 1] + cm_true[2, 1] + cm_true[3, 1] +
+                cm_true[0, 2] + cm_true[1, 2] + cm_true[3, 2] +
+                cm_true[0, 3] + cm_true[1, 3] + cm_true[2, 3])
+    fn_genic = (cm_true[1, 0] + cm_true[1, 2] + cm_true[1, 3] +
+                cm_true[2, 0] + cm_true[2, 1] + cm_true[2, 3] +
+                cm_true[3, 0] + cm_true[3, 1] + cm_true[3, 2])
+    genic_true = ConfusionMatrix._precision_recall_f1(tp_genic, fp_genic, fn_genic)
+    assert np.allclose(genic_true[0], scores['genic']['precision'])
+    assert np.allclose(genic_true[1], scores['genic']['recall'])
+    assert np.allclose(genic_true[2], scores['genic']['f1'])
+
+    # test accuracy
+    acc_true = accuracy_score(y_pred, y_true)
+    assert np.allclose(acc_true, cm._total_accuracy())

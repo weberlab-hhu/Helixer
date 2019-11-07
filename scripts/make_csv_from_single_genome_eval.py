@@ -1,52 +1,67 @@
 #! /usr/bin/env python3
 import os
-import numpy as np
 import h5py
+import numpy as np
+import argparse
 from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
 
-nni_base = '/mnt/data/experiments_backup/nni_cluster/nni/experiments/'
-nni_id = 'mlJqtS8t'
-trials_folder = '{}/{}/trials'.format(nni_base, nni_id)
+parser = argparse.ArgumentParser()
+parser.add_argument('-s', '--server', type=str, default='clc')
+parser.add_argument('-nni', '--nni-id', type=str, required=True)
+parser.add_argument('-i', '--ignore', action='append')
+parser.add_argument('-er', '--error-rates', action='store_true')
+args = parser.parse_args()
 
-print(','.join(['genome', 'loss', 'acc_overall', 'f1_ig', 'f1_utr', 'f1_exon', 'f1_intron',
-                'f1_cds', 'f1_genic', 'old_f1_cds_1', 'error_rate', 'nni_id']))
+assert args.server in ['clc', 'cluster']
+assert len(args.nni_id) == 8
+
+if args.server == 'clc':
+    nni_base = '/mnt/data/experiments_backup/nni_clc_server/nni/experiments/'
+else:
+    nni_base = '/mnt/data/experiments_backup/nni_cluster/nni/experiments/'
+trials_folder = '{}/{}/trials'.format(nni_base, args.nni_id)
+
+header = ['genome', 'acc_overall', 'f1_ig', 'f1_utr', 'f1_exon', 'f1_intron', 'legacy_f1_cds',
+          'f1_genic']
+if args.error_rates:
+    header += ['base_level_error_rate', 'padded_bases_rate', 'sequence_error_rate']
+header += ['nni_id']
+print(','.join(header))
+
 for folder in os.listdir(trials_folder):
-   # if folder in ['GIIy0', 'I7aBF', 'BSYjB', 'T4PJz', 'KpTHB', 'NsRRV']:  # folder with errors
-    if folder in ['wFecg', 'GR0mU', 'QqMDX', 'FAQyQ']:
+    if args.ignore and folder in args.ignore:
         continue
     # get genome name
     parameters = eval(open('{}/{}/parameter.cfg'.format(trials_folder, folder)).read())
     path = parameters['parameters']['test_data']
-    genome = path.split('/')[5]
+    # genome = path.split('/')[5]  # when from cluster
+    genome = path.split('/')[6]
 
-    # get error rate
+    # get sequence error rate
     f = h5py.File('/home/felix/Desktop/data/single_genomes/' + genome + '/h5_data_20k/test_data.h5')
     n_samples = f['/data/X'].shape[0]
     err = np.array(f['/data/err_samples'])
     n_err_samples = np.count_nonzero(err == True)
-    error_rate = n_err_samples / n_samples
+    sequence_error_rate = n_err_samples / n_samples
 
-    log_file = open('{}/{}/trial.log'.format(trials_folder, folder))
-    # get confusion matrix from log to calculate cds f1 that is the same as before
-    for line in log_file:
-        if 'array([[' in line:  # cm table start
-            cm_str = line.split('array(')[1].strip()
-            for i in range(3):
-                cm_str += next(log_file).strip()
-            cm_str = cm_str[:-1]  # remove last round bracket
-            break
-    cm = np.array(eval(cm_str))
-    # change cm so we can get a comparable metric, merging intron and exon predictions
-    cm[2, :] = cm[2, :] + cm[3, :]
-    cm[:, 2] = cm[:, 2] + cm[:, 3]
-    cm = cm[:3, :3]
-    # make f1
-    tp = cm[2, 2]
-    fp = cm[0, 2] + cm[1, 2]
-    fn = cm[2, 0] + cm[2, 1]
-    _, _, old_f1_cds_1 = ConfusionMatrix._precision_recall_f1(tp, fp, fn)
+    # get base level error rate (including padding) iterativly to avoid running into memory issues
+    if args.error_rates:
+        sw_dset = f['/data/sample_weights']
+        y_dset = f['/data/y']
+        step_size = 1000
+        n_error_bases = 0
+        n_padded_bases = 0
+        idxs = np.array_split(np.arange(len(sw_dset)), len(sw_dset) // step_size)
+        for slice_idxs in idxs:
+            sw_slice = sw_dset[list(slice_idxs)]
+            y_slice = y_dset[list(slice_idxs)]
+            n_error_bases += np.count_nonzero(sw_slice == 0)
+            n_padded_bases += np.count_nonzero(np.all(y_slice == 0, axis=-1))
+        base_level_error_rate = n_error_bases / sw_dset.size
+        padded_bases_rate = n_padded_bases / sw_dset.size
 
     # parse metric table
+    log_file = open('{}/{}/trial.log'.format(trials_folder, folder))
     f1_scores = []
     for line in log_file:
         if 'Precision' in line:  # table start
@@ -56,10 +71,17 @@ for folder in os.listdir(trials_folder):
                 f1_scores.append(line.strip().split('|')[4].strip())
                 if i == 3:
                     next(log_file)  # skip line
+            break  # stop at the last line of the metric table
 
-    # parse keras metrics
-    keras_metrics = eval(''.join(line.strip().split(' ')[4:]))
-    selected_keras_metrics = [keras_metrics['loss'], keras_metrics['main_acc']]
-    str_rows = [genome] + ['{:.4f}'.format(n) for n in selected_keras_metrics] + f1_scores
-    str_rows += ['{:.4f}'.format(n) for n in [old_f1_cds_1, error_rate]] + [folder]
+    # parse total accuracy
+    next(log_file)
+    line = next(log_file)
+    acc_overall = line.strip().split(' ')[-1]
+
+    # merge everything into one string
+    str_rows = [genome, acc_overall] + f1_scores
+    if args.error_rates:
+        error_rates = [base_level_error_rate, padded_bases_rate, sequence_error_rate]
+        str_rows += ['{:.4f}'.format(n) for n in error_rates]
+    str_rows += [folder]
     print(','.join(str_rows))
