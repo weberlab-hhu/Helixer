@@ -5,9 +5,11 @@ from glob import glob
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--scale', action='store_true', help='Whether to scale the kmer and busco columns')
+parser.add_argument('--basepath', default='/mnt/data/ali/share/phytozome_organized/ready/train/',
+                    help="path to the folder containing organized species folders")
 args = parser.parse_args()
 
-base_path = '/mnt/data/ali/share/phytozome_organized/ready/train/'
+base_path = args.basepath
 delimiter = ','
 columns = {
     'species': [],
