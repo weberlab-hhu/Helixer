@@ -139,31 +139,32 @@ class AnnotationNumerifier(Numerifier):
         self.onehot7_matrix = None
 
     def coord_to_matrices(self):
-	# plus strand
+        # plus strand
         self._zero_matrix()
         self._update_matrix_and_error_mask(is_plus_strand=True)
         self._encode_onehot4()
         self._encode_onehot7()
-	# very important to copy here
+        # very important to copy here
         labels_plus, error_mask_plus = self._slice_matrix(np.copy(self.onehot4_matrix),
                                                           np.copy(self.error_mask),
                                                           is_plus_strand=True)
-	transitions_plus, _ = self._slice_matrix(np.copy(self.onehot7_matrix),
+        transitions_plus, _ = self._slice_matrix(np.copy(self.onehot7_matrix),
                                                  np.copy(self.error_mask),
                                                  is_plus_strand=True)
-	# minus strand
+        # minus strand
         self._zero_matrix()
         self._update_matrix_and_error_mask(is_plus_strand=False)
-	labels_minus, error_mask_minus = self._slice_matrix(np.copy(self.onehot4_matrix),
+        labels_minus, error_mask_minus = self._slice_matrix(np.copy(self.onehot4_matrix),
                                                             np.copy(self.error_mask),
                                                             is_plus_strand=False)
-	transitions_minus, _ = self._slice_matrix(np.copy(self.onehot7_matrix),
+        transitions_minus, _ = self._slice_matrix(np.copy(self.onehot7_matrix),
                                                   np.copy(self.error_mask),
                                                   is_plus_strand=False)
-	# put everything together
+        # put everything together
         labels = labels_plus + labels_minus
+        transitions = transitions_plus + transitions_minus
         error_masks = error_mask_plus + error_mask_minus
-        return labels, error_masks
+        return labels, transitions, error_masks
 
     def _update_matrix_and_error_mask(self, is_plus_strand):
         for feature in self.features:
@@ -208,8 +209,8 @@ class AnnotationNumerifier(Numerifier):
         y_direction_zero_to_one = np.logical_and(y_isTransition, self.matrix[1:]).astype(np.int8)
         y_direction_one_to_zero = np.logical_and(y_isTransition, self.matrix[:-1]).astype(np.int8)
         stack = np.hstack((y_direction_zero_to_one, y_direction_one_to_zero))
-        
-        add2 = np.array([[0, 0, 0, 0, 0, 0]]) 
+
+        add2 = np.array([[0, 0, 0, 0, 0, 0]])
         shape_stack = np.insert(stack, 0, add2, axis=0).astype(np.int8)
         shape_end_stack = np.insert(stack, len(stack), add2, axis=0).astype(np.int8)
         self.onehot7_matrix = np.logical_or(shape_stack, shape_end_stack).astype(np.int8)
@@ -226,22 +227,15 @@ class CoordNumerifier(object):
     @staticmethod
     def numerify(geenuff_exporter, coord, coord_features, max_len):
         assert isinstance(max_len, int) and max_len > 0
-        self.geenuff_exporter = geenuff_exporter
-        self.coord = coord
-
         if not coord_features:
             logging.warning('Sequence {} has no annoations'.format(coord.seqid))
 
-        anno_numerifier = AnnotationNumerifier(coord=coord,
-                                               features=coord_features,
-                                               max_len=max_len)
-
-        seq_numerifier = SequenceNumerifier(coord=coord,
-                                            max_len=max_len)
+        anno_numerifier = AnnotationNumerifier(coord=coord, features=coord_features, max_len=max_len)
+        seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len)
 
         # returns results for both strands, with the plus strand first in the list
         inputs, input_masks = seq_numerifier.coord_to_matrices()
-        labels, label_masks = anno_numerifier.coord_to_matrices()
+        labels, transitions, label_masks = anno_numerifier.coord_to_matrices()
 
         start_ends = anno_numerifier.paired_steps
         # flip the start ends back for - strand and append
@@ -260,8 +254,8 @@ class CoordNumerifier(object):
         # do not output the input_masks as it is not used for anything
         out = {
             'inputs': inputs,
-            'labels': onehot4_labels,
-            'transitions': onehot7_labels,
+            'labels': labels,
+            'transitions': transitions,
             'label_masks': label_masks,
             'gc_contents': [gc_content] * len(inputs),
             'coord_lengths': [coord.length] * len(inputs),
