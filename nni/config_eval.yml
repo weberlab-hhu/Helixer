@@ -1,0 +1,22 @@
+authorName: default
+experimentName: helixer_lstm_test
+trialConcurrency: 2
+#maxExecDuration: 5h
+maxTrialNum: 10000
+#choice: local, remote, pai
+trainingServicePlatform: local
+searchSpacePath: search_space_lstm_eval.json
+#choice: true, false
+useAnnotation: false
+tuner:
+  #choice: TPE, Random, Anneal, Evolution, BatchTuner, BOHB
+  #SMAC (SMAC should be installed through nnictl)
+  builtinTunerName: GridSearch
+  #classArgs:
+    #choice: maximize, minimize
+    #optimize_mode: minimize
+trial:
+  # command: /home/felix-stiehler/git/HelixerPrep/helixerprep/prediction/LSTMModel.py -v -lm ~/nni/experiments/JyRo2L1O/trials/EHBlf/best_model.h5 --nni -bs 24 --eval -ps 10
+  command: /home/felix-stiehler/git/HelixerPrep/helixerprep/prediction/DanQModel.py -v -lm /home/felix-stiehler/Desktop/models/WWyrr.h5 --nni -bs 24 --eval -ps 15 --meta-losses
+  codeDir: .
+  gpuNum: 1

@@ -1,6 +1,0 @@
-{
-    "optimizer": {
-        "_type": "choice",
-        "_value": ["adam"]
-    }
-}
