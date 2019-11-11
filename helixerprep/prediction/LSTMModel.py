@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 import random
 import numpy as np
+import tensorflow as tf
 
 from keras_layer_normalization import LayerNormalization
 from keras.models import Sequential
@@ -99,9 +100,11 @@ class LSTMModel(HelixerModel):
         return model
 
     def compile_model(self, model):
+        run_options = tf.RunOptions(report_tensor_allocations_upon_oom=True)
         model.compile(optimizer=self.optimizer,
                       loss='categorical_crossentropy',
-                      sample_weight_mode='temporal')
+                      sample_weight_mode='temporal',
+                      options=run_options)
 
 
 if __name__ == '__main__':
