@@ -1,0 +1,6 @@
+{
+    "float_precision": {
+        "_type": "choice",
+        "_value": ["float32"]
+    }
+}
