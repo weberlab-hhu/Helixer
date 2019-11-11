@@ -139,26 +139,28 @@ class AnnotationNumerifier(Numerifier):
         self.onehot7_matrix = None
 
     def coord_to_matrices(self):
+        """Always numerifies both strands one after the other."""
         # plus strand
         self._zero_matrix()
         self._update_matrix_and_error_mask(is_plus_strand=True)
-        self._encode_onehot4()
-        self._encode_onehot7()
-        # very important to copy here
-        labels_plus, error_mask_plus = self._slice_matrix(np.copy(self.onehot4_matrix),
-                                                          np.copy(self.error_mask),
+        self.onehot4_matrix = self._encode_onehot4()
+        self.onehot7_matrix = self._encode_onehot7()
+        labels_plus, error_mask_plus = self._slice_matrix(self.onehot4_matrix,
+                                                          self.error_mask,
                                                           is_plus_strand=True)
-        transitions_plus, _ = self._slice_matrix(np.copy(self.onehot7_matrix),
-                                                 np.copy(self.error_mask),
+        transitions_plus, _ = self._slice_matrix(self.onehot7_matrix,
+                                                 self.error_mask,
                                                  is_plus_strand=True)
         # minus strand
         self._zero_matrix()
         self._update_matrix_and_error_mask(is_plus_strand=False)
-        labels_minus, error_mask_minus = self._slice_matrix(np.copy(self.onehot4_matrix),
-                                                            np.copy(self.error_mask),
+        self.onehot4_matrix = self._encode_onehot4()
+        self.onehot7_matrix = self._encode_onehot7()
+        labels_minus, error_mask_minus = self._slice_matrix(self.onehot4_matrix,
+                                                            self.error_mask,
                                                             is_plus_strand=False)
-        transitions_minus, _ = self._slice_matrix(np.copy(self.onehot7_matrix),
-                                                  np.copy(self.error_mask),
+        transitions_minus, _ = self._slice_matrix(self.onehot7_matrix,
+                                                  self.error_mask,
                                                   is_plus_strand=False)
         # put everything together
         labels = labels_plus + labels_minus
@@ -198,8 +200,10 @@ class AnnotationNumerifier(Numerifier):
         one_hot_matrix[:, 2] = np.logical_and(np.logical_and(col_0, col_1), np.logical_not(col_2))
         # Introns
         one_hot_matrix[:, 3] = np.logical_and(col_0, col_2)
-        self.onehot4_matrix = one_hot_matrix.astype(np.int8)
         assert np.all(np.count_nonzero(one_hot_matrix, axis=1) == 1)
+
+        one_hot4_matrix = one_hot_matrix.astype(np.int8)
+        return one_hot4_matrix
 
     def _encode_onehot7(self):
         add = np.array([[0, 0, 0]])
@@ -213,7 +217,8 @@ class AnnotationNumerifier(Numerifier):
         add2 = np.array([[0, 0, 0, 0, 0, 0]])
         shape_stack = np.insert(stack, 0, add2, axis=0).astype(np.int8)
         shape_end_stack = np.insert(stack, len(stack), add2, axis=0).astype(np.int8)
-        self.onehot7_matrix = np.logical_or(shape_stack, shape_end_stack).astype(np.int8)
+        one_hot7_matrix = np.logical_or(shape_stack, shape_end_stack).astype(np.int8)
+        return one_hot7_matrix
         # ToDO maybe re-implement None-Transition if needed
         #y_is_no_Transition = np.all(np.logical_not(merged_stacks), axis=-1).astype(np.int8)
 
