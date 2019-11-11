@@ -135,8 +135,6 @@ class AnnotationNumerifier(Numerifier):
     def __init__(self, coord, features, max_len):
         Numerifier.__init__(self, n_cols=3, coord=coord, max_len=max_len, dtype=np.int8)
         self.features = features
-        #self.onehot4_matrix = None
-        #self.binary_transition_matrix = None
 
     def coord_to_matrices(self):
         """Always numerifies both strands one after the other."""
