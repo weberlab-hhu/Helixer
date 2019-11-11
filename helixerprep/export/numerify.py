@@ -135,8 +135,8 @@ class AnnotationNumerifier(Numerifier):
     def __init__(self, coord, features, max_len):
         Numerifier.__init__(self, n_cols=3, coord=coord, max_len=max_len, dtype=np.int8)
         self.features = features
-        self.onehot4_matrix = None
-        self.onehot7_matrix = None
+        #self.onehot4_matrix = None
+        #self.binary_transition_matrix = None
 
     def coord_to_matrices(self):
         """Always numerifies both strands one after the other."""
@@ -144,22 +144,22 @@ class AnnotationNumerifier(Numerifier):
         self._zero_matrix()
         self._update_matrix_and_error_mask(is_plus_strand=True)
         self.onehot4_matrix = self._encode_onehot4()
-        self.onehot7_matrix = self._encode_onehot7()
+        self.binary_transition_matrix = self._encode_transitions()
         labels_plus, error_mask_plus = self._slice_matrix(self.onehot4_matrix,
                                                           self.error_mask,
                                                           is_plus_strand=True)
-        transitions_plus, _ = self._slice_matrix(self.onehot7_matrix,
+        transitions_plus, _ = self._slice_matrix(self.binary_transition_matrix,
                                                  self.error_mask,
                                                  is_plus_strand=True)
         # minus strand
         self._zero_matrix()
         self._update_matrix_and_error_mask(is_plus_strand=False)
         self.onehot4_matrix = self._encode_onehot4()
-        self.onehot7_matrix = self._encode_onehot7()
+        self.binary_transition_matrix  = self._encode_transitions()
         labels_minus, error_mask_minus = self._slice_matrix(self.onehot4_matrix,
                                                             self.error_mask,
                                                             is_plus_strand=False)
-        transitions_minus, _ = self._slice_matrix(self.onehot7_matrix,
+        transitions_minus, _ = self._slice_matrix(self.binary_transition_matrix,
                                                   self.error_mask,
                                                   is_plus_strand=False)
         # put everything together
@@ -205,7 +205,7 @@ class AnnotationNumerifier(Numerifier):
         one_hot4_matrix = one_hot_matrix.astype(np.int8)
         return one_hot4_matrix
 
-    def _encode_onehot7(self):
+    def _encode_transitions(self):
         add = np.array([[0, 0, 0]])
         shifted_feature_matrix = np.vstack((self.matrix[1:], add))
 
@@ -217,13 +217,8 @@ class AnnotationNumerifier(Numerifier):
         add2 = np.array([[0, 0, 0, 0, 0, 0]])
         shape_stack = np.insert(stack, 0, add2, axis=0).astype(np.int8)
         shape_end_stack = np.insert(stack, len(stack), add2, axis=0).astype(np.int8)
-        one_hot7_matrix = np.logical_or(shape_stack, shape_end_stack).astype(np.int8)
-        return one_hot7_matrix
-        # ToDO maybe re-implement None-Transition if needed
-        #y_is_no_Transition = np.all(np.logical_not(merged_stacks), axis=-1).astype(np.int8)
-
-        #self.onehot7_matrix = np.concatenate((merged_stacks, y_is_no_Transition[:, None]), axis=1)
-
+        binary_transitions  = np.logical_or(shape_stack, shape_end_stack).astype(np.int8)
+        return binary_transitions # 6 columns, one for each switch (+TR, +CDS, +In, -TR, -CDS, -In)
 
 class CoordNumerifier(object):
     """Combines the different Numerifiers which need to operate on the same Coordinate
