@@ -34,11 +34,14 @@ for folder in os.listdir(trials_folder):
     # get genome name
     parameters = eval(open('{}/{}/parameter.cfg'.format(trials_folder, folder)).read())
     path = parameters['parameters']['test_data']
-    # genome = path.split('/')[5]  # when from cluster
-    genome = path.split('/')[6]
+
+    if args.server == 'clc':
+        genome = path.split('/')[6]
+    else:
+        genome = path.split('/')[5]  # when from cluster
 
     # get sequence error rate
-    f = h5py.File('/home/felix/Desktop/data/single_genomes/' + genome + '/h5_data_20k/test_data.h5')
+    f = h5py.File('/home/felix/Desktop/data/single_genomes/' + genome + '/h5_data_20k/test_data.h5', 'r')
     n_samples = f['/data/X'].shape[0]
     err = np.array(f['/data/err_samples'])
     n_err_samples = np.count_nonzero(err == True)
