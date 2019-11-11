@@ -101,10 +101,12 @@ class LSTMModel(HelixerModel):
 
     def compile_model(self, model):
         run_options = tf.RunOptions(report_tensor_allocations_upon_oom=True)
+        run_metadata = tf.RunMetadata()
         model.compile(optimizer=self.optimizer,
                       loss='categorical_crossentropy',
                       sample_weight_mode='temporal',
-                      options=run_options)
+                      options=run_options,
+                      run_metadata=run_metadata)
 
 
 if __name__ == '__main__':
