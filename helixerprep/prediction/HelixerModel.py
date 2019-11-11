@@ -19,6 +19,7 @@ import tensorflow as tf
 from pprint import pprint
 from functools import partial
 from sklearn.preprocessing import MinMaxScaler
+from tensorflow.python.client import timeline
 
 from keras_layer_normalization import LayerNormalization
 from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
@@ -151,6 +152,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--specific-gpu-id', type=int, default=-1)
         # misc flags
         self.parser.add_argument('-nni', '--nni', action='store_true')
+        self.parser.add_argument('-trace', '--trace', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
 
     def parse_args(self):
@@ -361,12 +363,28 @@ class HelixerModel(ABC):
         else:
             print('Total params: {:,}'.format(model.count_params()))
 
+    def _trace(self, model, generator):
+        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+        fn = K.function(model.inputs, model.outputs, options=run_options, run_metadata=run_metadata)
+        for i in range(4):
+            x = K.variable(generator[i][0], dtype='float32')
+            fn([x])
+            tl = timeline.Timeline(run_metadata.step_stats)
+            ctf = tl.generate_chrome_trace_format()
+            with open('timeline_%d.json' % (i), 'w') as f:
+                f.write(ctf)
+                print(f'trace {i} printed')
+
     def run(self):
         self.set_resources()
         self.open_data_files()
         # we either train or predict
         if not self.load_model_path:
             model = self.model()
+            if self.trace:
+                self._trace(model, self.gen_training_data())
+                exit()
             if self.gpus >= 2:
                 model = multi_gpu_model(model, gpus=self.gpus)
             self._print_model_info(model)
