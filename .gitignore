@@ -18,6 +18,7 @@ config*.yml
 jobs/*/*
 nohup.out
 metadata.csv
+timeline*.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
