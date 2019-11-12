@@ -5,10 +5,12 @@ import time
 import numpy as np
 import random
 import datetime
+import subprocess
 from itertools import compress
 from collections import defaultdict
 from sklearn.model_selection import train_test_split
 
+import geenuff, helixerprep
 from geenuff.base.orm import Coordinate, Genome, Feature
 from geenuff.base.helpers import full_db_path
 from geenuff.applications.exporter import GeenuffExportController
@@ -189,6 +191,12 @@ class HelixerExportController(object):
             'one_hot': str(one_hot),
             'keep_errors': str(keep_errors),
         }
+        # get GeenuFF and Helixer commit hashes
+        for module in [geenuff, helixerprep]:
+            os.chdir(os.path.dirname(module.__file__))
+            cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
+            attrs[module.__name__ + '_commit'] = subprocess.check_output(cmd).strip().decode()
+        # insert attrs into .h5 file
         for key, value in attrs.items():
             if self.only_test_set:
                 self.h5_test.attrs[key] = value
