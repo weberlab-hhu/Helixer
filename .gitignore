@@ -19,6 +19,7 @@ jobs/*/*
 nohup.out
 metadata.csv
 timeline*.json
+*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
