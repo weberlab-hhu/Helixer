@@ -147,17 +147,17 @@ class AnnotationNumerifier(Numerifier):
         transitions = plus_strand[2] + minus_strand[2]
         return labels, transitions, error_masks
 
-    def _encode_strand(self, boool):
+    def _encode_strand(self, bool_):
         self._zero_matrix()
-        self._update_matrix_and_error_mask(is_plus_strand=boool)
+        self._update_matrix_and_error_mask(is_plus_strand=bool_)
         self.onehot4_matrix = self._encode_onehot4()
         self.binary_transition_matrix = self._encode_transitions()
         labels_placeholder, error_mask_placeholder = self._slice_matrix(self.onehot4_matrix,
                                                                         self.error_mask,
-                                                                        is_plus_strand=boool)
+                                                                        is_plus_strand=bool_)
         transitions_placeholder, _ = self._slice_matrix(self.binary_transition_matrix,
                                                         self.error_mask,
-                                                        is_plus_strand=boool)
+                                                        is_plus_strand=bool_)
         return (labels_placeholder, error_mask_placeholder, transitions_placeholder)
 
     def _update_matrix_and_error_mask(self, is_plus_strand):
