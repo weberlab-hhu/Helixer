@@ -13,8 +13,8 @@ helixerprep/testdata/tmp.db
 helixerprep/testdata/numerify_test_out/*
 best_model.h5
 predictions.h5
-search_space.json
-config.yml
+search_space*.json
+config*.yml
 jobs/*/*
 nohup.out
 metadata.csv
