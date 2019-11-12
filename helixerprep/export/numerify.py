@@ -136,32 +136,29 @@ class AnnotationNumerifier(Numerifier):
         Numerifier.__init__(self, n_cols=3, coord=coord, max_len=max_len, dtype=np.int8)
         self.features = features
 
+    def coord_to_matrices(self):
+        """Always numerifies both strands one after the other."""
+        plus_strand = self._encode_strand(True)
+        minus_strand = self._encode_strand(False)
 
+        # put everything together
+        labels = plus_strand[0] + minus_strand[0]
+        error_masks = plus_strand[1] + minus_strand[1]
+        transitions = plus_strand[2] + minus_strand[2]
+        return labels, transitions, error_masks
 
-    # def coord_to_matrices(self):
-    #     """Always numerifies both strands one after the other."""
-    #     plus_strand = self._encode_strand(True)
-    #     minus_strand = self._encode_strand(False)
-    #
-    #     # put everything together
-    #     labels = plus_strand[0] + minus_strand[0]
-    #     error_masks = plus_strand[1] + minus_strand[1]
-    #     transitions = plus_strand[2] + minus_strand[2]
-    #     return labels, transitions, error_masks
-    #
-    # def _encode_strand(self, boool):
-    #     self._zero_matrix()
-    #     self._update_matrix_and_error_mask(is_plus_strand=boool)
-    #     self.onehot4_matrix = self._encode_onehot4()
-    #     self.binary_transition_matrix = self._encode_transitions()
-    #     labels_placeholder, error_mask_placeholder = self._slice_matrix(self.onehot4_matrix,
-    #                                                                     self.error_mask,
-    #                                                                     is_plus_strand=boool)
-    #     transitions_placeholder, _ = self._slice_matrix(self.binary_transition_matrix,
-    #                                                     self.error_mask,
-    #                                                     is_plus_strand=boool)
-    #     return (labels_placeholder, error_mask_placeholder, transitions_placeholder)
-
+    def _encode_strand(self, boool):
+        self._zero_matrix()
+        self._update_matrix_and_error_mask(is_plus_strand=boool)
+        self.onehot4_matrix = self._encode_onehot4()
+        self.binary_transition_matrix = self._encode_transitions()
+        labels_placeholder, error_mask_placeholder = self._slice_matrix(self.onehot4_matrix,
+                                                                        self.error_mask,
+                                                                        is_plus_strand=boool)
+        transitions_placeholder, _ = self._slice_matrix(self.binary_transition_matrix,
+                                                        self.error_mask,
+                                                        is_plus_strand=boool)
+        return (labels_placeholder, error_mask_placeholder, transitions_placeholder)
 
     def _update_matrix_and_error_mask(self, is_plus_strand):
         for feature in self.features:
