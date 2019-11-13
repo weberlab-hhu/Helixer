@@ -53,6 +53,16 @@ def acc_ig_oh(y_true, y_pred):
     return acc_region(y_true, y_pred, 0, 1.0)
 
 
+class SaveEveryEpoch(Callback):
+    def __init__(self, output_dir):
+        super(SaveEveryEpoch, self).__init__()
+        self.output_dir = output_dir
+
+    def on_epoch_end(self, epoch, _):
+        path = os.path.join(self.output_dir, f'model{epoch}.h5')
+        self.model.save(path)
+        print(f'saved model at {path}')
+
 class ConfusionMatrixTrain(Callback):
     def __init__(self, generator, save_model_path, report_to_nni=False):
         self.generator = generator
@@ -151,6 +161,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cpus', '--cpus', type=int, default=8)
         self.parser.add_argument('--specific-gpu-id', type=int, default=-1)
         # misc flags
+        self.parser.add_argument('-see', '--save-every-epoch', action='store_true')
         self.parser.add_argument('-nni', '--nni', action='store_true')
         self.parser.add_argument('-trace', '--trace', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
@@ -180,7 +191,8 @@ class HelixerModel(ABC):
     def generate_callbacks(self):
         cm_cb = ConfusionMatrixTrain(self.gen_validation_data(), self.save_model_path,
                                      report_to_nni=self.nni)
-        return [cm_cb]
+        see_cb = SaveEveryEpoch(os.path.dirname(self.save_model_path))
+        return [cm_cb, see_cb]
 
     def set_resources(self):
         K.set_floatx(self.float_precision)
