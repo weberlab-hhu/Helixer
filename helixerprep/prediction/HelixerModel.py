@@ -14,6 +14,7 @@ import random
 import argparse
 import datetime
 import importlib
+import subprocess
 import numpy as np
 import tensorflow as tf
 from pprint import pprint
@@ -370,6 +371,13 @@ class HelixerModel(ABC):
         return model
 
     def _print_model_info(self, model):
+        os.chdir(os.path.dirname(__file__))
+        cmd = ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
+        branch = subprocess.check_output(cmd).strip().decode()
+        cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
+        commit = subprocess.check_output(cmd).strip().decode()
+        print(f'Current helixerprep branch: {branch} ({commit})\n')
+
         if self.verbose:
             print(model.summary())
         else:
@@ -384,7 +392,7 @@ class HelixerModel(ABC):
             fn([x])
             tl = timeline.Timeline(run_metadata.step_stats)
             ctf = tl.generate_chrome_trace_format()
-            with open('timeline_%d.json' % (i), 'w') as f:
+            with open(f'timeline_{i}.json', 'w') as f:
                 f.write(ctf)
                 print(f'trace {i} printed')
 
