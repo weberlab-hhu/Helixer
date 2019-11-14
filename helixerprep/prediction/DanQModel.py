@@ -60,16 +60,17 @@ class DanQSequence(HelixerSequence):
                 cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
                 # add class weights to applicable timesteps
                 cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
-                sw = np.sum(cw_arrays, axis=2)
+                cw = np.sum(cw_arrays, axis=2)
+                sw = np.multiply(cw, sw)
             if self.transitions is not None:
                 sw_t= [np.any((transitions[:, :, :, col] == 1), axis=2) for col in range(6)]
                 sw_t = np.stack(sw_t, axis = 2).astype(np.int8)
                 sw_t = np.multiply(sw_t, self.transitions)
-                
+
                 sw_t = np.sum(sw_t, axis = 2)
                 where_are_ones = np.where(sw_t == 0)
                 sw_t[where_are_ones[0], where_are_ones[1]] = 1
-                sw = np.multiply(sw_t, sw) 
+                sw = np.multiply(sw_t, sw)
 
 
         # put together returned inputs/outputs
