@@ -101,6 +101,9 @@ class HelixerSequence(Sequence):
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
         self._load_and_scale_meta_info()
+        self.transitions_dset = h5_file['data/transitions']
+        self.transitions = self.model.transitions
+        self.debug = self.model.debug
 
         # set array of usable indexes, always exclude all erroneous sequences during training
         if mode == 'train':
@@ -126,8 +129,10 @@ class HelixerSequence(Sequence):
         assert np.all(np.logical_and(self.coord_lengths >= 0.0, self.coord_lengths <= 1.0))
 
     def __len__(self):
-        # return 1
-        return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
+        if self.debug:
+            return 1
+        else:
+            return int(np.ceil(len(self.usable_idx) / float(self.batch_size)))
 
     @abstractmethod
     def __getitem__(self, idx):
@@ -151,6 +156,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
         self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
         self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
+        self.parser.add_argument('-t', '--transitions', type=str, default='None')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -166,13 +172,19 @@ class HelixerModel(ABC):
         self.parser.add_argument('-nni', '--nni', action='store_true')
         self.parser.add_argument('-trace', '--trace', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
+        self.parser.add_argument('-db', '--debug', action='store_true')
 
     def parse_args(self):
         args = vars(self.parser.parse_args())
         self.__dict__.update(args)
+
         self.class_weights = eval(self.class_weights)
         if type(self.class_weights) is list:
             self.class_weights = np.array(self.class_weights, dtype=np.float32)
+
+        self.transitions = eval(self.transitions)
+        if type(self.transitions) is list:
+            self.transitions = np.array(self.transitions, dtype = np.float32)
 
         if self.nni:
             hyperopt_args = nni.get_next_parameter()
@@ -447,4 +459,5 @@ class HelixerModel(ABC):
                 if os.path.isfile(self.prediction_output_path):
                     print(f'{self.prediction_output_path} already existing and will be overridden.')
                 self._make_predictions(model)
+
             self.h5_test.close()

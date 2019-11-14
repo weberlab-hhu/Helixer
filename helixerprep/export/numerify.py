@@ -66,6 +66,7 @@ class Numerifier(ABC):
         # set paired steps
         partitioner = Stepper(end=self.coord.length, by=self.max_len)
         self.paired_steps = list(partitioner.step_to_end())
+
         super().__init__()
 
     @abstractmethod
@@ -131,27 +132,41 @@ class AnnotationNumerifier(Numerifier):
      }
     error_type_values = [t.value for t in types.Errors]
 
-    def __init__(self, coord, features, max_len, one_hot):
+    def __init__(self, coord, features, max_len):
         Numerifier.__init__(self, n_cols=3, coord=coord, max_len=max_len, dtype=np.int8)
         self.features = features
-        self.one_hot = one_hot
+        self.onehot4_matrix = None
+        self.onehot7_matrix = None
 
     def coord_to_matrices(self):
+        """Always numerifies both strands one after the other."""
         # plus strand
         self._zero_matrix()
         self._update_matrix_and_error_mask(is_plus_strand=True)
-        # very important to copy here
-        data_plus, error_mask_plus = self._slice_matrix(np.copy(self.matrix),
-                                                        np.copy(self.error_mask),
-                                                        is_plus_strand=True)
+        self.onehot4_matrix = self._encode_onehot4()
+        self.onehot7_matrix = self._encode_onehot7()
+        labels_plus, error_mask_plus = self._slice_matrix(self.onehot4_matrix,
+                                                          self.error_mask,
+                                                          is_plus_strand=True)
+        transitions_plus, _ = self._slice_matrix(self.onehot7_matrix,
+                                                 self.error_mask,
+                                                 is_plus_strand=True)
         # minus strand
         self._zero_matrix()
         self._update_matrix_and_error_mask(is_plus_strand=False)
-        data_minus, error_mask_minus = self._slice_matrix(self.matrix, self.error_mask, False)
+        self.onehot4_matrix = self._encode_onehot4()
+        self.onehot7_matrix = self._encode_onehot7()
+        labels_minus, error_mask_minus = self._slice_matrix(self.onehot4_matrix,
+                                                            self.error_mask,
+                                                            is_plus_strand=False)
+        transitions_minus, _ = self._slice_matrix(self.onehot7_matrix,
+                                                  self.error_mask,
+                                                  is_plus_strand=False)
         # put everything together
-        data = data_plus + data_minus
+        labels = labels_plus + labels_minus
+        transitions = transitions_plus + transitions_minus
         error_masks = error_mask_plus + error_mask_minus
-        return data, error_masks
+        return labels, transitions, error_masks
 
     def _update_matrix_and_error_mask(self, is_plus_strand):
         for feature in self.features:
@@ -170,24 +185,44 @@ class AnnotationNumerifier(Numerifier):
             else:
                 raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
 
-        # transform matrix into one-hot encoding for classical classification if desired
-        if self.one_hot:
-            # Class order: Intergenic, UTR, CDS, (non-coding Intron), Intron
-            # This could be done in a more efficient way, but this way we may catch bugs
-            # where non-standard classes are output in the multiclass output
-            one_hot_matrix = np.zeros((self.matrix.shape[0], 4), dtype=bool)
-            col_0, col_1, col_2 = self.matrix[:, 0], self.matrix[:, 1], self.matrix[:, 2]
-            # Intergenic
-            one_hot_matrix[:, 0] = np.logical_not(col_0)
-            # UTR
-            genic_non_coding = np.logical_and(col_0, np.logical_not(col_1))
-            one_hot_matrix[:, 1] = np.logical_and(genic_non_coding, np.logical_not(col_2))
-            # CDS
-            one_hot_matrix[:, 2] = np.logical_and(np.logical_and(col_0, col_1), np.logical_not(col_2))
-            # Introns
-            one_hot_matrix[:, 3] = np.logical_and(col_0, col_2)
-            self.matrix = one_hot_matrix.astype(np.int8)
-            # assert np.all(np.count_nonzero(self.matrix, axis=1) == 1)
+    def _encode_onehot4(self):
+        # Class order: Intergenic, UTR, CDS, (non-coding Intron), Intron
+        # This could be done in a more efficient way, but this way we may catch bugs
+        # where non-standard classes are output in the multiclass output
+        one_hot_matrix = np.zeros((self.matrix.shape[0], 4), dtype=bool)
+        col_0, col_1, col_2 = self.matrix[:, 0], self.matrix[:, 1], self.matrix[:, 2]
+        # Intergenic
+        one_hot_matrix[:, 0] = np.logical_not(col_0)
+        # UTR
+        genic_non_coding = np.logical_and(col_0, np.logical_not(col_1))
+        one_hot_matrix[:, 1] = np.logical_and(genic_non_coding, np.logical_not(col_2))
+        # CDS
+        one_hot_matrix[:, 2] = np.logical_and(np.logical_and(col_0, col_1), np.logical_not(col_2))
+        # Introns
+        one_hot_matrix[:, 3] = np.logical_and(col_0, col_2)
+        assert np.all(np.count_nonzero(one_hot_matrix, axis=1) == 1)
+
+        one_hot4_matrix = one_hot_matrix.astype(np.int8)
+        return one_hot4_matrix
+
+    def _encode_onehot7(self):
+        add = np.array([[0, 0, 0]])
+        shifted_feature_matrix = np.vstack((self.matrix[1:], add))
+
+        y_isTransition = np.logical_xor(self.matrix[:-1], shifted_feature_matrix[:-1]).astype(np.int8)
+        y_direction_zero_to_one = np.logical_and(y_isTransition, self.matrix[1:]).astype(np.int8)
+        y_direction_one_to_zero = np.logical_and(y_isTransition, self.matrix[:-1]).astype(np.int8)
+        stack = np.hstack((y_direction_zero_to_one, y_direction_one_to_zero))
+
+        add2 = np.array([[0, 0, 0, 0, 0, 0]])
+        shape_stack = np.insert(stack, 0, add2, axis=0).astype(np.int8)
+        shape_end_stack = np.insert(stack, len(stack), add2, axis=0).astype(np.int8)
+        one_hot7_matrix = np.logical_or(shape_stack, shape_end_stack).astype(np.int8)
+        return one_hot7_matrix
+        # ToDO maybe re-implement None-Transition if needed
+        #y_is_no_Transition = np.all(np.logical_not(merged_stacks), axis=-1).astype(np.int8)
+
+        #self.onehot7_matrix = np.concatenate((merged_stacks, y_is_no_Transition[:, None]), axis=1)
 
 
 class CoordNumerifier(object):
@@ -195,22 +230,17 @@ class CoordNumerifier(object):
     to ensure consistent parameters. Selects all Features of the given Coordinate.
     """
     @staticmethod
-    def numerify(geenuff_exporter, coord, coord_features, max_len, one_hot):
+    def numerify(geenuff_exporter, coord, coord_features, max_len):
         assert isinstance(max_len, int) and max_len > 0
         if not coord_features:
             logging.warning('Sequence {} has no annoations'.format(coord.seqid))
 
-        anno_numerifier = AnnotationNumerifier(coord=coord,
-                                               features=coord_features,
-                                               max_len=max_len,
-                                               one_hot=one_hot)
-
-        seq_numerifier = SequenceNumerifier(coord=coord,
-                                            max_len=max_len)
+        anno_numerifier = AnnotationNumerifier(coord=coord, features=coord_features, max_len=max_len)
+        seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len)
 
         # returns results for both strands, with the plus strand first in the list
         inputs, input_masks = seq_numerifier.coord_to_matrices()
-        labels, label_masks = anno_numerifier.coord_to_matrices()
+        labels, transitions, label_masks = anno_numerifier.coord_to_matrices()
 
         start_ends = anno_numerifier.paired_steps
         # flip the start ends back for - strand and append
@@ -230,6 +260,7 @@ class CoordNumerifier(object):
         out = {
             'inputs': inputs,
             'labels': labels,
+            'transitions': transitions,
             'label_masks': label_masks,
             'gc_contents': [gc_content] * len(inputs),
             'coord_lengths': [coord.length] * len(inputs),

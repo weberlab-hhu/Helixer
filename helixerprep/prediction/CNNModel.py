@@ -43,15 +43,17 @@ class CNNModel(HelixerModel):
                              padding="same",
                              activation="relu"))
 
-        model.add(Conv1D(filters=4,
+        model.add(Conv1D(filters=7,
+
                          kernel_size=self.final_kernel_size,
-                         activation="sigmoid",
+                         activation="relu",
                          padding="same"))
         return model
 
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
-                      loss='binary_crossentropy',
+                      loss='categorical_crossentropy',
+
                       metrics=['accuracy'])
 
 

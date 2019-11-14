@@ -59,6 +59,7 @@ class HelixerExportController(object):
         inputs = flat_data['inputs']
         labels = flat_data['labels']
         label_masks = flat_data['label_masks']
+        transitions = flat_data['transitions']
         # convert to numpy arrays
 
         # zero-pad each sequence to chunk_size
@@ -67,12 +68,16 @@ class HelixerExportController(object):
         n_seq = len(inputs)
         X = np.zeros((n_seq, chunk_size, 4), dtype=inputs[0].dtype)
         y = np.zeros((n_seq, chunk_size, n_y_cols), dtype=labels[0].dtype)
+        y_transitions = np.zeros((n_seq, chunk_size, 6), dtype=transitions[0].dtype)
         sample_weights = np.zeros((n_seq, chunk_size), dtype=label_masks[0].dtype)
+
         for j in range(n_seq):
             sample_len = len(inputs[j])
             X[j, :sample_len, :] = inputs[j]
             y[j, :sample_len, :] = labels[j]
+            y_transitions[j, :sample_len, :] = transitions[j]
             sample_weights[j, :sample_len] = label_masks[j]
+
         err_samples = np.any(sample_weights == 0, axis=1)
         # just one entry per chunk
         if n_y_cols > 3:
@@ -82,10 +87,11 @@ class HelixerExportController(object):
         gc_contents = np.array(flat_data['gc_contents'], dtype=np.uint64)
         coord_lengths = np.array(flat_data['coord_lengths'], dtype=np.uint64)
         start_ends = np.array(flat_data['start_ends'], dtype=np.int64)
+
         # check if this is the first batch to save
         dset_keys = [
             'X', 'y', 'sample_weights', 'gc_contents', 'coord_lengths', 'err_samples',
-            'fully_intergenic_samples', 'start_ends', 'species', 'seqids'
+            'fully_intergenic_samples', 'start_ends', 'species', 'seqids', 'transitions'
         ]
         if '/data/X' in h5_file:
             for dset_key in dset_keys:
@@ -150,9 +156,17 @@ class HelixerExportController(object):
                                    maxshape=(None, 2),
                                    dtype='int64',
                                    compression='lzf')
-        # add new data
+            h5_file.create_dataset('/data/transitions',
+                                   shape=(n_seq, chunk_size, 6),
+                                   maxshape=(None, chunk_size, 6),
+                                   chunks=(1, chunk_size, 6),
+                                   dtype='int8',  # guess we'll stick to int8
+                                   compression='lzf',
+                                   shuffle=True)
+            # add new data
         dsets = [X, y, sample_weights, gc_contents, coord_lengths, err_samples,
-                 fully_intergenic_samples, start_ends, flat_data['species'], flat_data['seqids']]
+                 fully_intergenic_samples, start_ends, flat_data['species'], flat_data['seqids'],
+                 y_transitions]
         for dset_key, data in zip(dset_keys, dsets):
             h5_file['/data/' + dset_key][old_len:] = data
         h5_file.flush()
@@ -183,12 +197,11 @@ class HelixerExportController(object):
                     val_coord_ids += genome_val_coord_ids
         return train_coord_ids, val_coord_ids
 
-    def _add_data_attrs(self, genomes, exclude, one_hot, keep_errors):
+    def _add_data_attrs(self, genomes, exclude, keep_errors):
         attrs = {
             'timestamp': str(datetime.datetime.now()),
             'genomes': ','.join(genomes),
             'exclude': ','.join(exclude),
-            'one_hot': str(one_hot),
             'keep_errors': str(keep_errors),
         }
         # get GeenuFF and Helixer commit hashes
@@ -211,9 +224,8 @@ class HelixerExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, keep_errors):
-        coord_data = CoordNumerifier.numerify(self.geenuff_exporter, coord, coord_features,
-                                              chunk_size, one_hot)
+    def _numerify_coord(self, coord, coord_features, chunk_size, keep_errors):
+        coord_data = CoordNumerifier.numerify(self.geenuff_exporter, coord, coord_features, chunk_size)
         # keep track of variables
         n_seqs = len(coord_data['labels'])
         n_masked_bases = sum([np.count_nonzero(m == 0) for m in coord_data['label_masks']])
@@ -232,7 +244,7 @@ class HelixerExportController(object):
         invalid_seqs_perc = n_invalid_seqs / n_seqs * 100
         return coord_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc
 
-    def export(self, chunk_size, genomes, exclude, val_size, one_hot, keep_errors):
+    def export(self, chunk_size, genomes, exclude, val_size, keep_errors):
         genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude)
         # make version without features for shorter downstream code
         genome_coords = {g_id: list(values.keys()) for g_id, values in genome_coord_features.items()}
@@ -241,13 +253,13 @@ class HelixerExportController(object):
 
         train_coords, val_coords = self._split_coords_by_N90(genome_coords, val_size)
         n_coords_done = 1
-        n_y_cols = 4 if one_hot else 3
+        n_y_cols = 4
         for genome_id, coords in genome_coords.items():
             for (coord_id, coord_len) in coords:
                 coord = self.geenuff_exporter.get_coord_by_id(coord_id)
                 coord_features = genome_coord_features[genome_id][(coord_id, coord_len)]
-                numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size, one_hot,
-                                                        keep_errors)
+                numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size, keep_errors)
+
                 flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc = numerify_outputs
                 if self.only_test_set:
                     self._save_data(self.h5_test, flat_data, chunk_size, n_y_cols)
@@ -269,5 +281,5 @@ class HelixerExportController(object):
                 for key in dset_keys:
                     del flat_data[key]
 
-        self._add_data_attrs(genomes, exclude, one_hot, keep_errors)
+        self._add_data_attrs(genomes, exclude, keep_errors)
         self._close_files()

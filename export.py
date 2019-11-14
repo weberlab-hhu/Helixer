@@ -14,7 +14,7 @@ def main(args):
         args.exclude_genomes = args.exclude_genomes.split(',')
 
     controller.export(chunk_size=args.chunk_size, genomes=args.genomes, exclude=args.exclude_genomes,
-                      val_size=args.val_size, one_hot=args.one_hot, keep_errors=args.keep_errors)
+                      val_size=args.val_size, keep_errors=args.keep_errors)
 
 
 if __name__ == '__main__':
@@ -39,8 +39,6 @@ if __name__ == '__main__':
                       help='Size of the chunks each genomic sequence gets cut into.')
     data.add_argument('--val-size', type=float, default=0.2,
                       help='The chance for a sequence or coordinate to end up in validation_data.h5' )
-    data.add_argument('--one-hot', action='store_true',
-                      help='Whether to use a one-hot encoding instead of multi class output.')
     data.add_argument('--only-test-set', action='store_true',
                       help='Whether to only output a single file named test_data.h5')
     data.add_argument('--keep_errors', action="store_true",

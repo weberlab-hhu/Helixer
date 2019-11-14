@@ -20,6 +20,7 @@ nohup.out
 metadata.csv
 timeline*.json
 *.png
+*.swp
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
