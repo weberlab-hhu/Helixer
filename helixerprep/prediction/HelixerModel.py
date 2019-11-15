@@ -1,6 +1,3 @@
-import warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
-
 from abc import ABC, abstractmethod
 import os
 import sys
@@ -30,28 +27,6 @@ from keras.models import load_model
 from keras.utils import multi_gpu_model, Sequence
 
 from ConfusionMatrix import ConfusionMatrix
-
-
-def acc_region(y_true, y_pred, col, value):
-    non_zero_pad_mask = K.any(tf.equal(y_true, tf.constant(1.0)), axis=-1)
-    content_mask = tf.equal(y_true[:, :, :, col], tf.constant(value))
-    mask = tf.logical_and(non_zero_pad_mask, content_mask)
-
-    y_true = K.argmax(tf.boolean_mask(y_true, mask), axis=-1)
-    y_pred = K.argmax(tf.boolean_mask(y_pred, mask), axis=-1)
-
-    errors = K.cast(K.equal(y_true, y_pred), K.floatx())
-    error_return = tf.cond(tf.equal(tf.size(errors), 0),
-                           lambda: tf.constant(0.0), lambda: K.mean(errors))
-    return error_return
-
-
-def acc_g_oh(y_true, y_pred):
-    return acc_region(y_true, y_pred, 0, 0.0)
-
-
-def acc_ig_oh(y_true, y_pred):
-    return acc_region(y_true, y_pred, 0, 1.0)
 
 
 class SaveEveryEpoch(Callback):
@@ -378,8 +353,6 @@ class HelixerModel(ABC):
     def _load_helixer_model(self):
         model = load_model(self.load_model_path, custom_objects = {
             'LayerNormalization': LayerNormalization,
-            'acc_g_oh': acc_g_oh,
-            'acc_ig_oh': acc_ig_oh,
         })
         return model
 

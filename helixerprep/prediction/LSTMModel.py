@@ -1,4 +1,7 @@
 #! /usr/bin/env python3
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 import random
 import numpy as np
 import tensorflow as tf
