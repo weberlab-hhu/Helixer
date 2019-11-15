@@ -22,7 +22,9 @@ class LSTMSequence(HelixerSequence):
         X = np.stack(self.x_dset[usable_idx_slice])
         y = np.stack(self.y_dset[usable_idx_slice])
         sw = np.stack(self.sw_dset[usable_idx_slice])
-        transitions = np.stack(self.transitions_dset[usable_idx_slice])
+        if self.transitions is not None:
+            transitions = np.stack(self.transitions_dset[usable_idx_slice])
+
         if pool_size > 1:
             if y.shape[1] % pool_size != 0:
                 # clip to maximum size possible with the pooling length
@@ -45,12 +47,14 @@ class LSTMSequence(HelixerSequence):
                 y.shape[-1],
             ))
 
-            transitions = transitions.reshape((
-                transitions.shape[0],
-                transitions.shape[1] // pool_size,
-                pool_size,
-                transitions.shape[-1],
-            ))
+            if self.transitions is not None:
+                transitions = transitions.reshape((
+                    transitions.shape[0],
+                    transitions.shape[1] // pool_size,
+                    pool_size,
+                    transitions.shape[-1],
+                ))
+
             # mark any multi-base timestep as error if any base has an error
             sw = sw.reshape((sw.shape[0], -1, pool_size))
             sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)

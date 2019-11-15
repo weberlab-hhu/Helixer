@@ -97,12 +97,13 @@ class HelixerSequence(Sequence):
         self.float_precision = self.model.float_precision
         self.class_weights = self.model.class_weights
         self.meta_losses = self.model.meta_losses
+        self.transitions = self.model.transitions
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
+        if self.transitions is not None:
+            self.transitions_dset = h5_file['data/transitions']
         self._load_and_scale_meta_info()
-        self.transitions_dset = h5_file['data/transitions']
-        self.transitions = self.model.transitions
         self.debug = self.model.debug
 
         # set array of usable indexes, always exclude all erroneous sequences during training
