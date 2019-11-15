@@ -178,10 +178,11 @@ class HelixerModel(ABC):
             pprint(args)
 
     def generate_callbacks(self):
-        cm_cb = ConfusionMatrixTrain(self.gen_validation_data(), self.save_model_path,
-                                     report_to_nni=self.nni)
-        see_cb = SaveEveryEpoch(os.path.dirname(self.save_model_path))
-        return [cm_cb, see_cb]
+        callbacks = [ConfusionMatrixTrain(self.gen_validation_data(), self.save_model_path,
+                                          report_to_nni=self.nni)]
+        if self.save_every_epoch:
+            callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
+        return callbacks
 
     def set_resources(self):
         K.set_floatx(self.float_precision)
