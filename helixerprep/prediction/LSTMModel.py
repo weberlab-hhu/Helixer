@@ -19,23 +19,10 @@ class LSTMSequence(HelixerSequence):
             assert not mode == 'test'  # only use class weights during training and validation
 
     def __getitem__(self, idx):
+        X, y, sw, transitions = self._get_batch_data(idx)
         pool_size = self.model.pool_size
-        usable_idx_slice = self.usable_idx[idx * self.batch_size:(idx + 1) * self.batch_size]
-        usable_idx_slice = sorted(list(usable_idx_slice))  # got to always provide a sorted list of idx
-        X = self.x_dset[usable_idx_slice]
-        y = self.y_dset[usable_idx_slice]
-        sw = self.sw_dset[usable_idx_slice]
-        if self.transitions is not None:
-            transitions = self.transitions_dset[usable_idx_slice]
-
         if pool_size > 1:
-            if y.shape[1] % pool_size != 0:
-                # clip to maximum size possible with the pooling length
-                overhang = y.shape[1] % pool_size
-                X = X[:, :-overhang]
-                y = y[:, :-overhang]
-                sw = sw[:, :-overhang]
-                transitions = transitions[:, :-overhang]
+            assert y.shape[1] % pool_size == 0, 'pooling size has to evenly divide seq len'
 
             X = X.reshape((
                 X.shape[0],
