@@ -454,6 +454,7 @@ class HelixerModel(ABC):
         pred_out.attrs['model_config'] = h5_model.attrs['model_config']
         pred_out.attrs['n_bases_removed'] = n_removed
         pred_out.attrs['test_data_path'] = self.test_data
+        pred_out.attrs['model_path'] = self.load_model_path
         pred_out.attrs['timestamp'] = str(datetime.datetime.now())
         pred_out.attrs['model_md5sum'] = self.loaded_model_hash
         pred_out.close()
