@@ -455,6 +455,7 @@ class HelixerModel(ABC):
         pred_out.attrs['n_bases_removed'] = n_removed
         pred_out.attrs['test_data_path'] = self.test_data
         pred_out.attrs['timestamp'] = str(datetime.datetime.now())
+        pred_out.attrs['model_md5sum'] = self.loaded_model_hash
         pred_out.close()
         h5_model.close()
 
@@ -470,7 +471,12 @@ class HelixerModel(ABC):
         branch = subprocess.check_output(cmd).strip().decode()
         cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
         commit = subprocess.check_output(cmd).strip().decode()
-        print(f'Current helixerprep branch: {branch} ({commit})\n')
+        print(f'Current helixerprep branch: {branch} ({commit})')
+        if self.load_model_path:
+            cmd = ['md5sum', self.load_model_path]
+            self.loaded_model_hash = subprocess.check_output(cmd).strip().decode()
+            print(f'Md5sum of the loaded model: {self.loaded_model_hash}')
+        print()
 
         if self.verbose:
             print(model.summary())

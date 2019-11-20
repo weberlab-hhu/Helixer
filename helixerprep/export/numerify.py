@@ -217,7 +217,7 @@ class CoordNumerifier(object):
     to ensure consistent parameters. Selects all Features of the given Coordinate.
     """
     @staticmethod
-    def numerify(geenuff_exporter, coord, coord_features, max_len):
+    def numerify(geenuff_exporter, coord, coord_features, max_len, skip_meta_info):
         assert isinstance(max_len, int) and max_len > 0
         if not coord_features:
             logging.warning('Sequence {} has no annoations'.format(coord.seqid))
@@ -233,26 +233,29 @@ class CoordNumerifier(object):
         # flip the start ends back for - strand and append
         start_ends += [(x[1], x[0]) for x in anno_numerifier.paired_steps[::-1]]
 
-        try:
-            # need to hijack the session from geenuff_exporter as the Mer table does not exist there
-            gc_content = (geenuff_exporter.session.query(Mer.count)
-                .filter(Mer.coordinate == coord)
-                .filter(Mer.mer_sequence == 'C')
-                .one()[0])
-        except NoResultFound:
-            gc_content = 0
-            logging.warning('No gc_content found for coord {}, set to 0 in the data'
-                                 .format(coord.seqid))
+        if not skip_meta_info:
+            try:
+                # need to hijack the session from geenuff_exporter as the Mer table does not exist there
+                gc_content = (geenuff_exporter.session.query(Mer.count)
+                    .filter(Mer.coordinate == coord)
+                    .filter(Mer.mer_sequence == 'C')
+                    .one()[0])
+            except NoResultFound:
+                gc_content = 0
+                logging.warning('No gc_content found for coord {}, set to 0 in the data'
+                                     .format(coord.seqid))
+
         # do not output the input_masks as it is not used for anything
         out = {
             'inputs': inputs,
             'labels': labels,
             'transitions': transitions,
             'label_masks': label_masks,
-            'gc_contents': [gc_content] * len(inputs),
-            'coord_lengths': [coord.length] * len(inputs),
             'species': [coord.genome.species.encode('ASCII')] * len(inputs),
             'seqids': [coord.seqid.encode('ASCII')] * len(inputs),
             'start_ends': start_ends,
         }
+        if not skip_meta_info:
+            out['gc_contents'] = [gc_content] * len(inputs)
+            out['coord_lengths'] = [coord.length] * len(inputs)
         return out
