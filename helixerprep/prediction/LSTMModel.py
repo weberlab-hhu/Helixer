@@ -37,7 +37,7 @@ class LSTMSequence(HelixerSequence):
                 y.shape[-1],
             ))
 
-            if self.transitions is not None:
+            if self.transition_weights is not None:
                 transitions = transitions.reshape((
                     transitions.shape[0],
                     transitions.shape[1] // pool_size,
@@ -62,10 +62,10 @@ class LSTMSequence(HelixerSequence):
                 cw = np.sum(cw_arrays, axis=2)
                 # multiply with previous sample weights
                 sw = np.multiply(sw, cw)
-            if self.transitions is not None:
+            if self.transition_weights is not None:
                 sw_t = [np.any((transitions[:, :, :, col] == 1),axis=2) for col in range(6)]
                 sw_t = np.stack(sw_t, axis=2).astype(np.int8)
-                sw_t = np.multiply(sw_t, self.transitions)
+                sw_t = np.multiply(sw_t, self.transition_weights)
 
                 sw_t = np.sum(sw_t, axis=2)
                 where_are_ones = np.where(sw_t == 0)

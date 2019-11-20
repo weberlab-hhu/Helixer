@@ -69,12 +69,12 @@ class HelixerSequence(Sequence):
         self.h5_file = h5_file
         self.mode = mode
         self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'meta_losses',
-                                 'transitions', 'overlap', 'overlap_offset', 'core_length'])
+                                 'transition_weights', 'overlap', 'overlap_offset', 'core_length'])
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
         self.seqids_dset = h5_file['/data/seqids']
-        if self.transitions is not None:
+        if self.transition_weights is not None:
             self.transitions_dset = h5_file['data/transitions']
         self.chunk_size = self.y_dset.shape[1]
         self._load_and_scale_meta_info()
@@ -129,7 +129,7 @@ class HelixerSequence(Sequence):
 
         y = self.y_dset[usable_idx_batch]
         sw = self.sw_dset[usable_idx_batch]
-        if self.transitions is not None:
+        if self.transition_weights is not None:
             transitions = self.transitions_dset[usable_idx_batch]
         else:
             transitions = None
@@ -178,7 +178,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
         self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
         self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
-        self.parser.add_argument('-t', '--transitions', type=str, default='None')
+        self.parser.add_argument('-tw', '--transition_weights', type=str, default='None')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -208,9 +208,9 @@ class HelixerModel(ABC):
         if type(self.class_weights) is list:
             self.class_weights = np.array(self.class_weights, dtype=np.float32)
 
-        self.transitions = eval(self.transitions)
-        if type(self.transitions) is list:
-            self.transitions = np.array(self.transitions, dtype = np.float32)
+        self.transition_weights = eval(self.transition_weights)
+        if type(self.transition_weights) is list:
+            self.transition_weights = np.array(self.transition_weights, dtype = np.float32)
 
         if self.overlap:
             assert self.load_model_path  # only use overlapping during test time
