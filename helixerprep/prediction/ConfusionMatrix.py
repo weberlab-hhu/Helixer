@@ -96,7 +96,8 @@ class ConfusionMatrix():
 
     def calculate_cm(self, model):
         for i in range(len(self.generator)):
-            print(i, '/', len(self.generator), end="\r")
+            print(i, '/', len(self.generator) - 1, end="\r")
+
             X, y_true, sw = self.generator[i]
             y_pred = model.predict_on_batch(X)
 

@@ -2,7 +2,7 @@
 from keras.models import Sequential, Model
 from keras.layers import Conv1D, Dense, Flatten, Reshape, Input, BatchNormalization, Activation, MaxPool1D, Dropout, \
     Concatenate
-from HelixerModel import HelixerModel, HelixerSequence, acc_row, acc_g_row, acc_ig_row
+from HelixerModel import HelixerModel, HelixerSequence
 from CNNModel import CNNSequence
 import random
 import numpy as np
@@ -106,15 +106,15 @@ class InceptionModel(HelixerModel):
                 conv_in3 = Dropout(rate=inception_dropout)(conv_in3)
 
             current = Concatenate(axis=2)([conv_in1, conv_in2, conv_in3])
-
+        #import pudb; pudb.set_trace()
         # post-inception FCs
         flattened = Flatten()(current)
         dense = Dense(units=192, activation="relu")(flattened)
         dense_drop = Dropout(rate=0.8)(dense)
 
-        flat_preds = Dense(units=3 * self.shape_train[1], activation="sigmoid")(dense_drop)
-        pred_logits = Reshape(target_shape=(self.shape_train[1], 3))(flat_preds)
-
+        flat_preds = Dense(units=7 * self.shape_train[1], activation="relu")(dense_drop)
+        pred_logits = Reshape(target_shape=(self.shape_train[1], 7))(flat_preds)
+       # import pudb; pudb.set_trace()
         # add input & output to actual keras Model
         model = Model(inputs=input, outputs=pred_logits)
 
@@ -122,14 +122,10 @@ class InceptionModel(HelixerModel):
 
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
-                      loss='binary_crossentropy',
+                      loss='categorical_crossentropy',
                       #sample_weight_mode='temporal',
                       metrics=[
-                          'accuracy',
-                          acc_row,
-                          acc_g_row,
-                          acc_ig_row,
-                      ])
+                          'accuracy'])
 
 
 if __name__ == '__main__':
