@@ -40,31 +40,34 @@ class SaveEveryEpoch(Callback):
         print(f'saved model at {path}')
 
 class ConfusionMatrixTrain(Callback):
-    def __init__(self, generator, save_model_path, report_to_nni=False):
-        self.generator = generator
+    def __init__(self, save_model_path, val_generator, canary_generator=None, report_to_nni=False):
         self.save_model_path = save_model_path
+        self.val_generator = val_generator
+        self.canary_generator = canary_generator
         self.report_to_nni = report_to_nni
-        self.best_genic_f1 = 0.0
+        self.best_val_genic_f1 = 0.0
 
     def on_epoch_end(self, epoch, logs=None):
-        genic_f1 = HelixerModel.run_confusion_matrix(self.generator, self.model)
+        val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, self.model)
+        if self.canary_generator:
+            print('canary cm:')
+            _ = HelixerModel.run_confusion_matrix(self.canary_generator, self.model)
         if self.report_to_nni:
-            nni.report_intermediate_result(genic_f1)
-        if genic_f1 > self.best_genic_f1:
-            self.best_genic_f1 = genic_f1
+            nni.report_intermediate_result(val_genic_f1)
+        if val_genic_f1 > self.best_val_genic_f1:
+            self.best_val_genic_f1 = val_genic_f1
             self.model.save(self.save_model_path)
-            print('saved new best model with genic f1 of {} at {}'.format(self.best_genic_f1,
+            print('saved new best model with genic f1 of {} at {}'.format(self.best_val_genic_f1,
                                                                           self.save_model_path))
 
     def on_train_end(self, logs=None):
         if self.report_to_nni:
-            nni.report_final_result(self.best_genic_f1)
+            nni.report_final_result(self.best_val_genic_f1)
 
 
 class HelixerSequence(Sequence):
     def __init__(self, model, h5_file, mode, shuffle):
         assert mode in ['train', 'val', 'test']
-        assert mode != 'test' or model.load_model_path  # assure that the mode param is correct
         self.model = model
         self.h5_file = h5_file
         self.mode = mode
@@ -153,7 +156,7 @@ class HelixerSequence(Sequence):
 
     def __len__(self):
         if self.debug:
-            return 1
+            return 100
         else:
             return int(np.ceil(len(self.usable_idx) / self._seqs_per_batch()))
 
@@ -179,6 +182,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
         self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
         self.parser.add_argument('-t', '--transitions', type=str, default='None')
+        self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -236,8 +240,9 @@ class HelixerModel(ABC):
             pprint(args)
 
     def generate_callbacks(self):
-        callbacks = [ConfusionMatrixTrain(self.gen_validation_data(), self.save_model_path,
-                                          report_to_nni=self.nni)]
+        canary_gen = self.gen_canary_data() if self.canary_dataset else None
+        callbacks = [ConfusionMatrixTrain(self.save_model_path, self.gen_validation_data(),
+                                          canary_gen, report_to_nni=self.nni)]
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
         return callbacks
@@ -266,6 +271,13 @@ class HelixerModel(ABC):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_test,
+                           mode='test',
+                           shuffle=False)
+
+    def gen_canary_data(self):
+        SequenceCls = self.sequence_cls()
+        return SequenceCls(model=self,
+                           h5_file=self.h5_canary,
                            mode='test',
                            shuffle=False)
 
@@ -333,6 +345,11 @@ class HelixerModel(ABC):
             n_test_correct_seqs = get_n_correct_seqs(self.h5_test)
             n_test_seqs_with_intergenic = self.shape_test[0]
             n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_test)
+
+        if self.canary_dataset:
+            self.h5_canary = h5py.File(self.canary_dataset, 'r')
+            print('\nCanary data config: ')
+            print(dict(self.h5_canary.attrs))
 
         if self.verbose:
             print('\nData config: ')
@@ -529,7 +546,7 @@ class HelixerModel(ABC):
             model = self._load_helixer_model()
             self._make_predictions(model)
             print(f'Predictions made with {self.load_model_path} on {self.test_data} '
-                  + f'and saved to {self.prediction_output_path}')
+                  f'and saved to {self.prediction_output_path}')
 
             self.h5_train.close()
             self.h5_val.close()
