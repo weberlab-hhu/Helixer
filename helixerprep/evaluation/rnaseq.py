@@ -260,13 +260,13 @@ def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--species', help="species name, matching geenuff db and h5 files", required=True)
-    parser.add_argument('-b', '--bam', help='sorted (and probably indexed) bam file', required=True)
-    parser.add_argument('-d', '--h5_data', help='h5 data file (with data/{X, y, species, seqids, etc...})',
+    parser.add_argument('-b', '--bam', help='sorted (and indexed) bam file', required=True)
+    parser.add_argument('-d', '--h5_data', help='h5 data file (with /data/{X, y, species, seqids, etc...})',
                         required=True)
     parser.add_argument('-p', '--h5_predictions', help='h5 predictions file with /predictions matching data file',
                         required=True)
     parser.add_argument('-o', '--out', help='output h5 file', required=True)
-    parser.add_argument('-x', '--not_dUTP', help='bam contains stranded (from typical dUTP protocol) reads',
+    parser.add_argument('-x', '--not_dUTP', help='bam does not contain stranded (from typical dUTP protocol) reads',
                         action='store_true')
     args = parser.parse_args()
     main(args.species,
