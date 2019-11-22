@@ -4,8 +4,12 @@ def mk_seqonly_keys(h5):
                                   h5['data/seqids'])]
 
 
-def mk_keys(h5):
+def mk_keys(h5, flip=False):
+    first_idx = 0
+    second_idx = 1
+    if flip:
+        first_idx, second_idx = second_idx, first_idx
     return zip(h5['data/species'],
                h5['data/seqids'],
-               h5['data/start_ends'][:, 0],
-               h5['data/start_ends'][:, 1])
+               h5['data/start_ends'][:, first_idx],
+               h5['data/start_ends'][:, second_idx])
