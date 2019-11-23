@@ -279,7 +279,7 @@ class HelixerModel(ABC):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_canary,
-                           mode='test',
+                           mode='val',
                            shuffle=False)
 
     @staticmethod
