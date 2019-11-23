@@ -72,7 +72,8 @@ class HelixerSequence(Sequence):
         self.h5_file = h5_file
         self.mode = mode
         self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'meta_losses',
-                                 'transition_weights', 'overlap', 'overlap_offset', 'core_length'])
+                                 'transition_weights', 'overlap', 'overlap_offset', 'core_length',
+                                 'debug'])
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
@@ -80,8 +81,8 @@ class HelixerSequence(Sequence):
         if self.transition_weights is not None:
             self.transitions_dset = h5_file['data/transitions']
         self.chunk_size = self.y_dset.shape[1]
-        self._load_and_scale_meta_info()
-        self.debug = self.model.debug
+        if self.meta_losses:
+            self._load_and_scale_meta_info()
 
         # set array of usable indexes, always exclude all erroneous sequences during training
         if mode == 'train':
@@ -182,7 +183,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
         self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
         self.parser.add_argument('-tw', '--transition_weights', type=str, default='None')
-        self.parser.add_argument('-can', '--canary-dataset', type=str, default='')        
+        self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
