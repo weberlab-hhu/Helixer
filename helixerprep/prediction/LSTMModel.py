@@ -103,7 +103,8 @@ class LSTMModel(HelixerModel):
                     model.add(LayerNormalization())
                 model.add(Bidirectional(CuDNNLSTM(self.units, return_sequences=True)))
 
-        model.add(Dropout(self.dropout))
+        if self.dropout > 0.0:
+            model.add(Dropout(self.dropout))
         model.add(Dense(self.pool_size * 4))
         if self.pool_size > 1:
             model.add(Reshape((-1, self.pool_size, 4)))
