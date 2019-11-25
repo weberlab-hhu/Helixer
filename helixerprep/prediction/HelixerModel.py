@@ -72,7 +72,8 @@ class HelixerSequence(Sequence):
         self.h5_file = h5_file
         self.mode = mode
         self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'meta_losses',
-                                 'transition_weights', 'overlap', 'overlap_offset', 'core_length'])
+                                 'transition_weights', 'overlap', 'overlap_offset', 'core_length',
+                                 'debug'])
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
@@ -80,8 +81,8 @@ class HelixerSequence(Sequence):
         if self.transition_weights is not None:
             self.transitions_dset = h5_file['data/transitions']
         self.chunk_size = self.y_dset.shape[1]
-        self._load_and_scale_meta_info()
-        self.debug = self.model.debug
+        if self.meta_losses:
+            self._load_and_scale_meta_info()
 
         # set array of usable indexes, always exclude all erroneous sequences during training
         if mode == 'train':
@@ -278,7 +279,7 @@ class HelixerModel(ABC):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self,
                            h5_file=self.h5_canary,
-                           mode='test',
+                           mode='val',
                            shuffle=False)
 
     @staticmethod
