@@ -25,4 +25,3 @@ for i in range(n_seqs):
     print(i, '/', n_seqs, end='\r')
     cm._add_to_cm(y_true[i], y_pred[i], sw[i])
 cm.print_cm()
-

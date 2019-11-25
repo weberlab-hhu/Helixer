@@ -182,7 +182,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
         self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
         self.parser.add_argument('-tw', '--transition_weights', type=str, default='None')
-        self.parser.add_argument('-can', '--canary-dataset', type=str, default='')        
+        self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -534,7 +534,7 @@ class HelixerModel(ABC):
                                 epochs=self.epochs,
                                 workers=0,  # run in main thread
                                 # workers=1,
-                                validation_data=self.gen_validation_data(),
+                                # validation_data=self.gen_validation_data(),
                                 callbacks=self.generate_callbacks(),
                                 verbose=True)
 
