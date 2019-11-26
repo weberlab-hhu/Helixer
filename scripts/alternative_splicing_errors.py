@@ -29,19 +29,6 @@ sw = h5_data['/data/sample_weights']
 seqids = np.array(h5_data['/data/seqids'])
 start_ends = np.array(h5_data['/data/start_ends'])
 
-# first fill a dict of intervaltrees with the start_end values of the data
-intervals = defaultdict(lambda: {'plus': IntervalTree(), 'minus': IntervalTree()})
-
-for i in range(len(seqids)):
-    seqid = seqids[i].decode('utf8')
-    interval = start_ends[i]
-    if interval[0] <= interval[1]:
-        # plus strand
-        intervals[seqid]['plus'][interval[0]:interval[1]] = i
-    else:
-        # minus strand
-        intervals[seqid]['minus'][interval[1] + 1:interval[0] + 1] = i
-
 gene_borders = dict()
 with sqlite3.connect(args.db_path) as con:
     cur = con.cursor()
@@ -71,17 +58,24 @@ with sqlite3.connect(args.db_path) as con:
     cur.execute(query_minus)
     gene_borders['minus'] = cur.fetchall()
 
+last_seqid = ''
 with open(f'{args.output_file}.csv', 'w') as f:
     for strand in ['plus', 'minus']:
         for (seqid, start, end, n_transcripts) in gene_borders[strand]:
-            # get the indexes of the sequences in the dataset that overlap with this gene
-            seq_idxs = [i.data for i in list(intervals[seqid][strand][start:end])]
-            seq_idxs.sort() # indexes have to be sorted for h5 query
-            if seq_idxs:
-                # concat all the relevant data with it and cut to limits of the gene
-                y_true_section = np.concatenate(y_true[seq_idxs])[start:end]
-                y_pred_section = np.concatenate(y_pred[seq_idxs])[start:end]
-                sw_section = np.concatenate(sw[seq_idxs])[start:end]
+            # get seqid array
+            if seqid != last_seqid:
+                seqid_idxs = np.where(seqids == str.encode(seqid))
+                seqid_idxs = sorted(list(seqid_idxs[0]))
+                if seqid_idxs:
+                    y_true_seqid = np.concatenate(y_true[seqid_idxs])
+                    y_pred_seqid = np.concatenate(y_pred[seqid_idxs])
+                    sw_seqid = np.concatenate(sw[seqid_idxs])
+            last_seqid = seqid
+            if seqid_idxs:
+                # cut out gene
+                y_true_section = y_true_seqid[start:end]
+                y_pred_section = y_pred_seqid[start:end]
+                sw_section = sw_seqid[start:end]
                 if np.any(sw_section):
                     # run through cm to get the genic f1
                     cm = ConfusionMatrix(None)
