@@ -21,6 +21,7 @@ metadata.csv
 timeline*.json
 *.png
 *.swp
+alternative_splicing_results.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
