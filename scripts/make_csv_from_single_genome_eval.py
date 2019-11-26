@@ -12,11 +12,13 @@ parser.add_argument('-i', '--ignore', action='append')
 parser.add_argument('-er', '--error-rates', action='store_true')
 args = parser.parse_args()
 
-assert args.server in ['clc', 'cluster']
+assert args.server in ['clc', 'cluster', 'home']
 assert len(args.nni_id) == 8
 
 if args.server == 'clc':
     nni_base = '/mnt/data/experiments_backup/nni_clc_server/nni/experiments/'
+elif args.server == 'home':
+    nni_base = '/home/felix/nni/experiments/'
 else:
     nni_base = '/mnt/data/experiments_backup/nni_cluster/nni/experiments/'
 trials_folder = '{}/{}/trials'.format(nni_base, args.nni_id)
@@ -35,13 +37,13 @@ for folder in os.listdir(trials_folder):
     parameters = eval(open('{}/{}/parameter.cfg'.format(trials_folder, folder)).read())
     path = parameters['parameters']['test_data']
 
-    if args.server == 'clc':
+    if args.server == 'cluster':
         genome = path.split('/')[6]
     else:
-        genome = path.split('/')[5]  # when from cluster
+        genome = path.split('/')[7]
 
     # get sequence error rate
-    f = h5py.File('/home/felix/Desktop/data/single_genomes/' + genome + '/h5_data_20k/test_data.h5', 'r')
+    f = h5py.File('/home/felix/Desktop/data/plants/single_genomes/' + genome + '/h5_data_20k/test_data.h5', 'r')
     n_samples = f['/data/X'].shape[0]
     err = np.array(f['/data/err_samples'])
     n_err_samples = np.count_nonzero(err == True)
