@@ -4,23 +4,42 @@ import h5py
 import sqlite3
 import numpy as np
 import argparse
-import intervaltree
 import matplotlib.pyplot as plt
+from collections import defaultdict
+from intervaltree import IntervalTree
 from terminaltables import AsciiTable
 from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-d', '--data', type=str, required=True)
-parser.add_argument('-p', '--predictions', type=str, required=True)
+parser.add_argument('-d', '--data', type=str, required=True,
+                    help='This HAS to be from only one genome')
+parser.add_argument('-p', '--predictions', type=str, required=True,
+                    help='This HAS to be from only one genome')
 parser.add_argument('-db', '--db-path', type=str, required=True)
 parser.add_argument('-g', '--genome', type=str, required=True)
 args = parser.parse_args()
 
 h5_data = h5py.File(args.data, 'r')
 h5_pred = h5py.File(args.predictions, 'r')
+seqids = np.array(h5_data['/data/seqids'])
+start_ends = np.array(h5_data['/data/start_ends'])
+
+# first fill a dict of intervaltrees with the start_end values of the data
+d = defaultdict(lambda: {'plus': IntervalTree(), 'minus': IntervalTree()})
+
+for i in range(len(seqids)):
+    seqid = seqids[i]
+    interval = start_ends[i]
+    if interval[0] <= interval[1]:
+        # plus strand
+        d[seqid]['plus'][interval[0]:interval[1]] = i
+    else:
+        # minus strand
+        d[seqid]['minus'][interval[1] + 1:interval[0] + 1] = i
 
 with sqlite3.connect(args.db_path) as con:
+    cur = con.cursor()
     # query all gene intervals with their relevant information
     # each strand is queried seperately
     query_base = '''FROM genome
@@ -42,7 +61,13 @@ with sqlite3.connect(args.db_path) as con:
     query_minus = ('SELECT coordinate.seqid, min(feature.end) + 1, max(feature.start) + 1, '
                    'count(distinct(transcript.id)) ' + query_base)
 
-    print(query_plus, query_minus)
+    cur.execute(query_plus)
+    gene_borders_plus = cur.fetchall()
+    cur.execute(query_minus)
+    gene_borders_minus = cur.fetchall()
+
+
+
 
 
 
