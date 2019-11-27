@@ -71,6 +71,15 @@ class LSTMSequence(HelixerSequence):
                 where_are_ones = np.where(sw_t == 0)
                 sw_t[where_are_ones[0], where_are_ones[1]] = 1
                 sw = np.multiply(sw_t, sw)
+
+            if self.meta_losses:
+                gc = np.stack(self.gc_contents[usable_idx_slice])
+                gc = np.repeat(gc[:, None], y.shape[1], axis=1)  # repeat for every time step
+                lengths = np.stack(self.coord_lengths[usable_idx_slice])
+                lengths = np.repeat(lengths[:, None], y.shape[1], axis=1)
+                meta = np.stack([gc, lengths], axis=2)
+                y = [y, meta]
+                sw = [sw, sw]
         return X, y, sw
 
 
