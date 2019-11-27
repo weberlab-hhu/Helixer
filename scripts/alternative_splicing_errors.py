@@ -58,19 +58,35 @@ with sqlite3.connect(args.db_path) as con:
     cur.execute(query_minus)
     gene_borders['minus'] = cur.fetchall()
 
+seqids_by_strand = dict()
+seqids_by_strand['plus'] = seqids[start_ends[:, 0] >= start_ends[:, 1]]
+seqids_by_strand['minus'] = seqids[start_ends[:, 0] < start_ends[:, 1]]
+
 last_seqid = ''
 with open(f'{args.output_file}.csv', 'w') as f:
     for strand in ['plus', 'minus']:
         for (seqid, start, end, n_transcripts) in gene_borders[strand]:
             # get seqid array
             if seqid != last_seqid:
-                seqid_idxs = np.where(seqids == str.encode(seqid))
+                if strand == 'plus':
+                    seqid_idxs = np.where(seqids == str.encode(seqid)
+                                              & start_ends[:, 0] >= start_ends[:, 1]])
+                else:
+                    seqid_idxs = np.where(seqids == str.encode(seqid)
+                                              & start_ends[:, 0] < start_ends[:, 1]])
                 seqid_idxs = sorted(list(seqid_idxs[0]))
+                # concat
                 if seqid_idxs:
                     y_true_seqid = np.concatenate(y_true[seqid_idxs])
                     y_pred_seqid = np.concatenate(y_pred[seqid_idxs])
                     sw_seqid = np.concatenate(sw[seqid_idxs])
+                # flip minus strand so indexes match the array
+                if strand == 'minus':
+                    y_true_seqid = np.flip(y_true_seqid, axis=0)
+                    y_pred_seqid = np.flip(y_pred_seqid, axis=0)
+                    sw_seqid = np.flip(sw_seqid, axis=0)
             last_seqid = seqid
+
             if seqid_idxs:
                 # cut out gene
                 y_true_section = y_true_seqid[start:end]
