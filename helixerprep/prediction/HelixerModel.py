@@ -120,7 +120,6 @@ class HelixerSequence(Sequence):
 
     def _get_batch_data(self, idx):
         usable_idx_batch = self._usable_idx_batch(idx)
-
         if self.overlap:
             X = self.x_dset[usable_idx_batch]
             X = np.concatenate(X, axis=0)
@@ -133,11 +132,18 @@ class HelixerSequence(Sequence):
 
         y = self.y_dset[usable_idx_batch]
         sw = self.sw_dset[usable_idx_batch]
+
         if self.transition_weights is not None:
             transitions = self.transitions_dset[usable_idx_batch]
         else:
             transitions = None
-        return X, y, sw, transitions
+        if self.meta_losses:
+            # return the scaled gc content and length of each sequence
+            gc_content = np.stack(self.gc_contents[usable_idx_batch])
+            lengths = np.stack(self.coord_lengths[usable_idx_batch])
+        else:
+            meta = None
+        return X, y, sw, transitions, gc_content, lengths
 
     def _get_seqids_for_batch(self, idx):
         usable_idx_batch = self._usable_idx_batch(idx)
