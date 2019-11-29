@@ -14,11 +14,12 @@ parser.add_argument('-p', '--predictions', type=str, required=True)
 parser.add_argument('-s', '--sample', type=int, default=None)
 parser.add_argument('-o', '--output-folder', type=str, default='')
 parser.add_argument('-res', '--resolution', type=int, default=1000)
+parser.add_argument('-v', '--verbose', action='store_true')
 args = parser.parse_args()
 
 h5_data = h5py.File(args.data, 'r')
 h5_pred = h5py.File(args.predictions, 'r')
-genome = args.data.strip().split('/')[6]
+genome = args.data.strip().split('/')[7]
 
 if args.sample:
     print('Sampling {} rows'.format(args.sample))
@@ -33,9 +34,11 @@ else:
 assert y_true.shape == y_pred.shape
 sw = np.array(h5_data['/data/sample_weights']).astype(bool)
 
-total_accs, genic_f1s, offsets = [], [], []
+cm_total = ConfusionMatrix(None)
+total_accs, genic_f1s = [], []
 table = [['index', 'overall acc']]
-for i in range(0, y_true.shape[1], args.resolution):
+offsets = list(range(0, y_true.shape[1], args.resolution))
+for i in offsets:
     y_true_section = y_true[:, i:i+args.resolution].reshape((-1, 4))
     y_pred_section = y_pred[:, i:i+args.resolution].reshape((-1, 4))
     y_diff_section = np.argmax(y_true_section, axis=-1) == np.argmax(y_pred_section, axis=-1)
@@ -47,13 +50,20 @@ for i in range(0, y_true.shape[1], args.resolution):
     overall_acc = np.count_nonzero(y_diff_section) / len(y_diff_section) * 100
     table.append(f'{i}\t{overall_acc:.4f}'.split('\t'))
     total_accs.append(overall_acc / 100.0)
-    # cm
-    print(f'\n{i}/{y_true.shape[1]}')
+
+    # cms
+    print(f'{i} / {y_true.shape[1]}', end='\r')
     cm = ConfusionMatrix(None)
     cm._add_to_cm(y_true_section, y_pred_section, sw_section)
-    genic_f1s.append(cm._print_results())
-    offsets.append(i)
+    cm_total._add_to_cm(y_true_section, y_pred_section, sw_section)
+    if args.verbose:
+        genic_f1s.append(cm._print_results())
+    else:
+        scores = cm._get_composite_scores()
+        genic_f1s.append(scores['genic']['f1'])
+
 print('\n', AsciiTable(table).table, sep='')
+cm_total._print_results()
 
 plt.title(genome)
 plt.plot(offsets, total_accs, label='overall acc')
