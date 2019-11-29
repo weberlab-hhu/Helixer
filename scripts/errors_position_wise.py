@@ -7,13 +7,13 @@ import matplotlib.pyplot as plt
 from terminaltables import AsciiTable
 from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--data', type=str, required=True)
 parser.add_argument('-p', '--predictions', type=str, required=True)
 parser.add_argument('-s', '--sample', type=int, default=None)
 parser.add_argument('-o', '--output-folder', type=str, default='')
 parser.add_argument('-res', '--resolution', type=int, default=1000)
+parser.add_argument('-c', '--chunk-size', type=int, default=500)
 parser.add_argument('-v', '--verbose', action='store_true')
 args = parser.parse_args()
 
@@ -34,40 +34,52 @@ else:
 assert y_true.shape == y_pred.shape
 sw = np.array(h5_data['/data/sample_weights']).astype(bool)
 
-cm_total = ConfusionMatrix(None)
 total_accs, genic_f1s = [], []
+chunk_offsets = list(range(0, y_true.shape[0], args.chunk_size))
+length_offsets = list(range(0, y_true.shape[1], args.resolution))
+correct_bases = np.zeros((len(chunk_offsets), len(length_offsets)))
+total_bases = np.zeros((len(chunk_offsets), len(length_offsets)))
+cm_total = ConfusionMatrix(None)
+cms = [ConfusionMatrix(None) for _ in range(len(length_offsets))]
+for i, co in enumerate(chunk_offsets):
+    y_true_block = y_true[co:co+args.chunk_size]
+    y_pred_block = y_pred[co:co+args.chunk_size]
+    y_diff_block = np.argmax(y_true_block, axis=-1) == np.argmax(y_pred_block, axis=-1)
+
+    lo_accs = []
+    for j, lo in enumerate(length_offsets):
+        if args.verbose:
+            print(f'{i + 1} / {len(chunk_offsets)}', f', {j + 1} / {len(length_offsets)}', end='\r')
+        y_true_block_section = y_true_block[:, lo:lo+args.resolution].reshape((-1, 4))
+        y_pred_block_section = y_pred_block[:, lo:lo+args.resolution].reshape((-1, 4))
+        y_diff_block_section = y_diff_block[:, lo:lo+args.resolution].ravel()
+
+        # apply sw
+        sw_block_section = sw[co:co+args.chunk_size, lo:lo+args.resolution].ravel()
+        if np.any(sw_block_section):
+            y_diff_block_section = y_diff_block_section[sw_block_section]
+
+            correct_bases[i, j] = np.count_nonzero(y_diff_block_section)
+            total_bases[i, j] = len(y_diff_block_section)
+
+            cms[j]._add_to_cm(y_true_block_section, y_pred_block_section, sw_block_section)
+            cm_total._add_to_cm(y_true_block_section, y_pred_block_section, sw_block_section)
+
+# print accuracies
 table = [['index', 'overall acc']]
-offsets = list(range(0, y_true.shape[1], args.resolution))
-for i in offsets:
-    y_true_section = y_true[:, i:i+args.resolution].reshape((-1, 4))
-    y_pred_section = y_pred[:, i:i+args.resolution].reshape((-1, 4))
-    y_diff_section = np.argmax(y_true_section, axis=-1) == np.argmax(y_pred_section, axis=-1)
-
-    # apply sw
-    sw_section = sw[:, i:i+args.resolution].ravel()
-    y_diff_section = y_diff_section[sw_section]
-
-    overall_acc = np.count_nonzero(y_diff_section) / len(y_diff_section) * 100
-    table.append(f'{i}\t{overall_acc:.4f}'.split('\t'))
-    total_accs.append(overall_acc / 100.0)
-
-    # cms
-    print(f'{i} / {y_true.shape[1]}', end='\r')
-    cm = ConfusionMatrix(None)
-    cm._add_to_cm(y_true_section, y_pred_section, sw_section)
-    cm_total._add_to_cm(y_true_section, y_pred_section, sw_section)
-    if args.verbose:
-        genic_f1s.append(cm._print_results())
-    else:
-        scores = cm._get_composite_scores()
-        genic_f1s.append(scores['genic']['f1'])
-
+accs_offset = np.divide(np.sum(correct_bases, axis=0), np.sum(total_bases, axis=0))
+for i, offset in enumerate(length_offsets):
+    table.append(f'{offset}\t{accs_offset[i]:.4f}'.split('\t'))
 print('\n', AsciiTable(table).table, sep='')
+
+# print total cm
+genic_f1s = [cm._get_composite_scores()['genic']['f1'] for cm in cms]
 cm_total._print_results()
 
+# output
 plt.title(genome)
-plt.plot(offsets, total_accs, label='overall acc')
-plt.plot(offsets, genic_f1s, label='genic f1')
+plt.plot(length_offsets, accs_offset, label='overall acc')
+plt.plot(length_offsets, genic_f1s, label='genic f1')
 plt.ylim((0.0, 1.0))
 plt.xlabel('length offset')
 plt.legend()
