@@ -36,20 +36,22 @@ class HelixerController(object):
                 geenuff.orm.Base.metadata.tables[table].create(self.engine)
         self.session = sessionmaker(bind=self.engine)()
 
-    def _add_mers_of_seqid(self, species, seqid, mers):
+    def _coord_ids_of_genome(self, genome_id):
+        coords = (self.session.query(Coordinate.id, Coordinate.seqid)
+                     .filter(Coordinate.genome_id == genome_id)
+                     .all())
+        coord_ids = dict()
+        coord_ids = {seqid:coord_id for seqid, coord_id in coord_ids}
+        return coord_ids
+
+    def _add_mers_of_seqid(self, coord_id, seqid, mers):
         print(species, seqid)
-        genome_id = self.session.query(Genome.id).filter(Genome.species == species).one()[0]
-        coord_id = (self.session.query(Coordinate.id)
-                       .filter(Coordinate.genome_id == genome_id)
-                       .filter(Coordinate.seqid == seqid)
-                       .one())[0]
         for mer_sequence, count in mers.items():
             mer = Mer(coordinate_id=coord_id,
                       mer_sequence=mer_sequence,
                       count=count,
                       length=len(mer_sequence))
             self.session.add(mer)
-        self.session.commit()
 
     def add_mer_counts_to_db(self):
         """Tries to add all kmer counts it can find for each coordinate in the db
@@ -60,6 +62,7 @@ class HelixerController(object):
             kmer_file = os.path.join(self.meta_info_root_path, genomes_in_db[i].species,
                                      'meta_collection', 'kmers', 'kmers.tsv')
             if os.path.exists(kmer_file):
+                coord_ids = self._coord_ids_of_genome(genome.id)
                 last_seqid = ''
                 seqid_mers = {}  # here we collect the sum of the
                 for i, line in enumerate(open(kmer_file)):
@@ -73,7 +76,7 @@ class HelixerController(object):
 
                     # insert coordinate mers
                     if last_seqid != seqid:
-                        self._add_mers_of_seqid(genome.species, last_seqid, seqid_mers)
+                        self._add_mers_of_seqid(coord_ids[last_seqid], last_seqid, seqid_mers)
                         seqid_mers = {}
                         last_seqid = seqid
 
@@ -84,7 +87,8 @@ class HelixerController(object):
                         seqid_mers[key] += count
                     else:
                         seqid_mers[key] = count
-                self._add_mers_of_seqid(genome.species, last_seqid, seqid_mers)
+                self._add_mers_of_seqid(coord_ids[last_seqid], last_seqid, seqid_mers)
+                self.session.commit()
                 print('Kmers from file {} added\n'.format(kmer_file))
 
     def add_meta_info_to_db(self):

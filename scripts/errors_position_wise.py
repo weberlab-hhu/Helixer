@@ -13,7 +13,7 @@ parser.add_argument('-p', '--predictions', type=str, required=True)
 parser.add_argument('-s', '--sample', type=int, default=None)
 parser.add_argument('-o', '--output-folder', type=str, default='')
 parser.add_argument('-res', '--resolution', type=int, default=1000)
-parser.add_argument('-c', '--chunk-size', type=int, default=500)
+parser.add_argument('-c', '--chunk-size', type=int, default=1000)
 parser.add_argument('-v', '--verbose', action='store_true')
 args = parser.parse_args()
 
