@@ -37,15 +37,14 @@ class HelixerController(object):
         self.session = sessionmaker(bind=self.engine)()
 
     def _coord_ids_of_genome(self, genome_id):
+        print('Starting query for all coordinate ids')
         coords = (self.session.query(Coordinate.id, Coordinate.seqid)
                      .filter(Coordinate.genome_id == genome_id)
                      .all())
-        coord_ids = dict()
-        coord_ids = {seqid:coord_id for seqid, coord_id in coord_ids}
+        coord_ids = {seqid:coord_id for (coord_id, seqid) in coords}
         return coord_ids
 
     def _add_mers_of_seqid(self, coord_id, seqid, mers):
-        print(species, seqid)
         for mer_sequence, count in mers.items():
             mer = Mer(coordinate_id=coord_id,
                       mer_sequence=mer_sequence,
@@ -76,6 +75,7 @@ class HelixerController(object):
 
                     # insert coordinate mers
                     if last_seqid != seqid:
+                        print(genome.species, last_seqid)
                         self._add_mers_of_seqid(coord_ids[last_seqid], last_seqid, seqid_mers)
                         seqid_mers = {}
                         last_seqid = seqid
@@ -87,7 +87,15 @@ class HelixerController(object):
                         seqid_mers[key] += count
                     else:
                         seqid_mers[key] = count
+
+                    # making sure to commit frequently but not all the time
+                    if i % 1000000 == 0:
+                        print('Committing intermittent changes to the db')
+                        self.session.commit()
+
+                print(genome.species, last_seqid)
                 self._add_mers_of_seqid(coord_ids[last_seqid], last_seqid, seqid_mers)
+                print('Committing final changes to the db')
                 self.session.commit()
                 print('Kmers from file {} added\n'.format(kmer_file))
 
