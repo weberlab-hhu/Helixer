@@ -142,7 +142,7 @@ class HelixerSequence(Sequence):
             gc_content = np.stack(self.gc_contents[usable_idx_batch])
             lengths = np.stack(self.coord_lengths[usable_idx_batch])
         else:
-            meta = None
+            gc_content, lengths = None, None
         return X, y, sw, transitions, gc_content, lengths
 
     def _get_seqids_for_batch(self, idx):
