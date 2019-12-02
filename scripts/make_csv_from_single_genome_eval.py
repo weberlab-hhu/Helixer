@@ -36,11 +36,7 @@ for folder in os.listdir(trials_folder):
     # get genome name
     parameters = eval(open('{}/{}/parameter.cfg'.format(trials_folder, folder)).read())
     path = parameters['parameters']['test_data']
-
-    if args.server == 'cluster':
-        genome = path.split('/')[6]
-    else:
-        genome = path.split('/')[7]
+    genome = path.split('/')[7]
 
     # get sequence error rate
     f = h5py.File('/home/felix/Desktop/data/plants/single_genomes/' + genome + '/h5_data_20k/test_data.h5', 'r')
