@@ -43,20 +43,22 @@ with sqlite3.connect(args.db_path) as con:
                 CROSS JOIN transcript ON transcript_piece.transcript_id = transcript.id
                 CROSS JOIN super_locus ON transcript.super_locus_id = super_locus.id''')
 
-    query_plus = ('''SELECT coordinate.seqid, min(feature.start), max(feature.end),
-                            count(distinct(transcript.id))
+    query_plus = ('''SELECT coordinate.seqid, super_locus.given_name,
+                            min(feature.start), max(feature.end), count(distinct(transcript.id))
                    FROM genome ''' + joins + '''
                    WHERE genome.species IN ("''' + args.genome + '''") AND super_locus.type = 'gene'
                        AND transcript.type = 'mRNA' AND feature.type = 'geenuff_transcript'
                        AND feature.is_plus_strand = 1
-                   GROUP BY super_locus.id;''')
-    query_minus = ('''SELECT coordinate.seqid, min(feature.end) + 1, max(feature.start) + 1,
-                       count(distinct(transcript.id))
+                   GROUP BY super_locus.id
+                   ORDER BY coordinate.seqid;''')
+    query_minus = ('''SELECT coordinate.seqid, super_locus.given_name,
+                             min(feature.end) + 1, max(feature.start) + 1, count(distinct(transcript.id))
                    FROM genome ''' + joins + '''
                    WHERE genome.species IN ("''' + args.genome + '''") AND super_locus.type = 'gene'
                        AND transcript.type = 'mRNA' AND feature.type = 'geenuff_transcript'
                        AND feature.is_plus_strand = 0
-                   GROUP BY super_locus.id;''')
+                   GROUP BY super_locus.id
+                   ORDER BY coordinate.seqid;''')
 
     cur.execute(query_plus)
     gene_borders['plus'] = cur.fetchall()
@@ -64,26 +66,54 @@ with sqlite3.connect(args.db_path) as con:
     gene_borders['minus'] = cur.fetchall()
 
 is_on_strand = dict()
-is_on_strand['plus'] = start_ends[:, 0] >= start_ends[:, 1]
-is_on_strand['minus'] = start_ends[:, 0] < start_ends[:, 1]
+is_on_strand['plus'] = start_ends[:, 0] < start_ends[:, 1]
+is_on_strand['minus'] = start_ends[:, 0] >= start_ends[:, 1]
 
 last_seqid = ''
 with open(f'{args.output_file}.csv', 'w') as f:
     for strand in ['minus', 'plus']:
-        for (seqid, start, end, n_transcripts) in gene_borders[strand]:
+        for (seqid, sl_name, start, end, n_transcripts) in gene_borders[strand]:
             # get seqid array
             if seqid != last_seqid:
                 print(f'Starting with seqid {seqid} on {strand} strand')
                 seqid_idxs = np.where((seqids == str.encode(seqid)) & is_on_strand[strand])
                 seqid_idxs = sorted(list(seqid_idxs[0]))
-                # concat
                 if seqid_idxs:
-                    y_true_seqid = np.concatenate(y_true[seqid_idxs])
-                    y_pred_seqid = np.concatenate(y_pred[seqid_idxs])
-                    sw_seqid = np.concatenate(sw[seqid_idxs])
-                # there should be no need to flip as the arrays are already flipped in numerify
-            last_seqid = seqid
+                    # select sequences of seqid + strand
+                    y_true_seqid_seqs = y_true[seqid_idxs]
+                    y_pred_seqid_seqs = y_pred[seqid_idxs]
+                    sw_seqid_seqs = sw[seqid_idxs]
+                    # remove 0 padding
+                    non_zero_bases = [np.any(arr, axis=-1) for arr in y_true_seqid_seqs]
+                    y_true_seqid_seqs_nonzero = [y_true_seqid_seqs[i][non_zero_bases[i]]
+                                                 for i in range(len(non_zero_bases))]
+                    y_pred_seqid_seqs_nonzero = [y_pred_seqid_seqs[i][non_zero_bases[i]]
+                                                 for i in range(len(non_zero_bases))]
+                    sw_seqid_seqs_nonzero = [sw_seqid_seqs[i][non_zero_bases[i]]
+                                                 for i in range(len(non_zero_bases))]
+                    # add dummy data where fully erroneous sequences where removed
+                    inserted_before = 0
+                    for i in range(len(seqid_idxs) - 1):
+                        end_before = start_ends[seqid_idxs][i][1]
+                        start_after = start_ends[seqid_idxs][i + 1][0]
+                        if end_before != start_after:
+                            dummy_seq_dim_4 = np.zeros((abs(end_before - start_after), 4))
+                            y_true_seqid_seqs_nonzero.insert(i + inserted_before + 1, dummy_seq_dim_4)
+                            y_pred_seqid_seqs_nonzero.insert(i + inserted_before + 1, dummy_seq_dim_4)
+                            dummy_seq_dim_1 = np.zeros((abs(end_before - start_after),))
+                            sw_seqid_seqs_nonzero.insert(i + inserted_before + 1, dummy_seq_dim_1)
+                            inserted_before += 1
+                    # concat
+                    y_true_seqid = np.concatenate(y_true_seqid_seqs_nonzero)
+                    y_pred_seqid = np.concatenate(y_pred_seqid_seqs_nonzero)
+                    sw_seqid = np.concatenate(sw_seqid_seqs_nonzero)
+                    if strand == 'minus':
+                        # flip to align indices for minus strand
+                        y_true_seqid = np.flip(y_true_seqid, axis=0)
+                        y_pred_seqid = np.flip(y_pred_seqid, axis=0)
+                        sw_seqid = np.flip(sw_seqid, axis=0)
 
+            last_seqid = seqid
             if seqid_idxs:
                 # cut out gene
                 y_true_section = y_true_seqid[start:end]
@@ -93,6 +123,12 @@ with open(f'{args.output_file}.csv', 'w') as f:
                     # run through cm to get the genic f1
                     cm = ConfusionMatrix(None)
                     cm._add_to_cm(y_true_section, y_pred_section, sw_section)
-                    genic_f1 = cm._get_composite_scores()['genic']['f1']
+                    scores = cm._get_composite_scores()
+                    intron_f1
                     # writout results
-                    print(','.join([seqid, str(n_transcripts), str(genic_f1)]), file=f)
+                    print(','.join([seqid, strand, str(start), str(end), sl_name, str(n_transcripts),
+                                    str(scores['ig']['f1']),
+                                    str(scores['utr']['f1']),
+                                    str(scores['intron']['f1']),
+                                    str(scores['exon']['f1']),
+                                    str(scores['genic']['f1'])]), file=f)
