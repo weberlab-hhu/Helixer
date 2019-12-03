@@ -8,8 +8,9 @@ df['length_bin'] = pd.cut((df.start - df.end).abs(),
                            bins=[0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000],
                            labels=False)
 
-df = df.groupby(['seqid', 'strand', 'length_bin', 'n_transcripts']).mean()
-df = df['ig_f1', 'utr_f1', 'intron_f1', 'exon_f1', 'genic_f1']
+dfg = df.groupby(['length_bin']).mean()
+dfg = dfg.loc[:, 'ig_f1': 'genic_f1']
+# df = df['ig_f1', 'utr_f1', 'intron_f1', 'exon_f1', 'genic_f1']
 
 import pudb; pudb.set_trace()
 pass

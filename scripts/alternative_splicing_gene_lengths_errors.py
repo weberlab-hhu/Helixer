@@ -71,7 +71,7 @@ is_on_strand['minus'] = start_ends[:, 0] >= start_ends[:, 1]
 
 last_seqid = ''
 with open(f'{args.output_file}.csv', 'w') as f:
-    for strand in ['minus', 'plus']:
+    for strand in ['plus', 'minus']:
         for (seqid, sl_name, start, end, n_transcripts) in gene_borders[strand]:
             # get seqid array
             if seqid != last_seqid:
@@ -124,7 +124,6 @@ with open(f'{args.output_file}.csv', 'w') as f:
                     cm = ConfusionMatrix(None)
                     cm._add_to_cm(y_true_section, y_pred_section, sw_section)
                     scores = cm._get_composite_scores()
-                    intron_f1
                     # writout results
                     print(','.join([seqid, strand, str(start), str(end), sl_name, str(n_transcripts),
                                     str(scores['ig']['f1']),
