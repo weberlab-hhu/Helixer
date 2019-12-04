@@ -60,7 +60,6 @@ class HelixerExportController(object):
         labels = flat_data['labels']
         label_masks = flat_data['label_masks']
         transitions = flat_data['transitions']
-        skip_meta_info = 'gc_contents' not in flat_data
         # convert to numpy arrays
 
         # zero-pad each sequence to chunk_size
@@ -87,18 +86,12 @@ class HelixerExportController(object):
             fully_intergenic_samples = np.all(y[:, :, 0] == 0, axis=1)
         # additional arrays
         start_ends = np.array(flat_data['start_ends'], dtype=np.int64)
-        if not skip_meta_info:
-            gc_contents = np.array(flat_data['gc_contents'], dtype=np.uint64)
-            coord_lengths = np.array(flat_data['coord_lengths'], dtype=np.uint64)
 
         # setup keys
         dset_keys = [
             'X', 'y', 'sample_weights', 'err_samples', 'fully_intergenic_samples', 'start_ends',
             'species', 'seqids', 'transitions'
         ]
-        if not skip_meta_info:
-            dset_keys += ['gc_contents', 'coord_lengths']
-
         # append to or create datasets
         if '/data/X' in h5_file:
             for dset_key in dset_keys:
@@ -160,23 +153,9 @@ class HelixerExportController(object):
                                    dtype='int8',  # guess we'll stick to int8
                                    compression='lzf',
                                    shuffle=True)
-            if not skip_meta_info:
-                h5_file.create_dataset('/data/gc_contents',
-                                       shape=(n_seq,),
-                                       maxshape=(None,),
-                                       dtype='uint64',
-                                       compression='lzf')
-                h5_file.create_dataset('/data/coord_lengths',
-                                       shape=(n_seq,),
-                                       maxshape=(None,),
-                                       dtype='uint64',
-                                       compression='lzf')
         # setup array of dsets and add them
         dsets = [X, y, sample_weights, err_samples, fully_intergenic_samples, start_ends,
                 flat_data['species'], flat_data['seqids'], y_transitions]
-        if not skip_meta_info:
-            dsets += [gc_contents, coord_lengths]
-
         for dset_key, data in zip(dset_keys, dsets):
             h5_file['/data/' + dset_key][old_len:] = data
         h5_file.flush()
@@ -234,9 +213,9 @@ class HelixerExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def _numerify_coord(self, coord, coord_features, chunk_size, skip_meta_info, keep_errors, one_hot):
+    def _numerify_coord(self, coord, coord_features, chunk_size, keep_errors, one_hot):
         coord_data = CoordNumerifier.numerify(self.geenuff_exporter, coord, coord_features, chunk_size,
-                                              skip_meta_info, one_hot)
+                                              one_hot)
         # keep track of variables
         n_seqs = len(coord_data['labels'])
         n_masked_bases = sum([np.count_nonzero(m == 0) for m in coord_data['label_masks']])
@@ -255,9 +234,10 @@ class HelixerExportController(object):
         invalid_seqs_perc = n_invalid_seqs / n_seqs * 100
         return coord_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc
 
-    def export(self, chunk_size, genomes, exclude, val_size, skip_meta_info, keep_errors, one_hot=True,
+    def export(self, chunk_size, genomes, exclude, val_size, keep_errors, one_hot=True,
                all_transcripts=False):
-        genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude, all_transcripts=all_transcripts)
+        genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude,
+                                                                   all_transcripts=all_transcripts)
         # make version without features for shorter downstream code
         genome_coords = {g_id: list(values.keys()) for g_id, values in genome_coord_features.items()}
         n_coords = sum([len(coords) for genome_id, coords in genome_coords.items()])
@@ -270,8 +250,8 @@ class HelixerExportController(object):
             for (coord_id, coord_len) in coords:
                 coord = self.geenuff_exporter.get_coord_by_id(coord_id)
                 coord_features = genome_coord_features[genome_id][(coord_id, coord_len)]
-                numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size,
-                                                        skip_meta_info, keep_errors, one_hot)
+                numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size, keep_errors,
+                                                        one_hot)
 
                 flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc = numerify_outputs
                 if self.only_test_set:

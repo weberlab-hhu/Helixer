@@ -267,7 +267,7 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=400, genomes='', exclude='', val_size=0.2, one_hot=False,
-                      skip_meta_info=True, keep_errors=False, all_transcripts=True)
+                      keep_errors=False, all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     inputs = f['/data/X']
@@ -317,7 +317,7 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=200, genomes='', exclude='', val_size=0.2, one_hot=False,
-                      skip_meta_info=True, keep_errors=False, all_transcripts=True)
+                      keep_errors=False, all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     inputs = f['/data/X']
