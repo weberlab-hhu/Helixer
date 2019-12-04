@@ -74,8 +74,8 @@
 2	manual	exon	700	750	.	+	.	ID=e1;Parent=x6
 2	manual	CDS	700	725	.	+	2	ID=c1;Parent=x6
 2	manual	mRNA	550	750	.	+	.	ID=y6;Parent=gene_phase_0_short_intron
-2	manual	exon	500	540	.	+	.	ID=e2;Parent=y6
-2	manual	CDS	525	540	.	+	0	ID=c2_problem;Parent=y6
+2	manual	exon	500	575	.	+	.	ID=e2;Parent=y6
+2	manual	CDS	525	575	.	+	0	ID=c2_problem;Parent=y6
 2	manual	exon	580	600	.	+	.	ID=e3;Parent=y6
 2	manual	CDS	580	600	.	+	1	ID=c3_problem;Parent=y6
 2	manual	exon	700	750	.	+	.	ID=e4;Parent=y6

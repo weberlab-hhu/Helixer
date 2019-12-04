@@ -91,11 +91,18 @@ class LSTMModel(HelixerModel):
     def __init__(self):
         super().__init__()
         self.parser.add_argument('-u', '--units', type=int, default=4)
-        self.parser.add_argument('-l', '--layers', type=int, default=1)
+        self.parser.add_argument('-l', '--layers', type=str, default='1')
         self.parser.add_argument('-ps', '--pool-size', type=int, default=10)
         self.parser.add_argument('-dr', '--dropout', type=float, default=0.0)
         self.parser.add_argument('-ln', '--layer-normalization', action='store_true')
         self.parse_args()
+
+        if self.layers.isdigit():
+            n_layers = int(self.layers)
+            self.layers = [self.units] * n_layers
+        else:
+            self.layers = eval(self.layers)
+            assert isinstance(self.layers, list)
 
     def sequence_cls(self):
         return LSTMSequence
@@ -103,16 +110,16 @@ class LSTMModel(HelixerModel):
     def model(self):
         main_input = Input(shape=(None, self.pool_size * 4), dtype=self.float_precision,
                            name='main_input')
-        x = Bidirectional(CuDNNLSTM(self.units, return_sequences=True))(main_input)
+        x = Bidirectional(CuDNNLSTM(self.layers[0], return_sequences=True))(main_input)
 
         # potential next layers
-        if self.layers > 1:
-            for _ in range(self.layers - 1):
+        if len(self.layers) > 1:
+            for layer_units in self.layers[1:]:
                 if self.dropout > 0.0:
                     x = Dropout(self.dropout)(x)
                 if self.layer_normalization:
                     x = LayerNormalization()(x)
-                x = Bidirectional(CuDNNLSTM(self.units, return_sequences=True))(x)
+                x = Bidirectional(CuDNNLSTM(layer_units, return_sequences=True))(x)
 
         if self.dropout > 0.0:
             x = Dropout(self.dropout)(x)
