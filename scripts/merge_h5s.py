@@ -19,4 +19,4 @@ if __name__ == '__main__':
                         help="input file with 'predictions'")
     parser.add_argument('--out', type=str, help="output h5 file")
     args = parser.parse_args()
-    main(args.data, args.predictions, args.save_to)
+    main(args.data, args.predictions, args.out)
