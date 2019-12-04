@@ -37,13 +37,8 @@ class Stepper(object):
 
     def step(self):
         prev = self.at
-        # fits twice or more, just step
-        if prev + self.by * 2 <= self.end:
+        if prev + self.by < self.end:
             new = prev + self.by
-        # fits less than twice, take half way point (to avoid an end of just a few bp)
-        elif prev + self.by < self.end:
-            new = prev + (self.end - prev) // 2
-        # doesn't fit at all
         else:
             new = self.end
         self.at = new
@@ -130,11 +125,11 @@ class AnnotationNumerifier(Numerifier):
         types.GeenuffFeature.geenuff_cds: 1,
         types.GeenuffFeature.geenuff_intron: 2,
      }
-    error_type_values = [t.value for t in types.Errors]
 
-    def __init__(self, coord, features, max_len):
+    def __init__(self, coord, features, max_len, one_hot=True):
         Numerifier.__init__(self, n_cols=3, coord=coord, max_len=max_len, dtype=np.int8)
         self.features = features
+        self.one_hot = one_hot
 
     def coord_to_matrices(self):
         """Always numerifies both strands one after the other."""
@@ -145,20 +140,26 @@ class AnnotationNumerifier(Numerifier):
         labels = plus_strand[0] + minus_strand[0]
         error_masks = plus_strand[1] + minus_strand[1]
         transitions = plus_strand[2] + minus_strand[2]
-        return labels, transitions, error_masks
+        return labels, error_masks, transitions
 
     def _encode_strand(self, bool_):
         self._zero_matrix()
         self._update_matrix_and_error_mask(is_plus_strand=bool_)
-        self.onehot4_matrix = self._encode_onehot4()
+
+        if self.one_hot:
+            self.onehot4_matrix = self._encode_onehot4()
+            labels, error_masks = self._slice_matrix(self.onehot4_matrix,
+                                                     self.error_mask,
+                                                     is_plus_strand=bool_)
+        else:
+            labels, error_masks = self._slice_matrix(self.matrix,
+                                                     self.error_mask,
+                                                     is_plus_strand=bool_)
         self.binary_transition_matrix = self._encode_transitions()
-        labels_placeholder, error_mask_placeholder = self._slice_matrix(self.onehot4_matrix,
-                                                                        self.error_mask,
-                                                                        is_plus_strand=bool_)
-        transitions_placeholder, _ = self._slice_matrix(self.binary_transition_matrix,
-                                                        self.error_mask,
-                                                        is_plus_strand=bool_)
-        return (labels_placeholder, error_mask_placeholder, transitions_placeholder)
+        transitions, _ = self._slice_matrix(self.binary_transition_matrix,
+                                            self.error_mask,
+                                            is_plus_strand=bool_)
+        return labels, error_masks, transitions
 
     def _update_matrix_and_error_mask(self, is_plus_strand):
         for feature in self.features:
@@ -172,7 +173,7 @@ class AnnotationNumerifier(Numerifier):
             if feature.type in AnnotationNumerifier.feature_to_col.keys():
                 col = AnnotationNumerifier.feature_to_col[feature.type]
                 self.matrix[start:end, col] = 1
-            elif feature.type.value in AnnotationNumerifier.error_type_values:
+            elif feature.type.value in types.geenuff_error_type_values:
                 self.error_mask[start:end] = 0
             else:
                 raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
@@ -217,17 +218,18 @@ class CoordNumerifier(object):
     to ensure consistent parameters. Selects all Features of the given Coordinate.
     """
     @staticmethod
-    def numerify(geenuff_exporter, coord, coord_features, max_len, skip_meta_info):
+    def numerify(geenuff_exporter, coord, coord_features, max_len, skip_meta_info, one_hot=True):
         assert isinstance(max_len, int) and max_len > 0
         if not coord_features:
             logging.warning('Sequence {} has no annoations'.format(coord.seqid))
 
-        anno_numerifier = AnnotationNumerifier(coord=coord, features=coord_features, max_len=max_len)
+        anno_numerifier = AnnotationNumerifier(coord=coord, features=coord_features, max_len=max_len,
+                                               one_hot=one_hot)
         seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len)
 
         # returns results for both strands, with the plus strand first in the list
         inputs, input_masks = seq_numerifier.coord_to_matrices()
-        labels, transitions, label_masks = anno_numerifier.coord_to_matrices()
+        labels, label_masks, transitions = anno_numerifier.coord_to_matrices()
 
         start_ends = anno_numerifier.paired_steps
         # flip the start ends back for - strand and append

@@ -234,9 +234,9 @@ class HelixerExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def _numerify_coord(self, coord, coord_features, chunk_size, skip_meta_info, keep_errors):
+    def _numerify_coord(self, coord, coord_features, chunk_size, skip_meta_info, keep_errors, one_hot):
         coord_data = CoordNumerifier.numerify(self.geenuff_exporter, coord, coord_features, chunk_size,
-                                              skip_meta_info)
+                                              skip_meta_info, one_hot)
         # keep track of variables
         n_seqs = len(coord_data['labels'])
         n_masked_bases = sum([np.count_nonzero(m == 0) for m in coord_data['label_masks']])
@@ -255,8 +255,9 @@ class HelixerExportController(object):
         invalid_seqs_perc = n_invalid_seqs / n_seqs * 100
         return coord_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc
 
-    def export(self, chunk_size, genomes, exclude, val_size, skip_meta_info, keep_errors):
-        genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude)
+    def export(self, chunk_size, genomes, exclude, val_size, skip_meta_info, keep_errors, one_hot=True,
+               all_transcripts=False):
+        genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude, all_transcripts=all_transcripts)
         # make version without features for shorter downstream code
         genome_coords = {g_id: list(values.keys()) for g_id, values in genome_coord_features.items()}
         n_coords = sum([len(coords) for genome_id, coords in genome_coords.items()])
@@ -264,13 +265,13 @@ class HelixerExportController(object):
 
         train_coords, val_coords = self._split_coords_by_N90(genome_coords, val_size)
         n_coords_done = 1
-        n_y_cols = 4
+        n_y_cols = 4 if one_hot else 3
         for genome_id, coords in genome_coords.items():
             for (coord_id, coord_len) in coords:
                 coord = self.geenuff_exporter.get_coord_by_id(coord_id)
                 coord_features = genome_coord_features[genome_id][(coord_id, coord_len)]
                 numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size,
-                                                        skip_meta_info, keep_errors)
+                                                        skip_meta_info, keep_errors, one_hot)
 
                 flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc = numerify_outputs
                 if self.only_test_set:
