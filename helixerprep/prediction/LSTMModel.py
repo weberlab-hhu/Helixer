@@ -20,7 +20,7 @@ class LSTMSequence(HelixerSequence):
             assert not mode == 'test'  # only use class weights during training and validation
 
     def __getitem__(self, idx):
-        X, y, sw, transitions, gc_content, lengths = self._get_batch_data(idx)
+        X, y, sw, transitions = self._get_batch_data(idx)
         pool_size = self.model.pool_size
         assert pool_size > 1, 'pooling size of <= 1 oh oh..'
         assert y.shape[1] % pool_size == 0, 'pooling size has to evenly divide seq len'
@@ -50,11 +50,6 @@ class LSTMSequence(HelixerSequence):
                 transitions.shape[-1],
             ))
 
-        if self.meta_losses:
-            gc_content = np.repeat(gc_content[:, None], y.shape[1], axis=1)  # repeat for every time step
-            lengths = np.repeat(lengths[:, None], y.shape[1], axis=1)
-            meta = np.stack([gc_content, lengths], axis=2)
-
         if self.class_weights is not None:
             # class weights are only used during training and validation to keep the loss
             # comparable and are additive for the individual timestep predictions
@@ -78,10 +73,6 @@ class LSTMSequence(HelixerSequence):
             where_are_ones = np.where(sw_t == 0)
             sw_t[where_are_ones[0], where_are_ones[1]] = 1
             sw = np.multiply(sw_t, sw)
-
-        if self.meta_losses:
-            y = [y, meta]
-            sw = [sw, sw]
 
         return X, y, sw
 
@@ -124,32 +115,19 @@ class LSTMModel(HelixerModel):
         if self.dropout > 0.0:
             x = Dropout(self.dropout)(x)
 
-        if self.meta_losses:
-            meta_output = Dense(2, activation='sigmoid', name='meta')(x)
-
         x = Dense(self.pool_size * 4)(x)
         if self.pool_size > 1:
             x = Reshape((-1, self.pool_size, 4))(x)
         x = Activation('softmax', name='main')(x)
 
-        outputs = [x, meta_output] if self.meta_losses else [x]
-        model = Model(inputs=main_input, outputs=outputs)
+        model = Model(inputs=main_input, outputs=x)
         return model
 
     def compile_model(self, model):
-        if self.meta_losses:
-            meta_loss_weight = 5.0
-            losses = ['categorical_crossentropy', 'mean_squared_error']
-            loss_weights = [1.0, meta_loss_weight]
-        else:
-            losses = ['categorical_crossentropy']
-            loss_weights = [1.0]
-
         run_options = tf.RunOptions(report_tensor_allocations_upon_oom=True)
         run_metadata = tf.RunMetadata()
         model.compile(optimizer=self.optimizer,
-                      loss=losses,
-                      loss_weights=loss_weights,
+                      loss='categorical_crossentropy',
                       sample_weight_mode='temporal',
                       options=run_options,
                       run_metadata=run_metadata)

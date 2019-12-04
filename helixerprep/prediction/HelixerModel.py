@@ -71,9 +71,8 @@ class HelixerSequence(Sequence):
         self.model = model
         self.h5_file = h5_file
         self.mode = mode
-        self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'meta_losses',
-                                 'transition_weights', 'overlap', 'overlap_offset', 'core_length',
-                                 'debug'])
+        self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
+                                 'overlap', 'overlap_offset', 'core_length', 'debug'])
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
@@ -81,8 +80,6 @@ class HelixerSequence(Sequence):
         if self.transition_weights is not None:
             self.transitions_dset = h5_file['data/transitions']
         self.chunk_size = self.y_dset.shape[1]
-        if self.meta_losses:
-            self._load_and_scale_meta_info()
 
         # set array of usable indexes, always exclude all erroneous sequences during training
         if mode == 'train':
@@ -96,21 +93,6 @@ class HelixerSequence(Sequence):
         """Moves class properties from self.model into this class for brevity"""
         for name in names:
             self.__dict__[name] = self.model.__dict__[name]
-
-    def _load_and_scale_meta_info(self):
-        self.gc_contents = np.array(self.h5_file['/data/gc_contents'], dtype=self.float_precision)
-        self.coord_lengths = np.array(self.h5_file['/data/coord_lengths'], dtype=self.float_precision)
-        # scale gc content by their coord lengths
-        self.gc_contents /= self.coord_lengths
-        # log transform and standardize coord_lengths to [0, 1]
-        # gc_contents should have a fine scale already
-        self.coord_lengths = np.log(self.coord_lengths)
-        self.coord_lengths = self.coord_lengths.reshape(-1, 1)
-        self.coord_lengths = MinMaxScaler().fit(self.coord_lengths).transform(self.coord_lengths)
-        # need to clip as values can be slightly above 1.0 (docs say otherwise..)
-        self.coord_lengths = np.clip(self.coord_lengths, 0.0, 1.0).squeeze()
-        assert np.all(np.logical_and(self.gc_contents >= 0.0, self.gc_contents <= 1.0))
-        assert np.all(np.logical_and(self.coord_lengths >= 0.0, self.coord_lengths <= 1.0))
 
     def _usable_idx_batch(self, idx):
         n_seqs = self._seqs_per_batch()
@@ -137,13 +119,7 @@ class HelixerSequence(Sequence):
             transitions = self.transitions_dset[usable_idx_batch]
         else:
             transitions = None
-        if self.meta_losses:
-            # return the scaled gc content and length of each sequence
-            gc_content = np.stack(self.gc_contents[usable_idx_batch])
-            lengths = np.stack(self.coord_lengths[usable_idx_batch])
-        else:
-            gc_content, lengths = None, None
-        return X, y, sw, transitions, gc_content, lengths
+        return X, y, sw, transitions
 
     def _get_seqids_for_batch(self, idx):
         usable_idx_batch = self._usable_idx_batch(idx)
@@ -187,7 +163,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
         self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
-        self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
         self.parser.add_argument('-tw', '--transition_weights', type=str, default='None')
         self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
         # testing
