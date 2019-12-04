@@ -11,6 +11,7 @@ from geenuff.tests.test_geenuff import setup_data_handler, mk_memory_session
 from geenuff.applications.importer import ImportController
 from geenuff.base.orm import SuperLocus, Genome, Coordinate
 from geenuff.base.helpers import reverse_complement
+from geenuff.base import types
 from ..core.controller import HelixerController
 from ..core.orm import Mer
 from ..export import numerify
@@ -115,7 +116,8 @@ def test_copy_n_import():
         assert len(transcript.transcript_pieces) == 1
         piece = transcript.transcript_pieces[0]
         for feature in piece.features:
-            all_features.append(feature)
+            if feature.type.value not in types.geenuff_error_type_values:
+                all_features.append(feature)
         print('{}: {}'.format(transcript.given_name, [x.type.value for x in piece.features]))
     for protein in sl.proteins:
         print('{}: {}'.format(protein.given_name, [x.type.value for x in protein.features]))
@@ -136,12 +138,12 @@ def test_stepper():
     s = Stepper(49, 10)
     strt_ends = list(s.step_to_end())
     assert len(strt_ends) == 5
-    assert strt_ends[-1] == (39, 49)
+    assert strt_ends[-1] == (40, 49)
     # a bit long
     s = Stepper(52, 10)
     strt_ends = list(s.step_to_end())
     assert len(strt_ends) == 6
-    assert strt_ends[-1] == (46, 52)
+    assert strt_ends[-1] == (50, 52)
     # very short
     s = Stepper(9, 10)
     strt_ends = list(s.step_to_end())
@@ -188,13 +190,12 @@ def test_sequence_slicing():
     seq_numerifier = SequenceNumerifier(coord=coords[0], max_len=50)
     num_list = seq_numerifier.coord_to_matrices()[0]
     print([x.shape for x in num_list])
-    # [(50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (27, 4), (28, 4)]
+    # [(50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (5, 4)]
     assert len(num_list) == 9 * 2  # both strands
 
-    for i in range(7):
+    for i in range(8):
         assert np.array_equal(num_list[i], np.full([50, 4], 0.25, dtype=np.float32))
-    for i in [7, 8]:  # for the last two, just care that they're about the expected size...
-        assert np.array_equal(num_list[i][:27], np.full([27, 4], 0.25, dtype=np.float32))
+    assert np.array_equal(num_list[8], np.full([5, 4], 0.25, dtype=np.float32))
 
 
 def test_coherent_slicing():
@@ -211,8 +212,9 @@ def test_coherent_slicing():
                                            max_len=100,
                                            one_hot=False)
     seq_slices, seq_error_masks = seq_numerifier.coord_to_matrices()
-    anno_slices, anno_error_masks = anno_numerifier.coord_to_matrices()
-    assert len(seq_slices) == len(anno_slices) == len(anno_error_masks) == len(seq_error_masks) == 19 * 2
+    anno_slices, anno_error_masks, _ = anno_numerifier.coord_to_matrices()
+    assert (len(seq_slices) == len(anno_slices) == len(anno_error_masks)
+            == len(seq_error_masks) == 19 * 2)
 
     for s, a, se, ae in zip(seq_slices, anno_slices, seq_error_masks, anno_error_masks):
         assert s.shape[0] == a.shape[0] == se.shape[0] == ae.shape[0]
@@ -224,7 +226,7 @@ def test_coherent_slicing():
     # annotation error mask of test case 1 should reflect faulty exon/CDS ranges
     expect[:110] = 0
     expect[120:499] = 0  # error from test case 1
-    expect[499:1099] = 0  # error from test case 2
+    # expect[499:1099] = 0  # error from test case 2, which we do not mark atm
     # test equality for correct error ranges of first two test cases + some correct bases
     assert np.array_equal(expect[:1150], np.concatenate(anno_error_masks)[:1150])
 
@@ -265,17 +267,17 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=400, genomes='', exclude='', val_size=0.2, one_hot=False,
-                      keep_errors=False)
+                      skip_meta_info=True, keep_errors=False, all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     inputs = f['/data/X']
     labels = f['/data/y']
     label_masks = f['/data/sample_weights']
 
-    # five chunks for each the two coordinates and *2 for each strand and -4 for
-    # completely erroneous sequences
+    # five chunks for each the two coordinates and *2 for each strand and -2 for
+    # completely erroneous sequences (at the end of the minus strand of the 2nd coord)
     # also tests if we ignore the third coordinate, that does not have any annotations
-    assert len(inputs) == len(labels) == len(label_masks) == 17
+    assert len(inputs) == len(labels) == len(label_masks) == 18
 
     # prep seq
     seq_expect = np.full((405, 4), 0.25)
@@ -315,14 +317,14 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=200, genomes='', exclude='', val_size=0.2, one_hot=False,
-                      keep_errors=False)
+                      skip_meta_info=True, keep_errors=False, all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     inputs = f['/data/X']
     labels = f['/data/y']
     label_masks = f['/data/sample_weights']
 
-    assert len(inputs) == len(labels) == len(label_masks) == 30
+    assert len(inputs) == len(labels) == len(label_masks) == 33
     # the last 5 inputs/labels should be for the 2nd coord and the minus strand
     # orginally there where 9 but 4 were tossed out due to be fully erroneous
     # all the sequences are also 0-padded
@@ -346,19 +348,17 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     # flip as the sequence is read 5p to 3p
     seq_expect = np.flip(seq_expect, axis=0)
     # insert 0-padding
-    seq_expect = np.insert(seq_expect, 178, np.zeros((22, 4)), axis=0)
-    seq_expect = np.insert(seq_expect, 200 + 177, np.zeros((23, 4)), axis=0)
+    seq_expect = np.insert(seq_expect, 155, np.zeros((45, 4)), axis=0)
     assert np.array_equal(inputs[0], seq_expect[:200])
     assert np.array_equal(inputs[1][:50], seq_expect[200:250])
 
     label_expect = np.zeros((955, 3), dtype=np.float16)
     label_expect[749:950, 0] = 1.  # genic region
-    label_expect[774:925, 1] = 1.  # transcript (only the first one due to longest transcript rule)
+    label_expect[774:930, 1] = 1.  # transcript (2 overlapping ones)
     label_expect[850:919, 2] = 1.  # intron first transcript
+    label_expect[800:879, 2] = 1.  # intron second transcript
     label_expect = np.flip(label_expect, axis=0)
-    label_expect = np.insert(label_expect, 178, np.zeros((22, 3)), axis=0)
-    label_expect = np.insert(label_expect, 200 + 177, np.zeros((23, 3)), axis=0)
-    # todo fix for selection of longest transcript
+    label_expect = np.insert(label_expect, 155, np.zeros((45, 3)), axis=0)
     assert np.array_equal(labels[0], label_expect[:200])
     assert np.array_equal(labels[1][:50], label_expect[200:250])
 
@@ -366,8 +366,7 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     label_mask_expect[925:] = 0
     label_mask_expect[749:850] = 0
     label_mask_expect = np.flip(label_mask_expect)
-    label_mask_expect = np.insert(label_mask_expect, 178, np.zeros((22,)), axis=0)
-    label_mask_expect = np.insert(label_mask_expect, 200 + 177, np.zeros((23,)), axis=0)
+    label_mask_expect = np.insert(label_mask_expect, 155, np.zeros((45,)), axis=0)
     assert np.array_equal(label_masks[0], label_mask_expect[:200])
     assert np.array_equal(label_masks[1][:50], label_mask_expect[200:250])
 
@@ -380,9 +379,9 @@ def test_numerify_with_end_neg1():
                                           one_hot=False)
 
         if is_plus_strand:
-            nums, masks = [x[0] for x in numerifier.coord_to_matrices()]
+            nums, masks, _ = [x[0] for x in numerifier.coord_to_matrices()]
         else:
-            nums, masks = [x[1] for x in numerifier.coord_to_matrices()]
+            nums, masks, _ = [x[1] for x in numerifier.coord_to_matrices()]
 
         if not np.array_equal(nums, expect):
             for i in range(nums.shape[0]):
