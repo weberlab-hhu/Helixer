@@ -8,6 +8,7 @@ from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
 parser = argparse.ArgumentParser()
 parser.add_argument('-s', '--server', type=str, default='clc')
 parser.add_argument('-nni', '--nni-id', type=str, required=True)
+parser.add_argument('-t', '--type', type=str, default='plants')
 parser.add_argument('-i', '--ignore', action='append')
 parser.add_argument('-er', '--error-rates', action='store_true')
 args = parser.parse_args()
@@ -38,15 +39,15 @@ for folder in os.listdir(trials_folder):
     path = parameters['parameters']['test_data']
     genome = path.split('/')[7]
 
-    # get sequence error rate
-    f = h5py.File('/home/felix/Desktop/data/plants/single_genomes/' + genome + '/h5_data_20k/test_data.h5', 'r')
-    n_samples = f['/data/X'].shape[0]
-    err = np.array(f['/data/err_samples'])
-    n_err_samples = np.count_nonzero(err == True)
-    sequence_error_rate = n_err_samples / n_samples
-
-    # get base level error rate (including padding) iterativly to avoid running into memory issues
     if args.error_rates:
+        # get sequence error rate
+        f = h5py.File(f'/home/felix/Desktop/data/{args.type}/single_genomes/{genome}/h5_data_20k/test_data.h5', 'r')
+        n_samples = f['/data/X'].shape[0]
+        err = np.array(f['/data/err_samples'])
+        n_err_samples = np.count_nonzero(err == True)
+        sequence_error_rate = n_err_samples / n_samples
+
+        # get base level error rate (including padding) iterativly to avoid running into memory issues
         sw_dset = f['/data/sample_weights']
         y_dset = f['/data/y']
         step_size = 1000
