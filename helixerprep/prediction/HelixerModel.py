@@ -72,7 +72,8 @@ class HelixerSequence(Sequence):
         self.h5_file = h5_file
         self.mode = mode
         self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
-                                 'overlap', 'overlap_offset', 'core_length', 'debug', 'exclude_errors'])
+                                 'overlap', 'overlap_offset', 'core_length', 'debug', 'exclude_errors',
+                                 'error_weights'])
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
@@ -115,11 +116,14 @@ class HelixerSequence(Sequence):
         y = self.y_dset[usable_idx_batch]
         sw = self.sw_dset[usable_idx_batch]
 
+        # calculate base level error rate for each sequence
+        error_rates = (np.count_nonzero(sw == 0, axis=1) / y.shape[1]).astype(np.float32)
+
         if self.transition_weights is not None:
             transitions = self.transitions_dset[usable_idx_batch]
         else:
             transitions = None
-        return X, y, sw, transitions
+        return X, y, sw, error_rates, transitions
 
     def _get_seqids_for_batch(self, idx):
         usable_idx_batch = self._usable_idx_batch(idx)
@@ -166,6 +170,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-tw', '--transition_weights', type=str, default='None')
         self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
+        self.parser.add_argument('-ew', '--error-weights', action='store_true')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')

@@ -20,7 +20,7 @@ class LSTMSequence(HelixerSequence):
             assert not mode == 'test'  # only use class weights during training and validation
 
     def __getitem__(self, idx):
-        X, y, sw, transitions = self._get_batch_data(idx)
+        X, y, sw, error_rates, transitions = self._get_batch_data(idx)
         pool_size = self.model.pool_size
         assert pool_size > 1, 'pooling size of <= 1 oh oh..'
         assert y.shape[1] % pool_size == 0, 'pooling size has to evenly divide seq len'
@@ -40,7 +40,7 @@ class LSTMSequence(HelixerSequence):
 
         # mark any multi-base timestep as error if any base has an error
         sw = sw.reshape((sw.shape[0], -1, pool_size))
-        sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
+        sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.float32)
 
         if self.transition_weights is not None:
             transitions = transitions.reshape((
@@ -73,6 +73,13 @@ class LSTMSequence(HelixerSequence):
             where_are_ones = np.where(sw_t == 0)
             sw_t[where_are_ones[0], where_are_ones[1]] = 1
             sw = np.multiply(sw_t, sw)
+
+        if self.error_weights:
+            # finish by multiplying the sample_weights with the error rate
+            # 1 - error_rate^(1/3) seems to have the shape we need for the weights
+            # given the error rate
+            error_weights = 1 - np.power(error_rates, 1/3)
+            sw *= np.expand_dims(error_weights, axis=1)
 
         return X, y, sw
 
