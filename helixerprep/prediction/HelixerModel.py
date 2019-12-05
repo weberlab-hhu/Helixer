@@ -72,7 +72,7 @@ class HelixerSequence(Sequence):
         self.h5_file = h5_file
         self.mode = mode
         self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
-                                 'overlap', 'overlap_offset', 'core_length', 'debug'])
+                                 'overlap', 'overlap_offset', 'core_length', 'debug', 'exclude_errors'])
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
@@ -82,7 +82,7 @@ class HelixerSequence(Sequence):
         self.chunk_size = self.y_dset.shape[1]
 
         # set array of usable indexes, always exclude all erroneous sequences during training
-        if mode == 'train':
+        if self.exclude_errors:
             self.usable_idx = np.flatnonzero(np.array(h5_file['/data/err_samples']) == False)
         else:
             self.usable_idx = list(range(self.x_dset.shape[0]))
@@ -165,6 +165,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
         self.parser.add_argument('-tw', '--transition_weights', type=str, default='None')
         self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
+        self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -315,7 +316,10 @@ class HelixerModel(ABC):
             n_train_correct_seqs = get_n_correct_seqs(self.h5_train)
             n_val_correct_seqs = get_n_correct_seqs(self.h5_val)
 
-            n_train_seqs = n_train_correct_seqs
+            if self.exclude_errors:
+                n_train_seqs = n_train_correct_seqs
+            else:
+                n_train_seqs = self.shape_train[0]
             n_val_seqs = self.shape_val[0]  # always validate on all
 
             n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
