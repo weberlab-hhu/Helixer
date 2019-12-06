@@ -49,7 +49,7 @@ for i, co in enumerate(chunk_offsets):
     lo_accs = []
     for j, lo in enumerate(length_offsets):
         if args.verbose:
-            print(f'{i + 1} / {len(chunk_offsets)}', f', {j + 1} / {len(length_offsets)}', end='\r')
+            print(f'chunk: {i + 1} / {len(chunk_offsets)}', f', length: {j + 1} / {len(length_offsets)}  ', end='\r')
         y_true_block_section = y_true_block[:, lo:lo+args.resolution].reshape((-1, 4))
         y_pred_block_section = y_pred_block[:, lo:lo+args.resolution].reshape((-1, 4))
         y_diff_block_section = y_diff_block[:, lo:lo+args.resolution].ravel()
