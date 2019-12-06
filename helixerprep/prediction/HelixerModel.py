@@ -107,7 +107,7 @@ class HelixerSequence(Sequence):
             X = self.x_dset[usable_idx_batch]
             seqid_borders = self._get_seqid_borders(idx)
             # split data along these borders
-            X_by_seqid = np.split(X, seqid_borders)
+            X_by_seqid = np.array_split(X, seqid_borders)
             overlapping_X = []
             for seqid_x in X_by_seqid:
                 seq = np.concatenate(seqid_x, axis=0)
@@ -376,51 +376,52 @@ class HelixerModel(ABC):
                     n_test_correct_seqs / self.shape_test[0] * 100))
 
     def _overlap_predictions(self, batch_idx, test_sequence, predictions):
-        # first zero out any predictions that were made across seqid borders
+        import pudb; pudb.set_trace()
+        all_predictions = np.empty((0, ) + predictions.shape[1:])
         chunk_size = predictions.shape[1]
-        seqids = test_sequence._get_seqids_for_batch(batch_idx)
-        n_cross_seq_preds = chunk_size // self.overlap_offset - 1
-        for i in range(len(seqids) - 1):
-            if seqids[i] != seqids[i + 1]:
-                import pudb; pudb.set_trace()
-                start_idx = i * (n_cross_seq_preds + 1) + 1
-                zeros = np.zeros((n_cross_seq_preds,) + predictions.shape[1:], dtype=predictions.dtype)
-                predictions[start_idx:start_idx + n_cross_seq_preds] = zeros
+        seqid_borders = test_sequence._get_seqid_borders(batch_idx)
+        # get number of sequences for each seqid from border distance
+        seqid_sizes = np.diff(np.concatenate(np.array([0]), seqid_borders))
+        pred_offset = 0
+        for seqid_size in seqid_sizes:
+            n_seqid_seqs = (seqid_size - 1) * self.chunk_size // self.overlap_offset + 1
+            predictions_seqid = predictions[pred_offset:pred_offset + n_seqid_seqs]
+            pred_offset += n_seqid_seqs
 
-        # actual overlapping; save first and last sequence for special handling later
-        first, last = predictions[0], predictions[-1]
-        # cut to the core
-        seq_overhang = int((chunk_size - self.core_length) / 2)
-        predictions = [s[seq_overhang:-seq_overhang] for s in predictions]
-        # generate sequences at the start and end
-        start_seqs = [first[j:j+self.core_length]
-                      for j in range(0, seq_overhang, self.overlap_offset)]
-        end_seqs = [last[j-self.core_length:j]
-                    for j in range(chunk_size - seq_overhang + self.overlap_offset,
-                                   chunk_size + 1,
-                                   self.overlap_offset)]
-        predictions = start_seqs + predictions + end_seqs
-        predictions = np.stack(predictions)
+            # actual overlapping; save first and last sequence for special handling later
+            first, last = predictions_seqid[0], predictions_seqid[-1]
+            # cut to the core
+            seq_overhang = int((chunk_size - self.core_length) / 2)
+            predictions_seqid = [s[seq_overhang:-seq_overhang] for s in predictions_seqid]
+            # generate sequences at the start and end
+            start_seqs = [first[j:j+self.core_length]
+                          for j in range(0, seq_overhang, self.overlap_offset)]
+            end_seqs = [last[j-self.core_length:j]
+                        for j in range(chunk_size - seq_overhang + self.overlap_offset,
+                                       chunk_size + 1,
+                                       self.overlap_offset)]
+            predictions_seqid = start_seqs + predictions_seqid + end_seqs
+            predictions_seqid = np.stack(predictions_seqid)
 
-        # merge and stack efficiently so everything can be averaged
-        n_overlapping_seqs = self.core_length // self.overlap_offset
-        n_predicted_original_seqs = test_sequence._seqs_per_batch(batch_idx=batch_idx)
-        n_predicted_bases = n_predicted_original_seqs * chunk_size
+            # merge and stack efficiently so everything can be averaged
+            n_overlapping_seqs = self.core_length // self.overlap_offset
+            n_predicted_bases = n_seqid_seqs * chunk_size
 
-        stacked = np.zeros((n_overlapping_seqs, n_predicted_bases, 4), dtype=predictions.dtype)
-        for j in range(n_overlapping_seqs):
-            # get idx of every n_overlapping_seqs'th seq starting at j
-            idx = list(range(j, predictions.shape[0], n_overlapping_seqs))
-            seq = np.concatenate(predictions[idx], axis=0)
-            start_base = j * self.overlap_offset
-            stacked[j, start_base:start_base+seq.shape[0]] = seq
+            stacked = np.zeros((n_overlapping_seqs, n_predicted_bases, 4), dtype=predictions.dtype)
+            for j in range(n_overlapping_seqs):
+                # get idx of every n_overlapping_seqs'th seq starting at j
+                idx = list(range(j, predictions_seqid.shape[0], n_overlapping_seqs))
+                seq = np.concatenate(predictions_seqid[idx], axis=0)
+                start_base = j * self.overlap_offset
+                stacked[j, start_base:start_base+seq.shape[0]] = seq
 
-        # average individual softmax values
-        # does change pseudo-probability dist at the edge but not the argmax afterwards
-        # (causes values to be lower there)
-        averages = np.mean(stacked, axis=0)
-        predictions = np.stack(np.split(averages, n_predicted_original_seqs))
-        return predictions
+            # average individual softmax values
+            # does change pseudo-probability dist at the edge but not the argmax afterwards
+            # (causes values to be lower there)
+            averages = np.mean(stacked, axis=0)
+            predictions_seqid = np.stack(np.split(averages, n_predicted_original_seqs))
+            all_predictions = np.concatenate(all_predictions, predictions_seqid, axis=0)
+        return all_predictions
 
     def _make_predictions(self, model):
         # loop through batches and continously expand output dataset as everything might
