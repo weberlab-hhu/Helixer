@@ -104,14 +104,17 @@ class HelixerSequence(Sequence):
     def _get_batch_data(self, idx):
         usable_idx_batch = self._usable_idx_batch(idx)
         if self.overlap:
-            # overlap continuous sequences that come from the same seqid
-            seqids = self.seqids_dset[usable_idx_batch]
             X = self.x_dset[usable_idx_batch]
-            X = np.concatenate(X, axis=0)
-            # apply sliding window
-            X = [X[i:i+self.chunk_size]
-                 for i in range(0, len(X) - self.chunk_size + 1, self.overlap_offset)]
-            X = np.stack(X)
+            seqid_borders = self._get_seqid_borders(idx)
+            # split data along these borders
+            X_by_seqid = np.split(X, seqid_borders)
+            overlapping_X = []
+            for seqid_x in X_by_seqid:
+                seq = np.concatenate(seqid_x, axis=0)
+                # apply sliding window
+                overlapping_X += [seq[i:i+self.chunk_size]
+                                  for i in range(0, len(seq) - self.chunk_size + 1, self.overlap_offset)]
+            X = np.stack(overlapping_X)
         else:
             X = self.x_dset[usable_idx_batch]
 
@@ -126,6 +129,12 @@ class HelixerSequence(Sequence):
         else:
             transitions = None
         return X, y, sw, error_rates, transitions
+
+    def _get_seqid_borders(self, idx):
+        seqids = self.seqids_dset[usable_idx_batch]
+        idx = np.argwhere(s[:-1] != s[1:])[0]
+        idx = np.squeeze(np.add(idx, 1))  # add 1 for splitting with np.split()
+        return idx
 
     def _get_seqids_for_batch(self, idx):
         usable_idx_batch = self._usable_idx_batch(idx)
@@ -371,12 +380,12 @@ class HelixerModel(ABC):
         chunk_size = predictions.shape[1]
         seqids = test_sequence._get_seqids_for_batch(batch_idx)
         n_cross_seq_preds = chunk_size // self.overlap_offset - 1
-        # for i in range(len(seqids) - 1):
-            # if seqids[i] != seqids[i + 1]:
-                # import pudb; pudb.set_trace()
-                # start_idx = i * (n_cross_seq_preds + 1) + 1
-                # zeros = np.zeros((n_cross_seq_preds,) + predictions.shape[1:], dtype=predictions.dtype)
-                # predictions[start_idx:start_idx + n_cross_seq_preds] = zeros
+        for i in range(len(seqids) - 1):
+            if seqids[i] != seqids[i + 1]:
+                import pudb; pudb.set_trace()
+                start_idx = i * (n_cross_seq_preds + 1) + 1
+                zeros = np.zeros((n_cross_seq_preds,) + predictions.shape[1:], dtype=predictions.dtype)
+                predictions[start_idx:start_idx + n_cross_seq_preds] = zeros
 
         # actual overlapping; save first and last sequence for special handling later
         first, last = predictions[0], predictions[-1]
