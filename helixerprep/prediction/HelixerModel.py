@@ -131,10 +131,13 @@ class HelixerSequence(Sequence):
         return X, y, sw, error_rates, transitions
 
     def _get_seqid_borders(self, idx):
-        seqids = self.seqids_dset[usable_idx_batch]
-        idx = np.argwhere(s[:-1] != s[1:])[0]
-        idx = np.squeeze(np.add(idx, 1))  # add 1 for splitting with np.split()
-        return idx
+        seqids = self.seqids_dset[self._usable_idx_batch(idx)]
+        idx_border = np.argwhere(seqids[:-1] != seqids[1:])
+        if len(idx_border) > 0:
+            # if there are changes in seqid
+            idx_border = idx_border[0]
+        idx_border = np.squeeze(np.add(idx_border, 1))  # add 1 for splitting with np.split()
+        return idx_border
 
     def _get_seqids_for_batch(self, idx):
         usable_idx_batch = self._usable_idx_batch(idx)
