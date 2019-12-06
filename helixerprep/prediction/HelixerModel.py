@@ -386,6 +386,7 @@ class HelixerModel(ABC):
         seqid_borders = list(test_sequence._get_seqid_borders(batch_idx))
         # get number of sequences for each seqid from border distance
         seqid_sizes = np.diff(np.array([0] + seqid_borders + [n_original_seqs]))
+        print(batch_idx, seqid_sizes)
         pred_offset = 0
         for seqid_size in seqid_sizes:
             n_seqid_seqs = (seqid_size - 1) * chunk_size // self.overlap_offset + 1
@@ -397,14 +398,12 @@ class HelixerModel(ABC):
                 # cut to the core
                 seq_overhang = int((chunk_size - self.core_length) / 2)
                 predictions_seqid = [s[seq_overhang:-seq_overhang] for s in predictions_seqid]
-                # generate sequences at the start and end
-                start_seqs = [first[j:j+self.core_length]
-                              for j in range(0, seq_overhang, self.overlap_offset)]
-                end_seqs = [last[j-self.core_length:j]
-                            for j in range(chunk_size - seq_overhang + self.overlap_offset,
-                                           chunk_size + 1,
-                                           self.overlap_offset)]
-                predictions_seqid = start_seqs + predictions_seqid + end_seqs
+                # generate zero'd out filler sequences for the start and end
+                n_overhang_seqs = seq_overhang // self.overlap_offset
+                filler_seq = np.zeros((chunk_size,), dtype=predictions.dtype)
+                predictions_seqid = [filler_seq] * n_overhang_seqs + predictions_seqid
+                predictions_seqid += [filler_seq] * n_overhang_seqs
+                # stack eveything
                 predictions_seqid = np.stack(predictions_seqid)
 
                 # merge and stack efficiently so everything can be averaged
@@ -425,6 +424,7 @@ class HelixerModel(ABC):
                 averages = np.mean(stacked, axis=0)
                 predictions_seqid = np.stack(np.split(averages, seqid_size))
             all_predictions = np.concatenate([all_predictions, predictions_seqid], axis=0)
+        assert all_predictions.shape[0] == n_original_seqs
         return all_predictions
 
     def _make_predictions(self, model):
