@@ -380,8 +380,13 @@ class HelixerModel(ABC):
                     n_test_correct_seqs / self.shape_test[0] * 100))
 
     def _overlap_predictions(self, batch_idx, test_sequence, predictions):
+        # some shortcut variables
         chunk_size = predictions.shape[1]
+        seq_overhang = int((chunk_size - self.core_length) / 2)
+        n_overhang_seqs = seq_overhang // self.overlap_offset
         n_original_seqs = test_sequence._seqs_per_batch(batch_idx=batch_idx)
+        n_overlapping_seqs = self.core_length // self.overlap_offset
+
         all_predictions = np.empty((0, ) + predictions.shape[1:])
         seqid_borders = list(test_sequence._get_seqid_borders(batch_idx))
         # get number of sequences for each seqid from border distance
@@ -396,20 +401,18 @@ class HelixerModel(ABC):
                 # actual overlapping; save first and last sequence for special handling later
                 first, last = predictions_seqid[0], predictions_seqid[-1]
                 # cut to the core
-                seq_overhang = int((chunk_size - self.core_length) / 2)
                 predictions_seqid = [s[seq_overhang:-seq_overhang] for s in predictions_seqid]
                 # generate zero'd out filler sequences for the start and end
-                n_overhang_seqs = seq_overhang // self.overlap_offset
-                filler_seq = np.zeros((chunk_size,), dtype=predictions.dtype)
-                predictions_seqid = [filler_seq] * n_overhang_seqs + predictions_seqid
-                predictions_seqid += [filler_seq] * n_overhang_seqs
+                filler_seqs = [np.zeros((self.core_length, 4))] * n_overhang_seqs
+                predictions_seqid = filler_seqs + predictions_seqid + filler_seqs
                 # stack eveything
-                predictions_seqid = np.stack(predictions_seqid)
+                predictions_seqid = np.stack(predictions_seqid).astype(predictions.dtype)
+                # add overhang edge data from first/last seq that can not be overlapped
+                predictions_seqid[0, :seq_overhang] = first[:seq_overhang]
+                predictions_seqid[-1, -seq_overhang:] = last[-seq_overhang:]
 
                 # merge and stack efficiently so everything can be averaged
-                n_overlapping_seqs = self.core_length // self.overlap_offset
                 n_predicted_bases = seqid_size * chunk_size
-
                 stacked = np.zeros((n_overlapping_seqs, n_predicted_bases, 4), dtype=predictions.dtype)
                 for j in range(n_overlapping_seqs):
                     # get idx of every n_overlapping_seqs'th seq starting at j

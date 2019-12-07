@@ -15,6 +15,7 @@ parser.add_argument('-o', '--output-folder', type=str, default='')
 parser.add_argument('-res', '--resolution', type=int, default=1000)
 parser.add_argument('-c', '--chunk-size', type=int, default=1000)
 parser.add_argument('-v', '--verbose', action='store_true')
+parser.add_argument('-os', '--only-start-seqs', action='store_true')
 args = parser.parse_args()
 
 h5_data = h5py.File(args.data, 'r')
@@ -34,6 +35,12 @@ else:
 assert y_true.shape == y_pred.shape
 sw = np.array(h5_data['/data/sample_weights']).astype(bool)
 
+if args.only_start_seqs:
+    seqids = np.array(h5_data['/data/seqids'])
+    idx_border = np.squeeze(np.argwhere(seqids[:-1] != seqids[1:]))
+    idx_border = list(np.add(idx_border, 1))
+    y_true, y_pred, sw = y_true[idx_border], y_pred[idx_border], sw[idx_border]
+
 total_accs, genic_f1s = [], []
 chunk_offsets = list(range(0, y_true.shape[0], args.chunk_size))
 length_offsets = list(range(0, y_true.shape[1], args.resolution))
@@ -49,7 +56,9 @@ for i, co in enumerate(chunk_offsets):
     lo_accs = []
     for j, lo in enumerate(length_offsets):
         if args.verbose:
-            print(f'chunk: {i + 1} / {len(chunk_offsets)}', f', length: {j + 1} / {len(length_offsets)}  ', end='\r')
+            print(f'chunk: {i + 1} / {len(chunk_offsets)}',
+                  f', length: {j + 1} / {len(length_offsets)}  ',
+                  end='\r')
         y_true_block_section = y_true_block[:, lo:lo+args.resolution].reshape((-1, 4))
         y_pred_block_section = y_pred_block[:, lo:lo+args.resolution].reshape((-1, 4))
         y_diff_block_section = y_diff_block[:, lo:lo+args.resolution].ravel()
