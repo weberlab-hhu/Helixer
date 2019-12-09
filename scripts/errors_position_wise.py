@@ -12,6 +12,7 @@ parser.add_argument('-d', '--data', type=str, required=True)
 parser.add_argument('-p', '--predictions', type=str, required=True)
 parser.add_argument('-s', '--sample', type=int, default=None)
 parser.add_argument('-o', '--output-folder', type=str, default='')
+parser.add_argument('-g', '--genome', type=str, default='')
 parser.add_argument('-res', '--resolution', type=int, default=1000)
 parser.add_argument('-c', '--chunk-size', type=int, default=1000)
 parser.add_argument('-v', '--verbose', action='store_true')
@@ -19,7 +20,7 @@ args = parser.parse_args()
 
 h5_data = h5py.File(args.data, 'r')
 h5_pred = h5py.File(args.predictions, 'r')
-genome = args.data.strip().split('/')[7]
+genome = args.genome if args.genome else args.data.strip().split('/')[7]
 
 if args.sample:
     print('Sampling {} rows'.format(args.sample))
