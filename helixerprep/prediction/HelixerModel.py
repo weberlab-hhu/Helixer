@@ -494,17 +494,20 @@ class HelixerModel(ABC):
 
     def _print_model_info(self, model):
         os.chdir(os.path.dirname(__file__))
-        cmd = ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
-        branch = subprocess.check_output(cmd).strip().decode()
-        cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
-        commit = subprocess.check_output(cmd).strip().decode()
-        print(f'Current helixerprep branch: {branch} ({commit})')
-        if self.load_model_path:
-            cmd = ['md5sum', self.load_model_path]
-            self.loaded_model_hash = subprocess.check_output(cmd).strip().decode()
-            print(f'Md5sum of the loaded model: {self.loaded_model_hash}')
-        print()
+        try:
+            cmd = ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
+            branch = subprocess.check_output(cmd).strip().decode()
+            cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
+            commit = subprocess.check_output(cmd).strip().decode()
+            print(f'Current helixerprep branch: {branch} ({commit})')
+            if self.load_model_path:
+                cmd = ['md5sum', self.load_model_path]
+                self.loaded_model_hash = subprocess.check_output(cmd).strip().decode()
+                print(f'Md5sum of the loaded model: {self.loaded_model_hash}')
+        except subprocess.CalledProcessError:
+            print('An error occured while running a subprocess')
 
+        print()
         if self.verbose:
             print(model.summary())
         else:

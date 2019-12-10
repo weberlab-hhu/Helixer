@@ -197,7 +197,10 @@ class HelixerExportController(object):
         for module in [geenuff, helixerprep]:
             os.chdir(os.path.dirname(module.__file__))
             cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
-            attrs[module.__name__ + '_commit'] = subprocess.check_output(cmd).strip().decode()
+            try:
+                attrs[module.__name__ + '_commit'] = subprocess.check_output(cmd).strip().decode()
+            except subprocess.CalledProcessError:
+                attrs[module.__name__ + '_commit'] = 'error'
         # insert attrs into .h5 file
         for key, value in attrs.items():
             if self.only_test_set:
