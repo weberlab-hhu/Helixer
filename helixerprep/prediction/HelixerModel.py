@@ -150,7 +150,7 @@ class HelixerSequence(Sequence):
             n_seqs = self.batch_size / (self.chunk_size / self.overlap_offset)
         else:
             n_seqs = self.batch_size
-        if batch_idx and batch_idx == len(self) - 1:
+        if batch_idx and batch_idx == len(self) - 1 and len(self.usable_idx) % n_seqs > 0:
             n_seqs = len(self.usable_idx) % n_seqs  # calculate overhang when at the end
         return int(n_seqs)
 
