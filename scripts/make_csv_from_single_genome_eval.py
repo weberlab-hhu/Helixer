@@ -13,12 +13,14 @@ parser.add_argument('-i', '--ignore', action='append')
 parser.add_argument('-er', '--error-rates', action='store_true')
 args = parser.parse_args()
 
-assert args.server in ['clc', 'cluster', 'home']
+assert args.server in ['clc', 'cluster', 'work', 'home']
 assert len(args.nni_id) == 8
 
 if args.server == 'clc':
     nni_base = '/mnt/data/experiments_backup/nni_clc_server/nni/experiments/'
 elif args.server == 'home':
+    nni_base = '/mnt/data/experiments_backup/nni_home_felix/nni/experiments/'
+elif args.server == 'work':
     nni_base = '/home/felix/nni/experiments/'
 else:
     nni_base = '/mnt/data/experiments_backup/nni_cluster/nni/experiments/'
