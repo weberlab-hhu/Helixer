@@ -110,10 +110,15 @@ class HelixerSequence(Sequence):
             X_by_seqid = np.array_split(X, seqid_borders)
             overlapping_X = []
             for seqid_x in X_by_seqid:
-                seq = np.concatenate(seqid_x, axis=0)
-                # apply sliding window
-                overlapping_X += [seq[i:i+self.chunk_size]
-                                  for i in range(0, len(seq) - self.chunk_size + 1, self.overlap_offset)]
+                if len(seqid_x) > 2:
+                    seq = np.concatenate(seqid_x, axis=0)
+                    # apply sliding window
+                    overlapping_X += [seq[i:i+self.chunk_size]
+                                      for i in range(0, len(seq) - self.chunk_size + 1,
+                                                     self.overlap_offset)]
+                else:
+                    # do not overlap short sequences
+                    overlapping_X += [seqid_x[i] for i in range(len(seqid_x))]
             X = np.stack(overlapping_X)
         else:
             X = self.x_dset[usable_idx_batch]
@@ -392,10 +397,13 @@ class HelixerModel(ABC):
         print(batch_idx, seqid_sizes)
         pred_offset = 0
         for seqid_size in seqid_sizes:
-            n_seqid_seqs = (seqid_size - 1) * chunk_size // self.overlap_offset + 1
+            if seqid_size > 2:
+                n_seqid_seqs = (seqid_size - 1) * chunk_size // self.overlap_offset + 1
+            else:
+                n_seqid_seqs = seqid_size
             predictions_seqid = predictions[pred_offset:pred_offset + n_seqid_seqs]
             pred_offset += n_seqid_seqs
-            if seqid_size > 1:
+            if seqid_size > 2:
                 # actual overlapping; save first and last sequence for special handling later
                 first, last = predictions_seqid[0], predictions_seqid[-1]
                 # cut to the core
@@ -424,6 +432,8 @@ class HelixerModel(ABC):
                 # (causes values to be lower there)
                 averages = np.mean(stacked, axis=0)
                 predictions_seqid = np.stack(np.split(averages, seqid_size))
+            else:
+                pass
             all_predictions = np.concatenate([all_predictions, predictions_seqid], axis=0)
         assert all_predictions.shape[0] == n_original_seqs
         return all_predictions
