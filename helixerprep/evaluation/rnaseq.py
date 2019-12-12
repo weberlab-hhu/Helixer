@@ -192,12 +192,14 @@ def write_next_2(h5_out, slices, i):
         h5_out['evaluation/' + key][i] = slices[j]
 
 
-def gen_coords(h5_sorted):
+def gen_coords(h5_sorted, start_i=0, end_i=None):
     """gets unique seqids, range, and seq length from h5 file"""
     # uses tuple with (seqid, max_coord)
     previous = seqid(h5_sorted, 0)
-    start_i, i = 0, 0
-    for i in range(1, h5_sorted['data/seqids'].shape[0]):
+    i = start_i
+    if end_i is None:
+        end_i = h5_sorted['data/seqids'].shape[0]
+    for i in range(start_i + 1, end_i):
         current = seqid(h5_sorted, i)
         if current != previous:
             yield previous, start_i, i

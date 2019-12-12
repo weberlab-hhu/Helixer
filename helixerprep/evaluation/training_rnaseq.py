@@ -59,10 +59,12 @@ def main(species, bam, h5_data, dUTP):
         add_empty_eval_datasets(h5)
 
     # identify regions in h5 corresponding to species
-    mask = np.array(h5['/data/species'][:] == species.encode('utf-8'))
+    species_start, species_end = species_range(h5, species)
 
     # insert coverage into said regions
-
+    coords = rnaseq.gen_coords(h5, species_start, species_end)
+    for seqid, start_i, end_i in coords:
+        pass  # todo, modular rnaseq and import?
     # calculate coverage score  (0 - 2)
     ## intergenic (1 / (cov + 1) + 1 / (sc + 1)
     ## CDS and UTR ( 1 - (1 / (cov + 1)) + 1 / (sc + 1))
