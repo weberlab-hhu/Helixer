@@ -84,9 +84,7 @@ def get_length_from_header(htseqbam, chromosome):
     return sqs[0]['LN']
 
 
-def cov_by_chrom(chromosome, length, htseqbam, d_utp=False):
-    # todo, refactor so it isn't even passed, that from the h5 files can be wrong when err seqs were filtered
-    del length
+def cov_by_chrom(chromosome, htseqbam, d_utp=False):
     length = get_length_from_header(htseqbam, chromosome)
     # returns htseq genomic array
     chromosomes = {chromosome: length}
@@ -103,7 +101,7 @@ def cov_by_chrom(chromosome, length, htseqbam, d_utp=False):
             for iv in spliced_ivs:
                 spliced_array[iv] += 1
 
-    return cov_array, spliced_array
+    return cov_array, spliced_array, length
 
 
 def extract_np_arrays(cov_array, seqid, length):
@@ -112,8 +110,8 @@ def extract_np_arrays(cov_array, seqid, length):
     return plus, minus
 
 
-def stranded_cov_by_chromosome(htseqbam, seqid, length, d_utp=False):
-    cov_array, spliced_array = cov_by_chrom(seqid, length, htseqbam, d_utp)
+def stranded_cov_by_chromosome(htseqbam, seqid, d_utp=False):
+    cov_array, spliced_array, length = cov_by_chrom(seqid, htseqbam, d_utp)
     cp, cm = extract_np_arrays(cov_array, seqid, length)
     sp, sm = extract_np_arrays(spliced_array, seqid, length)
     return cp, cm, sp, sm
@@ -127,9 +125,8 @@ def setup_output4species(new_h5_path, h5_data, h5_preds, species):
     h5_file = h5py.File(new_h5_path, "w")
 
     # get output size
-    b_species = species.encode("utf-8")  # todo, right encoding?
+    b_species = species.encode("utf-8")
     length = len([x for x in h5_data['data/species'] if x == b_species])
-
 
     # setup empty datasets
     # data
@@ -198,22 +195,19 @@ def write_next_2(h5_out, slices, i):
 def gen_coords(h5_sorted):
     """gets unique seqids, range, and seq length from h5 file"""
     # uses tuple with (seqid, max_coord)
-    previous, highest = id_and_max(h5_sorted, 0)
+    previous = seqid(h5_sorted, 0)
     start_i, i = 0, 0
     for i in range(1, h5_sorted['data/seqids'].shape[0]):
-        current, max_coord = id_and_max(h5_sorted, i)
+        current = seqid(h5_sorted, i)
         if current != previous:
-            yield previous, highest, start_i, i
+            yield previous, start_i, i
             start_i = i
-            highest = max_coord
             previous = current
-        else:
-            highest = max(highest, max_coord)
-    yield previous, highest, start_i, i
+    yield previous, start_i, i
 
 
-def id_and_max(h5, i):
-    return h5['data/seqids'][i], max(h5['data/start_ends'][i])
+def seqid(h5, i):
+    return h5['data/seqids'][i]
 
 
 def pad_cov_right(short_arr, length, fill_value=-1.):
@@ -238,11 +232,11 @@ def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
     pad_to = h5_out['evaluation/coverage'].shape[1]
 
     # get coverage by chromosome
-    for seqid, length, start_i, end_i in coords:
+    for seqid, start_i, end_i in coords:
         seqid = seqid.decode('utf-8')
         print(seqid, file=sys.stderr)
         # coverage+, coverage-, spliced_coverage+, spliced_coverage-
-        cov_arrays = stranded_cov_by_chromosome(bam, seqid, length, d_utp)
+        cov_arrays = stranded_cov_by_chromosome(bam, seqid, d_utp)
         # split into pieces matching start/ends
         b_seqid = seqid.encode("utf-8")
         print('end at {}'.format(end_i))
