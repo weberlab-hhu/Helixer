@@ -77,14 +77,24 @@ def get_sense_cov_intervals(read, chromosome, d_utp):
     return out  # list [standard, spliced] of coverage intervals
 
 
+def get_length_from_header(htseqbam, chromosome):
+    hdict = htseqbam.get_header_dict()
+    sqs = [x for x in hdict['SQ'] if x['SN'] == chromosome]
+    assert len(sqs) == 1
+    return sqs[0]['LN']
+
+
 def cov_by_chrom(chromosome, length, htseqbam, d_utp=False):
+    # todo, refactor so it isn't even passed, that from the h5 files can be wrong when err seqs were filtered
+    del length
+    length = get_length_from_header(htseqbam, chromosome)
     # returns htseq genomic array
     chromosomes = {chromosome: length}
-
     cov_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage="ndarray")
     spliced_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage="ndarray")
     # 1 below because "pysam uses 0-based coordinates...The only exception is the region string in the fetch() and
     # pileup() methods. This string follows the convention of the samtools command line utilities." oh well.
+
     for read in htseqbam.fetch(region="{}:1-{}".format(chromosome, length)):
         if not skippable(read):
             standard_ivs, spliced_ivs = get_sense_cov_intervals(read, chromosome, d_utp)
