@@ -12,14 +12,17 @@ parser.add_argument('-d', '--data', type=str, required=True)
 parser.add_argument('-p', '--predictions', type=str, required=True)
 parser.add_argument('-s', '--sample', type=int, default=None)
 parser.add_argument('-o', '--output-folder', type=str, default='')
+parser.add_argument('-g', '--genome', type=str, default='')
 parser.add_argument('-res', '--resolution', type=int, default=1000)
 parser.add_argument('-c', '--chunk-size', type=int, default=1000)
 parser.add_argument('-v', '--verbose', action='store_true')
+parser.add_argument('-os', '--only-start-seqs', action='store_true')
+parser.add_argument('-pec', '--plot-every-chunk', action='store_true')
 args = parser.parse_args()
 
 h5_data = h5py.File(args.data, 'r')
 h5_pred = h5py.File(args.predictions, 'r')
-genome = args.data.strip().split('/')[7]
+genome = args.genome if args.genome else args.data.strip().split('/')[6]
 
 if args.sample:
     print('Sampling {} rows'.format(args.sample))
@@ -34,6 +37,12 @@ else:
 assert y_true.shape == y_pred.shape
 sw = np.array(h5_data['/data/sample_weights']).astype(bool)
 
+if args.only_start_seqs:
+    seqids = np.array(h5_data['/data/seqids'])
+    idx_border = np.squeeze(np.argwhere(seqids[:-1] != seqids[1:]))
+    idx_border = list(np.add(idx_border, 1))
+    y_true, y_pred, sw = y_true[idx_border], y_pred[idx_border], sw[idx_border]
+
 total_accs, genic_f1s = [], []
 chunk_offsets = list(range(0, y_true.shape[0], args.chunk_size))
 length_offsets = list(range(0, y_true.shape[1], args.resolution))
@@ -46,10 +55,14 @@ for i, co in enumerate(chunk_offsets):
     y_pred_block = y_pred[co:co+args.chunk_size]
     y_diff_block = np.argmax(y_true_block, axis=-1) == np.argmax(y_pred_block, axis=-1)
 
+    if args.plot_every_chunk:
+        cms_chunk = [ConfusionMatrix(None) for _ in range(len(length_offsets))]
     lo_accs = []
     for j, lo in enumerate(length_offsets):
         if args.verbose:
-            print(f'{i + 1} / {len(chunk_offsets)}', f', {j + 1} / {len(length_offsets)}', end='\r')
+            print(f'chunk: {i + 1} / {len(chunk_offsets)}',
+                  f', length: {j + 1} / {len(length_offsets)}  ',
+                  end='\r')
         y_true_block_section = y_true_block[:, lo:lo+args.resolution].reshape((-1, 4))
         y_pred_block_section = y_pred_block[:, lo:lo+args.resolution].reshape((-1, 4))
         y_diff_block_section = y_diff_block[:, lo:lo+args.resolution].ravel()
@@ -64,6 +77,15 @@ for i, co in enumerate(chunk_offsets):
 
             cms[j]._add_to_cm(y_true_block_section, y_pred_block_section, sw_block_section)
             cm_total._add_to_cm(y_true_block_section, y_pred_block_section, sw_block_section)
+            if args.plot_every_chunk:
+                cms_chunk[j]._add_to_cm(y_true_block_section, y_pred_block_section, sw_block_section)
+    if args.plot_every_chunk:
+        chunk_genic_f1s = [cm._get_composite_scores()['genic']['f1'] for cm in cms_chunk]
+        plt.plot(length_offsets, chunk_genic_f1s, label=f'genic f1 {co}')
+        plt.ylim((0.0, 1.0))
+        plt.xlabel('length offset')
+        plt.legend()
+        plt.savefig(os.path.join(args.output_folder, f'{genome}_chunks.png'))
 
 # print accuracies
 table = [['index', 'overall acc']]
@@ -76,7 +98,8 @@ print('\n', AsciiTable(table).table, sep='')
 genic_f1s = [cm._get_composite_scores()['genic']['f1'] for cm in cms]
 cm_total._print_results()
 
-# output
+# output overall plot
+plt.cla()
 plt.title(genome)
 plt.plot(length_offsets, accs_offset, label='overall acc')
 plt.plot(length_offsets, genic_f1s, label='genic f1')

@@ -71,9 +71,9 @@ class HelixerSequence(Sequence):
         self.model = model
         self.h5_file = h5_file
         self.mode = mode
-        self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'meta_losses',
-                                 'transition_weights', 'overlap', 'overlap_offset', 'core_length',
-                                 'debug'])
+        self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
+                                 'overlap', 'overlap_offset', 'core_length', 'debug', 'exclude_errors',
+                                 'error_weights'])
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
@@ -81,11 +81,9 @@ class HelixerSequence(Sequence):
         if self.transition_weights is not None:
             self.transitions_dset = h5_file['data/transitions']
         self.chunk_size = self.y_dset.shape[1]
-        if self.meta_losses:
-            self._load_and_scale_meta_info()
 
         # set array of usable indexes, always exclude all erroneous sequences during training
-        if mode == 'train':
+        if self.exclude_errors:
             self.usable_idx = np.flatnonzero(np.array(h5_file['/data/err_samples']) == False)
         else:
             self.usable_idx = list(range(self.x_dset.shape[0]))
@@ -97,21 +95,6 @@ class HelixerSequence(Sequence):
         for name in names:
             self.__dict__[name] = self.model.__dict__[name]
 
-    def _load_and_scale_meta_info(self):
-        self.gc_contents = np.array(self.h5_file['/data/gc_contents'], dtype=self.float_precision)
-        self.coord_lengths = np.array(self.h5_file['/data/coord_lengths'], dtype=self.float_precision)
-        # scale gc content by their coord lengths
-        self.gc_contents /= self.coord_lengths
-        # log transform and standardize coord_lengths to [0, 1]
-        # gc_contents should have a fine scale already
-        self.coord_lengths = np.log(self.coord_lengths)
-        self.coord_lengths = self.coord_lengths.reshape(-1, 1)
-        self.coord_lengths = MinMaxScaler().fit(self.coord_lengths).transform(self.coord_lengths)
-        # need to clip as values can be slightly above 1.0 (docs say otherwise..)
-        self.coord_lengths = np.clip(self.coord_lengths, 0.0, 1.0).squeeze()
-        assert np.all(np.logical_and(self.gc_contents >= 0.0, self.gc_contents <= 1.0))
-        assert np.all(np.logical_and(self.coord_lengths >= 0.0, self.coord_lengths <= 1.0))
-
     def _usable_idx_batch(self, idx):
         n_seqs = self._seqs_per_batch()
         usable_idx_slice = self.usable_idx[idx * n_seqs:(idx + 1) * n_seqs]
@@ -122,28 +105,43 @@ class HelixerSequence(Sequence):
         usable_idx_batch = self._usable_idx_batch(idx)
         if self.overlap:
             X = self.x_dset[usable_idx_batch]
-            X = np.concatenate(X, axis=0)
-            # apply sliding window
-            X = [X[i:i+self.chunk_size]
-                 for i in range(0, len(X) - self.chunk_size + 1, self.overlap_offset)]
-            X = np.stack(X)
+            seqid_borders = self._get_seqid_borders(idx)
+            # split data along these borders
+            X_by_seqid = np.array_split(X, seqid_borders)
+            overlapping_X = []
+            for seqid_x in X_by_seqid:
+                if len(seqid_x) > 2:
+                    seq = np.concatenate(seqid_x, axis=0)
+                    # apply sliding window
+                    overlapping_X += [seq[i:i+self.chunk_size]
+                                      for i in range(0, len(seq) - self.chunk_size + 1,
+                                                     self.overlap_offset)]
+                else:
+                    # do not overlap short sequences
+                    overlapping_X += [seqid_x[i] for i in range(len(seqid_x))]
+            X = np.stack(overlapping_X)
         else:
             X = self.x_dset[usable_idx_batch]
 
         y = self.y_dset[usable_idx_batch]
         sw = self.sw_dset[usable_idx_batch]
 
+        # calculate base level error rate for each sequence
+        error_rates = (np.count_nonzero(sw == 0, axis=1) / y.shape[1]).astype(np.float32)
+
         if self.transition_weights is not None:
             transitions = self.transitions_dset[usable_idx_batch]
         else:
             transitions = None
-        if self.meta_losses:
-            # return the scaled gc content and length of each sequence
-            gc_content = np.stack(self.gc_contents[usable_idx_batch])
-            lengths = np.stack(self.coord_lengths[usable_idx_batch])
-        else:
-            gc_content, lengths = None, None
-        return X, y, sw, transitions, gc_content, lengths
+        return X, y, sw, error_rates, transitions
+
+    def _get_seqid_borders(self, idx):
+        seqids = self.seqids_dset[self._usable_idx_batch(idx)]
+        idx_border = np.argwhere(seqids[:-1] != seqids[1:])[:, 0]
+        if len(idx_border) > 0:
+            # if there are changes in seqid
+            idx_border = np.add(idx_border, 1)  # add 1 for splitting with np.split()
+        return idx_border
 
     def _get_seqids_for_batch(self, idx):
         usable_idx_batch = self._usable_idx_batch(idx)
@@ -157,7 +155,7 @@ class HelixerSequence(Sequence):
             n_seqs = self.batch_size / (self.chunk_size / self.overlap_offset)
         else:
             n_seqs = self.batch_size
-        if batch_idx and batch_idx == len(self) - 1:
+        if batch_idx and batch_idx == len(self) - 1 and len(self.usable_idx) % n_seqs > 0:
             n_seqs = len(self.usable_idx) % n_seqs  # calculate overhang when at the end
         return int(n_seqs)
 
@@ -187,9 +185,10 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cn', '--clip-norm', type=float, default=1.0)
         self.parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3)
         self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
-        self.parser.add_argument('-meta-losses', '--meta-losses', action='store_true')
         self.parser.add_argument('-tw', '--transition_weights', type=str, default='None')
         self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
+        self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
+        self.parser.add_argument('-ew', '--error-weights', action='store_true')
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -340,7 +339,10 @@ class HelixerModel(ABC):
             n_train_correct_seqs = get_n_correct_seqs(self.h5_train)
             n_val_correct_seqs = get_n_correct_seqs(self.h5_val)
 
-            n_train_seqs = n_train_correct_seqs
+            if self.exclude_errors:
+                n_train_seqs = n_train_correct_seqs
+            else:
+                n_train_seqs = self.shape_train[0]
             n_val_seqs = self.shape_val[0]  # always validate on all
 
             n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
@@ -381,50 +383,60 @@ class HelixerModel(ABC):
                     n_test_correct_seqs / self.shape_test[0] * 100))
 
     def _overlap_predictions(self, batch_idx, test_sequence, predictions):
-        # first zero out any predictions that were made across seqid borders
+        # some shortcut variables
         chunk_size = predictions.shape[1]
-        seqids = test_sequence._get_seqids_for_batch(batch_idx)
-        n_cross_seq_preds = chunk_size // self.overlap_offset - 1
-        for i in range(len(seqids) - 1):
-            if seqids[i] != seqids[i + 1]:
-                start_idx = i * (n_cross_seq_preds + 1) + 1
-                zeros = np.zeros((n_cross_seq_preds,) + predictions.shape[1:], dtype=predictions.dtype)
-                predictions[start_idx:start_idx + n_cross_seq_preds] = zeros
-
-        # actual overlapping; save first and last sequence for special handling later
-        first, last = predictions[0], predictions[-1]
-        # cut to the core
         seq_overhang = int((chunk_size - self.core_length) / 2)
-        predictions = [s[seq_overhang:-seq_overhang] for s in predictions]
-        # generate sequences at the start and end
-        start_seqs = [first[j:j+self.core_length]
-                      for j in range(0, seq_overhang, self.overlap_offset)]
-        end_seqs = [last[j-self.core_length:j]
-                    for j in range(chunk_size - seq_overhang + self.overlap_offset,
-                                   chunk_size + 1,
-                                   self.overlap_offset)]
-        predictions = start_seqs + predictions + end_seqs
-        predictions = np.stack(predictions)
-
-        # merge and stack efficiently so everything can be averaged
+        n_overhang_seqs = seq_overhang // self.overlap_offset
+        n_original_seqs = test_sequence._seqs_per_batch(batch_idx=batch_idx)
         n_overlapping_seqs = self.core_length // self.overlap_offset
-        n_predicted_original_seqs = test_sequence._seqs_per_batch(batch_idx=batch_idx)
-        n_predicted_bases = n_predicted_original_seqs * chunk_size
 
-        stacked = np.zeros((n_overlapping_seqs, n_predicted_bases, 4), dtype=predictions.dtype)
-        for j in range(n_overlapping_seqs):
-            # get idx of every n_overlapping_seqs'th seq starting at j
-            idx = list(range(j, predictions.shape[0], n_overlapping_seqs))
-            seq = np.concatenate(predictions[idx], axis=0)
-            start_base = j * self.overlap_offset
-            stacked[j, start_base:start_base+seq.shape[0]] = seq
+        all_predictions = np.empty((0, ) + predictions.shape[1:])
+        seqid_borders = list(test_sequence._get_seqid_borders(batch_idx))
+        # get number of sequences for each seqid from border distance
+        seqid_sizes = np.diff(np.array([0] + seqid_borders + [n_original_seqs]))
+        print(batch_idx, seqid_sizes)
+        pred_offset = 0
+        for seqid_size in seqid_sizes:
+            if seqid_size > 2:
+                n_seqid_seqs = (seqid_size - 1) * chunk_size // self.overlap_offset + 1
+            else:
+                n_seqid_seqs = seqid_size
+            predictions_seqid = predictions[pred_offset:pred_offset + n_seqid_seqs]
+            pred_offset += n_seqid_seqs
+            if seqid_size > 2:
+                # actual overlapping; save first and last sequence for special handling later
+                first, last = predictions_seqid[0], predictions_seqid[-1]
+                # cut to the core
+                predictions_seqid = [s[seq_overhang:-seq_overhang] for s in predictions_seqid]
+                # generate zero'd out filler sequences for the start and end
+                filler_seqs = [np.zeros((self.core_length, 4))] * n_overhang_seqs
+                predictions_seqid = filler_seqs + predictions_seqid + filler_seqs
+                # stack eveything
+                predictions_seqid = np.stack(predictions_seqid).astype(predictions.dtype)
+                # add overhang edge data from first/last seq that can not be overlapped
+                predictions_seqid[0, :seq_overhang] = first[:seq_overhang]
+                predictions_seqid[-1, -seq_overhang:] = last[-seq_overhang:]
 
-        # average individual softmax values
-        # does change pseudo-probability dist at the edge but not the argmax afterwards
-        # (causes values to be lower there)
-        averages = np.mean(stacked, axis=0)
-        predictions = np.stack(np.split(averages, n_predicted_original_seqs))
-        return predictions
+                # merge and stack efficiently so everything can be averaged
+                n_predicted_bases = seqid_size * chunk_size
+                stacked = np.zeros((n_overlapping_seqs, n_predicted_bases, 4), dtype=predictions.dtype)
+                for j in range(n_overlapping_seqs):
+                    # get idx of every n_overlapping_seqs'th seq starting at j
+                    idx = list(range(j, predictions_seqid.shape[0], n_overlapping_seqs))
+                    seq = np.concatenate(predictions_seqid[idx], axis=0)
+                    start_base = j * self.overlap_offset
+                    stacked[j, start_base:start_base+seq.shape[0]] = seq
+
+                # average individual softmax values
+                # does change pseudo-probability dist at the edge but not the argmax afterwards
+                # (causes values to be lower there)
+                averages = np.mean(stacked, axis=0)
+                predictions_seqid = np.stack(np.split(averages, seqid_size))
+            else:
+                pass
+            all_predictions = np.concatenate([all_predictions, predictions_seqid], axis=0)
+        assert all_predictions.shape[0] == n_original_seqs
+        return all_predictions
 
     def _make_predictions(self, model):
         # loop through batches and continously expand output dataset as everything might
@@ -492,17 +504,20 @@ class HelixerModel(ABC):
 
     def _print_model_info(self, model):
         os.chdir(os.path.dirname(__file__))
-        cmd = ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
-        branch = subprocess.check_output(cmd).strip().decode()
-        cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
-        commit = subprocess.check_output(cmd).strip().decode()
-        print(f'Current helixerprep branch: {branch} ({commit})')
-        if self.load_model_path:
-            cmd = ['md5sum', self.load_model_path]
-            self.loaded_model_hash = subprocess.check_output(cmd).strip().decode()
-            print(f'Md5sum of the loaded model: {self.loaded_model_hash}')
-        print()
+        try:
+            cmd = ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
+            branch = subprocess.check_output(cmd).strip().decode()
+            cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
+            commit = subprocess.check_output(cmd).strip().decode()
+            print(f'Current helixerprep branch: {branch} ({commit})')
+            if self.load_model_path:
+                cmd = ['md5sum', self.load_model_path]
+                self.loaded_model_hash = subprocess.check_output(cmd).strip().decode()
+                print(f'Md5sum of the loaded model: {self.loaded_model_hash}')
+        except subprocess.CalledProcessError:
+            print('An error occured while running a subprocess')
 
+        print()
         if self.verbose:
             print(model.summary())
         else:
