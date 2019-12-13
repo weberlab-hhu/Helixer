@@ -1,10 +1,9 @@
 import sys
 import argparse
-from . import rnaseq
 import HTSeq
 import h5py
 import numpy as np
-from helixerprep.core.helpers import mk_keys
+from helixerprep.evaluation import rnaseq
 
 
 def add_empty_eval_datasets(h5):
@@ -38,20 +37,24 @@ def get_bool_stretches(alist):
 def species_range(h5, species):
     mask = np.array(h5['/data/species'][:] == species.encode('utf-8'))
     stretches = list(get_bool_stretches(mask.tolist()))  # [(False, count), (True, Count), (False, Count)]
+    print(stretches)
     i_of_true = [i for i in range(len(stretches)) if stretches[i][0]]
     assert len(i_of_true) == 1, "not contiguous or missing species ({}) in h5???".format(species)
     iot = i_of_true[0]
     if iot == 0:
         return 0, stretches[0][1]
     elif iot == 1:
-        return stretches[0][1], stretches[1][1]
+        start = stretches[0][1]
+        length = stretches[1][1]
+        return start, start + length
     else:
         raise ValueError("should never be reached, maybe h5 sorting something or failed bool comparisons (None or so?)")
 
 
-def main(species, bam, h5_data, dUTP):
-    # open h5
+def main(species, bam, h5_data, d_utp):
+    # open h5 and bam
     h5 = h5py.File(h5_data, 'r+')
+    htseqbam = HTSeq.BAM_Reader(bam)
     # create evaluation placeholders if they don't exist (coverage, spliced_coverage, raw_score, scaled_score)
     try:
         h5['evaluation/coverage']
@@ -63,15 +66,19 @@ def main(species, bam, h5_data, dUTP):
 
     # insert coverage into said regions
     coords = rnaseq.gen_coords(h5, species_start, species_end)
-    for seqid, start_i, end_i in coords:
-        pass  # todo, modular rnaseq and import?
+    print('start, end', species_start, species_end)
+    pad_to = h5['evaluation/coverage'].shape[1]
+
+    for coord in coords:
+        print(coord)
+        rnaseq.coverage_from_coord_to_h5(coord, h5, bam=htseqbam, d_utp=d_utp, pad_to=pad_to)
     # calculate coverage score  (0 - 2)
     ## intergenic (1 / (cov + 1) + 1 / (sc + 1)
     ## CDS and UTR ( 1 - (1 / (cov + 1)) + 1 / (sc + 1))
     ## intron  ( 1 - (1 / (sc + 1)) + 1 / (cov + 1))
 
     # normalize coverage score by species, category, both
-
+    h5.close()
 
 
 if __name__ == "__main__":

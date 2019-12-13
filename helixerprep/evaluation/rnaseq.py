@@ -80,7 +80,7 @@ def get_sense_cov_intervals(read, chromosome, d_utp):
 def get_length_from_header(htseqbam, chromosome):
     hdict = htseqbam.get_header_dict()
     sqs = [x for x in hdict['SQ'] if x['SN'] == chromosome]
-    assert len(sqs) == 1
+    assert len(sqs) == 1, "found {}, searching for {}".format(sqs, chromosome)
     return sqs[0]['LN']
 
 
@@ -192,23 +192,23 @@ def write_next_2(h5_out, slices, i):
         h5_out['evaluation/' + key][i] = slices[j]
 
 
-def gen_coords(h5_sorted, start_i=0, end_i=None):
+def gen_coords(h5_sorted, sp_start_i=0, sp_end_i=None):
     """gets unique seqids, range, and seq length from h5 file"""
     # uses tuple with (seqid, max_coord)
-    previous = seqid(h5_sorted, 0)
-    i = start_i
-    if end_i is None:
-        end_i = h5_sorted['data/seqids'].shape[0]
-    for i in range(start_i + 1, end_i):
-        current = seqid(h5_sorted, i)
+    previous = just_seqid(h5_sorted, sp_start_i)
+    coord_start_i = sp_start_i
+    if sp_end_i is None:
+        sp_end_i = h5_sorted['data/seqids'].shape[0]
+    for i in range(sp_start_i + 1, sp_end_i):
+        current = just_seqid(h5_sorted, i)
         if current != previous:
-            yield previous, start_i, i
-            start_i = i
+            yield previous, coord_start_i, i
+            coord_start_i = i
             previous = current
-    yield previous, start_i, i
+    yield previous, coord_start_i, sp_end_i
 
 
-def seqid(h5, i):
+def just_seqid(h5, i):
     return h5['data/seqids'][i]
 
 
@@ -216,6 +216,39 @@ def pad_cov_right(short_arr, length, fill_value=-1.):
     out = np.full(shape=(length,), fill_value=fill_value)
     out[:short_arr.shape[0]] = short_arr
     return out
+
+
+def arrange_slice_for_h5(cov_arrays, i, h5_out, pad_to, b_seqid):
+    assert h5_out['data/seqids'][i] == b_seqid
+    start, end = h5_out['data/start_ends'][i]
+    # subset and flip to match existing h5 chunks
+    is_plus_strand = True
+    if end < start:
+        is_plus_strand = False
+        start, end = end, start
+    if is_plus_strand:
+        slices = [cov_arrays[i][start:end] for i in [0, 2]]
+    else:
+        slices = [np.flip(cov_arrays[i][start:end], axis=0) for i in [1, 3]]
+    if end - start != pad_to:
+        slices = [pad_cov_right(x, pad_to) for x in slices]
+        print('padding {}-{} + is {}'.format(start, end, is_plus_strand))
+    return slices
+
+
+def coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, pad_to):
+    """calculates coverage for a coordinate from bam, saves to h5"""
+    b_seqid, start_i, end_i = coord
+    seqid = b_seqid.decode('utf-8')
+    print('{}: chunks from {}-{}'.format(seqid, start_i, end_i), file=sys.stderr)
+    # coverage+, coverage-, spliced_coverage+, spliced_coverage-
+    cov_arrays = stranded_cov_by_chromosome(bam, seqid, d_utp)
+    # split into pieces matching start/ends
+    for i in range(start_i, end_i):
+        slices = arrange_slice_for_h5(cov_arrays, i, h5_out, pad_to, b_seqid)
+        # export
+        # todo, write in larger chunks?? could read as well...
+        write_next_2(h5_out, slices, i)
 
 
 def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
@@ -234,32 +267,9 @@ def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
     pad_to = h5_out['evaluation/coverage'].shape[1]
 
     # get coverage by chromosome
-    for seqid, start_i, end_i in coords:
-        seqid = seqid.decode('utf-8')
-        print(seqid, file=sys.stderr)
-        # coverage+, coverage-, spliced_coverage+, spliced_coverage-
-        cov_arrays = stranded_cov_by_chromosome(bam, seqid, d_utp)
-        # split into pieces matching start/ends
-        b_seqid = seqid.encode("utf-8")
-        print('end at {}'.format(end_i))
-        for i in range(start_i, end_i):
-            print(i, h5_out['data/seqids'][i])
-            assert h5_out['data/seqids'][i] == b_seqid
-            start, end = h5_out['data/start_ends'][i]
-            # subset and flip to match existing h5 chunks
-            is_plus_strand = True
-            if end < start:
-                is_plus_strand = False
-                start, end = end, start
-            if is_plus_strand:
-                slices = [cov_arrays[i][start:end] for i in [0, 2]]
-            else:
-                slices = [np.flip(cov_arrays[i][start:end], axis=0) for i in [1, 3]]
-            if end - start != pad_to:
-                slices = [pad_cov_right(x, pad_to) for x in slices]
-                print('padding {}-{} + is {}'.format(start, end, is_plus_strand))
-            # export
-            write_next_2(h5_out, slices, i)
+    for coord in coords:
+        coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, pad_to)
+
     h5_out.close()
 
 
