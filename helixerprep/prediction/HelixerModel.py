@@ -73,13 +73,15 @@ class HelixerSequence(Sequence):
         self.mode = mode
         self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
                                  'overlap', 'overlap_offset', 'core_length', 'debug', 'exclude_errors',
-                                 'error_weights'])
+                                 'error_weights', 'gene_lengths', 'gene_lengths_quadratic_average'])
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
         self.seqids_dset = h5_file['/data/seqids']
         if self.transition_weights is not None:
-            self.transitions_dset = h5_file['data/transitions']
+            self.transitions_dset = h5_file['/data/transitions']
+        if self.gene_lengths:
+            self.gene_lengths_dset = h5_file['/data/gene_lengths']
         self.chunk_size = self.y_dset.shape[1]
 
         # set array of usable indexes, always exclude all erroneous sequences during training
@@ -133,7 +135,12 @@ class HelixerSequence(Sequence):
             transitions = self.transitions_dset[usable_idx_batch]
         else:
             transitions = None
-        return X, y, sw, error_rates, transitions
+
+        if self.gene_lengths:
+            gene_lengths = self.gene_lengths_dset[usable_idx_batch]
+        else:
+            gene_lengths = None
+        return X, y, sw, error_rates, gene_lengths, transitions
 
     def _get_seqid_borders(self, idx):
         seqids = self.seqids_dset[self._usable_idx_batch(idx)]
@@ -187,6 +194,8 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
         self.parser.add_argument('-tw', '--transition_weights', type=str, default='None')
         self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
+        self.parser.add_argument('-gl', '--gene-lengths', action='store_true')
+        self.parser.add_argument('-glavg', '--gene-lengths-quadratic-average', type=int, default=6700)
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         self.parser.add_argument('-ew', '--error-weights', action='store_true')
         # testing
