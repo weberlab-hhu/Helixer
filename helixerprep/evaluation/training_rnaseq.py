@@ -20,6 +20,20 @@ def add_empty_eval_datasets(h5):
                           data=np.full(fill_value=-1, shape=(length, chunk_len)))
 
 
+def add_empty_score_datasets(h5):
+    length = h5['data/X'].shape[0]
+    h5.create_group('scores')
+    shapes = [(length, 4), (length, 4), (length, ), (length, )]
+    max_shapes = [(None, 4), (None, 4), (None, ), (None, )]
+    for i, key in enumerate(['four', 'four_centered', 'one', 'one_centered']):
+        h5.create_dataset('scores/' + key,
+                          shape=shapes[i],
+                          maxshape=max_shapes[i],
+                          dtype="float",
+                          compression="lzf",
+                          data=np.full(fill_value=-1., shape=shapes[i]))
+
+
 def get_bool_stretches(alist):
     targ = alist[0]
     while alist:
@@ -51,15 +65,60 @@ def species_range(h5, species):
         raise ValueError("should never be reached, maybe h5 sorting something or failed bool comparisons (None or so?)")
 
 
+class Scorer:
+    def __init__(self, column, coverage_helps, spliced_coverage_helps):
+        self.column = column
+        if coverage_helps:
+            self.coverage_score_component = self.coverage_helps
+        else:
+            self.coverage_score_component = self.coverage_hurts
+        if spliced_coverage_helps:
+            self.spliced_coverage_score_component = self.coverage_helps
+        else:
+            self.spliced_coverage_score_component = self.coverage_hurts
+
+    def score(self, h5, i):
+        mask = h5['data/y'][i][:, self.column] == 1
+        cov = h5['evaluation/coverage'][i][mask]
+        sc = h5['evaluation/spliced_coverage'][i][mask]
+        if cov.shape[0]:
+            cov_score = self.coverage_score_component(cov)
+            sc_score = self.spliced_coverage_score_component(sc)
+        else:
+            cov_score, sc_score = 0, 0
+
+        return cov_score + sc_score
+
+    def coverage_hurts(self, array):
+        # returns 1 when array has only 0s, approaches 0 when array is high
+        return 1 / (np.mean(array) + 1)
+
+    def coverage_helps(self, array):
+        # returns 1 when array has only 0s, approaches 0 when array is high
+        return 1 - self.coverage_hurts(array)
+
+
 def main(species, bam, h5_data, d_utp):
+    # setup scorers
+    ig_scorer = Scorer(column=0, coverage_helps=False, spliced_coverage_helps=False)
+    utr_scorer = Scorer(column=1, coverage_helps=True, spliced_coverage_helps=False)
+    cds_scorer = Scorer(column=2, coverage_helps=True, spliced_coverage_helps=False)
+    intron_scorer = Scorer(column=3, coverage_helps=False, spliced_coverage_helps=True)
+    scorers = [ig_scorer, utr_scorer, cds_scorer, intron_scorer]
+
     # open h5 and bam
     h5 = h5py.File(h5_data, 'r+')
     htseqbam = HTSeq.BAM_Reader(bam)
-    # create evaluation placeholders if they don't exist (coverage, spliced_coverage, raw_score, scaled_score)
+    # create evaluation & score placeholders if they don't exist (evaluation/coverage, "/spliced_coverage, scores/*)
     try:
         h5['evaluation/coverage']
     except KeyError:
         add_empty_eval_datasets(h5)
+
+    try:
+        h5['scores/four']
+    except KeyError:
+        add_empty_score_datasets(h5)
 
     # identify regions in h5 corresponding to species
     species_start, species_end = species_range(h5, species)
@@ -72,12 +131,28 @@ def main(species, bam, h5_data, d_utp):
     for coord in coords:
         print(coord)
         rnaseq.coverage_from_coord_to_h5(coord, h5, bam=htseqbam, d_utp=d_utp, pad_to=pad_to)
-    # calculate coverage score  (0 - 2)
-    ## intergenic (1 / (cov + 1) + 1 / (sc + 1)
-    ## CDS and UTR ( 1 - (1 / (cov + 1)) + 1 / (sc + 1))
-    ## intron  ( 1 - (1 / (sc + 1)) + 1 / (cov + 1))
 
-    # normalize coverage score by species, category, both
+    # calculate coverage score  (0 - 2)
+    # todo, this is really naive and probably terribly slow... fix
+    counts = np.zeros(shape=(species_end - species_start, 4))
+    for i in range(species_start, species_end):
+        i_rel = i - species_start
+        for scorer in scorers:
+            score = scorer.score(h5, i)
+            print(score, i, scorer.column)
+            h5['scores/four'][i][scorer.column] = score
+        current_counts = np.sum(h5['data/y'][i], axis=0)
+        counts[i_rel] = current_counts
+        # weighted average
+        h5['scores/one'][i] = np.sum(current_counts * h5['scores/four'][i]) / np.sum(current_counts)
+
+    # normalize coverage score by species and category
+    raw_four = h5['scores/four'][species_start:species_end]
+    centers = np.sum(raw_four * counts, axis=0) / np.sum(counts, axis=0)
+    centered_four = raw_four - centers
+    centered_one = np.sum((centered_four * counts).T / np.sum(counts, axis=1))
+    h5['scores/four_centered'][species_start:species_end] = centered_four
+    h5['scores/one_centered'][species_start:species_end] = centered_one
     h5.close()
 
 
