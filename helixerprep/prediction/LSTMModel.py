@@ -44,60 +44,63 @@ class LSTMSequence(HelixerSequence):
         sw = sw.reshape((sw.shape[0], -1, pool_size))
         sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.float32)
 
-        if self.class_weights is not None:
-            # class weights are only used during training and validation to keep the loss
-            # comparable and are additive for the individual timestep predictions
-            # giving even more weight to transition points
-            # class weights without pooling not supported yet
-            # cw = np.array([0.8, 1.4, 1.2, 1.2], dtype=np.float32)
-            cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
-            cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
-            # add class weights to applicable timesteps
-            cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
-            cw = np.sum(cw_arrays, axis=2)
-            # multiply with previous sample weights
-            sw = np.multiply(sw, cw)
+        # only change sample weights during training (not even validation) as we don't calculate
+        # a validation loss at the moment
+        if self.mode == 'train':
+            if self.class_weights is not None:
+                # class weights are only used during training and validation to keep the loss
+                # comparable and are additive for the individual timestep predictions
+                # giving even more weight to transition points
+                # class weights without pooling not supported yet
+                # cw = np.array([0.8, 1.4, 1.2, 1.2], dtype=np.float32)
+                cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
+                cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
+                # add class weights to applicable timesteps
+                cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
+                cw = np.sum(cw_arrays, axis=2)
+                # multiply with previous sample weights
+                sw = np.multiply(sw, cw)
 
-        if self.gene_lengths:
-            gene_lengths = gene_lengths.reshape((gene_lengths.shape[0], -1, pool_size))
-            gene_lengths = np.max(gene_lengths, axis=-1)  # take the maximum per pool_size (block)
-            # scale gene_length to an appropriate sample weight
-            # we aim for the quadratic mean to have a sample weight of 1 (due to the quadratic
-            # influence on the loss; #bases * gene_length)
-            # we use a function of the form of f(x) = a / sqrt(x), which should also nicely reflect
-            # the power-law like distribution of the the gene lengths (roughtly)
-            # we also clip the values to an interval of [0.1, 10]
-            a = np.sqrt(self.gene_lengths_quadratic_average)
-            gene_idx = np.where(gene_lengths)
-            gene_weights = gene_lengths.astype(np.float32)
-            scaled_gene_lengths = a / np.sqrt(gene_lengths[gene_idx])
-            scaled_gene_lengths = np.clip(scaled_gene_lengths, 0.1, 10.0).astype(np.float32)
-            gene_weights[gene_idx] = scaled_gene_lengths
-            sw = np.multiply(gene_weights, sw)
+            if self.gene_lengths:
+                gene_lengths = gene_lengths.reshape((gene_lengths.shape[0], -1, pool_size))
+                gene_lengths = np.max(gene_lengths, axis=-1)  # take the maximum per pool_size (block)
+                # scale gene_length to an appropriate sample weight
+                # we aim for the quadratic mean to have a sample weight of 1 (due to the quadratic
+                # influence on the loss; #bases * gene_length)
+                # we use a function of the form of f(x) = a / sqrt(x), which should also nicely reflect
+                # the power-law like distribution of the the gene lengths (roughtly)
+                # we also clip the values to an interval of [0.1, 10]
+                a = np.sqrt(self.gene_lengths_quadratic_average)
+                gene_idx = np.where(gene_lengths)
+                gene_weights = gene_lengths.astype(np.float32)
+                scaled_gene_lengths = a / np.sqrt(gene_lengths[gene_idx])
+                scaled_gene_lengths = np.clip(scaled_gene_lengths, 0.1, 10.0).astype(np.float32)
+                gene_weights[gene_idx] = scaled_gene_lengths
+                sw = np.multiply(gene_weights, sw)
 
-        if self.transition_weights is not None:
-            transitions = transitions.reshape((
-                transitions.shape[0],
-                transitions.shape[1] // pool_size,
-                pool_size,
-                transitions.shape[-1],
-            ))
+            if self.transition_weights is not None:
+                transitions = transitions.reshape((
+                    transitions.shape[0],
+                    transitions.shape[1] // pool_size,
+                    pool_size,
+                    transitions.shape[-1],
+                ))
 
-            sw_t = [np.any((transitions[:, :, :, col] == 1),axis=2) for col in range(6)]
-            sw_t = np.stack(sw_t, axis=2).astype(np.int8)
-            sw_t = np.multiply(sw_t, self.transition_weights)
+                sw_t = [np.any((transitions[:, :, :, col] == 1),axis=2) for col in range(6)]
+                sw_t = np.stack(sw_t, axis=2).astype(np.int8)
+                sw_t = np.multiply(sw_t, self.transition_weights)
 
-            sw_t = np.sum(sw_t, axis=2)
-            where_are_ones = np.where(sw_t == 0)
-            sw_t[where_are_ones[0], where_are_ones[1]] = 1
-            sw = np.multiply(sw_t, sw)
+                sw_t = np.sum(sw_t, axis=2)
+                where_are_ones = np.where(sw_t == 0)
+                sw_t[where_are_ones[0], where_are_ones[1]] = 1
+                sw = np.multiply(sw_t, sw)
 
-        if self.error_weights:
-            # finish by multiplying the sample_weights with the error rate
-            # 1 - error_rate^(1/3) seems to have the shape we need for the weights
-            # given the error rate
-            error_weights = 1 - np.power(error_rates, 1/3)
-            sw *= np.expand_dims(error_weights, axis=1)
+            if self.error_weights:
+                # finish by multiplying the sample_weights with the error rate
+                # 1 - error_rate^(1/3) seems to have the shape we need for the weights
+                # given the error rate
+                error_weights = 1 - np.power(error_rates, 1/3)
+                sw *= np.expand_dims(error_weights, axis=1)
 
         return X, y, sw
 

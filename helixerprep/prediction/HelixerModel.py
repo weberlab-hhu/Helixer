@@ -78,10 +78,11 @@ class HelixerSequence(Sequence):
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
         self.seqids_dset = h5_file['/data/seqids']
-        if self.transition_weights is not None:
-            self.transitions_dset = h5_file['/data/transitions']
-        if self.gene_lengths:
-            self.gene_lengths_dset = h5_file['/data/gene_lengths']
+        if self.mode == 'train':
+            if self.transition_weights is not None:
+                self.transitions_dset = h5_file['/data/transitions']
+            if self.gene_lengths:
+                self.gene_lengths_dset = h5_file['/data/gene_lengths']
         self.chunk_size = self.y_dset.shape[1]
 
         # set array of usable indexes, always exclude all erroneous sequences during training
@@ -131,15 +132,15 @@ class HelixerSequence(Sequence):
         # calculate base level error rate for each sequence
         error_rates = (np.count_nonzero(sw == 0, axis=1) / y.shape[1]).astype(np.float32)
 
-        if self.transition_weights is not None:
+        if self.mode == 'train' and self.transition_weights is not None:
             transitions = self.transitions_dset[usable_idx_batch]
         else:
             transitions = None
-
-        if self.gene_lengths:
+        if self.mode == 'train' and self.gene_lengths:
             gene_lengths = self.gene_lengths_dset[usable_idx_batch]
         else:
             gene_lengths = None
+
         return X, y, sw, error_rates, gene_lengths, transitions
 
     def _get_seqid_borders(self, idx):
