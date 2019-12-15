@@ -73,7 +73,7 @@ class HelixerSequence(Sequence):
         self.mode = mode
         self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
                                  'overlap', 'overlap_offset', 'core_length', 'debug', 'exclude_errors',
-                                 'error_weights', 'gene_lengths', 'gene_lengths_quadratic_average'])
+                                 'error_weights', 'gene_lengths', 'gene_lengths_average'])
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
@@ -196,7 +196,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-tw', '--transition_weights', type=str, default='None')
         self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
         self.parser.add_argument('-gl', '--gene-lengths', action='store_true')
-        self.parser.add_argument('-glavg', '--gene-lengths-quadratic-average', type=int, default=6700)
+        self.parser.add_argument('-glavg', '--gene-lengths-average', type=int, default=3350)
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         self.parser.add_argument('-ew', '--error-weights', action='store_true')
         # testing
