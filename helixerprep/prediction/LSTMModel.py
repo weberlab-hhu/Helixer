@@ -64,16 +64,10 @@ class LSTMSequence(HelixerSequence):
             if self.gene_lengths:
                 gene_lengths = gene_lengths.reshape((gene_lengths.shape[0], -1, pool_size))
                 gene_lengths = np.max(gene_lengths, axis=-1)  # take the maximum per pool_size (block)
-                # scale gene_length to an appropriate sample weight
-                # we aim for the quadratic mean to have a sample weight of 1 (due to the quadratic
-                # influence on the loss; #bases * gene_length)
-                # we use a function of the form of f(x) = a / sqrt(x), which should also nicely reflect
-                # the power-law like distribution of the the gene lengths (roughtly)
-                # we also clip the values to an interval of [0.1, 10]
-                a = np.sqrt(self.gene_lengths_average)
+                # scale gene_length to a sample weight that is 1 for the average
                 gene_idx = np.where(gene_lengths)
                 gene_weights = gene_lengths.astype(np.float32)
-                scaled_gene_lengths = a / gene_lengths[gene_idx]
+                scaled_gene_lengths = self.gene_lengths_average / gene_lengths[gene_idx]
                 scaled_gene_lengths = np.clip(scaled_gene_lengths, 0.1, 3.0).astype(np.float32)
                 gene_weights[gene_idx] = scaled_gene_lengths
                 sw = np.multiply(gene_weights, sw)
