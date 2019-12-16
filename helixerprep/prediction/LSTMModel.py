@@ -66,10 +66,13 @@ class LSTMSequence(HelixerSequence):
                 gene_lengths = np.max(gene_lengths, axis=-1)  # take the maximum per pool_size (block)
                 # scale gene_length to a sample weight that is 1 for the average
                 gene_idx = np.where(gene_lengths)
+                ig_idx = np.where(gene_lengths == 0)
                 gene_weights = gene_lengths.astype(np.float32)
                 scaled_gene_lengths = self.gene_lengths_average / gene_lengths[gene_idx]
-                scaled_gene_lengths = np.clip(scaled_gene_lengths, 0.1, 3.0).astype(np.float32)
+                scaled_gene_lengths = np.clip(scaled_gene_lengths, 0.1, 5.0).astype(np.float32)
                 gene_weights[gene_idx] = scaled_gene_lengths
+                # important to set all intergenic weight to 1
+                gene_weights[ig_idx] = 1.0
                 sw = np.multiply(gene_weights, sw)
 
             if self.transition_weights is not None:
