@@ -4,6 +4,7 @@ import HTSeq
 import h5py
 import numpy as np
 from helixerprep.evaluation import rnaseq
+import pdb
 
 
 def add_empty_eval_datasets(h5):
@@ -98,17 +99,10 @@ class Scorer:
         return 1 - self.coverage_hurts(array)
 
 
-def main(species, bam, h5_data, d_utp):
-    # setup scorers
-    ig_scorer = Scorer(column=0, coverage_helps=False, spliced_coverage_helps=False)
-    utr_scorer = Scorer(column=1, coverage_helps=True, spliced_coverage_helps=False)
-    cds_scorer = Scorer(column=2, coverage_helps=True, spliced_coverage_helps=False)
-    intron_scorer = Scorer(column=3, coverage_helps=False, spliced_coverage_helps=True)
-    scorers = [ig_scorer, utr_scorer, cds_scorer, intron_scorer]
+def main(species, bam, h5_data, d_utp, dont_score):
 
-    # open h5 and bam
+    # open h5
     h5 = h5py.File(h5_data, 'r+')
-    htseqbam = HTSeq.BAM_Reader(bam)
     # create evaluation & score placeholders if they don't exist (evaluation/coverage, "/spliced_coverage, scores/*)
     try:
         h5['evaluation/coverage']
@@ -126,48 +120,66 @@ def main(species, bam, h5_data, d_utp):
     # insert coverage into said regions
     coords = rnaseq.gen_coords(h5, species_start, species_end)
     print('start, end', species_start, species_end)
-    pad_to = h5['evaluation/coverage'].shape[1]
+    if bam is not None:
+        pad_to = h5['evaluation/coverage'].shape[1]
 
-    for coord in coords:
-        print(coord)
-        rnaseq.coverage_from_coord_to_h5(coord, h5, bam=htseqbam, d_utp=d_utp, pad_to=pad_to)
+        # open bam (read alignment file)
+        htseqbam = HTSeq.BAM_Reader(bam)
+        for coord in coords:
+            print(coord)
+            rnaseq.coverage_from_coord_to_h5(coord, h5, bam=htseqbam, d_utp=d_utp, pad_to=pad_to)
 
-    # calculate coverage score  (0 - 2)
-    # todo, this is really naive and probably terribly slow... fix
-    counts = np.zeros(shape=(species_end - species_start, 4))
-    for i in range(species_start, species_end):
-        i_rel = i - species_start
-        for scorer in scorers:
-            score = scorer.score(h5, i)
-            print(score, i, scorer.column)
-            h5['scores/four'][i][scorer.column] = score
-        current_counts = np.sum(h5['data/y'][i], axis=0)
-        counts[i_rel] = current_counts
-        # weighted average
-        h5['scores/one'][i] = np.sum(current_counts * h5['scores/four'][i]) / np.sum(current_counts)
+    if not dont_score:
+        # calculate coverage score  (0 - 2)
+        # setup scorers
+        ig_scorer = Scorer(column=0, coverage_helps=False, spliced_coverage_helps=False)
+        utr_scorer = Scorer(column=1, coverage_helps=True, spliced_coverage_helps=False)
+        cds_scorer = Scorer(column=2, coverage_helps=True, spliced_coverage_helps=False)
+        intron_scorer = Scorer(column=3, coverage_helps=False, spliced_coverage_helps=True)
+        scorers = [ig_scorer, utr_scorer, cds_scorer, intron_scorer]
 
-    # normalize coverage score by species and category
-    raw_four = h5['scores/four'][species_start:species_end]
-    centers = np.sum(raw_four * counts, axis=0) / np.sum(counts, axis=0)
-    centered_four = raw_four - centers
-    centered_one = np.sum((centered_four * counts).T / np.sum(counts, axis=1))
-    h5['scores/four_centered'][species_start:species_end] = centered_four
-    h5['scores/one_centered'][species_start:species_end] = centered_one
+        # todo, this is really naive and probably terribly slow... fix
+        counts = np.zeros(shape=(species_end - species_start, 4))
+        print("scoring {}-{}".format(species_start, species_end))
+        for i in range(species_start, species_end):
+            i_rel = i - species_start
+            for scorer in scorers:
+                score = scorer.score(h5, i)
+                h5['scores/four'][i, scorer.column] = score
+            current_counts = np.sum(h5['data/y'][i], axis=0)
+            counts[i_rel] = current_counts
+            # weighted average
+            h5['scores/one'][i] = np.sum(current_counts * h5['scores/four'][i]) / np.sum(current_counts)
+            if not i % 200:
+                print('reached i={}'.format(i))
+        print('fin, i={}'.format(i))
+
+        # normalize coverage score by species and category
+        raw_four = h5['scores/four'][species_start:species_end]
+        centers = np.sum(raw_four * counts, axis=0) / np.sum(counts, axis=0)
+        centered_four = raw_four - centers
+        centered_one = np.sum(centered_four * counts, axis=1) / np.sum(counts, axis=1)
+        h5['scores/four_centered'][species_start:species_end] = centered_four
+        h5['scores/one_centered'][species_start:species_end] = centered_one
     h5.close()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--species', help="species name, matching geenuff db and h5 files", required=True)
-    parser.add_argument('-b', '--bam', help='sorted (and indexed) bam file', required=True)
     parser.add_argument('-d', '--h5_data', help='h5 data file (with /data/{X, y, species, seqids, etc...}) '
                                                 'to which evaluation coverage will be ADDED!',
                         required=True)
+    parser.add_argument('-b', '--bam', help='sorted (and indexed) bam file. Omit to only score existing coverage.',
+                        default=None)
     parser.add_argument('-x', '--not_dUTP', help='bam does not contain stranded (from typical dUTP protocol) reads',
                         action='store_true')
+    parser.add_argument('-r', '--skip_scoring', action="store_true",
+                        help="set this to add coverage to the bam file, but not 'score' it (raw cov. only)")
     args = parser.parse_args()
     main(args.species,
          args.bam,
          args.h5_data,
-         not args.not_dUTP)
+         not args.not_dUTP,
+         args.skip_scoring)
 
