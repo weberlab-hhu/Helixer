@@ -56,107 +56,112 @@ class HelixerExportController(object):
         return train_arrays, val_arrays
 
     def _save_data(self, h5_file, flat_data, chunk_size, n_y_cols):
-        inputs = flat_data['inputs']
-        labels = flat_data['labels']
-        label_masks = flat_data['label_masks']
-        transitions = flat_data['transitions']
-        # convert to numpy arrays
+        dset_keys = [
+            'X', 'y', 'sample_weights', 'gene_lengths', 'transitions', 'err_samples',
+            'fully_intergenic_samples', 'start_ends', 'species', 'seqids'
+        ]
+        dsets = {key:None for key in dset_keys}
 
-        # zero-pad each sequence to chunk_size
-        # this is inefficient if there could be a batch with only sequences smaller than
-        # chunk_size, but taking care of that introduces a lot of extra complexity
-        n_seq = len(inputs)
-        X = np.zeros((n_seq, chunk_size, 4), dtype=inputs[0].dtype)
-        y = np.zeros((n_seq, chunk_size, n_y_cols), dtype=labels[0].dtype)
-        y_transitions = np.zeros((n_seq, chunk_size, 6), dtype=transitions[0].dtype)
-        sample_weights = np.zeros((n_seq, chunk_size), dtype=label_masks[0].dtype)
+        # keys of the arrays that need to be padded
+        numerify_keys = ['inputs', 'labels', 'label_masks', 'gene_lengths', 'transitions']
+        assert len(set(len(flat_data[key]) for key in numerify_keys)) == 1, 'inequal data lengths'
 
-        for j in range(n_seq):
-            sample_len = len(inputs[j])
-            X[j, :sample_len, :] = inputs[j]
-            y[j, :sample_len, :] = labels[j]
-            y_transitions[j, :sample_len, :] = transitions[j]
-            sample_weights[j, :sample_len] = label_masks[j]
+        n_seqs = len(flat_data['inputs'])
+        for i, num_key in enumerate(numerify_keys):
+            # insert all the sequences so that 0-padding is added if needed
+            # the first 5 keys in dsets match the 5 numerify keys
+            # can be done since dicts keep their insert order since 3.6
+            d = flat_data[num_key]
+            shape = (n_seqs, chunk_size)
+            if len(d[0].shape) == 2:
+                shape += (d[0].shape[1],)
+            padded_d = np.zeros(shape, dtype=d[0].dtype)
+            for j in range(n_seqs):
+                padded_d[j, :len(d[j])] = d[j]
+            dsets[dset_keys[i]] = padded_d
 
-        err_samples = np.any(sample_weights == 0, axis=1)
+        dsets['err_samples'] = np.any(dsets['sample_weights'] == 0, axis=1)
         # just one entry per chunk
         if n_y_cols > 3:
-            fully_intergenic_samples = np.all(y[:, :, 0] == 1, axis=1)
+            dsets['fully_intergenic_samples'] = np.all(dsets['y'][:, :, 0] == 1, axis=1)
         else:
-            fully_intergenic_samples = np.all(y[:, :, 0] == 0, axis=1)
+            dsets['fully_intergenic_samples']= np.all(dsets['y'][:, :, 0] == 0, axis=1)
         # additional arrays
-        start_ends = np.array(flat_data['start_ends'], dtype=np.int64)
+        dsets['start_ends'] = np.array(flat_data['start_ends'], dtype=np.int64)
+        dsets['species'] = np.array(flat_data['species'])
+        dsets['seqids'] = np.array(flat_data['seqids'])
 
         # setup keys
-        dset_keys = [
-            'X', 'y', 'sample_weights', 'err_samples', 'fully_intergenic_samples', 'start_ends',
-            'species', 'seqids', 'transitions'
-        ]
         # append to or create datasets
         if '/data/X' in h5_file:
-            for dset_key in dset_keys:
+            for dset_key in dsets.keys():
                 dset = h5_file['/data/' + dset_key]
                 old_len = dset.shape[0]
-                dset.resize(old_len + n_seq, axis=0)
+                dset.resize(old_len + n_seqs, axis=0)
         else:
             old_len = 0
             h5_file.create_dataset('/data/X',
-                                   shape=(n_seq, chunk_size, 4),
+                                   shape=(n_seqs, chunk_size, 4),
                                    maxshape=(None, chunk_size, 4),
                                    chunks=(1, chunk_size, 4),
                                    dtype='float16',
                                    compression='lzf',
                                    shuffle=True)  # only for the compression
             h5_file.create_dataset('/data/y',
-                                   shape=(n_seq, chunk_size, n_y_cols),
+                                   shape=(n_seqs, chunk_size, n_y_cols),
                                    maxshape=(None, chunk_size, n_y_cols),
                                    chunks=(1, chunk_size, n_y_cols),
                                    dtype='int8',
                                    compression='lzf',
                                    shuffle=True)
             h5_file.create_dataset('/data/sample_weights',
-                                   shape=(n_seq, chunk_size),
+                                   shape=(n_seqs, chunk_size),
                                    maxshape=(None, chunk_size),
                                    chunks=(1, chunk_size),
                                    dtype='int8',
                                    compression='lzf',
                                    shuffle=True)
-            h5_file.create_dataset('/data/err_samples',
-                                   shape=(n_seq,),
-                                   maxshape=(None,),
-                                   dtype='bool',
-                                   compression='lzf')
-            h5_file.create_dataset('/data/fully_intergenic_samples',
-                                   shape=(n_seq,),
-                                   maxshape=(None,),
-                                   dtype='bool',
-                                   compression='lzf')
-            h5_file.create_dataset('/data/species',
-                                   shape=(n_seq,),
-                                   maxshape=(None,),
-                                   dtype='S25',
-                                   compression='lzf')
-            h5_file.create_dataset('/data/seqids',
-                                   shape=(n_seq,),
-                                   maxshape=(None,),
-                                   dtype='S50',
-                                   compression='lzf')
-            h5_file.create_dataset('/data/start_ends',
-                                   shape=(n_seq, 2),
-                                   maxshape=(None, 2),
-                                   dtype='int64',
-                                   compression='lzf')
+            h5_file.create_dataset('/data/gene_lengths',
+                                   shape=(n_seqs, chunk_size),
+                                   maxshape=(None, chunk_size),
+                                   chunks=(1, chunk_size),
+                                   dtype='uint32',
+                                   compression='lzf',
+                                   shuffle=True)
             h5_file.create_dataset('/data/transitions',
-                                   shape=(n_seq, chunk_size, 6),
+                                   shape=(n_seqs, chunk_size, 6),
                                    maxshape=(None, chunk_size, 6),
                                    chunks=(1, chunk_size, 6),
                                    dtype='int8',  # guess we'll stick to int8
                                    compression='lzf',
                                    shuffle=True)
-        # setup array of dsets and add them
-        dsets = [X, y, sample_weights, err_samples, fully_intergenic_samples, start_ends,
-                flat_data['species'], flat_data['seqids'], y_transitions]
-        for dset_key, data in zip(dset_keys, dsets):
+            h5_file.create_dataset('/data/err_samples',
+                                   shape=(n_seqs,),
+                                   maxshape=(None,),
+                                   dtype='bool',
+                                   compression='lzf')
+            h5_file.create_dataset('/data/fully_intergenic_samples',
+                                   shape=(n_seqs,),
+                                   maxshape=(None,),
+                                   dtype='bool',
+                                   compression='lzf')
+            h5_file.create_dataset('/data/species',
+                                   shape=(n_seqs,),
+                                   maxshape=(None,),
+                                   dtype='S25',
+                                   compression='lzf')
+            h5_file.create_dataset('/data/seqids',
+                                   shape=(n_seqs,),
+                                   maxshape=(None,),
+                                   dtype='S50',
+                                   compression='lzf')
+            h5_file.create_dataset('/data/start_ends',
+                                   shape=(n_seqs, 2),
+                                   maxshape=(None, 2),
+                                   dtype='int64',
+                                   compression='lzf')
+        # writing to the h5 file
+        for dset_key, data in dsets.items():
             h5_file['/data/' + dset_key][old_len:] = data
         h5_file.flush()
 

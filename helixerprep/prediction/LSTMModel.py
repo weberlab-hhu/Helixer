@@ -22,7 +22,7 @@ class LSTMSequence(HelixerSequence):
             assert not mode == 'test'
 
     def __getitem__(self, idx):
-        X, y, sw, error_rates, transitions = self._get_batch_data(idx)
+        X, y, sw, error_rates, gene_lengths, transitions = self._get_batch_data(idx)
         pool_size = self.model.pool_size
         assert pool_size > 1, 'pooling size of <= 1 oh oh..'
         assert y.shape[1] % pool_size == 0, 'pooling size has to evenly divide seq len'
@@ -44,44 +44,60 @@ class LSTMSequence(HelixerSequence):
         sw = sw.reshape((sw.shape[0], -1, pool_size))
         sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.float32)
 
-        if self.transition_weights is not None:
-            transitions = transitions.reshape((
-                transitions.shape[0],
-                transitions.shape[1] // pool_size,
-                pool_size,
-                transitions.shape[-1],
-            ))
+        # only change sample weights during training (not even validation) as we don't calculate
+        # a validation loss at the moment
+        if self.mode == 'train':
+            if self.class_weights is not None:
+                # class weights are only used during training and validation to keep the loss
+                # comparable and are additive for the individual timestep predictions
+                # giving even more weight to transition points
+                # class weights without pooling not supported yet
+                # cw = np.array([0.8, 1.4, 1.2, 1.2], dtype=np.float32)
+                cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
+                cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
+                # add class weights to applicable timesteps
+                cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
+                cw = np.sum(cw_arrays, axis=2)
+                # multiply with previous sample weights
+                sw = np.multiply(sw, cw)
 
-        if self.class_weights is not None:
-            # class weights are only used during training and validation to keep the loss
-            # comparable and are additive for the individual timestep predictions
-            # giving even more weight to transition points
-            # class weights without pooling not supported yet
-            # cw = np.array([0.8, 1.4, 1.2, 1.2], dtype=np.float32)
-            cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
-            cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
-            # add class weights to applicable timesteps
-            cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
-            cw = np.sum(cw_arrays, axis=2)
-            # multiply with previous sample weights
-            sw = np.multiply(sw, cw)
+            if self.gene_lengths:
+                gene_lengths = gene_lengths.reshape((gene_lengths.shape[0], -1, pool_size))
+                gene_lengths = np.max(gene_lengths, axis=-1)  # take the maximum per pool_size (block)
+                # scale gene_length to a sample weight that is 1 for the average
+                gene_idx = np.where(gene_lengths)
+                ig_idx = np.where(gene_lengths == 0)
+                gene_weights = gene_lengths.astype(np.float32)
+                scaled_gene_lengths = self.gene_lengths_average / gene_lengths[gene_idx]
+                scaled_gene_lengths = np.clip(scaled_gene_lengths, 0.1, 5.0).astype(np.float32)
+                gene_weights[gene_idx] = scaled_gene_lengths
+                # important to set all intergenic weight to 1
+                gene_weights[ig_idx] = 1.0
+                sw = np.multiply(gene_weights, sw)
 
-        if self.transition_weights is not None:
-            sw_t = [np.any((transitions[:, :, :, col] == 1),axis=2) for col in range(6)]
-            sw_t = np.stack(sw_t, axis=2).astype(np.int8)
-            sw_t = np.multiply(sw_t, self.transition_weights)
+            if self.transition_weights is not None:
+                transitions = transitions.reshape((
+                    transitions.shape[0],
+                    transitions.shape[1] // pool_size,
+                    pool_size,
+                    transitions.shape[-1],
+                ))
 
-            sw_t = np.sum(sw_t, axis=2)
-            where_are_ones = np.where(sw_t == 0)
-            sw_t[where_are_ones[0], where_are_ones[1]] = 1
-            sw = np.multiply(sw_t, sw)
+                sw_t = [np.any((transitions[:, :, :, col] == 1),axis=2) for col in range(6)]
+                sw_t = np.stack(sw_t, axis=2).astype(np.int8)
+                sw_t = np.multiply(sw_t, self.transition_weights)
 
-        if self.error_weights:
-            # finish by multiplying the sample_weights with the error rate
-            # 1 - error_rate^(1/3) seems to have the shape we need for the weights
-            # given the error rate
-            error_weights = 1 - np.power(error_rates, 1/3)
-            sw *= np.expand_dims(error_weights, axis=1)
+                sw_t = np.sum(sw_t, axis=2)
+                where_are_ones = np.where(sw_t == 0)
+                sw_t[where_are_ones[0], where_are_ones[1]] = 1
+                sw = np.multiply(sw_t, sw)
+
+            if self.error_weights:
+                # finish by multiplying the sample_weights with the error rate
+                # 1 - error_rate^(1/3) seems to have the shape we need for the weights
+                # given the error rate
+                error_weights = 1 - np.power(error_rates, 1/3)
+                sw *= np.expand_dims(error_weights, axis=1)
 
         return X, y, sw
 

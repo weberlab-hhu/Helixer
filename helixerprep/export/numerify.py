@@ -69,21 +69,20 @@ class Numerifier(ABC):
         """Method to be called from outside. Numerifies both strands."""
         pass
 
-    def _slice_matrix(self, matrix, error_mask, is_plus_strand):
-        data = []
-        error_masks = []
+    def _slice_matrices(self, is_plus_strand, *argv):
+        """Slices (potentially) multiple matrices in the same way according to self.paired_steps"""
+        assert len(argv) > 0, 'Need a matrix to slice'
+        all_slices = [[] for _ in range(len(argv))]
         # reverse steps on minus strand
         steps = self.paired_steps if is_plus_strand else self.paired_steps[::-1]
         for prev, current in steps:
-            data_slice = matrix[prev:current]
-            error_mask_slice = error_mask[prev:current]
-            if not is_plus_strand:
-                # invert directions
-                data_slice = np.flip(data_slice, axis=0)
-                error_mask_slice = np.flip(error_mask_slice, axis=0)
-            data.append(data_slice)
-            error_masks.append(error_mask_slice)
-        return data, error_masks
+            for matrix, slices in zip(argv, all_slices):
+                data_slice = matrix[prev:current]
+                if not is_plus_strand:
+                    # invert directions
+                    data_slice = np.flip(data_slice, axis=0)
+                slices.append(data_slice)
+        return all_slices
 
     def _zero_matrix(self):
         length = len(self.coord.sequence)
@@ -103,12 +102,15 @@ class SequenceNumerifier(Numerifier):
         for i, bp in enumerate(self.coord.sequence):
             self.matrix[i] = AMBIGUITY_DECODE[bp]
         # very important to copy here
-        data_plus, error_mask_plus = self._slice_matrix(np.copy(self.matrix),
-                                                        np.copy(self.error_mask),
-                                                        is_plus_strand=True)
+        data_plus, error_mask_plus = self._slice_matrices(True,
+                                                          np.copy(self.matrix),
+                                                          np.copy(self.error_mask))
+
         # minus strand, just flip
         self.matrix = np.flip(self.matrix, axis=1)  # invert base
-        data_minus, error_mask_minus = self._slice_matrix(self.matrix, self.error_mask, False)
+        data_minus, error_mask_minus = self._slice_matrices(False,
+                                                            self.matrix,
+                                                            self.error_mask)
         # put everything together
         data = data_plus + data_minus
         error_masks = error_mask_plus + error_mask_minus
@@ -130,6 +132,11 @@ class AnnotationNumerifier(Numerifier):
         Numerifier.__init__(self, n_cols=3, coord=coord, max_len=max_len, dtype=np.int8)
         self.features = features
         self.one_hot = one_hot
+        self.coord = coord
+        self._zero_gene_lengths()
+
+    def _zero_gene_lengths(self):
+        self.gene_lengths = np.zeros((len(self.coord.sequence),), dtype=np.uint32)
 
     def coord_to_matrices(self):
         """Always numerifies both strands one after the other."""
@@ -137,29 +144,29 @@ class AnnotationNumerifier(Numerifier):
         minus_strand = self._encode_strand(False)
 
         # put everything together
-        labels = plus_strand[0] + minus_strand[0]
-        error_masks = plus_strand[1] + minus_strand[1]
-        transitions = plus_strand[2] + minus_strand[2]
-        return labels, error_masks, transitions
+        combined_data = tuple(plus_strand[i] + minus_strand[i] for i in range(len(plus_strand)))
+        return combined_data
 
-    def _encode_strand(self, bool_):
+    def _encode_strand(self, is_plus_strand):
         self._zero_matrix()
-        self._update_matrix_and_error_mask(is_plus_strand=bool_)
+        self._zero_gene_lengths()
+        self._update_matrix_and_error_mask(is_plus_strand=is_plus_strand)
 
+        # encoding of transitions
+        binary_transition_matrix = self._encode_transitions()
+
+        # encoding of the actual labels and slicing; generation of error mask and gene length array
         if self.one_hot:
-            self.onehot4_matrix = self._encode_onehot4()
-            labels, error_masks = self._slice_matrix(self.onehot4_matrix,
-                                                     self.error_mask,
-                                                     is_plus_strand=bool_)
+            label_matrix = self._encode_onehot4()
+
         else:
-            labels, error_masks = self._slice_matrix(self.matrix,
-                                                     self.error_mask,
-                                                     is_plus_strand=bool_)
-        self.binary_transition_matrix = self._encode_transitions()
-        transitions, _ = self._slice_matrix(self.binary_transition_matrix,
-                                            self.error_mask,
-                                            is_plus_strand=bool_)
-        return labels, error_masks, transitions
+            label_matrix = self.matrix
+        matrices = self._slice_matrices(is_plus_strand,
+                                        label_matrix,
+                                        self.error_mask,
+                                        self.gene_lengths,
+                                        binary_transition_matrix)
+        return matrices
 
     def _update_matrix_and_error_mask(self, is_plus_strand):
         for feature in self.features:
@@ -177,6 +184,12 @@ class AnnotationNumerifier(Numerifier):
                 self.error_mask[start:end] = 0
             else:
                 raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
+            # also fill self.gene_lengths
+            # give precedence for the longer transcript if present
+            if feature.type.value == types.GEENUFF_TRANSCRIPT:
+                length_arr = np.full((end - start,), end - start)
+                self.gene_lengths[start:end] = np.maximum(self.gene_lengths[start:end], length_arr)
+
 
     def _encode_onehot4(self):
         # Class order: Intergenic, UTR, CDS, (non-coding Intron), Intron
@@ -229,7 +242,7 @@ class CoordNumerifier(object):
 
         # returns results for both strands, with the plus strand first in the list
         inputs, input_masks = seq_numerifier.coord_to_matrices()
-        labels, label_masks, transitions = anno_numerifier.coord_to_matrices()
+        labels, label_masks, gene_lengths, transitions = anno_numerifier.coord_to_matrices()
 
         start_ends = anno_numerifier.paired_steps
         # flip the start ends back for - strand and append
@@ -239,8 +252,9 @@ class CoordNumerifier(object):
         out = {
             'inputs': inputs,
             'labels': labels,
-            'transitions': transitions,
             'label_masks': label_masks,
+            'gene_lengths': gene_lengths,
+            'transitions': transitions,
             'species': [coord.genome.species.encode('ASCII')] * len(inputs),
             'seqids': [coord.seqid.encode('ASCII')] * len(inputs),
             'start_ends': start_ends,
