@@ -447,8 +447,6 @@ class HelixerModel(ABC):
                 # (causes values to be lower there)
                 averages = np.mean(stacked, axis=0)
                 predictions_seqid = np.stack(np.split(averages, seqid_size))
-            else:
-                pass
             all_predictions = np.concatenate([all_predictions, predictions_seqid], axis=0)
         assert all_predictions.shape[0] == n_original_seqs
         return all_predictions
