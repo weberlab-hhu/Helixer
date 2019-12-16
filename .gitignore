@@ -26,6 +26,7 @@ predictions_no_overlapping.h5
 predictions_overlapping.h5
 ensembled_predictions.h5
 *.h5
+*.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
