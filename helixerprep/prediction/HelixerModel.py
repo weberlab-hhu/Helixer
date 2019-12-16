@@ -195,6 +195,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
         self.parser.add_argument('-tw', '--transition_weights', type=str, default='None')
         self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
+        self.parser.add_argument('-res', '--resume-training', action='store_true')
         self.parser.add_argument('-gl', '--gene-lengths', action='store_true')
         self.parser.add_argument('-glavg', '--gene-lengths-average', type=int, default=3350)
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
@@ -223,6 +224,10 @@ class HelixerModel(ABC):
     def parse_args(self):
         args = vars(self.parser.parse_args())
         self.__dict__.update(args)
+        self.testing = bool(self.load_model_path and not self.resume_training)
+        assert not (self.testing and self.data_dir)
+        assert not (not self.testing and self.test_data)
+        assert not (self.resume_training and (not self.load_model_path or not self.data_dir))
 
         self.class_weights = eval(self.class_weights)
         if type(self.class_weights) is list:
@@ -233,7 +238,7 @@ class HelixerModel(ABC):
             self.transition_weights = np.array(self.transition_weights, dtype = np.float32)
 
         if self.overlap:
-            assert self.load_model_path  # only use overlapping during test time
+            assert self.testing  # only use overlapping during test time
             assert self.overlap_offset < self.core_length
             # check if everything divides evenly to avoid further head aches
             assert (20000 / self.core_length).is_integer()  # assume 20000 chunk size
@@ -340,7 +345,7 @@ class HelixerModel(ABC):
                 print('WARNING: no fully intergenic samples found')
             return n_fully_ig
 
-        if not self.load_model_path:
+        if not self.testing:
             self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
             self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
             self.shape_train = self.h5_train['/data/X'].shape
@@ -372,7 +377,7 @@ class HelixerModel(ABC):
 
         if self.verbose:
             print('\nData config: ')
-            if not self.load_model_path:
+            if not self.testing:
                 print(dict(self.h5_train.attrs))
                 print('\nTraining data shape: {}'.format(self.shape_train[:2]))
                 print('Validation data shape: {}'.format(self.shape_val[:2]))
@@ -550,8 +555,11 @@ class HelixerModel(ABC):
         self.set_resources()
         self.open_data_files()
         # we either train or predict
-        if not self.load_model_path:
-            model = self.model()
+        if not self.testing:
+            if self.resume_training:
+                model = self._load_helixer_model()
+            else:
+                model = self.model()
             if self.trace:
                 self._trace(model, self.gen_training_data())
                 exit()
@@ -569,22 +577,6 @@ class HelixerModel(ABC):
                                 # validation_data=self.gen_validation_data(),
                                 callbacks=self.generate_callbacks(),
                                 verbose=True)
-
-            # set all model instance variables so predictions are made on the validation set
-            self.h5_test = self.h5_val
-            self.shape_test = self.shape_val
-            self.load_model_path = self.save_model_path
-            self.test_data = os.path.join(self.data_dir, 'validation_data.h5')
-            self.class_weights = None
-            model = self._load_helixer_model()
-            self._make_predictions(model)
-            print(f'Predictions made with {self.load_model_path} on {self.test_data} '
-                  f'and saved to {self.prediction_output_path}')
-
-            self.h5_train.close()
-            self.h5_val.close()
-
-        # predict instead of train
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
