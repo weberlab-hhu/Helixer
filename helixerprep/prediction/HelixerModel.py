@@ -66,7 +66,7 @@ class ConfusionMatrixTrain(Callback):
 
 
 class HelixerSequence(Sequence):
-    def __init__(self, model, h5_file, mode, shuffle):
+    def __init__(self, model, h5_file, mode, shuffle, filter_by_score=False, filter_quantile=0.05):
         assert mode in ['train', 'val', 'test']
         self.model = model
         self.h5_file = h5_file
@@ -87,8 +87,24 @@ class HelixerSequence(Sequence):
             self.usable_idx = np.flatnonzero(np.array(h5_file['/data/err_samples']) == False)
         else:
             self.usable_idx = list(range(self.x_dset.shape[0]))
+
+        if filter_by_score:
+            self._filter_usable_idx_by_score(quantile=filter_quantile)
+
         if shuffle:
             random.shuffle(self.usable_idx)
+
+    def _filter_usable_idx_by_score(self, quantile=0.05, score_dataset="scores/one_centered", hard=True, prob=0.5):
+        """filters or down samples data by a evidence derived score for the reference annotation in any chunk"""
+        scores = self.h5_file[score_dataset][:]
+        threshold = np.quantile(scores, quantile)
+
+        self.usable_idx = np.where(self.h5_file[score_dataset][self.usable_idx] > threshold)[0]
+        if not hard:
+            to_review = np.where(self.h5_file[score_dataset][self.usable_idx] < threshold)[0]
+            n_to_keep = int(to_review.size * prob)
+            to_keep = np.random.choice(to_review, n_to_keep, replace=False)
+            self.usable_idx = np.sort(np.concatenate((self.usable_idx, to_keep)))
 
     def _cp_into_namespace(self, names):
         """Moves class properties from self.model into this class for brevity"""
@@ -189,6 +205,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         self.parser.add_argument('-ew', '--error-weights', action='store_true')
+        self.parser.add_argument('-qu', '--quantile-filter', type=float)
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -261,10 +278,16 @@ class HelixerModel(ABC):
 
     def gen_training_data(self):
         SequenceCls = self.sequence_cls()
+        if self.quantile_filter is None:
+            filter_by_score = False
+        else:
+            filter_by_score = True
         return SequenceCls(model=self,
                            h5_file=self.h5_train,
                            mode='train',
-                           shuffle=True)
+                           shuffle=True,
+                           filter_by_score=filter_by_score,
+                           filter_quantile=self.quantile_filter)
 
     def gen_validation_data(self):
         SequenceCls = self.sequence_cls()
