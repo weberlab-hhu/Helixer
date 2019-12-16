@@ -1,7 +1,12 @@
 #! /usr/bin/env python3
 import pandas as pd
+import argparse
 
-df = pd.read_csv('alternative_splicing_results.csv', sep=',',
+parser = argparse.ArgumentParser()
+parser.add_argument('-p', '--path', type=str, required=True, default='alternative_splicing_results.csv')
+args = parser.parse_args()
+
+df = pd.read_csv(args.path, sep=',',
                  names=['seqid', 'strand', 'start', 'end', 'gene_name', 'n_transcripts',
                         'ig_f1', 'utr_f1', 'intron_f1', 'exon_f1', 'genic_f1'])
 df['length_bin'] = pd.cut((df.start - df.end).abs(),
