@@ -207,7 +207,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-ev', '--eval', action='store_true')
         # overlap options
         self.parser.add_argument('-overlap', '--overlap', action='store_true')
-        self.parser.add_argument('-overlap-offset', '--overlap-offset', type=int, default=2500) # 2500
+        self.parser.add_argument('-overlap-offset', '--overlap-offset', type=int, default=2500)
         self.parser.add_argument('-core-len', '--core-length', type=int, default=10000)
         # resources
         self.parser.add_argument('-fp', '--float-precision', type=str, default='float32')
@@ -236,14 +236,6 @@ class HelixerModel(ABC):
         self.transition_weights = eval(self.transition_weights)
         if type(self.transition_weights) is list:
             self.transition_weights = np.array(self.transition_weights, dtype = np.float32)
-
-        if self.overlap:
-            assert self.testing  # only use overlapping during test time
-            assert self.overlap_offset < self.core_length
-            # check if everything divides evenly to avoid further head aches
-            assert (20000 / self.core_length).is_integer()  # assume 20000 chunk size
-            assert (self.batch_size / (20000 / self.overlap_offset)).is_integer()
-            assert ((20000 - self.core_length) / 2 / self.overlap_offset).is_integer()
 
         if self.nni:
             hyperopt_args = nni.get_next_parameter()
@@ -456,6 +448,7 @@ class HelixerModel(ABC):
         # not fit in memory
         pred_out = h5py.File(self.prediction_output_path, 'w')
         test_sequence = self.gen_test_data()
+
         for i in range(len(test_sequence)):
             if self.verbose:
                 print(i, '/', len(test_sequence), end='\r')
@@ -578,6 +571,14 @@ class HelixerModel(ABC):
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
+            if self.overlap:
+                assert self.testing  # only use overlapping during test time
+                assert self.overlap_offset < self.core_length
+                # check if everything divides evenly to avoid further head aches
+                assert (self.shape_test[1] / self.overlap_offset).is_integer()
+                assert (self.batch_size / (self.shape_test[1] / self.overlap_offset)).is_integer()
+                assert ((self.shape_test[1] - self.core_length) / 2 / self.overlap_offset).is_integer()
+
             model = self._load_helixer_model()
             self._print_model_info(model)
 
