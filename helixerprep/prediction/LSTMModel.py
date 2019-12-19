@@ -69,8 +69,10 @@ class LSTMSequence(HelixerSequence):
                 ig_idx = np.where(gene_lengths == 0)
                 gene_weights = gene_lengths.astype(np.float32)
                 scaled_gene_lengths = self.gene_lengths_average / gene_lengths[gene_idx]
-                scaled_gene_lengths = np.clip(scaled_gene_lengths, 0.1, 5.0).astype(np.float32)
-                gene_weights[gene_idx] = scaled_gene_lengths
+                # the exponent controls the steepness of the curve
+                scaled_gene_lengths = np.power(scaled_gene_lengths, self.gene_lengths_exponent)
+                scaled_gene_lengths = np.clip(scaled_gene_lengths, 0.1, self.gene_lengths_cutoff)
+                gene_weights[gene_idx] = scaled_gene_lengths.astype(np.float32)
                 # important to set all intergenic weight to 1
                 gene_weights[ig_idx] = 1.0
                 sw = np.multiply(gene_weights, sw)
