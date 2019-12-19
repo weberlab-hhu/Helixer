@@ -114,7 +114,7 @@ class HelixerSequence(Sequence):
             X_by_seqid = np.array_split(X, seqid_borders)
             overlapping_X = []
             for seqid_x in X_by_seqid:
-                if len(seqid_x) > self.min_seqs_for_overlapping:
+                if len(seqid_x) >= self.min_seqs_for_overlapping:
                     seq = np.concatenate(seqid_x, axis=0)
                     # apply sliding window
                     overlapping_X += [seq[i:i+self.chunk_size]
@@ -412,7 +412,7 @@ class HelixerModel(ABC):
                 n_seqid_seqs = seqid_size
             predictions_seqid = predictions[pred_offset:pred_offset + n_seqid_seqs]
             pred_offset += n_seqid_seqs
-            if seqid_size > self.min_seqs_for_overlapping:
+            if seqid_size >= self.min_seqs_for_overlapping:
                 # actual overlapping; save first and last sequence for special handling later
                 first, last = predictions_seqid[0], predictions_seqid[-1]
                 # cut to the core
