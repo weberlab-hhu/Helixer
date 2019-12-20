@@ -218,7 +218,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-fp', '--float-precision', type=str, default='float32')
         self.parser.add_argument('-gpus', '--gpus', type=int, default=1)
         self.parser.add_argument('-cpus', '--cpus', type=int, default=8)
-        self.parser.add_argument('--specific-gpu-id', type=int, default=-1)
+        self.parser.add_argument('-gpuid', '--gpu-id', type=int, default=-1)
         # misc flags
         self.parser.add_argument('-see', '--save-every-epoch', action='store_true')
         self.parser.add_argument('-nni', '--nni', action='store_true')
