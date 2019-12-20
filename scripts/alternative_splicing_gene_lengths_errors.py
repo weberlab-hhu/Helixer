@@ -18,13 +18,20 @@ parser.add_argument('-p', '--predictions', type=str, required=True,
 parser.add_argument('-db', '--db-path', type=str, required=True)
 parser.add_argument('-g', '--genome', type=str, required=True)
 parser.add_argument('-o', '--output-file', type=str, default='alternative_splicing_results.csv')
+parser.add_argument('--augustus', action='store_true', help=('If the prediction file has Augustus data.'
+                    'Assumes Augustus predictions were numerified with --keep-errors.'))
 args = parser.parse_args()
 
 h5_data = h5py.File(args.data, 'r')
 h5_pred = h5py.File(args.predictions, 'r')
 
 y_true = h5_data['/data/y']
-y_pred = h5_pred['/predictions']
+if args.augustus:
+    y_pred = h5_pred['/data/y']
+    seqids_aug = np.array(h5_pred['/data/seqids'])
+    start_ends_aug = np.array(h5_pred['/data/start_ends'])
+else:
+    y_pred = h5_pred['/predictions']
 sw = h5_data['/data/sample_weights']
 seqids = np.array(h5_data['/data/seqids'])
 start_ends = np.array(h5_data['/data/start_ends'])
@@ -68,6 +75,11 @@ with sqlite3.connect(args.db_path) as con:
 is_on_strand = dict()
 is_on_strand['plus'] = start_ends[:, 0] < start_ends[:, 1]
 is_on_strand['minus'] = start_ends[:, 0] >= start_ends[:, 1]
+if args.augustus:
+    is_on_strand_aug = dict()
+    is_on_strand_aug['plus'] = start_ends_aug[:, 0] < start_ends_aug[:, 1]
+    is_on_strand_aug['minus'] = start_ends_aug[:, 0] >= start_ends_aug[:, 1]
+
 
 last_seqid = ''
 with open(f'{args.output_file}', 'w') as f:
@@ -78,18 +90,27 @@ with open(f'{args.output_file}', 'w') as f:
                 print(f'Starting with seqid {seqid} on {strand} strand')
                 seqid_idxs = np.where((seqids == str.encode(seqid)) & is_on_strand[strand])
                 seqid_idxs = sorted(list(seqid_idxs[0]))
+                if args.augustus:
+                    seqid_idxs_aug = np.where((seqids_aug == str.encode(seqid))
+                                               & is_on_strand_aug[strand])
+                    seqid_idxs_aug = sorted(list(seqid_idxs_aug[0]))
                 if seqid_idxs:
                     # select sequences of seqid + strand
                     y_true_seqid_seqs = y_true[seqid_idxs]
-                    y_pred_seqid_seqs = y_pred[seqid_idxs]
                     sw_seqid_seqs = sw[seqid_idxs]
+                    if args.augustus:
+                        y_pred_seqid_seqs = y_pred[seqid_idxs_aug]
+                    else:
+                        y_pred_seqid_seqs = y_pred[seqid_idxs]
                     # remove 0 padding
                     non_zero_bases = [np.any(arr, axis=-1) for arr in y_true_seqid_seqs]
                     y_true_seqid_seqs_nonzero = [y_true_seqid_seqs[i][non_zero_bases[i]]
                                                  for i in range(len(non_zero_bases))]
-                    y_pred_seqid_seqs_nonzero = [y_pred_seqid_seqs[i][non_zero_bases[i]]
-                                                 for i in range(len(non_zero_bases))]
                     sw_seqid_seqs_nonzero = [sw_seqid_seqs[i][non_zero_bases[i]]
+                                                 for i in range(len(non_zero_bases))]
+                    if args.augustus:
+                        non_zero_bases = [np.any(arr, axis=-1) for arr in y_pred_seqid_seqs]
+                    y_pred_seqid_seqs_nonzero = [y_pred_seqid_seqs[i][non_zero_bases[i]]
                                                  for i in range(len(non_zero_bases))]
                     # add dummy data where fully erroneous sequences where removed
                     inserted_before = 0
@@ -99,7 +120,9 @@ with open(f'{args.output_file}', 'w') as f:
                         if end_before != start_after:
                             dummy_seq_dim_4 = np.zeros((abs(end_before - start_after), 4))
                             y_true_seqid_seqs_nonzero.insert(i + inserted_before + 1, dummy_seq_dim_4)
-                            y_pred_seqid_seqs_nonzero.insert(i + inserted_before + 1, dummy_seq_dim_4)
+                            if not args.augustus:
+                                y_pred_seqid_seqs_nonzero.insert(i + inserted_before + 1,
+                                                                 dummy_seq_dim_4)
                             dummy_seq_dim_1 = np.zeros((abs(end_before - start_after),))
                             sw_seqid_seqs_nonzero.insert(i + inserted_before + 1, dummy_seq_dim_1)
                             inserted_before += 1
@@ -107,6 +130,9 @@ with open(f'{args.output_file}', 'w') as f:
                     y_true_seqid = np.concatenate(y_true_seqid_seqs_nonzero)
                     y_pred_seqid = np.concatenate(y_pred_seqid_seqs_nonzero)
                     sw_seqid = np.concatenate(sw_seqid_seqs_nonzero)
+                    # this assert fails when the were fully erroneous sequences at the very end
+                    # they should not contain genes or if we have to add proper padding + sw
+                    # assert y_true_seqid.shape[0] == y_pred_seqid.shape[0] == sw_seqid.shape[0]
                     if strand == 'minus':
                         # flip to align indices for minus strand
                         y_true_seqid = np.flip(y_true_seqid, axis=0)
