@@ -17,7 +17,7 @@ parser.add_argument('-p', '--predictions', type=str, required=True,
                     help='This HAS to be from only one genome')
 parser.add_argument('-db', '--db-path', type=str, required=True)
 parser.add_argument('-g', '--genome', type=str, required=True)
-parser.add_argument('-o', '--output-file', type=str, default='alternative_splicing_results')
+parser.add_argument('-o', '--output-file', type=str, default='alternative_splicing_results.csv')
 args = parser.parse_args()
 
 h5_data = h5py.File(args.data, 'r')
@@ -70,7 +70,7 @@ is_on_strand['plus'] = start_ends[:, 0] < start_ends[:, 1]
 is_on_strand['minus'] = start_ends[:, 0] >= start_ends[:, 1]
 
 last_seqid = ''
-with open(f'{args.output_file}.csv', 'w') as f:
+with open(f'{args.output_file}', 'w') as f:
     for strand in ['plus', 'minus']:
         for (seqid, sl_name, start, end, n_transcripts) in gene_borders[strand]:
             # get seqid array

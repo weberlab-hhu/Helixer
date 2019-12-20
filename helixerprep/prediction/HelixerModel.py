@@ -74,7 +74,7 @@ class HelixerSequence(Sequence):
         self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
                                  'overlap', 'overlap_offset', 'core_length', 'min_seqs_for_overlapping',
                                  'debug', 'exclude_errors', 'error_weights', 'gene_lengths',
-                                 'gene_lengths_average'])
+                                 'gene_lengths_average', 'gene_lengths_exponent', 'gene_lengths_cutoff'])
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
@@ -114,7 +114,7 @@ class HelixerSequence(Sequence):
             X_by_seqid = np.array_split(X, seqid_borders)
             overlapping_X = []
             for seqid_x in X_by_seqid:
-                if len(seqid_x) > self.min_seqs_for_overlapping:
+                if len(seqid_x) >= self.min_seqs_for_overlapping:
                     seq = np.concatenate(seqid_x, axis=0)
                     # apply sliding window
                     overlapping_X += [seq[i:i+self.chunk_size]
@@ -197,8 +197,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('-tw', '--transition_weights', type=str, default='None')
         self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
         self.parser.add_argument('-res', '--resume-training', action='store_true')
-        self.parser.add_argument('-gl', '--gene-lengths', action='store_true')
-        self.parser.add_argument('-glavg', '--gene-lengths-average', type=int, default=3350)
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         self.parser.add_argument('-ew', '--error-weights', action='store_true')
         # testing
@@ -211,6 +209,11 @@ class HelixerModel(ABC):
         self.parser.add_argument('-overlap-offset', '--overlap-offset', type=int, default=2500)
         self.parser.add_argument('-core-len', '--core-length', type=int, default=10000)
         self.parser.add_argument('-min-seqs', '--min-seqs-for-overlapping', type=int, default=3)
+        # gene length adjustments
+        self.parser.add_argument('-gl', '--gene-lengths', action='store_true')
+        self.parser.add_argument('-glavg', '--gene-lengths-average', type=int, default=3350)
+        self.parser.add_argument('-glexp', '--gene-lengths-exponent', type=float, default=1.0)
+        self.parser.add_argument('-glco', '--gene-lengths-cutoff', type=float, default=5.0)
         # resources
         self.parser.add_argument('-fp', '--float-precision', type=str, default='float32')
         self.parser.add_argument('-gpus', '--gpus', type=int, default=1)
@@ -412,7 +415,7 @@ class HelixerModel(ABC):
                 n_seqid_seqs = seqid_size
             predictions_seqid = predictions[pred_offset:pred_offset + n_seqid_seqs]
             pred_offset += n_seqid_seqs
-            if seqid_size > self.min_seqs_for_overlapping:
+            if seqid_size >= self.min_seqs_for_overlapping:
                 # actual overlapping; save first and last sequence for special handling later
                 first, last = predictions_seqid[0], predictions_seqid[-1]
                 # cut to the core
