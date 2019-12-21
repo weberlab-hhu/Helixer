@@ -267,9 +267,9 @@ class HelixerModel(ABC):
 
     def set_resources(self):
         K.set_floatx(self.float_precision)
-        if self.specific_gpu_id > -1:
+        if self.gpu_id > -1:
             os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID';
-            os.environ['CUDA_VISIBLE_DEVICES'] = str(self.specific_gpu_id)
+            os.environ['CUDA_VISIBLE_DEVICES'] = str(self.gpu_id)
 
     def gen_training_data(self):
         SequenceCls = self.sequence_cls()
