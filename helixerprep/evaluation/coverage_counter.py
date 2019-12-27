@@ -19,9 +19,12 @@ class CoverageCounter(object):
         self.counts = self.setup_fully_binned_counts(lab_dim, n_cov_bins)
         self.latest = {}
 
-    def get_latest_arrays(self, i, h5):
+    def get_latest_arrays(self, i, h5, at_once=100):
         for h5_key, key in CoverageCounter.ARRAYS:
-            self.latest[key] = h5[h5_key][i]
+            arr = h5[h5_key][i:(i + at_once)]
+            oldshape = list(arr.shape)
+            arr = arr.reshape([-1] + oldshape[2:])
+            self.latest[key] = arr
 
     @staticmethod
     def setup_fully_binned_counts(lab_dim, n_cov_bins):
@@ -111,11 +114,11 @@ def main(h5_file, out_file):
     h5_data = h5py.File(h5_file, 'r')
     cov_counter = CoverageCounter(lab_dim=4, n_cov_bins=6, base_cov_bins=3)
     n = h5_data['data/X'].shape[0]
-    for i in range(n):
-        cov_counter.get_latest_arrays(i, h5_data)
+    for i in range(0, n, 100):
+        cov_counter.get_latest_arrays(i, h5_data, 100)
         cov_counter.pre_filter_arrays()
         cov_counter.increment()
-        if not i % 100:
+        if not i % 500:
             print('{} chunks of {} finished'.format(i, n))
 
     with open(out_file, 'w') as f:
