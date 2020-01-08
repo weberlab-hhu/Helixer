@@ -7,6 +7,7 @@ from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix as ConfusionM
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--data', type=str, required=True)
 parser.add_argument('-p', '--predictions', type=str, required=True)
+parser.add_argument('-cs', '--chunk-size', type=int, default=100)
 args = parser.parse_args()
 
 h5_data = h5py.File(args.data, 'r')
@@ -19,9 +20,11 @@ sw = h5_data['/data/sample_weights']
 assert y_true.shape == y_pred.shape
 assert y_pred.shape[:-1] == sw.shape
 
-n_seqs = y_true.shape[0]
+n_seqs = int(np.ceil(y_true.shape[0] / args.chunk_size))
 cm = ConfusionMatrix(None)
 for i in range(n_seqs):
     print(i, '/', n_seqs, end='\r')
-    cm._add_to_cm(y_true[i], y_pred[i], sw[i])
+    cm._add_to_cm(y_true[i * args.chunk_size: (i + 1) * args.chunk_size],
+                  y_pred[i * args.chunk_size: (i + 1) * args.chunk_size],
+                  sw[i * args.chunk_size: (i + 1) * args.chunk_size])
 cm.print_cm()
