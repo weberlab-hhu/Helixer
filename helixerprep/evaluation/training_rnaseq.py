@@ -4,7 +4,7 @@ import HTSeq
 import h5py
 import numpy as np
 from helixerprep.evaluation import rnaseq
-import pdb
+import copy
 
 
 def add_empty_eval_datasets(h5):
@@ -78,10 +78,10 @@ class Scorer:
         else:
             self.spliced_coverage_score_component = self.coverage_hurts
 
-    def score(self, h5, i):
-        mask = h5['data/y'][i][:, self.column] == 1
-        cov = h5['evaluation/coverage'][i][mask]
-        sc = h5['evaluation/spliced_coverage'][i][mask]
+    def score(self, datay, coverage, spliced_coverage):
+        mask = datay[:, self.column] == 1
+        cov = coverage[mask]
+        sc = spliced_coverage[mask]
         if cov.shape[0]:
             cov_score = self.coverage_score_component(cov)
             sc_score = self.spliced_coverage_score_component(sc)
@@ -92,7 +92,7 @@ class Scorer:
 
     def coverage_hurts(self, array):
         # returns 1 when array has only 0s, approaches 0 when array is high
-        return 1 / (np.mean(array) + 1)
+        return np.mean(1 / (array + 1))
 
     def coverage_helps(self, array):
         # returns 1 when array has only 0s, approaches 0 when array is high
@@ -103,7 +103,9 @@ def main(species, bam, h5_data, d_utp, dont_score):
 
     # open h5
     h5 = h5py.File(h5_data, 'r+')
-    # create evaluation & score placeholders if they don't exist (evaluation/coverage, "/spliced_coverage, scores/*)
+    # create evaluation, score, & metadata placeholders if they don't exist
+    # (evaluation/coverage, "/spliced_coverage, scores/*, meta/*)
+
     try:
         h5['evaluation/coverage']
     except KeyError:
@@ -114,12 +116,20 @@ def main(species, bam, h5_data, d_utp, dont_score):
     except KeyError:
         add_empty_score_datasets(h5)
 
+    try:
+        h5['meta']
+    except KeyError:
+        rnaseq.add_meta(h5)
+
     # identify regions in h5 corresponding to species
     species_start, species_end = species_range(h5, species)
+    # save range to h5 meta
+    h5['meta/start_end_i'].attrs.create(name=species, data=(species_start, species_end))
 
     # insert coverage into said regions
     coords = rnaseq.gen_coords(h5, species_start, species_end)
     print('start, end', species_start, species_end)
+    cov_counts = copy.deepcopy(rnaseq.COVERAGE_COUNTS)  # tracks number reads, bp coverage, bp spliced coverage
     if bam is not None:
         pad_to = h5['evaluation/coverage'].shape[1]
 
@@ -127,7 +137,14 @@ def main(species, bam, h5_data, d_utp, dont_score):
         htseqbam = HTSeq.BAM_Reader(bam)
         for coord in coords:
             print(coord)
-            rnaseq.coverage_from_coord_to_h5(coord, h5, bam=htseqbam, d_utp=d_utp, pad_to=pad_to)
+            coord_cov_counts = rnaseq.coverage_from_coord_to_h5(coord, h5, bam=htseqbam, d_utp=d_utp, pad_to=pad_to)
+            for key in coord_cov_counts:
+                cov_counts[key] += coord_cov_counts[key]
+
+        # add bam related metadata
+        h5['meta/bamfile'].attrs.create(name=species, data=bam.encode('utf-8'))
+        for key in cov_counts:
+            h5['meta/total_' + key].attrs.create(name=species, data=cov_counts[key])
 
     if not dont_score:
         # calculate coverage score  (0 - 2)
@@ -138,13 +155,20 @@ def main(species, bam, h5_data, d_utp, dont_score):
         intron_scorer = Scorer(column=3, coverage_helps=False, spliced_coverage_helps=True)
         scorers = [ig_scorer, utr_scorer, cds_scorer, intron_scorer]
 
+        # setup normalization factors (this would probably be better if it was more like the VST from DESeq...
+        # or at least based on the median coverage, but mapped library size is easier for now
+        cov_scale = 10**9 / cov_counts['coverage']
+        print(cov_counts, ' so scaling cov/sc by ', cov_scale)
         # todo, this is really naive and probably terribly slow... fix
         counts = np.zeros(shape=(species_end - species_start, 4))
         print("scoring {}-{}".format(species_start, species_end))
         for i in range(species_start, species_end):
             i_rel = i - species_start
+            datay = h5['data/y'][i]
+            coverage = h5['evaluation/coverage'][i] * cov_scale
+            spliced_coverage = h5['evaluation/spliced_coverage'][i] * cov_scale
             for scorer in scorers:
-                score = scorer.score(h5, i)
+                score = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
                 h5['scores/four'][i, scorer.column] = score
             current_counts = np.sum(h5['data/y'][i], axis=0)
             counts[i_rel] = current_counts

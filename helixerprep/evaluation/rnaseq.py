@@ -2,6 +2,7 @@ import sys
 import argparse
 import HTSeq
 import h5py
+import copy
 import numpy as np
 from helixerprep.core.helpers import mk_keys
 
@@ -66,6 +67,7 @@ def get_sense_cov_intervals(read, chromosome, d_utp):
     else:
         # take raw strand for un-stranded protocol, bc it's easier than dealing with the if/else of un-stranded
         strand = read.iv.strand
+    # todo, stranded but not d_utp
 
     # ignore clipping and other info for now, take only coverage regions
     standard_raw = [x for x in read.cigar if is_coverage(x)]
@@ -84,6 +86,9 @@ def get_length_from_header(htseqbam, chromosome):
     return sqs[0]['LN']
 
 
+COVERAGE_COUNTS = {'reads': 0, 'coverage': 0, 'spliced_coverage': 0}
+
+
 def cov_by_chrom(chromosome, htseqbam, d_utp=False):
     length = get_length_from_header(htseqbam, chromosome)
     # returns htseq genomic array
@@ -92,16 +97,19 @@ def cov_by_chrom(chromosome, htseqbam, d_utp=False):
     spliced_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage="ndarray")
     # 1 below because "pysam uses 0-based coordinates...The only exception is the region string in the fetch() and
     # pileup() methods. This string follows the convention of the samtools command line utilities." oh well.
-
+    counts = copy.deepcopy(COVERAGE_COUNTS)
     for read in htseqbam.fetch(region="{}:1-{}".format(chromosome, length)):
         if not skippable(read):
+            counts['reads'] += 1
             standard_ivs, spliced_ivs = get_sense_cov_intervals(read, chromosome, d_utp)
             for iv in standard_ivs:
                 cov_array[iv] += 1
+                counts['coverage'] += iv.end - iv.start
             for iv in spliced_ivs:
                 spliced_array[iv] += 1
+                counts['spliced_coverage'] += iv.end - iv.start
 
-    return cov_array, spliced_array, length
+    return cov_array, spliced_array, length, counts
 
 
 def extract_np_arrays(cov_array, seqid, length):
@@ -111,10 +119,10 @@ def extract_np_arrays(cov_array, seqid, length):
 
 
 def stranded_cov_by_chromosome(htseqbam, seqid, d_utp=False):
-    cov_array, spliced_array, length = cov_by_chrom(seqid, htseqbam, d_utp)
+    cov_array, spliced_array, length, counts = cov_by_chrom(seqid, htseqbam, d_utp)
     cp, cm = extract_np_arrays(cov_array, seqid, length)
     sp, sm = extract_np_arrays(spliced_array, seqid, length)
-    return cp, cm, sp, sm
+    return cp, cm, sp, sm, counts
 
 
 COVERAGE_SETS = ['coverage', 'spliced_coverage']
@@ -168,8 +176,18 @@ def setup_output4species(new_h5_path, h5_data, h5_preds, species):
         tosave = tosave[lexsort]
         h5_file[full_key][:] = tosave
     h5_file['predictions'][:] = h5_preds['predictions'][:][mask][lexsort]
+
+    add_meta(h5_file)
+
     print("finished sub-setting and sorting existing data", file=sys.stderr)
     return h5_file
+
+
+def add_meta(h5):
+    """add organized hierarchy for by-species meta attributes to be attached to"""
+    h5.create_group('meta')
+    for key in ['bamfile', 'total_reads', 'total_coverage', 'total_spliced_coverage', 'start_end_i']:
+        h5.create_group('meta/' + key)
 
 
 def mask_and_sort(h5_data, species):
@@ -237,18 +255,21 @@ def arrange_slice_for_h5(cov_arrays, i, h5_out, pad_to, b_seqid):
 
 
 def coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, pad_to):
-    """calculates coverage for a coordinate from bam, saves to h5"""
+    """calculates coverage for a coordinate from bam, saves to h5, returns counts for aggregating"""
     b_seqid, start_i, end_i = coord
     seqid = b_seqid.decode('utf-8')
     print('{}: chunks from {}-{}'.format(seqid, start_i, end_i), file=sys.stderr)
     # coverage+, coverage-, spliced_coverage+, spliced_coverage-
     cov_arrays = stranded_cov_by_chromosome(bam, seqid, d_utp)
+    counts = cov_arrays[4]
+    cov_arrays = cov_arrays[:4]
     # split into pieces matching start/ends
     for i in range(start_i, end_i):
         slices = arrange_slice_for_h5(cov_arrays, i, h5_out, pad_to, b_seqid)
         # export
         # todo, write in larger chunks?? could read as well...
         write_next_2(h5_out, slices, i)
+    return counts
 
 
 def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
@@ -266,10 +287,21 @@ def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
     coords = gen_coords(h5_out)
     pad_to = h5_out['evaluation/coverage'].shape[1]
 
+    counts = copy.deepcopy(COVERAGE_COUNTS)
     # get coverage by chromosome
     for coord in coords:
-        coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, pad_to)
+        # writes coverage to h5, return totals for aggregating
+        coord_counts = coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, pad_to)
+        for key in counts:
+            counts[key] += coord_counts[key]
 
+    # write meta info to h5
+    h5_out['meta/bamfile'].attrs.create(name=species, data=bamfile)
+    for key in counts:
+        h5_out['meta/total_' + key].attrs.create(name=species, data=counts[key])
+
+    # one species per file, but start end included for consistency
+    h5_out['meta/start_end_i'].attrs.create(name=species, data=(0, h5_out['data/X'].shape[0]))
     h5_out.close()
 
 
