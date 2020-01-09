@@ -16,6 +16,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-s', '--server', type=str, default='clc')
 parser.add_argument('-job', '--job-id', type=str, required=True)
 parser.add_argument('-t', '--type', type=str, default='plants')
+parser.add_argument('-lfn', '--log-file-name', type=str, default='trial.log',
+                    help='Only used with an nni eval')
 parser.add_argument('-i', '--ignore', action='append')
 parser.add_argument('-er', '--error-rates', action='store_true')
 args = parser.parse_args()
@@ -87,7 +89,7 @@ for folder in os.listdir(trials_folder):
 
     # parse metric table
     if nni_eval:
-        log_file = open(os.path.join(trials_folder, folder, 'trial.log'))
+        log_file = open(os.path.join(trials_folder, folder, args.log_file_name))
     else:
         log_file = open(glob.glob(f'{trials_folder}/{folder}/{genome}.sh.o*')[0])
     f1_scores = []
