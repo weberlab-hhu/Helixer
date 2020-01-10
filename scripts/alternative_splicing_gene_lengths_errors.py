@@ -156,4 +156,5 @@ with open(f'{args.output_file}', 'w') as f:
                                     str(scores['utr']['f1']),
                                     str(scores['intron']['f1']),
                                     str(scores['exon']['f1']),
+                                    str(scores['sub_genic']['f1'])]), file=f)
                                     str(scores['genic']['f1'])]), file=f)
