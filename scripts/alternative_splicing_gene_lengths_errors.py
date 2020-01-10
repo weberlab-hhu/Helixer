@@ -118,12 +118,12 @@ with open(f'{args.output_file}', 'w') as f:
                         end_before = start_ends[seqid_idxs][i][1]
                         start_after = start_ends[seqid_idxs][i + 1][0]
                         if end_before != start_after:
-                            dummy_seq_dim_4 = np.zeros((abs(end_before - start_after), 4))
+                            dummy_seq_dim_4 = np.zeros((abs(end_before - start_after), 4), dtype=np.int8)
                             y_true_seqid_seqs_nonzero.insert(i + inserted_before + 1, dummy_seq_dim_4)
                             if not args.augustus:
                                 y_pred_seqid_seqs_nonzero.insert(i + inserted_before + 1,
                                                                  dummy_seq_dim_4)
-                            dummy_seq_dim_1 = np.zeros((abs(end_before - start_after),))
+                            dummy_seq_dim_1 = np.zeros((abs(end_before - start_after),), dtype=np.int8)
                             sw_seqid_seqs_nonzero.insert(i + inserted_before + 1, dummy_seq_dim_1)
                             inserted_before += 1
                     # concat
