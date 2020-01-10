@@ -85,6 +85,13 @@ class ConfusionMatrix():
         d['FN'] = self.cm[2, 0] + self.cm[3, 0] + self.cm[2, 1] + self.cm[3, 1]
         add_to_scores(d)
 
+        # subgenic metric is essentially the same as the genic one
+        # pretty redundant code to below, but done for minimizing the risk to mess up (for now)
+        d = scores['subgenic']
+        for base_metric in ['TP', 'FP', 'FN']:
+            d[base_metric] = sum([scores[m][base_metric] for m in ['exon', 'intron']])
+        add_to_scores(d)
+
         # genic metrics are calculated by summing up TP, FP, FN, essentially calculating a weighted
         # sum for the individual metrics. TP of the intergenic class are not taken into account
         d = scores['genic']
@@ -162,6 +169,3 @@ class ConfusionMatrix():
                     writer = csv.writer(f)
                     for row in table:
                         writer.writerow(row)
-
-
-
