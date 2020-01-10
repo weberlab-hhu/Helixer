@@ -87,7 +87,7 @@ class ConfusionMatrix():
 
         # subgenic metric is essentially the same as the genic one
         # pretty redundant code to below, but done for minimizing the risk to mess up (for now)
-        d = scores['subgenic']
+        d = scores['sub_genic']
         for base_metric in ['TP', 'FP', 'FN']:
             d[base_metric] = sum([scores[m][base_metric] for m in ['exon', 'intron']])
         add_to_scores(d)

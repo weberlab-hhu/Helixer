@@ -746,6 +746,17 @@ def test_confusion_matrix():
     assert np.allclose(cds_true[1], scores['legacy_cds']['recall'])
     assert np.allclose(cds_true[2], scores['legacy_cds']['f1'])
 
+    # test subgenic metrics
+    tp_genic = cm_true[2, 2] + cm_true[3, 3]
+    fp_genic = (cm_true[0, 2] + cm_true[1, 2] + cm_true[3, 2] +
+                cm_true[0, 3] + cm_true[1, 3] + cm_true[2, 3])
+    fn_genic = (cm_true[2, 0] + cm_true[2, 1] + cm_true[2, 3] +
+                cm_true[3, 0] + cm_true[3, 1] + cm_true[3, 2])
+    genic_true = ConfusionMatrix._precision_recall_f1(tp_genic, fp_genic, fn_genic)
+    assert np.allclose(genic_true[0], scores['sub_genic']['precision'])
+    assert np.allclose(genic_true[1], scores['sub_genic']['recall'])
+    assert np.allclose(genic_true[2], scores['sub_genic']['f1'])
+
     # test genic metrics
     tp_genic = cm_true[1, 1] + cm_true[2, 2] + cm_true[3, 3]
     fp_genic = (cm_true[0, 1] + cm_true[2, 1] + cm_true[3, 1] +
