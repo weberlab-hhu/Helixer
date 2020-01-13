@@ -7,7 +7,7 @@ from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix as ConfusionM
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--data', type=str, required=True)
 parser.add_argument('-p', '--predictions', type=str, required=True)
-parser.add_argument('-cs', '--chunk-size', type=int, default=100)
+parser.add_argument('-cs', '--chunk-size', type=int, default=10)
 args = parser.parse_args()
 
 h5_data = h5py.File(args.data, 'r')
