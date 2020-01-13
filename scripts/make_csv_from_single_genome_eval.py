@@ -9,7 +9,6 @@ import os
 import h5py
 import numpy as np
 import argparse
-import glob
 from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
 
 parser = argparse.ArgumentParser()
@@ -88,10 +87,7 @@ for folder in os.listdir(trials_folder):
         padded_bases_rate = n_padded_bases / sw_dset.size
 
     # parse metric table
-    if nni_eval:
-        log_file = open(os.path.join(trials_folder, folder, args.log_file_name))
-    else:
-        log_file = open(glob.glob(f'{trials_folder}/{folder}/{genome}.sh.o*')[0])
+    log_file = open(os.path.join(trials_folder, folder, args.log_file_name))
     f1_scores = []
     for line in log_file:
         if 'Precision' in line:  # table start
