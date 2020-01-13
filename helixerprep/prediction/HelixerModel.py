@@ -244,6 +244,7 @@ class HelixerModel(ABC):
 
         if self.nni:
             hyperopt_args = nni.get_next_parameter()
+            assert all([key in args for key in hyperopt_args.keys()]), 'Unknown nni parameter'
             self.__dict__.update(hyperopt_args)
             nni_save_model_path = os.path.expandvars('$NNI_OUTPUT_DIR/best_model.h5')
             nni_pred_output_path = os.path.expandvars('$NNI_OUTPUT_DIR/predictions.h5')
