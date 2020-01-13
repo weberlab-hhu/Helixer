@@ -14,7 +14,7 @@ from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
 parser = argparse.ArgumentParser()
 parser.add_argument('-s', '--server', type=str, default='clc')
 parser.add_argument('-job', '--job-id', type=str, required=True)
-parser.add_argument('-t', '--type', type=str, default='plants')
+parser.add_argument('-t', '--type', type=str, default='plants', help='Only used if --error-rates is set')
 parser.add_argument('-lfn', '--log-file-name', type=str, default='trial.log',
                     help='Only used with an nni eval')
 parser.add_argument('-i', '--ignore', action='append')
@@ -43,7 +43,7 @@ if nni_eval:
     trials_folder = os.path.join(trials_folder, 'trials')
 
 header = ['genome', 'acc_overall', 'f1_ig', 'f1_utr', 'f1_exon', 'f1_intron', 'legacy_f1_cds',
-          'f1_genic']
+          'sub_genic', 'f1_genic']
 if args.error_rates:
     header += ['base_level_error_rate', 'padded_bases_rate', 'sequence_error_rate']
 if nni_eval:
@@ -92,7 +92,7 @@ for folder in os.listdir(trials_folder):
     for line in log_file:
         if 'Precision' in line:  # table start
             next(log_file)  # skip line
-            for i in range(6):
+            for i in range(7):
                 line = next(log_file)
                 f1_scores.append(line.strip().split('|')[4].strip())
                 if i == 3:
