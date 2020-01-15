@@ -67,36 +67,65 @@ def species_range(h5, species):
 
 
 class Scorer:
-    def __init__(self, column, coverage_helps, spliced_coverage_helps):
+    def __init__(self, column, coverage_helps, spliced_coverage_helps, median_cov, scale_to=4):
+        # scale to default gives score of 0.98 @ median coverage w/o penalty
+        # currently using the same for cov/sc, but idk if that's really a good idea
         self.column = column
+        self.median_cov = median_cov
+        self.scale_to = scale_to
+
         if coverage_helps:
-            self.coverage_score_component = self.coverage_helps
+            self.coverage_score_component = 1
         else:
-            self.coverage_score_component = self.coverage_hurts
+            self.coverage_score_component = -1
         if spliced_coverage_helps:
-            self.spliced_coverage_score_component = self.coverage_helps
+            self.spliced_coverage_score_component = 1
         else:
-            self.spliced_coverage_score_component = self.coverage_hurts
+            self.spliced_coverage_score_component = -1
+
+        # if both help or both hurt, scale to still get numbers between 0 and 1
+        if self.coverage_score_component + self.spliced_coverage_score_component == -2:
+            self.final_scale = self.scale_neg_half
+        elif self.coverage_score_component + self.spliced_coverage_score_component == 2:
+            self.final_scale = self.scale_neg_half
+        else:
+            self.final_scale = self.do_nothing
+
+    @staticmethod
+    def scale_pos_half(score):
+        # starts (0.5, 1), target (0, 1)
+        return (score - 0.5) * 2
+
+    @staticmethod
+    def scale_neg_half(score):
+        # starts (0, 0.5), target (0, 1)
+        return score * 2
+
+    @staticmethod
+    def do_nothing(score):
+        return score
 
     def score(self, datay, coverage, spliced_coverage):
         mask = datay[:, self.column] == 1
         cov = coverage[mask]
         sc = spliced_coverage[mask]
         if cov.shape[0]:
-            cov_score = self.coverage_score_component(cov)
-            sc_score = self.spliced_coverage_score_component(sc)
+            x = cov * self.coverage_score_component + sc * self.spliced_coverage_score_component
+            score = self.sigmoid(x * self.scale_to / self.median_cov)
+            score = self.final_scale(score)
+            score = np.mean(score)  # remove this if basewise scores are desired later
         else:
-            cov_score, sc_score = 0, 0
+            score = 0
 
-        return cov_score + sc_score
+        return score
 
-    def coverage_hurts(self, array):
-        # returns 1 when array has only 0s, approaches 0 when array is high
-        return np.mean(1 / (array + 1))
-
-    def coverage_helps(self, array):
-        # returns 1 when array has only 0s, approaches 0 when array is high
-        return 1 - self.coverage_hurts(array)
+    @staticmethod
+    def sigmoid(x):
+        # avoid overflow
+        x[x > 30] = 30
+        x[x < -30] = -30
+        # sigmoid
+        return 1 / (1 + np.exp(-x))
 
 
 def main(species, bam, h5_data, d_utp, dont_score):
@@ -120,6 +149,12 @@ def main(species, bam, h5_data, d_utp, dont_score):
         h5['meta']
     except KeyError:
         rnaseq.add_meta(h5)
+
+    # add remaining grp not currently part of rnaseq as it's unneeded there
+    try:
+        h5['meta/median_expected_coverage']
+    except KeyError:
+        h5['meta'].create_group('median_expected_coverage')
 
     # identify regions in h5 corresponding to species
     species_start, species_end = species_range(h5, species)
@@ -146,18 +181,25 @@ def main(species, bam, h5_data, d_utp, dont_score):
         for key in cov_counts:
             h5['meta/total_' + key].attrs.create(name=species, data=cov_counts[key])
 
+        # add median coverage in regions annotated as UTR/CDS for slightly more robust scaling
+        masked_cov = h5['evaluation/coverage'][:][np.logical_or(
+            h5['data/y'][:, :, 1], h5['data/y'][:, :, 2])]
+        median_coverage = np.quantile(masked_cov, 0.5)
+        h5['meta/median_expected_coverage'].attrs.create(name=species, data=median_coverage)
+
     if not dont_score:
         # calculate coverage score  (0 - 2)
         # setup scorers
-        ig_scorer = Scorer(column=0, coverage_helps=False, spliced_coverage_helps=False)
-        utr_scorer = Scorer(column=1, coverage_helps=True, spliced_coverage_helps=False)
-        cds_scorer = Scorer(column=2, coverage_helps=True, spliced_coverage_helps=False)
-        intron_scorer = Scorer(column=3, coverage_helps=False, spliced_coverage_helps=True)
+        mec = int(h5['meta/median_expected_coverage'].attrs[species])
+        ig_scorer = Scorer(column=0, coverage_helps=False, spliced_coverage_helps=False, median_cov=mec)
+        utr_scorer = Scorer(column=1, coverage_helps=True, spliced_coverage_helps=False, median_cov=mec)
+        cds_scorer = Scorer(column=2, coverage_helps=True, spliced_coverage_helps=False, median_cov=mec)
+        intron_scorer = Scorer(column=3, coverage_helps=False, spliced_coverage_helps=True, median_cov=mec)
         scorers = [ig_scorer, utr_scorer, cds_scorer, intron_scorer]
 
         # setup normalization factors (this would probably be better if it was more like the VST from DESeq...
         # or at least based on the median coverage, but mapped library size is easier for now
-        cov_scale = 10**9 / cov_counts['coverage']
+        cov_scale = 1 #10**9 / h5['meta/total_coverage'].attrs[species]
         print(cov_counts, ' so scaling cov/sc by ', cov_scale)
         # todo, this is really naive and probably terribly slow... fix
         counts = np.zeros(shape=(species_end - species_start, 4))
@@ -177,11 +219,14 @@ def main(species, bam, h5_data, d_utp, dont_score):
             if not i % 200:
                 print('reached i={}'.format(i))
         print('fin, i={}'.format(i))
-
+        print(counts.shape, 'is counts.shape')
+        print(np.sum(counts, axis=0), 'cat_counts to be')
         # normalize coverage score by species and category
         raw_four = h5['scores/four'][species_start:species_end]
         centers = np.sum(raw_four * counts, axis=0) / np.sum(counts, axis=0)
         centered_four = raw_four - centers
+        # cat_counts = np.sum(counts, axis=0)
+        # weighted_four = centered_four / np.sum(cat_counts) * cat_counts ### make sure works along last axis
         centered_one = np.sum(centered_four * counts, axis=1) / np.sum(counts, axis=1)
         h5['scores/four_centered'][species_start:species_end] = centered_four
         h5['scores/one_centered'][species_start:species_end] = centered_one
