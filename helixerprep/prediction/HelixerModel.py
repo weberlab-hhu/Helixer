@@ -72,8 +72,9 @@ class HelixerSequence(Sequence):
         self.h5_file = h5_file
         self.mode = mode
         self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
-                                 'overlap', 'overlap_offset', 'core_length', 'debug', 'exclude_errors',
-                                 'error_weights', 'gene_lengths', 'gene_lengths_average'])
+                                 'overlap', 'overlap_offset', 'core_length', 'min_seqs_for_overlapping',
+                                 'debug', 'exclude_errors', 'error_weights', 'gene_lengths',
+                                 'gene_lengths_average', 'gene_lengths_exponent', 'gene_lengths_cutoff'])
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
@@ -113,7 +114,7 @@ class HelixerSequence(Sequence):
             X_by_seqid = np.array_split(X, seqid_borders)
             overlapping_X = []
             for seqid_x in X_by_seqid:
-                if len(seqid_x) > 2:
+                if len(seqid_x) >= self.min_seqs_for_overlapping:
                     seq = np.concatenate(seqid_x, axis=0)
                     # apply sliding window
                     overlapping_X += [seq[i:i+self.chunk_size]
@@ -196,8 +197,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('-tw', '--transition_weights', type=str, default='None')
         self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
         self.parser.add_argument('-res', '--resume-training', action='store_true')
-        self.parser.add_argument('-gl', '--gene-lengths', action='store_true')
-        self.parser.add_argument('-glavg', '--gene-lengths-average', type=int, default=3350)
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         self.parser.add_argument('-ew', '--error-weights', action='store_true')
         # testing
@@ -207,13 +206,19 @@ class HelixerModel(ABC):
         self.parser.add_argument('-ev', '--eval', action='store_true')
         # overlap options
         self.parser.add_argument('-overlap', '--overlap', action='store_true')
-        self.parser.add_argument('-overlap-offset', '--overlap-offset', type=int, default=2500) # 2500
+        self.parser.add_argument('-overlap-offset', '--overlap-offset', type=int, default=2500)
         self.parser.add_argument('-core-len', '--core-length', type=int, default=10000)
+        self.parser.add_argument('-min-seqs', '--min-seqs-for-overlapping', type=int, default=3)
+        # gene length adjustments
+        self.parser.add_argument('-gl', '--gene-lengths', action='store_true')
+        self.parser.add_argument('-glavg', '--gene-lengths-average', type=int, default=3350)
+        self.parser.add_argument('-glexp', '--gene-lengths-exponent', type=float, default=1.0)
+        self.parser.add_argument('-glco', '--gene-lengths-cutoff', type=float, default=5.0)
         # resources
         self.parser.add_argument('-fp', '--float-precision', type=str, default='float32')
         self.parser.add_argument('-gpus', '--gpus', type=int, default=1)
         self.parser.add_argument('-cpus', '--cpus', type=int, default=8)
-        self.parser.add_argument('--specific-gpu-id', type=int, default=-1)
+        self.parser.add_argument('-gpuid', '--gpu-id', type=int, default=-1)
         # misc flags
         self.parser.add_argument('-see', '--save-every-epoch', action='store_true')
         self.parser.add_argument('-nni', '--nni', action='store_true')
@@ -229,24 +234,9 @@ class HelixerModel(ABC):
         assert not (not self.testing and self.test_data)
         assert not (self.resume_training and (not self.load_model_path or not self.data_dir))
 
-        self.class_weights = eval(self.class_weights)
-        if type(self.class_weights) is list:
-            self.class_weights = np.array(self.class_weights, dtype=np.float32)
-
-        self.transition_weights = eval(self.transition_weights)
-        if type(self.transition_weights) is list:
-            self.transition_weights = np.array(self.transition_weights, dtype = np.float32)
-
-        if self.overlap:
-            assert self.testing  # only use overlapping during test time
-            assert self.overlap_offset < self.core_length
-            # check if everything divides evenly to avoid further head aches
-            assert (20000 / self.core_length).is_integer()  # assume 20000 chunk size
-            assert (self.batch_size / (20000 / self.overlap_offset)).is_integer()
-            assert ((20000 - self.core_length) / 2 / self.overlap_offset).is_integer()
-
         if self.nni:
             hyperopt_args = nni.get_next_parameter()
+            assert all([key in args for key in hyperopt_args.keys()]), 'Unknown nni parameter'
             self.__dict__.update(hyperopt_args)
             nni_save_model_path = os.path.expandvars('$NNI_OUTPUT_DIR/best_model.h5')
             nni_pred_output_path = os.path.expandvars('$NNI_OUTPUT_DIR/predictions.h5')
@@ -256,6 +246,15 @@ class HelixerModel(ABC):
             # for the print out
             args['save_model_path'] = nni_save_model_path
             args['prediction_output_path'] = nni_pred_output_path
+
+        self.class_weights = eval(self.class_weights)
+        if type(self.class_weights) is list:
+            self.class_weights = np.array(self.class_weights, dtype=np.float32)
+
+        self.transition_weights = eval(self.transition_weights)
+        if type(self.transition_weights) is list:
+            self.transition_weights = np.array(self.transition_weights, dtype = np.float32)
+
         if self.verbose:
             print()
             pprint(args)
@@ -270,9 +269,9 @@ class HelixerModel(ABC):
 
     def set_resources(self):
         K.set_floatx(self.float_precision)
-        if self.specific_gpu_id > -1:
+        if self.gpu_id > -1:
             os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID';
-            os.environ['CUDA_VISIBLE_DEVICES'] = str(self.specific_gpu_id)
+            os.environ['CUDA_VISIBLE_DEVICES'] = str(self.gpu_id)
 
     def gen_training_data(self):
         SequenceCls = self.sequence_cls()
@@ -418,7 +417,7 @@ class HelixerModel(ABC):
                 n_seqid_seqs = seqid_size
             predictions_seqid = predictions[pred_offset:pred_offset + n_seqid_seqs]
             pred_offset += n_seqid_seqs
-            if seqid_size > 2:
+            if seqid_size >= self.min_seqs_for_overlapping:
                 # actual overlapping; save first and last sequence for special handling later
                 first, last = predictions_seqid[0], predictions_seqid[-1]
                 # cut to the core
@@ -456,6 +455,7 @@ class HelixerModel(ABC):
         # not fit in memory
         pred_out = h5py.File(self.prediction_output_path, 'w')
         test_sequence = self.gen_test_data()
+
         for i in range(len(test_sequence)):
             if self.verbose:
                 print(i, '/', len(test_sequence), end='\r')
@@ -578,6 +578,14 @@ class HelixerModel(ABC):
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
+            if self.overlap:
+                assert self.testing  # only use overlapping during test time
+                assert self.overlap_offset < self.core_length
+                # check if everything divides evenly to avoid further head aches
+                assert (self.shape_test[1] / self.overlap_offset).is_integer()
+                assert (self.batch_size / (self.shape_test[1] / self.overlap_offset)).is_integer()
+                assert ((self.shape_test[1] - self.core_length) / 2 / self.overlap_offset).is_integer()
+
             model = self._load_helixer_model()
             self._print_model_info(model)
 
