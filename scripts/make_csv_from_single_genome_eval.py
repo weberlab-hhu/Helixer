@@ -12,31 +12,33 @@ import argparse
 from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-s', '--server', type=str, default='clc')
+parser.add_argument('-l', '--location', type=str, default='clc')
 parser.add_argument('-job', '--job-id', type=str, required=True)
 parser.add_argument('-t', '--type', type=str, default='plants', help='Only used if --error-rates is set')
-parser.add_argument('-lfn', '--log-file-name', type=str, default='trial.log',
+parser.add_argument('-lfn', '--log-file-name', type=str, default='eval.log',
                     help='Only used with an nni eval')
 parser.add_argument('-i', '--ignore', action='append')
 parser.add_argument('-er', '--error-rates', action='store_true')
 args = parser.parse_args()
 
-assert args.server in ['clc', 'cluster', 'cluster_job', 'work', 'home']
+assert args.location in ['clc', 'cluster', 'cluster_job', 'work', 'home', 'full_path']
 
-nni_eval = args.server in ['clc', 'cluster', 'work', 'home']
+nni_eval = args.location in ['clc', 'cluster', 'work', 'home']
 if nni_eval:
     assert len(args.job_id) == 8, 'not an nni id'
 
-if args.server == 'clc':
+if args.location == 'clc':
     base_folder = '/mnt/data/experiments_backup/nni_clc_server/nni/experiments/'
-elif args.server == 'home':
+elif args.location == 'home':
     base_folder = '/mnt/data/experiments_backup/nni_home_felix/nni/experiments/'
-elif args.server == 'work':
+elif args.location == 'work':
     base_folder = '/home/felix/nni/experiments/'
-elif args.server == 'cluster':
+elif args.location == 'cluster':
     base_folder = '/mnt/data/experiments_backup/nni_cluster/nni/experiments/'
-else:
+elif args.location == 'cluster_job':
     base_folder = '/mnt/data/experiments_backup/cluster_jobs/jobs/'
+else:
+    base_folder = '' # args.job_id will be the full path
 
 trials_folder = os.path.join(base_folder, args.job_id)
 if nni_eval:
@@ -54,6 +56,9 @@ for folder in os.listdir(trials_folder):
     if not os.path.isdir(os.path.join(trials_folder, folder)):
         continue
     if args.ignore and folder in args.ignore:
+        continue
+    log_file_path = os.path.join(trials_folder, folder, args.log_file_name)
+    if not os.path.exists(log_file_path) or not os.path.getsize(log_file_path) > 0:
         continue
     # get genome name
     if nni_eval:
@@ -87,7 +92,7 @@ for folder in os.listdir(trials_folder):
         padded_bases_rate = n_padded_bases / sw_dset.size
 
     # parse metric table
-    log_file = open(os.path.join(trials_folder, folder, args.log_file_name))
+    log_file = open(log_file_path)
     f1_scores = []
     for line in log_file:
         if 'Precision' in line:  # table start
