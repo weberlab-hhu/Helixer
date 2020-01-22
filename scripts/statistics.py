@@ -31,7 +31,7 @@ for folder in listdir_fullpath(args.main_folder)[::-1]:
     chunk_size = args.max_bases // y.shape[1]
     offsets = range(0, y.shape[0], chunk_size)
     species_r = results[species]
-    species_r['total_errors'] = 0
+    species_r['total_errors'], species_r['total_padding'] = 0, 0
     species_r['total_classes'] = np.zeros((4,), dtype=np.uint64)
     species_r['total_len'] = sw.size
 
@@ -40,13 +40,13 @@ for folder in listdir_fullpath(args.main_folder)[::-1]:
         species_r['total_classes'] = np.add(species_r['total_classes'],
                                             np.count_nonzero(y_chunk, axis=0))
         species_r['total_errors'] += np.count_nonzero(sw[offset:offset + chunk_size] == 0)
-        species_r['total_padding'] = np.count_nonzero(np.all(y_chunk == 0, axis=-1))
+        species_r['total_padding'] += np.count_nonzero(np.all(y_chunk == 0, axis=-1))
 
     species_r['total_bases'] = species_r['total_len'] - species_r['total_padding']
     species_r['error_rate'] = species_r['total_errors'] / species_r['total_bases']
     species_r['class_rates'] = species_r['total_classes'] / species_r['total_bases']
 
-    formatted_stats = [species, f'{species_r["total_len"]}', f'{species_r["error_rate"]:.4f}']
+    formatted_stats = [species, f'{species_r["total_bases"]}', f'{species_r["error_rate"]:.4f}']
     formatted_stats += [f'{e:.4f}' for e in species_r['class_rates']]
     print(','.join(formatted_stats))
 
