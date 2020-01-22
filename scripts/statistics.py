@@ -15,29 +15,38 @@ def listdir_fullpath(d):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('main_folder', type=str)
+parser.add_argument('--max-bases', type=int, default=400000)
+
 args = parser.parse_args()
 
 results = defaultdict(dict)
-for folder in listdir_fullpath(args.main_folder):
+print(','.join(['species', 'total_len', 'error_rate', 'ig_rate', 'utr_rate', 'cds_rate', 'intron_rate']))
+for folder in listdir_fullpath(args.main_folder)[::-1]:
     species = os.path.basename(folder)
     f = h5py.File(os.path.join(folder, 'test_data.h5'), 'r')
     sw = f['/data/sample_weights']
-    # tr = f['/data/X'][:, :, 0]
+    y = f['/data/y']
 
-    results[species]['total_len'] = sw.size
-    """
-    total_intergenic = np.count_nonzero(tr == 0)
-    total_errors = np.count_nonzero(np.array(sw) == 0)
+    # read in the data in chunks for memory reasons
+    chunk_size = args.max_bases // y.shape[1]
+    offsets = range(0, y.shape[0], chunk_size)
+    species_r = results[species]
+    species_r['total_errors'] = 0
+    species_r['total_classes'] = np.zeros((4,), dtype=np.uint64)
+    species_r['total_len'] = sw.size
 
-    print(args.data)
-    print('Total len: {:.4f}Gb'.format(total_len / 10**9))
-    print('Total intergenic: {:.2f}% ({:.4f}Gb)'.format(total_intergenic / total_len * 100,
-                                                        total_intergenic / 10**9))
-    print('Total errors: {:.2f}% ({:.4f}Gb)\n'.format(total_errors / total_len * 100,
-                                                      total_errors / 10**9))
-    """
+    for offset in offsets:
+        y_chunk = y[offset:offset + chunk_size].reshape((-1, 4))
+        species_r['total_classes'] = np.add(species_r['total_classes'],
+                                            np.count_nonzero(y_chunk, axis=0))
+        species_r['total_errors'] += np.count_nonzero(sw[offset:offset + chunk_size] == 0)
+        species_r['total_padding'] = np.count_nonzero(np.all(y_chunk == 0, axis=-1))
 
-print(','.join(['total_len']))
-for species, stats in results.items():
-    print(','.join(str(e) for e in [species, stats['total_len']]))
+    species_r['total_bases'] = species_r['total_len'] - species_r['total_padding']
+    species_r['error_rate'] = species_r['total_errors'] / species_r['total_bases']
+    species_r['class_rates'] = species_r['total_classes'] / species_r['total_bases']
+
+    formatted_stats = [species, f'{species_r["total_len"]}', f'{species_r["error_rate"]:.4f}']
+    formatted_stats += [f'{e:.4f}' for e in species_r['class_rates']]
+    print(','.join(formatted_stats))
 
