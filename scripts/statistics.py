@@ -57,4 +57,3 @@ for folder in listdir_fullpath(args.main_folder)[::-1]:
             f'{species_r["intergenic_error_rate"]:.4f}']
     formatted_stats += [f'{e:.4f}' for e in species_r['class_rates']]
     print(','.join(formatted_stats))
-
