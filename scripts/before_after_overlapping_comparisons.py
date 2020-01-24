@@ -10,15 +10,26 @@ import argparse
 import matplotlib.pyplot as plt
 
 
-def plot_comparison(f1_before, f1_after, acc_before, acc_after, title, picture_name, folder):
+def plot_comparison(f1_before, f1_after, acc_before, acc_after, title, picture_name, folder,
+                    error_bars=None):
     plt.cla()
     plt.title(title)
-    plt.plot(range(100), f1_before, color='chocolate', linestyle='dashed',
-             label='genic f1 without overlapping')
-    plt.plot(range(100), f1_after, color='chocolate', label='genic f1 with overlapping')
-    plt.plot(range(100), acc_before, color='royalblue', linestyle='dashed',
-             label='accuracy without overlapping')
-    plt.plot(range(100), acc_after, color='royalblue', label='accuracy with overlapping')
+    if error_bars:
+        plt.errorbar(range(100), f1_before, yerr=errors['f1_before'], color='chocolate', fmt='o',
+                 label='regular genic f1')
+        plt.errorbar(range(100), f1_after, yerr=errors['f1_after'], color='chocolate', fmt='^',
+                     label='genic f1 with overlapping')
+        plt.errorbar(range(100), acc_before, yerr=errors['acc_before'], color='royalblue', fmt='o',
+                     label='regular accuracy')
+        plt.errorbar(range(100), acc_after, yerr=errors['acc_after'], color='royalblue', fmt='^',
+                     label='accuracy with overlapping')
+    else:
+        plt.plot(range(100), f1_before, color='chocolate', linestyle='dashed',
+                 label='regular genic f1')
+        plt.plot(range(100), f1_after, color='chocolate', label='genic f1 with overlapping')
+        plt.plot(range(100), acc_before, color='royalblue', linestyle='dashed',
+                 label='regular accuracy')
+        plt.plot(range(100), acc_after, color='royalblue', label='accuracy with overlapping')
     plt.ylim((0.0, 1.0))
     plt.xlabel('chunk of length')
     plt.legend()
@@ -28,11 +39,11 @@ def plot_comparison(f1_before, f1_after, acc_before, acc_after, title, picture_n
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-before', '--before_main_folder', type=str, required=True)
-parser.add_argument('-after', '--after_main_folder', type=str, required=True)
-parser.add_argument('-o', '--output_folder', type=str, required=True)
+parser.add_argument('-before', '--before-main-folder', type=str, required=True)
+parser.add_argument('-after', '--after-main-folder', type=str, required=True)
+parser.add_argument('-o', '--output-folder', type=str, required=True)
+parser.add_argument('-eb', '--error-bars', action='store_true')
 args = parser.parse_args()
-os.makedirs(args.output_folder)
 
 genic_f1s = {'before': [], 'after': []}
 accuracies = {'before': [], 'after': []}
@@ -75,9 +86,15 @@ for species in os.listdir(args.before_main_folder):
 
 # make aggregate plot
 f1s_avg, accs_avg = {}, {}
-for type_, values in genic_f1s.items():
+error_bars = {}
+for type_ in genic_f1s.values():
     f1s_avg[type_] = np.mean(np.array(genic_f1s[type_]), axis=0)
     accs_avg[type_] = np.mean(np.array(accuracies[type_]), axis=0)
+    if args.error_bars:
+        error_bars['f1_' + type_] = np.std(np.array(genic_f1s[type_]), axis=0)
+        error_bars['accs' + type_] = np.std(np.array(accuracies[type_]), axis=0)
+    else:
+        error_bars = None
 
 plot_comparison(f1s_avg['before'],
                 f1s_avg['after'],
@@ -85,4 +102,5 @@ plot_comparison(f1s_avg['before'],
                 accs_avg['after'],
                 f'Performance by sequence position of {species}',
                 f'{species}_comparison',
-                args.output_folder)
+                args.output_folder,
+                error_bars=error_bars)
