@@ -32,7 +32,6 @@ parser.add_argument('-before', '--before_main_folder', type=str, required=True)
 parser.add_argument('-after', '--after_main_folder', type=str, required=True)
 parser.add_argument('-o', '--output_folder', type=str, required=True)
 args = parser.parse_args()
-os.makedirs(args.output_folder)
 
 genic_f1s = {'before': [], 'after': []}
 accuracies = {'before': [], 'after': []}
@@ -44,11 +43,15 @@ for species in os.listdir(args.before_main_folder):
         'before': os.path.join(args.before_main_folder, species, 'length_wise_eval.log'),
         'after': os.path.join(args.after_main_folder, species, 'length_wise_eval.log'),
     }
+
+    not_good = False
     for log_file_path in log_files.values():
         if not os.path.exists(log_file_path) or not os.path.getsize(log_file_path) > 0:
             print(f'Log file {log_file_path} is empty or not existing. Exiting.')
             # exit()
-            continue
+            not_good = True
+    if not_good:
+        continue
 
     for type_, log_file_path in log_files.items():
         # parse metric table
@@ -83,6 +86,6 @@ plot_comparison(f1s_avg['before'],
                 f1s_avg['after'],
                 accs_avg['before'],
                 accs_avg['after'],
-                f'Performance by sequence position of {species}',
-                f'{species}_comparison',
+                f'Average performance by sequence position on all species',
+                f'aggregate_comparison',
                 args.output_folder)
