@@ -15,6 +15,7 @@ class DilatedCNNModel(HelixerModel):
         self.parser.add_argument('--filter-depth', type=int, default=64)
         self.parser.add_argument('--double-filter-every', type=int, default=2)
         self.parser.add_argument('--dilation-multiplier', type=int, default=3)
+        self.parser.add_argument('--dilation-max', type=int, default=100)
         self.parser.add_argument('--n-conv-layers', type=int, default=2)
         self.parser.add_argument('--n-hidden-layers', type=int, default=1)
         self.parser.add_argument('--hidden-layer-size', type=int, default=128)
@@ -36,9 +37,11 @@ class DilatedCNNModel(HelixerModel):
 
         dilation = 1
         for l in range(self.n_conv_layers - 1):
-            dilation *= self.dilation_multiplier
+            if dilation * self.dilation_multiplier <= self.dilation_max:
+                dilation *= self.dilation_multiplier
             if (l + 1) % self.double_filter_every == 0:
                 self.filter_depth *= 2
+
             model.add(Conv1D(filters=self.filter_depth,
                              kernel_size=self.kernel_size,
                              dilation_rate=dilation,
