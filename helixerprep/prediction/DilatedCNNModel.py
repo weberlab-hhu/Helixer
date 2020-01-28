@@ -1,11 +1,18 @@
 #! /usr/bin/env python3
 import random
 import numpy as np
+import tensorflow as tf
+from keras import backend as K
 from keras.models import Sequential
 from keras.layers import Conv1D, Dense, Flatten, Dropout
 from HelixerModel import HelixerModel, HelixerSequence
-from CNNModel import CNNSequence
 
+class DilatedCNNSequence(HelixerSequence):
+    def __getitem__(self, idx):
+        X, y, sw, _, _, _, = self._get_batch_data(idx)
+        # sample weights are applied through the custom loss function
+        self.sample_weights = sw
+        return X, y
 
 class DilatedCNNModel(HelixerModel):
 
@@ -25,7 +32,22 @@ class DilatedCNNModel(HelixerModel):
         assert self.n_conv_layers > 1
 
     def sequence_cls(self):
-        return CNNSequence
+        return DilatedCNNSequence
+
+    def custom_loss(self, sample_weights):
+        def loss(y_true, y_pred):
+            # calculation taken from
+            # https://github.com/keras-team/keras/blob/fb7f49ef5b07f2ceee1d2d6c45f273df6672734c/keras/backend/tensorflow_backend.py#L3570
+            axis = -1
+            y_pred /= tf.reduce_sum(y_pred, axis, True)
+            # manual computation of crossentropy
+            _epsilon = tf.convert_to_tensor(K.epsilon(), y_pred.dtype.base_dtype)
+            y_pred = tf.clip_by_value(y_pred, _epsilon, 1. - _epsilon)
+            neg_log_likelihood = - tf.reduce_sum(y_true * tf.log(y_pred), axis)
+            # mask by sample weights
+            masked = tf.math.multiply(neg_log_likelihood, sample_weights)
+            return masked
+        return loss
 
     def model(self):
         model = Sequential()
@@ -58,7 +80,8 @@ class DilatedCNNModel(HelixerModel):
 
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
-                      loss='categorical_crossentropy',
+                      # loss='categorical_crossentropy',
+                      loss=self.custom_loss(),
                       metrics=['accuracy'])
 
 
