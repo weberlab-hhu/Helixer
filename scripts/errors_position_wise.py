@@ -15,6 +15,8 @@ parser.add_argument('-o', '--output-folder', type=str, default='')
 parser.add_argument('-g', '--genome', type=str, default='')
 parser.add_argument('-res', '--resolution', type=int, default=100,
                     help='How often to divide the sequences')
+parser.add_argument('-maxbp', '--max-base-pairs', type=int, default=500000,
+                    help='The total size loaded into memory at a time')
 parser.add_argument('-os', '--only-start-seqs', action='store_true')
 parser.add_argument('-pec', '--plot-every-chunk', action='store_true')
 args = parser.parse_args()
@@ -34,17 +36,17 @@ else:
     y_pred = h5_pred['/predictions']
 
 assert y_true.shape == y_pred.shape
-sw = np.array(h5_data['/data/sample_weights']).astype(bool)
+sw = h5_data['/data/sample_weights']
 block_size = y_true.shape[1] // args.resolution
 # automatically determined chunk size that ensures constant memory usage no matter how long
 # the sequences (2GB should be enough with these settings)
-chunk_size = y_true.shape[1] // 10
+chunk_size = args.max_base_pairs // block_size
 
 if args.only_start_seqs:
     seqids = np.array(h5_data['/data/seqids'])
     idx_border = np.squeeze(np.argwhere(seqids[:-1] != seqids[1:]))
     idx_border = list(np.add(idx_border, 1))
-    y_true, y_pred, sw = y_true[idx_border], y_pred[idx_border], sw[idx_border]
+    y_true, y_pred, sw = y_true[idx_border], y_pred[idx_border], sw[idx_border].astype(np.bool)
 
 total_accs, genic_f1s = [], []
 chunk_offsets = list(range(0, y_true.shape[0], chunk_size))
@@ -70,7 +72,7 @@ for i, co in enumerate(chunk_offsets):
         y_diff_block_section = y_diff_block[:, lo:lo+block_size].ravel()
 
         # apply sw
-        sw_block_section = sw[co:co+chunk_size, lo:lo+block_size].ravel()
+        sw_block_section = sw[co:co+chunk_size, lo:lo+block_size].ravel().astype(np.bool)
         if np.any(sw_block_section):
             y_diff_block_section = y_diff_block_section[sw_block_section]
 
