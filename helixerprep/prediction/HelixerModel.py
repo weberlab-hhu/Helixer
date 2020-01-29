@@ -466,8 +466,6 @@ class HelixerModel(ABC):
             if self.verbose:
                 print(i, '/', len(test_sequence), end='\r')
             predictions = model.predict_on_batch(test_sequence[i][0])
-            if type(predictions) is list:
-                predictions, meta_predictions = predictions
             # join last two dims when predicting one hot labels
             predictions = predictions.reshape(predictions.shape[:2] + (-1,))
             # reshape when predicting more than one point at a time
