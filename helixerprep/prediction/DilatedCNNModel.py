@@ -3,16 +3,15 @@ import random
 import numpy as np
 import tensorflow as tf
 from keras import backend as K
-from keras.models import Sequential
-from keras.layers import Conv1D, Dense, Flatten, Dropout
+from keras.models import Sequential, Model
+from keras.layers import Conv1D, Dense, Flatten, Dropout, Input
 from HelixerModel import HelixerModel, HelixerSequence
 
 class DilatedCNNSequence(HelixerSequence):
     def __getitem__(self, idx):
         X, y, sw, _, _, _, = self._get_batch_data(idx)
-        # sample weights are applied through the custom loss function
-        self.sample_weights = sw
-        return X, y
+        # add the sample weights as extra input so they can be used in the custom loss function
+        return [X, sw], y
 
 class DilatedCNNModel(HelixerModel):
 
@@ -36,7 +35,7 @@ class DilatedCNNModel(HelixerModel):
 
     def custom_loss(self, sample_weights):
         def loss(y_true, y_pred):
-            # calculation taken from
+            # calculation based on
             # https://github.com/keras-team/keras/blob/fb7f49ef5b07f2ceee1d2d6c45f273df6672734c/keras/backend/tensorflow_backend.py#L3570
             axis = -1
             y_pred /= tf.reduce_sum(y_pred, axis, True)
@@ -50,12 +49,14 @@ class DilatedCNNModel(HelixerModel):
         return loss
 
     def model(self):
-        model = Sequential()
-        model.add(Conv1D(filters=self.filter_depth,
-                         kernel_size=self.kernel_size,
-                         input_shape=(self.shape_train[1], 4),
-                         padding="same",
-                         activation="relu"))
+        input_X = Input(shape=(self.shape_train[1], 4))
+        input_sw = Input(shape=(self.shape_train[1],))
+
+        x = Conv1D(filters=self.filter_depth,
+                   kernel_size=self.kernel_size,
+                   input_shape=(self.shape_train[1], 4),
+                   padding="same",
+                   activation="relu")(input_X)
 
         dilation = 1
         for l in range(self.n_conv_layers - 1):
@@ -63,25 +64,25 @@ class DilatedCNNModel(HelixerModel):
                 dilation *= self.dilation_multiplier
             if (l + 1) % self.double_filter_every == 0:
                 self.filter_depth *= 2
-
-            model.add(Conv1D(filters=self.filter_depth,
-                             kernel_size=self.kernel_size,
-                             dilation_rate=dilation,
-                             padding="same",
-                             activation="relu"))
+            x = Conv1D(filters=self.filter_depth,
+                       kernel_size=self.kernel_size,
+                       dilation_rate=dilation,
+                       padding="same",
+                       activation="relu")(x)
 
         for _ in range(self.n_hidden_layers):
-            model.add(Dropout(self.dropout))
-            model.add(Dense(self.hidden_layer_size, activation="relu"))
+            x = Dropout(self.dropout)(x)
+            x = Dense(self.hidden_layer_size, activation="relu")(x)
 
-        model.add(Dropout(self.dropout))
-        model.add(Dense(4, activation="relu"))
+        x = Dropout(self.dropout)(x)
+        out = Dense(4, activation="relu")(x)
+        model = Model(inputs=[input_X, input_sw], outputs=out)
         return model
 
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
                       # loss='categorical_crossentropy',
-                      loss=self.custom_loss(),
+                      loss=self.custom_loss(model.inputs[1]),
                       metrics=['accuracy'])
 
 
