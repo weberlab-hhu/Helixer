@@ -129,9 +129,13 @@ def main(args):
         i = 0
         size = 1000
         while i < h5_data_y.shape[0]:
-            cm_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
-                                                  h5_pred_y[i:(i + size)],
-                                                  h5_sample_weights[i:(i + size)])
+            try: 
+                cm_calc.count_and_calculate_one_batch(h5_data_y[i:(i + size)],
+                                                      h5_pred_y[i:(i + size)],
+                                                      h5_sample_weights[i:(i + size)])
+            except ValueError as e:
+                print(h5_data_y.shape, i, i + size, file=sys.stderr)
+                print("WARNUNG, ignoring the following error, probably occurs bc all remaining bases are masked: {}".format(e), file=sys.stderr)
             i += size
 
     if args.save_to is not None:

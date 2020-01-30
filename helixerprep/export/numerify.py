@@ -92,29 +92,6 @@ class Numerifier(ABC):
         self.error_mask = np.ones((length,), np.int8)
 
 
-class SequenceNumerifier(Numerifier):
-    def __init__(self, coord, max_len):
-        super().__init__(n_cols=4, coord=coord, max_len=max_len, dtype=np.float16)
-
-    def coord_to_matrices(self):
-        """Does not alter the error mask unlike in AnnotationNumerifier"""
-        self._zero_matrix()
-        # plus strand, actual numerification of the sequence
-        for i, bp in enumerate(self.coord.sequence):
-            self.matrix[i] = AMBIGUITY_DECODE[bp]
-        # very important to copy here
-        data_plus, error_mask_plus = self._slice_matrix(np.copy(self.matrix),
-                                                        np.copy(self.error_mask),
-                                                        is_plus_strand=True)
-        # minus strand, just flip
-        self.matrix = np.flip(self.matrix, axis=1)  # invert base
-        data_minus, error_mask_minus = self._slice_matrix(self.matrix, self.error_mask, False)
-        # put everything together
-        data = data_plus + data_minus
-        error_masks = error_mask_plus + error_mask_minus
-        return data, error_masks
-
-
 class AnnotationNumerifier(Numerifier):
     """Class for the numerification of the labels. Outputs a matrix that
     fits the sequence length of the coordinate but only for the provided features.
@@ -139,8 +116,7 @@ class AnnotationNumerifier(Numerifier):
         # put everything together
         labels = plus_strand[0] + minus_strand[0]
         error_masks = plus_strand[1] + minus_strand[1]
-        transitions = plus_strand[2] + minus_strand[2]
-        return labels, error_masks, transitions
+        return labels, error_masks
 
     def _encode_strand(self, bool_):
         self._zero_matrix()
@@ -155,11 +131,7 @@ class AnnotationNumerifier(Numerifier):
             labels, error_masks = self._slice_matrix(self.matrix,
                                                      self.error_mask,
                                                      is_plus_strand=bool_)
-        self.binary_transition_matrix = self._encode_transitions()
-        transitions, _ = self._slice_matrix(self.binary_transition_matrix,
-                                            self.error_mask,
-                                            is_plus_strand=bool_)
-        return labels, error_masks, transitions
+        return labels, error_masks
 
     def _update_matrix_and_error_mask(self, is_plus_strand):
         for feature in self.features:
@@ -198,20 +170,6 @@ class AnnotationNumerifier(Numerifier):
         one_hot4_matrix = one_hot_matrix.astype(np.int8)
         return one_hot4_matrix
 
-    def _encode_transitions(self):
-        add = np.array([[0, 0, 0]])
-        shifted_feature_matrix = np.vstack((self.matrix[1:], add))
-
-        y_isTransition = np.logical_xor(self.matrix[:-1], shifted_feature_matrix[:-1]).astype(np.int8)
-        y_direction_zero_to_one = np.logical_and(y_isTransition, self.matrix[1:]).astype(np.int8)
-        y_direction_one_to_zero = np.logical_and(y_isTransition, self.matrix[:-1]).astype(np.int8)
-        stack = np.hstack((y_direction_zero_to_one, y_direction_one_to_zero))
-
-        add2 = np.array([[0, 0, 0, 0, 0, 0]])
-        shape_stack = np.insert(stack, 0, add2, axis=0).astype(np.int8)
-        shape_end_stack = np.insert(stack, len(stack), add2, axis=0).astype(np.int8)
-        binary_transitions  = np.logical_or(shape_stack, shape_end_stack).astype(np.int8)
-        return binary_transitions # 6 columns, one for each switch (+TR, +CDS, +In, -TR, -CDS, -In)
 
 class CoordNumerifier(object):
     """Combines the different Numerifiers which need to operate on the same Coordinate
@@ -225,11 +183,9 @@ class CoordNumerifier(object):
 
         anno_numerifier = AnnotationNumerifier(coord=coord, features=coord_features, max_len=max_len,
                                                one_hot=one_hot)
-        seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len)
 
         # returns results for both strands, with the plus strand first in the list
-        inputs, input_masks = seq_numerifier.coord_to_matrices()
-        labels, label_masks, transitions = anno_numerifier.coord_to_matrices()
+        labels, label_masks = anno_numerifier.coord_to_matrices()
 
         start_ends = anno_numerifier.paired_steps
         # flip the start ends back for - strand and append
@@ -237,12 +193,10 @@ class CoordNumerifier(object):
 
         # do not output the input_masks as it is not used for anything
         out = {
-            'inputs': inputs,
             'labels': labels,
-            'transitions': transitions,
             'label_masks': label_masks,
-            'species': [coord.genome.species.encode('ASCII')] * len(inputs),
-            'seqids': [coord.seqid.encode('ASCII')] * len(inputs),
+            'species': [coord.genome.species.encode('ASCII')] * len(labels),
+            'seqids': [coord.seqid.encode('ASCII')] * len(labels),
             'start_ends': start_ends,
         }
         return out
