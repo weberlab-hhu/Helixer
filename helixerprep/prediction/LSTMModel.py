@@ -92,7 +92,23 @@ class LSTMSequence(HelixerSequence):
                 sw_t = np.sum(sw_t, axis=2)
                 where_are_ones = np.where(sw_t == 0)
                 sw_t[where_are_ones[0], where_are_ones[1]] = 1
+                #print (type(sw_t[0][0]))           
+                #########################################+
+                from numpy import asarray
+                from numpy import savetxt
+
+                data=asarray(sw_t)
+                savetxt('/home/chris/Documents/without_dilation.csv', data, delimiter=',')
+                ########################-
+                print (np.shape(sw_t)) 
+                if self.dilation_transition_weights is not 0:
+                    sw_t = self._expand_rf(sw_t, self.dilation_transition_weights)
                 sw = np.multiply(sw_t, sw)
+                #print (type(sw[0][0]))
+                #######################+
+                data = asarray(sw_t)
+                savetxt('/home/chris/Documents/with_dilation.csv', data, delimiter=',')
+                #######################-
 
             if self.error_weights:
                 # finish by multiplying the sample_weights with the error rate
@@ -102,7 +118,46 @@ class LSTMSequence(HelixerSequence):
                 sw *= np.expand_dims(error_weights, axis=1)
 
         return X, y, sw
+    
+    def _expand_rf(self, reshaped_sw_t, rf):  
 
+        reshaped_sw_t = np.array(reshaped_sw_t)  
+        dilated_rf = np.ones(np.shape(reshaped_sw_t))  
+        test_ones = np.ones(np.shape(reshaped_sw_t))
+        
+        
+        where = np.where(reshaped_sw_t > 1)
+        i = np.array(where[0]) # i unverändert
+        j = np.array(where[1]) # j +/- step
+    
+        #find dividers depending on the size of the dilated rf
+        dividers = []
+        for distance in range(1,rf+1):
+            dividers.append(2**distance)
+        
+        for z in range(rf,0,-1):
+            dilated_rf[i,np.maximum(np.subtract(j,z), 0)] = np.maximum(reshaped_sw_t[i,j]/dividers[z-1],1)
+            dilated_rf[i,np.minimum(np.add(j,z),len(dilated_rf[0])-1)] = np.maximum(reshaped_sw_t[i,j]/dividers[z-1],1)
+        dilated_rf[i,j] = np.maximum(reshaped_sw_t[i,j],1)
+        test_ones[i,j] = np.maximum(reshaped_sw_t[i,j],1)
+                
+        print (np.all(np.equal(test_ones, reshaped_sw_t).astype(np.int8) == 1))
+        assert np.all(test_ones == reshaped_sw_t)
+        return dilated_rf
+
+    def check(self, x, s):
+        print ("##################################################\n"*2, "\n")
+        if s == "g":
+            check = np.where(x > 1)
+            print (check)
+            print (x[check[0],check[1]])
+        elif s == "k":
+            check = np.where(1 > x)
+            print (check)
+            print (x[check[0],check[1]])
+        else: 
+            print ("The second argument must be \"g\" or \"k\"")
+        print ("##################################################\n"*2, "\n")
 
 class LSTMModel(HelixerModel):
 
