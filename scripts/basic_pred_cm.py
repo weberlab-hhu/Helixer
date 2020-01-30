@@ -1,4 +1,8 @@
 #! /usr/bin/env python3
+
+"""Does very simple evaluation of a prediction file. Makes sure that the maximum memory footprint
+always stays the same no matter the length of the sequences."""
+
 import h5py
 import argparse
 import numpy as np

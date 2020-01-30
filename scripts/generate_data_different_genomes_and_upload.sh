@@ -1,5 +1,7 @@
 #! /bin/bash
 
+# Generates single genome datasets of one size and uploads them to the clc and the cluster
+
 db_path='/home/felix/Desktop/full_geenuff.sqlite3'
 local_main_folder_input="/home/felix/git/GeenuFF/tmp/"
 local_main_folder_output="/home/felix/Desktop/data/single_genomes/"

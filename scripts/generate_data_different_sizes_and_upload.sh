@@ -1,5 +1,7 @@
 #! /bin/bash
 
+# Generates training datasets of varying sizes and uploads them to the clc and the cluster
+
 local_main_folder="/home/felix/Desktop/data/eight_genomes_chromosome_split/"
 remote_main_folder_clc="/home/felix-stiehler/Desktop/data/eight_genomes_chromosome_split/"
 remote_main_folder_cluster="/scratch_gs/festi100/data/eight_genomes_chromosome_split/"

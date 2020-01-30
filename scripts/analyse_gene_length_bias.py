@@ -1,4 +1,10 @@
 #! /usr/bin/env python3
+""" Quick hacky script that shows bias by gene length from a csv from gene_wise_evaluation.py in
+a debugger. Divides the genes into somewhat exponentially growing buckets.
+
+dfg will show the bias while dfgc will show the bucket counts.
+"""
+
 import pandas as pd
 import argparse
 
@@ -20,7 +26,7 @@ dfg = dfg.loc[:, 'ig_f1': 'genic_f1']
 
 dfgc = df.groupby(['length_bin']).count()
 
-import pudb; pudb.set_trace()
+import pdb; pdb.set_trace()
 pass
 
 

@@ -1,4 +1,16 @@
 #! /usr/bin/env python3
+"""Evaluates prediction performance for individual genes of a species and also looks for
+information like [start,end] or the number of alternative transcripts, so that the performance
+can be evaluated in the light of gene length, etc
+
+For this it first queries the database to get the gene extends and then runs those parts through
+the ConfusionMatrix class. Here, the full extend of the gene is used while we use the longest
+(by largest cds sum) transcript during data generation. It was probably not a smart idea to do it
+this way and could easily be fixed by adjusting the queries used here (but may also not be the best).
+
+For comparisons against AUGUSTUS, --augustus has to be used in order to match up the predictions.
+"""
+
 import os
 import h5py
 import sqlite3

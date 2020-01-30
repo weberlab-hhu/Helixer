@@ -47,7 +47,7 @@ for species in os.listdir(args.before_main_folder):
     not_good = False
     for log_file_path in log_files.values():
         if not os.path.exists(log_file_path) or not os.path.getsize(log_file_path) > 0:
-            print(f'Log file {log_file_path} is empty or not existing. Exiting.')
+            print(f'Log file {log_file_path} is empty or not existing.')
             # exit()
             not_good = True
     if not_good:

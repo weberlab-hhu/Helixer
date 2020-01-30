@@ -1,4 +1,21 @@
 #! /usr/bin/env python3
+"""Evaluates predictions by position in the sequence. This was a major bias we found in the data and
+that was softened with overlapping. This script outputs a plot of the position-wise bias accross all
+sequences in a data/prediction file pair.
+
+It also output the confusion matrix for each length subsection. This output is later used by
+before_after_overlapping_comparisons.py to make the comparison plots. Also outputs a final overall
+evaluation, which is the same as when run with basic_pred_cm.py.
+
+The usefulness of the overlapping seems to be heavily dependent on the underlying FASTA
+sequence length (which we also call seqid or coordinate). To investigate this, the script can be run
+with --plot-every-chunk, which outputs multiple plots that each should represent shorten and shorter
+FASTA sequences as we sort by that during numerification.
+
+It is also possible to only consider the start of each FASTA sequence with --only-start-seqs.
+
+The maximum memory footprint (and chunk size) can be controlled with --max-base-pairs."""
+
 import os
 import h5py
 import numpy as np

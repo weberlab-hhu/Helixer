@@ -1,8 +1,8 @@
 #! /usr/bin/env python3
 
-# Prints overall statistics like genome size, error rate and fragmentation for each
-# genome in a subfolder of a given folder as well as the overall statistics for all
-# genomes combined
+"""Prints overall statistics like genome size, error rate and fragmentation for each
+genome in a subfolder of a given folder as well as the overall statistics for all
+genomes combined."""
 
 import os
 import h5py
