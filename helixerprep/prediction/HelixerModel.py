@@ -46,6 +46,7 @@ class ConfusionMatrixTrain(Callback):
         self.canary_generator = canary_generator
         self.report_to_nni = report_to_nni
         self.best_val_genic_f1 = 0.0
+        self.epochs_without_improvement = 0
 
     def on_epoch_end(self, epoch, logs=None):
         val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, self.model)
@@ -59,6 +60,12 @@ class ConfusionMatrixTrain(Callback):
             self.model.save(self.save_model_path)
             print('saved new best model with genic f1 of {} at {}'.format(self.best_val_genic_f1,
                                                                           self.save_model_path))
+            self.epochs_without_improvement = 0
+        else:
+            self.epochs_without_improvement += 1
+            # hard-coded patience of 2 for now
+            if self.epochs_without_improvement > 1:
+                self.model.stop_training = True
 
     def on_train_end(self, logs=None):
         if self.report_to_nni:
