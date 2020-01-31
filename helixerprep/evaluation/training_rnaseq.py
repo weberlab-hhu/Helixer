@@ -23,10 +23,11 @@ def add_empty_eval_datasets(h5):
 
 def add_empty_score_datasets(h5):
     length = h5['data/X'].shape[0]
+    chunk_size = h5['data/X'].shape[1]
     h5.create_group('scores')
-    shapes = [(length, 4), (length, 4), (length, ), (length, )]
-    max_shapes = [(None, 4), (None, 4), (None, ), (None, )]
-    for i, key in enumerate(['four', 'four_centered', 'one', 'one_centered']):
+    shapes = [(length, chunk_size), (length, 4), (length, 4), (length, ), (length, )]
+    max_shapes = [(None, chunk_size), (None, 4), (None, 4), (None, ), (None, )]
+    for i, key in enumerate(['by_bp', 'four', 'four_centered', 'one', 'one_centered']):
         h5.create_dataset('scores/' + key,
                           shape=shapes[i],
                           maxshape=max_shapes[i],
@@ -113,11 +114,11 @@ class Scorer:
             x = cov * self.coverage_score_component + sc * self.spliced_coverage_score_component
             score = self.sigmoid(x * self.scale_to / self.median_cov)
             score = self.final_scale(score)
-            score = np.mean(score)  # remove this if basewise scores are desired later
+            # score = np.mean(score)  # remove this if basewise scores are desired later
         else:
             score = 0
 
-        return score
+        return score, mask  # todo, maybe full score can be used _with_ and mask not returned??
 
     @staticmethod
     def sigmoid(x):
@@ -141,7 +142,7 @@ def main(species, bam, h5_data, d_utp, dont_score):
         add_empty_eval_datasets(h5)
 
     try:
-        h5['scores/four']
+        h5['scores/by_bp']
     except KeyError:
         add_empty_score_datasets(h5)
 
@@ -210,8 +211,9 @@ def main(species, bam, h5_data, d_utp, dont_score):
             coverage = h5['evaluation/coverage'][i] * cov_scale
             spliced_coverage = h5['evaluation/spliced_coverage'][i] * cov_scale
             for scorer in scorers:
-                score = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
-                h5['scores/four'][i, scorer.column] = score
+                raw_score, mask = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
+                h5['scores/four'][i, scorer.column] = np.mean(raw_score)
+                h5['scores/by_bp'][i, mask] = raw_score
             current_counts = np.sum(h5['data/y'][i], axis=0)
             counts[i_rel] = current_counts
             # weighted average
