@@ -85,7 +85,7 @@ class DilatedCNNModel(HelixerModel):
             x = Dense(self.hidden_layer_size, activation="relu")(x)
 
         x = Dropout(self.dropout)(x)
-        out = Dense(4, activation="relu")(x)
+        out = Dense(4, activation="softmax")(x)
         model = Model(inputs=[input_X, input_sw], outputs=out)
         return model
 
