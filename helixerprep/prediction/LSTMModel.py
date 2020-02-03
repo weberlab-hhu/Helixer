@@ -101,8 +101,8 @@ class LSTMSequence(HelixerSequence):
                 savetxt('/home/chris/Documents/without_dilation.csv', data, delimiter=',')
                 ########################-
                 print (np.shape(sw_t)) 
-                if self.dilation_transition_weights is not 0:
-                    sw_t = self._expand_rf(sw_t, self.dilation_transition_weights)
+                if self.stretched_transition_weights is not 0:
+                    sw_t = self._expand_rf(sw_t, self.stretched_transition_weights)
                 sw = np.multiply(sw_t, sw)
                 #print (type(sw[0][0]))
                 #######################+
