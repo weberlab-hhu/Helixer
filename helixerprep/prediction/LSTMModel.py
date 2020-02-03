@@ -92,23 +92,9 @@ class LSTMSequence(HelixerSequence):
                 sw_t = np.sum(sw_t, axis=2)
                 where_are_ones = np.where(sw_t == 0)
                 sw_t[where_are_ones[0], where_are_ones[1]] = 1
-                #print (type(sw_t[0][0]))           
-                #########################################+
-                from numpy import asarray
-                from numpy import savetxt
-
-                data=asarray(sw_t)
-                savetxt('/home/chris/Documents/without_dilation.csv', data, delimiter=',')
-                ########################-
-                print (np.shape(sw_t)) 
                 if self.stretched_transition_weights is not 0:
                     sw_t = self._expand_rf(sw_t, self.stretched_transition_weights)
                 sw = np.multiply(sw_t, sw)
-                #print (type(sw[0][0]))
-                #######################+
-                data = asarray(sw_t)
-                savetxt('/home/chris/Documents/with_dilation.csv', data, delimiter=',')
-                #######################-
 
             if self.error_weights:
                 # finish by multiplying the sample_weights with the error rate
@@ -123,8 +109,6 @@ class LSTMSequence(HelixerSequence):
 
         reshaped_sw_t = np.array(reshaped_sw_t)  
         dilated_rf = np.ones(np.shape(reshaped_sw_t))  
-        test_ones = np.ones(np.shape(reshaped_sw_t))
-        
         
         where = np.where(reshaped_sw_t > 1)
         i = np.array(where[0]) # i unverändert
@@ -139,10 +123,6 @@ class LSTMSequence(HelixerSequence):
             dilated_rf[i,np.maximum(np.subtract(j,z), 0)] = np.maximum(reshaped_sw_t[i,j]/dividers[z-1],1)
             dilated_rf[i,np.minimum(np.add(j,z),len(dilated_rf[0])-1)] = np.maximum(reshaped_sw_t[i,j]/dividers[z-1],1)
         dilated_rf[i,j] = np.maximum(reshaped_sw_t[i,j],1)
-        test_ones[i,j] = np.maximum(reshaped_sw_t[i,j],1)
-                
-        print (np.all(np.equal(test_ones, reshaped_sw_t).astype(np.int8) == 1))
-        assert np.all(test_ones == reshaped_sw_t)
         return dilated_rf
 
     def check(self, x, s):
