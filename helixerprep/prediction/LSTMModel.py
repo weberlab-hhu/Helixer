@@ -125,20 +125,6 @@ class LSTMSequence(HelixerSequence):
         dilated_rf[i,j] = np.maximum(reshaped_sw_t[i,j],1)
         return dilated_rf
 
-    def check(self, x, s):
-        print ("##################################################\n"*2, "\n")
-        if s == "g":
-            check = np.where(x > 1)
-            print (check)
-            print (x[check[0],check[1]])
-        elif s == "k":
-            check = np.where(1 > x)
-            print (check)
-            print (x[check[0],check[1]])
-        else: 
-            print ("The second argument must be \"g\" or \"k\"")
-        print ("##################################################\n"*2, "\n")
-
 class LSTMModel(HelixerModel):
 
     def __init__(self):
