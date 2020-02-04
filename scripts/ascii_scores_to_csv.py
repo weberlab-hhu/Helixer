@@ -1,3 +1,8 @@
+#! /usr/bin/env python3
+"""
+Extracts individual tables from text file with 1+ ASCII terminal tables and save to individual csv files.
+"""
+
 import re
 import argparse
 import os
