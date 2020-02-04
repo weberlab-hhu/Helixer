@@ -20,8 +20,8 @@ parser.add_argument('--max-bases', type=int, default=400000)
 args = parser.parse_args()
 
 results = defaultdict(dict)
-print(','.join(['species', 'total_len', 'error_rate', 'intergenic_error_rate', 'ig_rate', 'utr_rate',
-                'cds_rate', 'intron_rate']))
+print(','.join(['species', 'total_len', 'total_padding', 'error_rate', 'intergenic_error_rate', 'ig_rate',
+                'utr_rate', 'cds_rate', 'intron_rate']))
 for folder in listdir_fullpath(args.main_folder)[::-1]:
     species = os.path.basename(folder)
     f = h5py.File(os.path.join(folder, 'test_data.h5'), 'r')
@@ -48,12 +48,14 @@ for folder in listdir_fullpath(args.main_folder)[::-1]:
         species_r['total_intergenic_error'] += np.count_nonzero(intergenic_errors)
         species_r['total_padding'] += np.count_nonzero(np.all(y_chunk == 0, axis=-1))
 
+
     species_r['total_bases'] = species_r['total_len'] - species_r['total_padding']
     species_r['error_rate'] = species_r['total_errors'] / species_r['total_bases']
     species_r['intergenic_error_rate'] = species_r['total_intergenic_error'] / species_r['total_errors']
     species_r['class_rates'] = species_r['total_classes'] / species_r['total_bases']
+    assert np.sum(species_r['total_classes']) == species_r['total_bases']
 
-    formatted_stats = [species, f'{species_r["total_bases"]}', f'{species_r["error_rate"]:.4f}',
-            f'{species_r["intergenic_error_rate"]:.4f}']
+    formatted_stats = [species, f'{species_r["total_bases"]}', f'{species_r["total_padding"]}',
+            f'{species_r["error_rate"]:.4f}', f'{species_r["intergenic_error_rate"]:.4f}']
     formatted_stats += [f'{e:.4f}' for e in species_r['class_rates']]
     print(','.join(formatted_stats))
