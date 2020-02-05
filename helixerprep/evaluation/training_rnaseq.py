@@ -68,12 +68,13 @@ def species_range(h5, species):
 
 
 class Scorer:
-    def __init__(self, column, coverage_helps, spliced_coverage_helps, median_cov, scale_to=4):
-        # scale to default gives score of 0.98 @ median coverage w/o penalty
+    def __init__(self, column, coverage_helps, spliced_coverage_helps, median_cov, scale_to=2.6, flip=False):
+        # scale to default gives score of 0.66 @ median coverage w/o penalty
         # currently using the same for cov/sc, but idk if that's really a good idea
         self.column = column
         self.median_cov = median_cov
         self.scale_to = scale_to
+        self.flip = flip
 
         if coverage_helps:
             self.coverage_score_component = 1
@@ -84,16 +85,22 @@ class Scorer:
         else:
             self.spliced_coverage_score_component = -1
 
-        # if both help or both hurt, scale to still get numbers between 0 and 1
+        # scale (and squish) to get numbers between 0 and 1 w/ bimodal dist (not trimodal)
         if self.coverage_score_component + self.spliced_coverage_score_component == -2:
-            self.final_scale = self.scale_neg_half
+            # todo, make this less convoluted and more transparent what we're doing
+            raise ValueError("this isn't correctly implemented, use helps, helps and the flip it")
         elif self.coverage_score_component + self.spliced_coverage_score_component == 2:
-            self.final_scale = self.scale_neg_half
+            self.final_scale = self.scale_pos_half
         else:
-            self.final_scale = self.do_nothing
+            self.final_scale = self.scale_pos_half
 
     @staticmethod
     def scale_pos_half(score):
+        # collapse intron scores w/ cov > sc, or exon scores with sc > cov, to same penalty as no coverage
+        # (after all, mixing up CDS with intron is not really a worse error than mixing up CDS with intergenic
+        # and it produces a more _clear at a glance_ score / score distribution
+        # todo, this is not a good option for _training_ where no coverage is only weak evidence of an issue
+        score[score < 0.5] = 0.5
         # starts (0.5, 1), target (0, 1)
         return (score - 0.5) * 2
 
@@ -102,21 +109,21 @@ class Scorer:
         # starts (0, 0.5), target (0, 1)
         return score * 2
 
-    @staticmethod
-    def do_nothing(score):
-        return score
-
     def score(self, datay, coverage, spliced_coverage):
         mask = datay[:, self.column] == 1
         cov = coverage[mask]
         sc = spliced_coverage[mask]
         if cov.shape[0]:
             x = cov * self.coverage_score_component + sc * self.spliced_coverage_score_component
-            score = self.sigmoid(x * self.scale_to / self.median_cov)
+            x[x < 0] = 0  # see reasoning at scale_pos_half, and todo, clean up x_x
+            x = np.log(x + 1)
+            score = self.sigmoid(x * self.scale_to / np.log(self.median_cov + 1))
             score = self.final_scale(score)
-            # score = np.mean(score)  # remove this if basewise scores are desired later
+            # score = np.mean(score)  # remove this if base wise scores are desired later
         else:
-            score = 0
+            score = np.array([])
+        if self.flip:
+            score = 1 - score
 
         return score, mask  # todo, maybe full score can be used _with_ and mask not returned??
 
@@ -192,7 +199,7 @@ def main(species, bam, h5_data, d_utp, dont_score):
         # calculate coverage score  (0 - 2)
         # setup scorers
         mec = int(h5['meta/median_expected_coverage'].attrs[species])
-        ig_scorer = Scorer(column=0, coverage_helps=False, spliced_coverage_helps=False, median_cov=mec)
+        ig_scorer = Scorer(column=0, coverage_helps=True, spliced_coverage_helps=True, median_cov=mec, flip=True)
         utr_scorer = Scorer(column=1, coverage_helps=True, spliced_coverage_helps=False, median_cov=mec)
         cds_scorer = Scorer(column=2, coverage_helps=True, spliced_coverage_helps=False, median_cov=mec)
         intron_scorer = Scorer(column=3, coverage_helps=False, spliced_coverage_helps=True, median_cov=mec)
@@ -213,7 +220,8 @@ def main(species, bam, h5_data, d_utp, dont_score):
             for scorer in scorers:
                 raw_score, mask = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
                 h5['scores/four'][i, scorer.column] = np.mean(raw_score)
-                h5['scores/by_bp'][i, mask] = raw_score
+                if raw_score.size > 0:
+                    h5['scores/by_bp'][i, mask] = raw_score
             current_counts = np.sum(h5['data/y'][i], axis=0)
             counts[i_rel] = current_counts
             # weighted average
