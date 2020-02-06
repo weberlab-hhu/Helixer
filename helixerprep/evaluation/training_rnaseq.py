@@ -68,39 +68,14 @@ def species_range(h5, species):
 
 
 class Scorer:
-    def __init__(self, column, coverage_helps, spliced_coverage_helps, median_cov, scale_to=2.6, flip=False):
-        # scale to default gives score of 0.66 @ median coverage w/o penalty
-        # currently using the same for cov/sc, but idk if that's really a good idea
+    def __init__(self, median_cov, column):
+        self.scale_to = 2.6
         self.column = column
         self.median_cov = median_cov
-        self.scale_to = scale_to
-        self.flip = flip
-
-        if coverage_helps:
-            self.coverage_score_component = 1
-        else:
-            self.coverage_score_component = -1
-        if spliced_coverage_helps:
-            self.spliced_coverage_score_component = 1
-        else:
-            self.spliced_coverage_score_component = -1
-
-        # scale (and squish) to get numbers between 0 and 1 w/ bimodal dist (not trimodal)
-        if self.coverage_score_component + self.spliced_coverage_score_component == -2:
-            # todo, make this less convoluted and more transparent what we're doing
-            raise ValueError("this isn't correctly implemented, use helps, helps and the flip it")
-        elif self.coverage_score_component + self.spliced_coverage_score_component == 2:
-            self.final_scale = self.scale_pos_half
-        else:
-            self.final_scale = self.scale_pos_half
+        self.final_scale = self.scale_pos_half
 
     @staticmethod
     def scale_pos_half(score):
-        # collapse intron scores w/ cov > sc, or exon scores with sc > cov, to same penalty as no coverage
-        # (after all, mixing up CDS with intron is not really a worse error than mixing up CDS with intergenic
-        # and it produces a more _clear at a glance_ score / score distribution
-        # todo, this is not a good option for _training_ where no coverage is only weak evidence of an issue
-        score[score < 0.5] = 0.5
         # starts (0.5, 1), target (0, 1)
         return (score - 0.5) * 2
 
@@ -114,18 +89,18 @@ class Scorer:
         cov = coverage[mask]
         sc = spliced_coverage[mask]
         if cov.shape[0]:
-            x = cov * self.coverage_score_component + sc * self.spliced_coverage_score_component
-            x[x < 0] = 0  # see reasoning at scale_pos_half, and todo, clean up x_x
-            x = np.log(x + 1)
-            score = self.sigmoid(x * self.scale_to / np.log(self.median_cov + 1))
+            pre_score = self._pre_score(cov, sc)
+            score = self.sigmoid(pre_score)
             score = self.final_scale(score)
-            # score = np.mean(score)  # remove this if base wise scores are desired later
         else:
             score = np.array([])
-        if self.flip:
-            score = 1 - score
 
         return score, mask  # todo, maybe full score can be used _with_ and mask not returned??
+
+    def _pre_score(self, cov, sc):
+        # calculates a proxy score for how well the reference is supported by RNAseq data
+        # exact equation depends on annotation (subclass)
+        raise NotImplementedError
 
     @staticmethod
     def sigmoid(x):
@@ -134,6 +109,35 @@ class Scorer:
         x[x < -30] = -30
         # sigmoid
         return 1 / (1 + np.exp(-x))
+
+
+class ScorerIntergenic(Scorer):
+    def __init__(self, median_cov, column):
+        super().__init__(median_cov, column=column)
+        self.final_scale = self.scale_neg_half
+
+    def _pre_score(self, cov, sc):
+        x = np.log(cov + sc + 1)
+        # normalize (different .bams have different coverage)
+        x = x * self.scale_to / np.log(self.median_cov + 1) * -1
+        return x
+
+
+class ScorerExon(Scorer):
+    def _pre_score(self, cov, sc):
+        effective_cov = cov - sc
+        # trim, so scores below 0 are
+        effective_cov[effective_cov < 0] = 0
+        x = np.log(effective_cov + 1)
+        return x * self.scale_to / np.log(self.median_cov + 1)
+
+
+class ScorerIntron(Scorer):
+    def _pre_score(self, cov, sc):
+        effective_cov = sc - cov
+        effective_cov[effective_cov < 0] = 0
+        x = np.log(effective_cov + 1)
+        return x * self.scale_to / np.log(self.median_cov + 1)
 
 
 def main(species, bam, h5_data, d_utp, dont_score):
@@ -199,24 +203,20 @@ def main(species, bam, h5_data, d_utp, dont_score):
         # calculate coverage score  (0 - 2)
         # setup scorers
         mec = int(h5['meta/median_expected_coverage'].attrs[species])
-        ig_scorer = Scorer(column=0, coverage_helps=True, spliced_coverage_helps=True, median_cov=mec, flip=True)
-        utr_scorer = Scorer(column=1, coverage_helps=True, spliced_coverage_helps=False, median_cov=mec)
-        cds_scorer = Scorer(column=2, coverage_helps=True, spliced_coverage_helps=False, median_cov=mec)
-        intron_scorer = Scorer(column=3, coverage_helps=False, spliced_coverage_helps=True, median_cov=mec)
+        ig_scorer = ScorerIntergenic(column=0, median_cov=mec)
+        utr_scorer = ScorerExon(column=1, median_cov=mec)
+        cds_scorer = ScorerExon(column=2, median_cov=mec)
+        intron_scorer = ScorerIntron(column=3, median_cov=mec)
         scorers = [ig_scorer, utr_scorer, cds_scorer, intron_scorer]
 
-        # setup normalization factors (this would probably be better if it was more like the VST from DESeq...
-        # or at least based on the median coverage, but mapped library size is easier for now
-        cov_scale = 1 #10**9 / h5['meta/total_coverage'].attrs[species]
-        print(cov_counts, ' so scaling cov/sc by ', cov_scale)
         # todo, this is really naive and probably terribly slow... fix
         counts = np.zeros(shape=(species_end - species_start, 4))
         print("scoring {}-{}".format(species_start, species_end))
         for i in range(species_start, species_end):
             i_rel = i - species_start
             datay = h5['data/y'][i]
-            coverage = h5['evaluation/coverage'][i] * cov_scale
-            spliced_coverage = h5['evaluation/spliced_coverage'][i] * cov_scale
+            coverage = h5['evaluation/coverage'][i]
+            spliced_coverage = h5['evaluation/spliced_coverage'][i]
             for scorer in scorers:
                 raw_score, mask = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
                 h5['scores/four'][i, scorer.column] = np.mean(raw_score)
