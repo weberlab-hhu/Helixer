@@ -212,21 +212,39 @@ def main(species, bam, h5_data, d_utp, dont_score):
         # todo, this is really naive and probably terribly slow... fix
         counts = np.zeros(shape=(species_end - species_start, 4))
         print("scoring {}-{}".format(species_start, species_end))
-        for i in range(species_start, species_end):
+        by = 500
+        for i in range(species_start, species_end, by):
             i_rel = i - species_start
-            datay = h5['data/y'][i]
-            coverage = h5['evaluation/coverage'][i]
-            spliced_coverage = h5['evaluation/spliced_coverage'][i]
+            y = h5['data/y'][i:(i + by)]
+            datay = y.reshape([-1, 4])
+            by_out, chunk_size, n_cats = y.shape
+            coverage = h5['evaluation/coverage'][i:(i + by)].ravel()
+            spliced_coverage = h5['evaluation/spliced_coverage'][i:(i + by)].ravel()
+            by_bp = np.full(fill_value=-1, shape=[by_out * chunk_size])
             for scorer in scorers:
                 raw_score, mask = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
-                h5['scores/four'][i, scorer.column] = np.mean(raw_score)
                 if raw_score.size > 0:
-                    h5['scores/by_bp'][i, mask] = raw_score
-            current_counts = np.sum(h5['data/y'][i], axis=0)
-            counts[i_rel] = current_counts
-            # weighted average
-            h5['scores/one'][i] = np.sum(current_counts * h5['scores/four'][i]) / np.sum(current_counts)
-            if not i % 200:
+                    by_bp[mask] = raw_score
+
+            by_bp = by_bp.reshape([by_out, chunk_size])
+            h5['scores/by_bp'][i:(i + by)] = by_bp
+
+            current_counts = np.sum(h5['data/y'][i:(i + by)], axis=1)
+            scores_four = np.full(fill_value=-1, shape=[by_out, 4])
+            scores_one = np.full(fill_value=-1, shape=[by_out])
+            for j in range(by_out):  # todo, can I replace this with some sort of apply?
+                for col in range(4):
+                    mask = y[j, :, col].astype(np.bool)
+                    if np.any(mask):
+                        scores_four[j, col] = np.mean(by_bp[j][y[j, :, col].astype(np.bool)])
+                    else:
+                        scores_four[j, col] = 0.
+                scores_one[j] = np.sum(current_counts[j] * scores_four[j] / np.sum(current_counts[j]))
+
+            counts[i_rel:(i_rel + by)] = current_counts
+            h5['scores/four'][i:(i + by)] = scores_four
+            h5['scores/one'][i:(i + by)] = scores_one
+            if not i % 2000:
                 print('reached i={}'.format(i))
         print('fin, i={}'.format(i))
         print(counts.shape, 'is counts.shape')
