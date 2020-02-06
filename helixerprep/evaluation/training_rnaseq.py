@@ -220,18 +220,19 @@ def main(species, bam, h5_data, d_utp, dont_score):
             by_out, chunk_size, n_cats = y.shape
             coverage = h5['evaluation/coverage'][i:(i + by)].ravel()
             spliced_coverage = h5['evaluation/spliced_coverage'][i:(i + by)].ravel()
-            by_bp = np.full(fill_value=-1, shape=[by_out * chunk_size])
+            by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size])
             for scorer in scorers:
                 raw_score, mask = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
                 if raw_score.size > 0:
                     by_bp[mask] = raw_score
 
             by_bp = by_bp.reshape([by_out, chunk_size])
+            print(by_bp)
             h5['scores/by_bp'][i:(i + by)] = by_bp
 
             current_counts = np.sum(h5['data/y'][i:(i + by)], axis=1)
-            scores_four = np.full(fill_value=-1, shape=[by_out, 4])
-            scores_one = np.full(fill_value=-1, shape=[by_out])
+            scores_four = np.full(fill_value=-1., shape=[by_out, 4])
+            scores_one = np.full(fill_value=-1., shape=[by_out])
             for j in range(by_out):  # todo, can I replace this with some sort of apply?
                 for col in range(4):
                     mask = y[j, :, col].astype(np.bool)
@@ -240,7 +241,6 @@ def main(species, bam, h5_data, d_utp, dont_score):
                     else:
                         scores_four[j, col] = 0.
                 scores_one[j] = np.sum(current_counts[j] * scores_four[j] / np.sum(current_counts[j]))
-
             counts[i_rel:(i_rel + by)] = current_counts
             h5['scores/four'][i:(i + by)] = scores_four
             h5['scores/one'][i:(i + by)] = scores_one
