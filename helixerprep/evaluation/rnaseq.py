@@ -246,6 +246,13 @@ class ContiguousBit:
         assert len(self.start_ends) == end_i_h5 - start_i_h5, '{} {} {}'.format(len(self.start_ends), start_i_h5,
                                                                                 end_i_h5)
 
+    def __repr__(self):
+        return "array from {}-{}; h5 from {}-{} in {} pieces".format(self.start_ends[0][0],
+                                                                     self.start_ends[-1][1],
+                                                                     self.start_i_h5,
+                                                                     self.end_i_h5,
+                                                                     len(self.start_ends))
+
 
 def find_contiguous_segments(h5, start_i, end_i):
     bits_plus = []
@@ -326,7 +333,7 @@ def write_a_bit(array, bit, h5_dataset, chunk_size):
     start_array = bit.start_ends[0][0]
     end_array = bit.start_ends[-1][1]
 
-    is_plus_strand = start_array > end_array
+    is_plus_strand = start_array < end_array
     # extract sub region
     if is_plus_strand:
         array_slice = array[start_array:end_array]
@@ -342,7 +349,7 @@ def write_a_bit(array, bit, h5_dataset, chunk_size):
         n_chunks = raw_length // chunk_size
 
     # shape into chunks
-    array_slice = array_slice.reshape(shape=[n_chunks, chunk_size])
+    array_slice = np.reshape(array_slice, [n_chunks, chunk_size])
     # and write to file
     h5_dataset[bit.start_i_h5:bit.end_i_h5] = array_slice
 
@@ -365,7 +372,7 @@ def coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, chunk_size):
         for cov_type in all_coverage:
             htseq_array = all_coverage[cov_type]
             array = htseq_array[HTSeq.GenomicInterval(seqid, 0, length, direction)].array
-            write_in_bits(array, bits[direction], h5_out['evalualtion/{}'.format(cov_type)], chunk_size)
+            write_in_bits(array, bits[direction], h5_out['evaluation/{}'.format(cov_type)], chunk_size)
 
     return counts
 
