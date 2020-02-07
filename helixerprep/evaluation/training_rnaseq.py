@@ -178,13 +178,14 @@ def main(species, bam, h5_data, d_utp, dont_score):
     print('start, end', species_start, species_end)
     cov_counts = copy.deepcopy(rnaseq.COVERAGE_COUNTS)  # tracks number reads, bp coverage, bp spliced coverage
     if bam is not None:
-        pad_to = h5['evaluation/coverage'].shape[1]
+        chunk_size = h5['evaluation/coverage'].shape[1]
 
         # open bam (read alignment file)
         htseqbam = HTSeq.BAM_Reader(bam)
         for coord in coords:
             print(coord)
-            coord_cov_counts = rnaseq.coverage_from_coord_to_h5(coord, h5, bam=htseqbam, d_utp=d_utp, pad_to=pad_to)
+            coord_cov_counts = rnaseq.coverage_from_coord_to_h5(coord, h5, bam=htseqbam, d_utp=d_utp,
+                                                                chunk_size=chunk_size)
             for key in coord_cov_counts:
                 cov_counts[key] += coord_cov_counts[key]
 
@@ -227,7 +228,6 @@ def main(species, bam, h5_data, d_utp, dont_score):
                     by_bp[mask] = raw_score
 
             by_bp = by_bp.reshape([by_out, chunk_size])
-            print(by_bp)
             h5['scores/by_bp'][i:(i + by)] = by_bp
 
             current_counts = np.sum(h5['data/y'][i:(i + by)], axis=1)
