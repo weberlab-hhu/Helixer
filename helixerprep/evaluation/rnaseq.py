@@ -93,8 +93,8 @@ def cov_by_chrom(chromosome, htseqbam, d_utp=False):
     length = get_length_from_header(htseqbam, chromosome)
     # returns htseq genomic array
     chromosomes = {chromosome: length}
-    cov_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage="ndarray")
-    spliced_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage="ndarray")
+    cov_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage="step")
+    spliced_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage="step")
     # 1 below because "pysam uses 0-based coordinates...The only exception is the region string in the fetch() and
     # pileup() methods. This string follows the convention of the samtools command line utilities." oh well.
     counts = copy.deepcopy(COVERAGE_COUNTS)
