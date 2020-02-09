@@ -3,6 +3,8 @@ import argparse
 import HTSeq
 import h5py
 import numpy as np
+import random
+import os
 from helixerprep.evaluation import rnaseq
 import copy
 
