@@ -4,7 +4,7 @@ import HTSeq
 import h5py
 import copy
 import random
-import memmap
+import os 
 import numpy as np
 from helixerprep.core.helpers import mk_keys
 
