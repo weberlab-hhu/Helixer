@@ -3,6 +3,8 @@ import argparse
 import HTSeq
 import h5py
 import copy
+import random
+import memmap
 import numpy as np
 from helixerprep.core.helpers import mk_keys
 
@@ -89,12 +91,17 @@ def get_length_from_header(htseqbam, chromosome):
 COVERAGE_COUNTS = {'reads': 0, 'coverage': 0, 'spliced_coverage': 0}
 
 
-def cov_by_chrom(chromosome, htseqbam, d_utp=False):
+def cov_by_chrom(chromosome, htseqbam, d_utp=False, memmap_dirs=None):
     length = get_length_from_header(htseqbam, chromosome)
     # returns htseq genomic array
     chromosomes = {chromosome: length}
-    cov_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage="step")
-    spliced_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage="step")
+    if memmap_dirs is not None:
+        storage = "memmap"
+    else:
+        storage="ndarray"
+        memmap_dirs = ["", ""]
+    cov_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage=storage, memmap_dir=memmap_dirs[0])
+    spliced_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage=storage, memmap_dir=memmap_dirs[1])
     # 1 below because "pysam uses 0-based coordinates...The only exception is the region string in the fetch() and
     # pileup() methods. This string follows the convention of the samtools command line utilities." oh well.
     counts = copy.deepcopy(COVERAGE_COUNTS)
@@ -354,7 +361,7 @@ def write_a_bit(array, bit, h5_dataset, chunk_size):
     h5_dataset[bit.start_i_h5:bit.end_i_h5] = array_slice
 
 
-def coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, chunk_size):
+def coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, chunk_size, memmap_dirs):
     """calculates coverage for a coordinate from bam, saves to h5, returns counts for aggregating"""
     b_seqid, start_i, end_i = coord
     seqid = b_seqid.decode('utf-8')
@@ -364,7 +371,7 @@ def coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, chunk_size):
     bits = {"+": bits_plus, "-": bits_minus}
 
     # calculate coverage
-    cov_array, spliced_array, length, counts = cov_by_chrom(seqid, bam, d_utp)
+    cov_array, spliced_array, length, counts = cov_by_chrom(seqid, bam, d_utp, memmap_dirs)
     all_coverage = {"coverage": cov_array, "spliced_coverage": spliced_array}
 
     # write to h5 contiguous bit by contiguous bit
@@ -393,12 +400,22 @@ def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
     chunk_size = h5_out['evaluation/coverage'].shape[1]
 
     counts = copy.deepcopy(COVERAGE_COUNTS)
+    # setup dir for memmap array (AKA, don't try and store the whole chromosome in RAM
+    memmap_dirs = ["memmap_dir_{}".format(random.getrandbits(128)),
+                   "memmap_dir_{}".format(random.getrandbits(128))]
+    for d in memmap_dirs:
+        if not os.path.exists(d):
+            os.mkdir(d)
+
     # get coverage by chromosome
     for coord in coords:
         # writes coverage to h5, return totals for aggregating
-        coord_counts = coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, chunk_size)
+        coord_counts = coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, chunk_size, memmap_dirs)
         for key in counts:
             counts[key] += coord_counts[key]
+
+    for d in memmap_dirs:
+        os.rmdir(d)
 
     # write meta info to h5
     h5_out['meta/bamfile'].attrs.create(name=species, data=bamfile)
