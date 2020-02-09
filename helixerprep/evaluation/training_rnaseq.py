@@ -179,15 +179,24 @@ def main(species, bam, h5_data, d_utp, dont_score):
     cov_counts = copy.deepcopy(rnaseq.COVERAGE_COUNTS)  # tracks number reads, bp coverage, bp spliced coverage
     if bam is not None:
         chunk_size = h5['evaluation/coverage'].shape[1]
-
+        # setup dir for memmap array (AKA, don't try and store the whole chromosome in RAM
+        memmap_dirs = ["memmap_dir_{}".format(random.getrandbits(128)),
+                       "memmap_dir_{}".format(random.getrandbits(128))]
+        for d in memmap_dirs:
+            if not os.path.exists(d):
+                os.mkdir(d)
         # open bam (read alignment file)
         htseqbam = HTSeq.BAM_Reader(bam)
         for coord in coords:
             print(coord)
-            coord_cov_counts = rnaseq.coverage_from_coord_to_h5(coord, h5, bam=htseqbam, d_utp=d_utp,
-                                                                chunk_size=chunk_size)
+            coord_cov_counts = rnaseq.coverage_from_coord_to_h5(
+                coord, h5, bam=htseqbam, d_utp=d_utp,
+                chunk_size=chunk_size, memmap_dirs=memmap_dirs)
             for key in coord_cov_counts:
                 cov_counts[key] += coord_cov_counts[key]
+
+        for d in memmap_dirs:
+            os.rmdir(d)
 
         # add bam related metadata
         h5['meta/bamfile'].attrs.create(name=species, data=bam.encode('utf-8'))
