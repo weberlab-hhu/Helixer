@@ -4,7 +4,8 @@ import HTSeq
 import h5py
 import copy
 import random
-import os 
+import os
+import shutil
 import numpy as np
 from helixerprep.core.helpers import mk_keys
 
@@ -117,19 +118,6 @@ def cov_by_chrom(chromosome, htseqbam, d_utp=False, memmap_dirs=None):
                 counts['spliced_coverage'] += iv.end - iv.start
 
     return cov_array, spliced_array, length, counts
-
-
-#def extract_np_arrays(cov_array, seqid, length):
-#    plus = cov_array[HTSeq.GenomicInterval(seqid, 0, length, "+")].array
-#    minus = cov_array[HTSeq.GenomicInterval(seqid, 0, length, "-")].array
-#    return plus, minus
-
-
-#def stranded_cov_by_chromosome(htseqbam, seqid, d_utp=False):
-#    cov_array, spliced_array, length, counts = cov_by_chrom(seqid, htseqbam, d_utp)
-#    cp, cm = extract_np_arrays(cov_array, seqid, length)
-#    sp, sm = extract_np_arrays(spliced_array, seqid, length)
-#    return cp, cm, sp, sm, counts
 
 
 COVERAGE_SETS = ['coverage', 'spliced_coverage']
@@ -314,23 +302,6 @@ def find_contiguous_segments(h5, start_i, end_i):
     return bits_plus, bits_minus
 
 
-#def arrange_slice_for_h5(cov_arrays, i, h5_out, pad_to, b_seqid):
-#    assert h5_out['data/seqids'][i] == b_seqid
-#    start, end = h5_out['data/start_ends'][i]
-#    # subset and flip to match existing h5 chunks
-#    is_plus_strand = True
-#    if end < start:
-#        is_plus_strand = False
-#        start, end = end, start
-#    if is_plus_strand:
-#        slices = [cov_arrays[i][start:end] for i in [0, 2]]
-#    else:
-#        slices = [np.flip(cov_arrays[i][start:end], axis=0) for i in [1, 3]]
-#    if end - start != pad_to:
-#        slices = [pad_cov_right(x, pad_to) for x in slices]
-#        print('padding {}-{} + is {}'.format(start, end, is_plus_strand))
-#    return slices
-
 def write_in_bits(array, contiguous_bits, h5_dataset, chunk_size):
     for bit in contiguous_bits:
         write_a_bit(array, bit, h5_dataset, chunk_size)
@@ -415,7 +386,7 @@ def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
             counts[key] += coord_counts[key]
 
     for d in memmap_dirs:
-        os.rmdir(d)
+        shutil.rmtree(d)
 
     # write meta info to h5
     h5_out['meta/bamfile'].attrs.create(name=species, data=bamfile)

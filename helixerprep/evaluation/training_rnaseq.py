@@ -5,6 +5,7 @@ import h5py
 import numpy as np
 import random
 import os
+import shutil
 from helixerprep.evaluation import rnaseq
 import copy
 
@@ -198,7 +199,7 @@ def main(species, bam, h5_data, d_utp, dont_score):
                 cov_counts[key] += coord_cov_counts[key]
 
         for d in memmap_dirs:
-            os.rmdir(d)
+            shutil.rmtree(d)  # rm -r
 
         # add bam related metadata
         h5['meta/bamfile'].attrs.create(name=species, data=bam.encode('utf-8'))
