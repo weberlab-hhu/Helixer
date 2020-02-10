@@ -49,7 +49,10 @@ for folder in listdir_fullpath(args.main_folder)[::-1]:
         species_r['total_padding'] += np.count_nonzero(np.all(y_chunk == 0, axis=-1))
 
 
+    # remove padding
     species_r['total_bases'] = species_r['total_len'] - species_r['total_padding']
+    species_r['total_errors'] = species_r['total_errors'] - species_r['total_padding']
+
     species_r['error_rate'] = species_r['total_errors'] / species_r['total_bases']
     species_r['intergenic_error_rate'] = species_r['total_intergenic_error'] / species_r['total_errors']
     species_r['class_rates'] = species_r['total_classes'] / species_r['total_bases']
