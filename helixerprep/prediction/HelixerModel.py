@@ -66,6 +66,9 @@ class ConfusionMatrixTrain(Callback):
             # hard-coded patience of 2 for now
             if self.epochs_without_improvement > 1:
                 self.model.stop_training = True
+        # hard-coded check of genic f1 of 0.5 at epoch 10
+        if epoch == 10 and val_genic_f1 < 0.5:
+            self.model.stop_training = True
 
     def on_train_end(self, logs=None):
         if self.report_to_nni:
