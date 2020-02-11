@@ -8,6 +8,11 @@ import os
 import shutil
 from helixerprep.evaluation import rnaseq
 import copy
+from guppy import hpy
+import logging
+
+
+logging.basicConfig(filename="memdebug.log", level=logging.DEBUG)
 
 
 def add_empty_eval_datasets(h5):
@@ -54,8 +59,14 @@ def get_bool_stretches(alist):
 
 
 def species_range(h5, species):
+    logging.debug('called species_range for {}'.format(species))
     mask = np.array(h5['/data/species'][:] == species.encode('utf-8'))
+    logging.debug(hpy().heap())
+    logging.debug('== heap above, "mask" below==')
+    logging.debug(hpy().iso(mask))
     stretches = list(get_bool_stretches(mask.tolist()))  # [(False, count), (True, Count), (False, Count)]
+    logging.debug('== "stretches" below==')
+    logging.debug(hpy().iso(stretches))
     print(stretches)
     i_of_true = [i for i in range(len(stretches)) if stretches[i][0]]
     assert len(i_of_true) == 1, "not contiguous or missing species ({}) in h5???".format(species)
@@ -143,6 +154,44 @@ class ScorerIntron(Scorer):
         return x * self.scale_to / np.log(self.median_cov + 1)
 
 
+def get_median_expected_coverage(h5, max_expected=1000):
+    # this will fail unless max_expected is higher than the median
+    # but since we're expecting a median around say 5-20... should be OK
+    bins = list(range(max_expected)) + [np.inf]
+    by = 1000
+    histo = np.zeros(shape=[len(bins) - 1])
+    for i in range(1, h5['data/y'].shape[0], by):
+        counts, _ = histo_expected_coverage(h5, i, by, bins)
+        histo += counts
+
+    half_total_bp = np.sum(histo) / 2
+    cumulative = 0
+    for bi in range(len(histo)):
+        cumulative += histo[bi]
+        if cumulative == half_total_bp:
+            # if we're exactly half way, _and_ between bins, then the median is the average of the middle two
+            median = bi + 0.5
+            break
+        elif cumulative > half_total_bp:
+            # median was in this bin
+            median = bi
+            break
+    if max_expected == median + 1:
+        logging.warning('median is in last bin [{}, {}] and therefore undefined'.format(bins[-2], bins[-1]))
+    if median == 0:
+        logging.warning('median is 0, ignoring reality and setting to 1 to avoid dividing by 0 later')
+        median = 1
+    return median
+
+
+def histo_expected_coverage(h5, i, by, bins):
+    masked_cov = h5['evaluation/coverage'][i:(i + by)][
+        np.logical_or(h5['data/y'][i:(i + by), :, 1], h5['data/y'][i:(i + by), :, 2])
+    ]
+    histo = np.histogram(masked_cov, bins=bins)
+    return histo
+
+
 def main(species, bam, h5_data, d_utp, dont_score):
 
     # open h5
@@ -207,9 +256,11 @@ def main(species, bam, h5_data, d_utp, dont_score):
             h5['meta/total_' + key].attrs.create(name=species, data=cov_counts[key])
 
         # add median coverage in regions annotated as UTR/CDS for slightly more robust scaling
-        masked_cov = h5['evaluation/coverage'][:][np.logical_or(
-            h5['data/y'][:, :, 1], h5['data/y'][:, :, 2])]
-        median_coverage = np.quantile(masked_cov, 0.5)
+        #masked_cov = h5['evaluation/coverage'][:][np.logical_or(
+        #    h5['data/y'][:, :, 1], h5['data/y'][:, :, 2])]
+        #logging.debug('=== masked cov ===\n{}'.format(hpy().iso(masked_cov)))
+        #median_coverage = np.quantile(masked_cov, 0.5)
+        median_coverage = get_median_expected_coverage(h5)
         h5['meta/median_expected_coverage'].attrs.create(name=species, data=median_coverage)
 
     if not dont_score:
@@ -272,7 +323,14 @@ def main(species, bam, h5_data, d_utp, dont_score):
         h5['scores/one_centered'][species_start:species_end] = centered_one
     h5.close()
 
+#import cProfile
+#import re
+#cProfile.run('''main("Creinhardtii",
+#                     "/mnt/data/ali/Ankylosaurus/Core_projects/Puma/geenuff_helixer_data/rnaseq/Creinhardtii/mapped/good_stranded.bam",
+#                     "/mnt/data/ali/Ankylosaurus/Core_projects/Puma/geenuff_helixer_data/rnaseq/Creinhardtii/h5s/test_data.h5",
+#                     True, False)''')
 
+#x = '''
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--species', help="species name, matching geenuff db and h5 files", required=True)
@@ -292,3 +350,4 @@ if __name__ == "__main__":
          not args.not_dUTP,
          args.skip_scoring)
 
+#'''

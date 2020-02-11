@@ -8,6 +8,8 @@ import os
 import shutil
 import numpy as np
 from helixerprep.core.helpers import mk_keys
+import logging
+from guppy import hpy
 
 
 def skippable(read):
@@ -343,13 +345,18 @@ def coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, chunk_size, memmap_dirs
 
     # calculate coverage
     cov_array, spliced_array, length, counts = cov_by_chrom(seqid, bam, d_utp, memmap_dirs)
+    logging.debug('=== cov_array, then spliced_array below ===')
+    logging.debug(hpy().iso(cov_array))
+    logging.debug(hpy().iso(spliced_array))
     all_coverage = {"coverage": cov_array, "spliced_coverage": spliced_array}
 
     # write to h5 contiguous bit by contiguous bit
     for direction in bits:
         for cov_type in all_coverage:
             htseq_array = all_coverage[cov_type]
+            logging.debug('=== array {} {}, then bits ==='.format(direction, cov_type))
             array = htseq_array[HTSeq.GenomicInterval(seqid, 0, length, direction)].array
+            logging.debug(hpy().iso(array), bits[direction])
             write_in_bits(array, bits[direction], h5_out['evaluation/{}'.format(cov_type)], chunk_size)
 
     return counts
