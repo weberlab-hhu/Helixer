@@ -18,6 +18,7 @@ from ..export import numerify
 from ..export.numerify import SequenceNumerifier, AnnotationNumerifier, Stepper, AMBIGUITY_DECODE
 from ..export.exporter import HelixerExportController
 from ..prediction.ConfusionMatrix import ConfusionMatrix
+from ..evaluation import rnaseq
 
 TMP_DB = 'testdata/tmp.db'
 DUMMYLOCI_DB = 'testdata/dummyloci.sqlite3'
@@ -804,3 +805,40 @@ def test_gene_lengths():
     assert np.array_equal(gl_3[949:1350], np.full((1350 - 949,), 401, dtype=np.uint32))
     assert np.array_equal(gl_3[1350:1549], np.full((1549 - 1350,), 0, dtype=np.uint32))
     assert np.array_equal(gl_3[1549:1750], np.full((1750 - 1549,), 201, dtype=np.uint32))
+
+
+### RNAseq / coverage or scoring related (evaluation)
+def test_contiguous_bits():
+    """confirm correct splitting at sequence breaks or after filtering when data is chunked for mem efficiency"""
+    start_ends = [[0, 20000],        # increasing 0
+                  [20000, 40000],    # increasing 0
+                  [60000, 80000],    # increasing 1
+                  [100000, 120000],  # increasing 2
+                  [120000, 100000],  # decreasing 0
+                  [100000, 80000],   # decreasing 0
+                  [60000, 40000],    # decreasing 1
+                  [20000, 0]]        # decreasing 2
+    seqids = [b'chr1'] * len(start_ends)
+    h5path = 'testdata/tmp.h5'
+    h5 = h5py.File(h5path)
+    if 'data' in h5.keys():  # makes it easier to rerun after a failed test w/o cleanup
+        del h5['data']
+    h5.create_group('data')
+    h5.create_dataset('/data/start_ends', data=start_ends, dtype='int64', compression='lzf')
+    h5.create_dataset('/data/seqids', data=seqids, dtype='S50', compression='lzf')
+
+    bits_plus, bits_minus = rnaseq.find_contiguous_segments(h5, start_i=0, end_i=len(start_ends))
+    for listy in (bits_plus, bits_minus):
+        assert [len(x.start_ends) for x in listy] == [2, 1, 1]
+    assert [x.start_i_h5 for x in bits_plus] == [0, 2, 3]
+    assert [x.end_i_h5 for x in bits_plus] == [2, 3, 4]
+    assert [x.start_i_h5 for x in bits_minus] == [4, 6, 7]
+    assert [x.end_i_h5 for x in bits_minus] == [6, 7, 8]
+
+    for b in bits_plus:
+        print(b)
+    print('---- and now minus ----')
+    for b in bits_minus:
+        print(b)
+    h5.close()
+    os.remove(h5path)

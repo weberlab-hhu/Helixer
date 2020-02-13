@@ -308,15 +308,16 @@ def write_in_bits(array, contiguous_bits, h5_dataset, chunk_size):
 
 
 def write_a_bit(array, bit, h5_dataset, chunk_size):
+    # todo, this seriously needs a test, particularly for the - strand with padding
     start_array = bit.start_ends[0][0]
     end_array = bit.start_ends[-1][1]
 
     is_plus_strand = start_array < end_array
     # extract sub region
-    if is_plus_strand:
-        array_slice = array[start_array:end_array]
-    else:
-        array_slice = np.flip(array[end_array:start_array], axis=0)
+    if not is_plus_strand:
+        start_array, end_array = end_array, start_array
+
+    array_slice = array[start_array:end_array]
 
     # pad if need be
     raw_length = array_slice.shape[0]
@@ -326,6 +327,8 @@ def write_a_bit(array, bit, h5_dataset, chunk_size):
     else:
         n_chunks = raw_length // chunk_size
 
+    if not is_plus_strand:
+        array_slice = np.flip(array_slice, axis=0)
     # shape into chunks
     array_slice = np.reshape(array_slice, [n_chunks, chunk_size])
     # and write to file
