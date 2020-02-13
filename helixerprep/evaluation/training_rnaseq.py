@@ -8,11 +8,7 @@ import os
 import shutil
 from helixerprep.evaluation import rnaseq
 import copy
-from guppy import hpy
 import logging
-
-
-logging.basicConfig(filename="memdebug.log", level=logging.DEBUG)
 
 
 def add_empty_eval_datasets(h5):
@@ -26,7 +22,7 @@ def add_empty_eval_datasets(h5):
                           maxshape=(None, chunk_len),
                           dtype="int",
                           compression="lzf",
-                          data=np.full(fill_value=-1, shape=(length, chunk_len)))
+                          fillvalue=-1)
 
 
 def add_empty_score_datasets(h5):
@@ -41,7 +37,7 @@ def add_empty_score_datasets(h5):
                           maxshape=max_shapes[i],
                           dtype="float",
                           compression="lzf",
-                          data=np.full(fill_value=-1., shape=shapes[i]))
+                          fillvalue=-1)
 
 
 def get_bool_stretches(alist):
@@ -59,14 +55,8 @@ def get_bool_stretches(alist):
 
 
 def species_range(h5, species):
-    logging.debug('called species_range for {}'.format(species))
     mask = np.array(h5['/data/species'][:] == species.encode('utf-8'))
-    logging.debug(hpy().heap())
-    logging.debug('== heap above, "mask" below==')
-    logging.debug(hpy().iso(mask))
     stretches = list(get_bool_stretches(mask.tolist()))  # [(False, count), (True, Count), (False, Count)]
-    logging.debug('== "stretches" below==')
-    logging.debug(hpy().iso(stretches))
     print(stretches)
     i_of_true = [i for i in range(len(stretches)) if stretches[i][0]]
     assert len(i_of_true) == 1, "not contiguous or missing species ({}) in h5???".format(species)
@@ -227,7 +217,7 @@ def main(species, bam, h5_data, d_utp, dont_score):
 
     # insert coverage into said regions
     coords = rnaseq.gen_coords(h5, species_start, species_end)
-    print('start, end', species_start, species_end)
+    print('start, end', species_start, species_end, file=sys.stderr)
     cov_counts = copy.deepcopy(rnaseq.COVERAGE_COUNTS)  # tracks number reads, bp coverage, bp spliced coverage
     if bam is not None:
         chunk_size = h5['evaluation/coverage'].shape[1]
@@ -240,7 +230,7 @@ def main(species, bam, h5_data, d_utp, dont_score):
         # open bam (read alignment file)
         htseqbam = HTSeq.BAM_Reader(bam)
         for coord in coords:
-            print(coord)
+            print(coord, file=sys.stderr)
             coord_cov_counts = rnaseq.coverage_from_coord_to_h5(
                 coord, h5, bam=htseqbam, d_utp=d_utp,
                 chunk_size=chunk_size, memmap_dirs=memmap_dirs)
@@ -256,10 +246,6 @@ def main(species, bam, h5_data, d_utp, dont_score):
             h5['meta/total_' + key].attrs.create(name=species, data=cov_counts[key])
 
         # add median coverage in regions annotated as UTR/CDS for slightly more robust scaling
-        #masked_cov = h5['evaluation/coverage'][:][np.logical_or(
-        #    h5['data/y'][:, :, 1], h5['data/y'][:, :, 2])]
-        #logging.debug('=== masked cov ===\n{}'.format(hpy().iso(masked_cov)))
-        #median_coverage = np.quantile(masked_cov, 0.5)
         median_coverage = get_median_expected_coverage(h5)
         h5['meta/median_expected_coverage'].attrs.create(name=species, data=median_coverage)
 
@@ -275,7 +261,7 @@ def main(species, bam, h5_data, d_utp, dont_score):
 
         # todo, this is really naive and probably terribly slow... fix
         counts = np.zeros(shape=(species_end - species_start, 4))
-        print("scoring {}-{}".format(species_start, species_end))
+        print("scoring {}-{}".format(species_start, species_end), file=sys.stderr)
         by = 500
         for i in range(species_start, species_end, by):
             i_rel = i - species_start
@@ -289,7 +275,7 @@ def main(species, bam, h5_data, d_utp, dont_score):
                 raw_score, mask = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
                 if raw_score.size > 0:
                     by_bp[mask] = raw_score
-
+            del coverage, spliced_coverage
             by_bp = by_bp.reshape([by_out, chunk_size])
             h5['scores/by_bp'][i:(i + by)] = by_bp
 
@@ -309,9 +295,7 @@ def main(species, bam, h5_data, d_utp, dont_score):
             h5['scores/one'][i:(i + by)] = scores_one
             if not i % 2000:
                 print('reached i={}'.format(i))
-        print('fin, i={}'.format(i))
-        print(counts.shape, 'is counts.shape')
-        print(np.sum(counts, axis=0), 'cat_counts to be')
+        print('fin, i={}'.format(i), file=sys.stderr)
         # normalize coverage score by species and category
         raw_four = h5['scores/four'][species_start:species_end]
         centers = np.sum(raw_four * counts, axis=0) / np.sum(counts, axis=0)
@@ -323,14 +307,7 @@ def main(species, bam, h5_data, d_utp, dont_score):
         h5['scores/one_centered'][species_start:species_end] = centered_one
     h5.close()
 
-#import cProfile
-#import re
-#cProfile.run('''main("Creinhardtii",
-#                     "/mnt/data/ali/Ankylosaurus/Core_projects/Puma/geenuff_helixer_data/rnaseq/Creinhardtii/mapped/good_stranded.bam",
-#                     "/mnt/data/ali/Ankylosaurus/Core_projects/Puma/geenuff_helixer_data/rnaseq/Creinhardtii/h5s/test_data.h5",
-#                     True, False)''')
 
-#x = '''
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--species', help="species name, matching geenuff db and h5 files", required=True)
@@ -349,5 +326,3 @@ if __name__ == "__main__":
          args.h5_data,
          not args.not_dUTP,
          args.skip_scoring)
-
-#'''
