@@ -897,6 +897,7 @@ def test_coverage_in_bits():
             # edge case, -strand, end of seq (or maybe start?... but it's handled more like an end)
             else:
                 # this is flipped, and then padded right... not contiguous and not like the others... -_-
+                # padding separates the end piece, from the next otherwise contiguous segment
                 assert cov_chunk[-1] == -1
                 assert cov_chunk[length % chunk_size] == -1
                 assert cov_chunk[length % chunk_size - 1] == pystart + 10**6
