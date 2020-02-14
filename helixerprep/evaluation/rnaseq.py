@@ -280,7 +280,7 @@ def find_contiguous_segments(h5, start_i, end_i, chunk_size):
     # these reset every step
     prev_seqid = seqids[0]
     prev_start, prev_end = start_ends[0]
-    prev_is_plus = prev_end - prev_start > 0
+    prev_is_plus = prev_start < prev_end
 
     # these reset every contiguous bit
     current_start_ends = [(prev_start, prev_end)]
@@ -289,7 +289,7 @@ def find_contiguous_segments(h5, start_i, end_i, chunk_size):
     for i_rel in range(1, start_ends.shape[0]):
         curr_seqid = seqids[i_rel]
         curr_start, curr_end = start_ends[i_rel]
-        curr_is_plus = curr_end - curr_start > 0
+        curr_is_plus = curr_start < curr_end
         # if current start == previous end with same sequence & dir w/o edge case: append
         if matches_and_no_end_case((curr_start, prev_start), 
                                    (curr_end, prev_end),
@@ -333,7 +333,6 @@ def write_in_bits(array, contiguous_bits, h5_dataset, chunk_size):
 
 
 def write_a_bit(array, bit, h5_dataset, chunk_size):
-    # todo, this seriously needs a test, particularly for the - strand with padding
     start_array = bit.start_ends[0][0]
     end_array = bit.start_ends[-1][1]
 
