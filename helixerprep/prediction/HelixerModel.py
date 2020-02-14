@@ -26,7 +26,7 @@ from keras import backend as K
 from keras.models import load_model
 from keras.utils import multi_gpu_model, Sequence
 
-from ConfusionMatrix import ConfusionMatrix
+from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
 
 
 class SaveEveryEpoch(Callback):

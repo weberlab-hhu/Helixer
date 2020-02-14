@@ -10,7 +10,7 @@ from keras_layer_normalization import LayerNormalization
 from keras.models import Sequential, Model
 from keras.layers import (Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
                           concatenate, Input)
-from HelixerModel import HelixerModel, HelixerSequence
+from helixerprep.prediction.HelixerModel import HelixerModel, HelixerSequence
 
 
 class LSTMSequence(HelixerSequence):
@@ -85,15 +85,7 @@ class LSTMSequence(HelixerSequence):
                     transitions.shape[-1],
                 ))
 
-                sw_t = [np.any((transitions[:, :, :, col] == 1),axis=2) for col in range(6)]
-                sw_t = np.stack(sw_t, axis=2).astype(np.int8)
-                sw_t = np.multiply(sw_t, self.transition_weights)
-
-                sw_t = np.sum(sw_t, axis=2)
-                where_are_ones = np.where(sw_t == 0)
-                sw_t[where_are_ones[0], where_are_ones[1]] = 1
-                if self.stretched_transition_weights is not 0:
-                    sw_t = self._expand_rf(sw_t, self.stretched_transition_weights)
+                sw_t = self.compress_tw(transitions)
                 sw = np.multiply(sw_t, sw)
 
             if self.error_weights:
@@ -104,8 +96,25 @@ class LSTMSequence(HelixerSequence):
                 sw *= np.expand_dims(error_weights, axis=1)
 
         return X, y, sw
-    
-    def _expand_rf(self, reshaped_sw_t, rf):  
+
+    def compress_tw(self, transitions):
+        return self._squish_tw_to_sw(transitions, self.transition_weights, self.stretched_transition_weights)
+
+    @staticmethod
+    def _squish_tw_to_sw(transitions, tw, stretch):
+        sw_t = [np.any((transitions[:, :, :, col] == 1),axis=2) for col in range(6)]
+        sw_t = np.stack(sw_t, axis=2).astype(np.int8)
+        sw_t = np.multiply(sw_t, tw)
+
+        sw_t = np.sum(sw_t, axis=2)
+        where_are_ones = np.where(sw_t == 0)
+        sw_t[where_are_ones[0], where_are_ones[1]] = 1
+        if stretch is not 0:
+            sw_t = LSTMSequence._expand_rf(sw_t, stretch)
+        return sw_t
+
+    @staticmethod    
+    def _expand_rf(reshaped_sw_t, rf):  
 
         reshaped_sw_t = np.array(reshaped_sw_t)  
         dilated_rf = np.ones(np.shape(reshaped_sw_t))  

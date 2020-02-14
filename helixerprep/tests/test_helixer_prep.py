@@ -5,6 +5,8 @@ from sklearn.metrics import accuracy_score
 import numpy as np
 import pytest
 import h5py
+from abc import ABC, abstractmethod
+
 
 import geenuff
 from geenuff.tests.test_geenuff import setup_data_handler, mk_memory_session
@@ -18,6 +20,8 @@ from ..export import numerify
 from ..export.numerify import SequenceNumerifier, AnnotationNumerifier, Stepper, AMBIGUITY_DECODE
 from ..export.exporter import HelixerExportController
 from ..prediction.ConfusionMatrix import ConfusionMatrix
+from helixerprep.prediction.HelixerModel import HelixerModel, HelixerSequence
+from helixerprep.prediction.LSTMModel import LSTMSequence
 
 TMP_DB = 'testdata/tmp.db'
 DUMMYLOCI_DB = 'testdata/dummyloci.sqlite3'
@@ -815,3 +819,87 @@ def test_gene_lengths():
     assert np.array_equal(gl_3[949:1350], np.full((1350 - 949,), 401, dtype=np.uint32))
     assert np.array_equal(gl_3[1350:1549], np.full((1549 - 1350,), 0, dtype=np.uint32))
     assert np.array_equal(gl_3[1549:1750], np.full((1750 - 1549,), 201, dtype=np.uint32))
+
+
+def test_transition_encoding():
+    feats = np.array([[0,0,0], [1,0,0], [1,1,0], [1,1,1], [1,1,0], [1,0,0], [1,1,0], [0,0,0],[1,0,0], [1,0,1], [1,0,0],[0,0,0], [0,0,0]])
+    three_class_input = []
+    for el in feats:
+    #print (el)
+        for i in range(2):
+            three_class_input.append(el)
+    three_class_input = np.array(three_class_input)
+
+    expect = np.array([
+        [0,0,0,0,0,0],
+        [1,0,0,0,0,0],
+        [1,0,0,0,0,0],
+        [0,1,0,0,0,0],
+        [0,1,0,0,0,0],
+        [0,0,1,0,0,0],
+        [0,0,1,0,0,0],
+        [0,0,0,0,0,1],
+        [0,0,0,0,0,1],
+        [0,0,0,0,1,0],
+        [0,0,0,0,1,0],
+        [0,1,0,0,0,0],
+        [0,1,0,0,0,0],
+        [0,0,0,1,1,0],
+        [0,0,0,1,1,0],
+        [1,0,0,0,0,0],
+        [1,0,0,0,0,0],
+        [0,0,1,0,0,0],
+        [0,0,1,0,0,0],
+        [0,0,0,0,0,1],
+        [0,0,0,0,0,1],
+        [0,0,0,1,0,0],
+        [0,0,0,1,0,0],
+        [0,0,0,0,0,0],
+        [0,0,0,0,0,0],
+        [0,0,0,0,0,0]])
+
+    transition_encoding = AnnotationNumerifier._features_to_transitions(three_class_input)
+    assert np.array_equal(transition_encoding, expect)
+
+
+def test_transition_weights():
+    # Load transition_dummy.h5
+    transition_dummy = []
+    with h5py.File('/home/chris/Documents/HelixerPrep/HelixerPrep/helixerprep/testdata/dummy_transitions.h5', 'r') as f:
+        for i in range(len(f["dummy transitions"])):
+            transition_dummy.append(f["dummy transitions"][i])
+        f.close()
+    transition_dummy = np.array(transition_dummy)
+    # Test reshaping and application of transition weights
+    transition_weights = [10,20,30,40,50,60]
+    stretch = 0
+    applied_tw_no_stretch = LSTMSequence._squish_tw_to_sw(transition_dummy, transition_weights, stretch)
+    expect_no_stretch = np.array([
+        [1,1,1,1,10,1,1,1,1],
+        [1,1,1,1,20,1,1,1,1],
+        [1,1,1,1,30,1,1,1,1],
+        [1,1,1,1,60,1,1,1,1],
+        [1,1,1,1,50,1,1,1,1],
+        [1,1,1,1,30,1,1,1,1],
+        [1,1,1,1,60,1,1,1,1],
+        [1,1,1,1,40,1,1,10,1]
+    ])
+    assert np.array_equal(applied_tw_no_stretch, expect_no_stretch)
+    
+    # Additional Test with stretched weights
+    stretch = 3
+    expect_3_stretch = np.array([
+        [1,1.25,2.5,5,10,5,2.5,1.25,1],
+        [1,2.5,5,10,20,10,5,2.5,1],
+        [1,3.75,7.5,15,30,15,7.5,3.75,1],
+        [1,7.5,15,30,60,30,15,7.5,1],
+        [1,6.25,12.5,25,50,25,12.5,6.25,1],
+        [1,3.75,7.5,15,30,15,7.5,3.75,1],
+        [1,7.5,15,30,60,30,15,7.5,1],
+        [1,5,10,20,40,20,5,10,5],
+    ])
+    applied_tw_3_stretch = LSTMSequence._squish_tw_to_sw(transition_dummy, transition_weights, stretch)
+    print (applied_tw_3_stretch, "\n", expect_3_stretch)
+    assert np.array_equal(applied_tw_3_stretch, expect_3_stretch)
+
+
