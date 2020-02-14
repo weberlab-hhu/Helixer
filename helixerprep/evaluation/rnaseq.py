@@ -242,14 +242,35 @@ class ContiguousBit:
                                                                                 end_i_h5)
 
     def __repr__(self):
-        return "array from {}-{}; h5 from {}-{} in {} pieces".format(self.start_ends[0][0],
-                                                                     self.start_ends[-1][1],
-                                                                     self.start_i_h5,
-                                                                     self.end_i_h5,
-                                                                     len(self.start_ends))
+        return "array from {}-{}; h5 from [{},{}) in h5 in {} pieces".format(self.start_ends[0][0],
+                                                                             self.start_ends[-1][1],
+                                                                             self.start_i_h5,
+                                                                             self.end_i_h5,
+                                                                             len(self.start_ends))
 
 
-def find_contiguous_segments(h5, start_i, end_i):
+def matches_and_no_end_case(starts, ends, seqids, is_plusses, chunk_size):
+    curr_start, prev_start = starts
+    curr_end, prev_end = ends
+    # detect any non-contiguity on coords
+    if curr_start != prev_end:
+        out = False
+    elif seqids[0] != seqids[1]:
+        out = False
+    elif is_plusses[0] != is_plusses[1]:
+        out = False
+    # detect edge cases (bc padding choices cause non-contiguity of minus strand edge case)
+    # break both before and after edge case (to make sure it's on it's own)
+    elif abs(curr_start - curr_end) != chunk_size:
+        out = False
+    elif abs(prev_start - prev_end) != chunk_size:
+        out = False
+    else:  # better be contiguous then
+        out = True
+    return out
+
+
+def find_contiguous_segments(h5, start_i, end_i, chunk_size):
     bits_plus = []
     bits_minus = []
 
@@ -269,8 +290,12 @@ def find_contiguous_segments(h5, start_i, end_i):
         curr_seqid = seqids[i_rel]
         curr_start, curr_end = start_ends[i_rel]
         curr_is_plus = curr_end - curr_start > 0
-        # if current start == previous end with same sequence and direction append
-        if curr_start == prev_end and prev_seqid == curr_seqid and prev_is_plus == curr_is_plus:
+        # if current start == previous end with same sequence & dir w/o edge case: append
+        if matches_and_no_end_case((curr_start, prev_start), 
+                                   (curr_end, prev_end),
+                                   (curr_seqid, prev_seqid), 
+                                   (curr_is_plus, prev_is_plus), 
+                                   chunk_size):
             current_start_ends.append((curr_start, curr_end))
         # else if there was a break in the continuity, save
         else:
@@ -314,21 +339,22 @@ def write_a_bit(array, bit, h5_dataset, chunk_size):
 
     is_plus_strand = start_array < end_array
     # extract sub region
-    if not is_plus_strand:
-        start_array, end_array = end_array, start_array
-
-    array_slice = array[start_array:end_array]
+    if is_plus_strand:
+        array_slice = array[start_array:end_array]
+    else:
+        array_slice = np.flip(array[end_array:start_array], axis=0)
 
     # pad if need be
     raw_length = array_slice.shape[0]
     if raw_length % chunk_size:
         n_chunks = raw_length // chunk_size + 1
+        # bc the edges will now be split off as "non contiguous" for easier handling
+        # todo, clean up
+        assert n_chunks == 1  
         array_slice = pad_cov_right(array_slice, n_chunks * chunk_size)
     else:
         n_chunks = raw_length // chunk_size
 
-    if not is_plus_strand:
-        array_slice = np.flip(array_slice, axis=0)
     # shape into chunks
     array_slice = np.reshape(array_slice, [n_chunks, chunk_size])
     # and write to file
@@ -341,7 +367,7 @@ def coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, chunk_size, memmap_dirs
     seqid = b_seqid.decode('utf-8')
     print('{}: chunks from {}-{}'.format(seqid, start_i, end_i), file=sys.stderr)
     # prep contiguous bits (h5 will be written in chunks of this size)
-    bits_plus, bits_minus = find_contiguous_segments(h5_out, start_i, end_i)
+    bits_plus, bits_minus = find_contiguous_segments(h5_out, start_i, end_i, chunk_size)
     bits = {"+": bits_plus, "-": bits_minus}
 
     # calculate coverage
