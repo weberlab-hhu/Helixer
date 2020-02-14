@@ -876,7 +876,37 @@ def test_coverage_in_bits():
     rnaseq.write_in_bits(coverage, bits_plus, h5['evaluation/coverage'], chunk_size)
     rnaseq.write_in_bits(rev_coverage, bits_minus, h5['evaluation/coverage'], chunk_size)
     for i, (start, end) in enumerate(start_ends):
+        cov_chunk = h5['evaluation/coverage'][i]
+        assert end != start
         print(start, end, h5['evaluation/coverage'][i])
+        if start < end:
+            pystart, pyend = start, end
+            is_plus = True
+        else:
+            pystart, pyend = end, start
+            is_plus = False
+        # remember, forward coverage was set to be the index, and rev coverage 1mil + index before (forward dir)
+        # padding stays -1
+        if pyend == length:
+            # edge case, +strand, end of seq
+            if is_plus:
+                assert cov_chunk[0] == pystart
+                assert cov_chunk[length % chunk_size - 1] == length - 1
+                assert cov_chunk[length % chunk_size] == -1
+                assert cov_chunk[-1] == -1
+            # edge case, -strand, end of seq (or maybe start?... but it's handled more like an end)
+            else:
+                # this is flipped, and then padded right... not contiguous and not like the others... -_-
+                assert cov_chunk[-1] == -1
+                assert cov_chunk[length % chunk_size] == -1
+                assert cov_chunk[length % chunk_size - 1] == pystart + 10**6
+                assert cov_chunk[0] == length - 1 + 10**6
+        # normal, +strand
+        elif is_plus:
+            assert cov_chunk[0] == pystart
+            assert cov_chunk[-1] == pyend - 1
+        # normal, -strand
+        else:
+            assert cov_chunk[-1] == pystart + 10**6
+            assert cov_chunk[0] == pyend + 10 ** 6 - 1
     h5.close()
-    # array, contiguous_bits, h5_dataset, chunk_size):
-    assert False
