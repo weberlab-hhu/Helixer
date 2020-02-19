@@ -30,9 +30,11 @@ class ConfusionMatrix():
     def _add_to_cm(self, y_true, y_pred, sw):
         """Put in extra function to be testable"""
         y_pred, y_true = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
-        y_pred = ConfusionMatrix._reshape_data(y_pred)
-        y_true = ConfusionMatrix._reshape_data(y_true)
-        self.cm += confusion_matrix(y_true, y_pred, labels=range(4))
+        # add to confusion matrix as long as _some_ bases were not masked
+        if y_pred.size > 0:
+            y_pred = ConfusionMatrix._reshape_data(y_pred)
+            y_true = ConfusionMatrix._reshape_data(y_true)
+            self.cm += confusion_matrix(y_true, y_pred, labels=range(4))
 
     def count_and_calculate_one_batch(self, y_true, y_pred, sw):
         self._add_to_cm(y_true, y_pred, sw)

@@ -14,8 +14,8 @@ from HelixerModel import HelixerModel, HelixerSequence
 
 
 class LSTMSequence(HelixerSequence):
-    def __init__(self, model, h5_file, mode, shuffle):
-        super().__init__(model, h5_file, mode, shuffle)
+    def __init__(self, model, h5_file, mode, shuffle, filter_by_score=False, filter_quantile=0.05):
+        super().__init__(model, h5_file, mode, shuffle, filter_by_score, filter_quantile)
         if self.class_weights is not None:
             assert not mode == 'test'  # only use class weights during training and validation
         if self.error_weights:

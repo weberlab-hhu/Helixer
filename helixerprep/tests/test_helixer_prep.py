@@ -18,12 +18,13 @@ from ..export import numerify
 from ..export.numerify import SequenceNumerifier, AnnotationNumerifier, Stepper, AMBIGUITY_DECODE
 from ..export.exporter import HelixerExportController
 from ..prediction.ConfusionMatrix import ConfusionMatrix
+from ..evaluation import rnaseq
 
 TMP_DB = 'testdata/tmp.db'
 DUMMYLOCI_DB = 'testdata/dummyloci.sqlite3'
 H5_OUT_FOLDER = 'testdata/numerify_test_out/'
 H5_OUT_FILE = H5_OUT_FOLDER + 'test_data.h5'
-
+EVAL_H5 = 'testdata/tmp.h5'
 
 ### preparation and breakdown ###
 @pytest.fixture(scope="session", autouse=True)
@@ -56,6 +57,36 @@ def setup_dummy_db(request):
         if os.path.exists(p):
             os.remove(p)
     os.rmdir(H5_OUT_FOLDER)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_dummy_evaluation_h5(request):
+    start_ends = [[0, 20000],        # increasing 0
+                  [20000, 40000],    # increasing 0
+                  [60000, 80000],    # increasing 1
+                  [100000, 120000],  # increasing 2
+                  [120000, 133333],  # increasing 3 (non contig, bc special edge handling)
+                  [133333, 120000],  # decreasing 0 (")
+                  [120000, 100000],  # decreasing 1
+                  [100000, 80000],   # decreasing 1
+                  [60000, 40000],    # decreasing 2
+                  [20000, 0]]        # decreasing 3
+    seqids = [b'chr1'] * len(start_ends)
+    h5path = EVAL_H5
+
+    h5 = h5py.File(h5path)
+    h5.create_group('data')
+    h5.create_dataset('/data/start_ends', data=start_ends, dtype='int64', compression='lzf')
+    h5.create_dataset('/data/seqids', data=seqids, dtype='S50', compression='lzf')
+
+    h5.create_group('evaluation')
+    h5.create_dataset('evaluation/coverage', shape=[10, 20000], dtype='int', fillvalue=-1, compression='lzf')
+    h5.close()
+
+    yield None  # all tests are run
+
+    os.remove(h5path)
+
 
 
 ### helper functions ###
@@ -815,3 +846,79 @@ def test_gene_lengths():
     assert np.array_equal(gl_3[949:1350], np.full((1350 - 949,), 401, dtype=np.uint32))
     assert np.array_equal(gl_3[1350:1549], np.full((1549 - 1350,), 0, dtype=np.uint32))
     assert np.array_equal(gl_3[1549:1750], np.full((1750 - 1549,), 201, dtype=np.uint32))
+
+
+### RNAseq / coverage or scoring related (evaluation)
+def test_contiguous_bits():
+    """confirm correct splitting at sequence breaks or after filtering when data is chunked for mem efficiency"""
+
+    h5 = h5py.File(EVAL_H5)
+    bits_plus, bits_minus = rnaseq.find_contiguous_segments(h5, start_i=0, end_i=h5['data/start_ends'].shape[0],
+                                                            chunk_size=h5['evaluation/coverage'].shape[1])
+
+    assert [len(x.start_ends) for x in bits_plus] == [2, 1, 1, 1]
+    assert [len(x.start_ends) for x in bits_minus] == [1, 2, 1, 1]
+    assert [x.start_i_h5 for x in bits_plus] == [0, 2, 3, 4]
+    assert [x.end_i_h5 for x in bits_plus] == [2, 3, 4, 5]
+    assert [x.start_i_h5 for x in bits_minus] == [5, 6, 8, 9]
+    assert [x.end_i_h5 for x in bits_minus] == [6, 8, 9, 10]
+
+    for b in bits_plus:
+        print(b)
+    print('---- and now minus ----')
+    for b in bits_minus:
+        print(b)
+    h5.close()
+
+
+def test_coverage_in_bits():
+    # coverage arrays have the total sequence length [0, 133333) and data for every point
+    # just needs to be divvied up to match the bits of sequence that exist in the h5 start_ends
+    length = 133333
+    coverage = np.arange(length)
+    rev_coverage = np.arange(10**6, 10**6 + length, 1)
+    print(coverage, rev_coverage)
+    h5 = h5py.File(EVAL_H5)
+    start_ends = h5['data/start_ends'][:]
+    print(start_ends)
+    chunk_size = h5['evaluation/coverage'].shape[1]
+    bits_plus, bits_minus = rnaseq.find_contiguous_segments(h5, start_i=0, end_i=h5['data/start_ends'].shape[0],
+                                                            chunk_size=chunk_size)
+    rnaseq.write_in_bits(coverage, bits_plus, h5['evaluation/coverage'], chunk_size)
+    rnaseq.write_in_bits(rev_coverage, bits_minus, h5['evaluation/coverage'], chunk_size)
+    for i, (start, end) in enumerate(start_ends):
+        cov_chunk = h5['evaluation/coverage'][i]
+        assert end != start
+        print(start, end, h5['evaluation/coverage'][i])
+        if start < end:
+            pystart, pyend = start, end
+            is_plus = True
+        else:
+            pystart, pyend = end, start
+            is_plus = False
+        # remember, forward coverage was set to be the index, and rev coverage 1mil + index before (forward dir)
+        # padding stays -1
+        if pyend == length:
+            # edge case, +strand, end of seq
+            if is_plus:
+                assert cov_chunk[0] == pystart
+                assert cov_chunk[length % chunk_size - 1] == length - 1
+                assert cov_chunk[length % chunk_size] == -1
+                assert cov_chunk[-1] == -1
+            # edge case, -strand, end of seq (or maybe start?... but it's handled more like an end)
+            else:
+                # this is flipped, and then padded right... not contiguous and not like the others... -_-
+                # padding separates the end piece, from the next otherwise contiguous segment
+                assert cov_chunk[-1] == -1
+                assert cov_chunk[length % chunk_size] == -1
+                assert cov_chunk[length % chunk_size - 1] == pystart + 10**6
+                assert cov_chunk[0] == length - 1 + 10**6
+        # normal, +strand
+        elif is_plus:
+            assert cov_chunk[0] == pystart
+            assert cov_chunk[-1] == pyend - 1
+        # normal, -strand
+        else:
+            assert cov_chunk[-1] == pystart + 10**6
+            assert cov_chunk[0] == pyend + 10 ** 6 - 1
+    h5.close()
