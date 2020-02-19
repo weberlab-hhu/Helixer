@@ -154,7 +154,6 @@ class AnnotationNumerifier(Numerifier):
 
         # encoding of transitions
         binary_transition_matrix = self._encode_transitions()
-
         # encoding of the actual labels and slicing; generation of error mask and gene length array
         if self.one_hot:
             label_matrix = self._encode_onehot4()
@@ -210,18 +209,14 @@ class AnnotationNumerifier(Numerifier):
 
         one_hot4_matrix = one_hot_matrix.astype(np.int8)
         return one_hot4_matrix
-
-    def _encode_transitions(self):
-        _features_to_transitions(self.matrix)
     
-    @staticmethod
-    def _features_to_transitions(feature_matrix):
+    def _encode_transitions(self):
         add = np.array([[0, 0, 0]])
-        shifted_feature_matrix = np.vstack((feature_matrix[1:], add))
+        shifted_feature_matrix = np.vstack((self.matrix[1:], add))
 
-        y_isTransition = np.logical_xor(feature_matrix[:-1], shifted_feature_matrix[:-1]).astype(np.int8)
-        y_direction_zero_to_one = np.logical_and(y_isTransition, feature_matrix[1:]).astype(np.int8)
-        y_direction_one_to_zero = np.logical_and(y_isTransition, feature_matrix[:-1]).astype(np.int8)
+        y_isTransition = np.logical_xor(self.matrix[:-1], shifted_feature_matrix[:-1]).astype(np.int8)
+        y_direction_zero_to_one = np.logical_and(y_isTransition, self.matrix[1:]).astype(np.int8)
+        y_direction_one_to_zero = np.logical_and(y_isTransition, self.matrix[:-1]).astype(np.int8)
         stack = np.hstack((y_direction_zero_to_one, y_direction_one_to_zero))
 
         add2 = np.array([[0, 0, 0, 0, 0, 0]])

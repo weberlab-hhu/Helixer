@@ -821,85 +821,126 @@ def test_gene_lengths():
     assert np.array_equal(gl_3[1549:1750], np.full((1750 - 1549,), 201, dtype=np.uint32))
 
 
-def test_transition_encoding():
-    feats = np.array([[0,0,0], [1,0,0], [1,1,0], [1,1,1], [1,1,0], [1,0,0], [1,1,0], [0,0,0],[1,0,0], [1,0,1], [1,0,0],[0,0,0], [0,0,0]])
-    three_class_input = []
-    for el in feats:
-    #print (el)
-        for i in range(2):
-            three_class_input.append(el)
-    three_class_input = np.array(three_class_input)
+# Setup dummy sequence with different feature transitions
+def setup_feature_transitions():
+    sess = mk_memory_session()
+    genome = Genome()
+    coord = Coordinate(genome=genome, sequence='A' * 720, length=720, seqid='a')
+    s1 = SuperLocus()
+    transcript = geenuff.orm.Transcript(super_locus=s1)
+    piece = geenuff.orm.TranscriptPiece(transcript=transcript, position=0)
+    transcript_feature_tr = geenuff.orm.Feature(start=41,
+                                             end = 671,
+                                             is_plus_strand=True,
+                                             type=geenuff.types.GEENUFF_TRANSCRIPT,
+                                             start_is_biological_start=True,
+                                             end_is_biological_end=True,
+                                             coordinate=coord)
+    transcript_feature_cds = geenuff.orm.Feature(start=131,
+                                             end = 401,
+                                             is_plus_strand=True,
+                                             type=geenuff.types.GEENUFF_CDS,
+                                             start_is_biological_start=True,
+                                             end_is_biological_end=True,
+                                             coordinate=coord)
+    transcript_feature_intron1 = geenuff.orm.Feature(start=221,
+                                             end = 311,
+                                             is_plus_strand=True,
+                                             type=geenuff.types.GEENUFF_INTRON,
+                                             start_is_biological_start=True,
+                                             end_is_biological_end=True,
+                                             coordinate=coord)
+    transcript_feature_intron2 = geenuff.orm.Feature(start=491,
+                                             end = 581,
+                                             is_plus_strand=True,
+                                             type=geenuff.types.GEENUFF_INTRON,
+                                             start_is_biological_start=True,
+                                             end_is_biological_end=True,
+                                             coordinate=coord)
+    transcript_feature_tr2 = geenuff.orm.Feature(start=705,
+                                                 end = 720,
+                                                 is_plus_strand=True,
+                                                 type=geenuff.types.GEENUFF_TRANSCRIPT,
+                                                 start_is_biological_start=True,
+                                                 end_is_biological_end=True,
+                                                 coordinate=coord)
 
-    expect = np.array([
-        [0,0,0,0,0,0],
-        [1,0,0,0,0,0],
-        [1,0,0,0,0,0],
-        [0,1,0,0,0,0],
-        [0,1,0,0,0,0],
-        [0,0,1,0,0,0],
-        [0,0,1,0,0,0],
-        [0,0,0,0,0,1],
-        [0,0,0,0,0,1],
-        [0,0,0,0,1,0],
-        [0,0,0,0,1,0],
-        [0,1,0,0,0,0],
-        [0,1,0,0,0,0],
-        [0,0,0,1,1,0],
-        [0,0,0,1,1,0],
-        [1,0,0,0,0,0],
-        [1,0,0,0,0,0],
-        [0,0,1,0,0,0],
-        [0,0,1,0,0,0],
-        [0,0,0,0,0,1],
-        [0,0,0,0,0,1],
-        [0,0,0,1,0,0],
-        [0,0,0,1,0,0],
-        [0,0,0,0,0,0],
-        [0,0,0,0,0,0],
-        [0,0,0,0,0,0]])
-
-    transition_encoding = AnnotationNumerifier._features_to_transitions(three_class_input)
-    assert np.array_equal(transition_encoding, expect)
 
 
-def test_transition_weights():
-    # Load transition_dummy.h5
-    transition_dummy = []
-    with h5py.File('/home/chris/Documents/HelixerPrep/HelixerPrep/helixerprep/testdata/dummy_transitions.h5', 'r') as f:
-        for i in range(len(f["dummy transitions"])):
-            transition_dummy.append(f["dummy transitions"][i])
-        f.close()
-    transition_dummy = np.array(transition_dummy)
-    # Test reshaping and application of transition weights
+    piece.features = [transcript_feature_tr, transcript_feature_cds, transcript_feature_intron1, transcript_feature_intron2, transcript_feature_tr2]
+
+    sess.add_all([genome, coord, s1, transcript, piece, transcript_feature_tr, transcript_feature_cds, transcript_feature_intron1, transcript_feature_intron2, transcript_feature_tr2])
+    sess.commit()
+    return sess, coord
+
+
+def test_transition_encoding_and_weights():
+    '''Tests encoding of feature transitions, usage of transition weights and stretched weights'''
+    _, coord = setup_feature_transitions() 
+    numerifier = AnnotationNumerifier(coord=coord,
+                                      features=coord.features,
+                                      max_len=1000,
+                                      one_hot=False)
+    nums = numerifier.coord_to_matrices()[-1]
+
+    # expected output of AnnotationNumerifier.coord_to_matrices()
+    expect_plusStrand_encoding = np.zeros((720,6)).astype(np.int8)
+    expect_plusStrand_encoding[40:42,0] = 1 # UTR 1 +
+    expect_plusStrand_encoding[670:672,3] = 1 # UTR 2 -
+    expect_plusStrand_encoding[130:132,1] = 1 # CDS +
+    expect_plusStrand_encoding[400:402,4] = 1 # CDS -
+    expect_plusStrand_encoding[220:222,2] = 1 # First Intron +
+    expect_plusStrand_encoding[310:312,5] = 1 # First Intron -
+    expect_plusStrand_encoding[490:492,2] = 1 # Second Intron +
+    expect_plusStrand_encoding[580:582,5] = 1 # Second Intron -
+    expect_plusStrand_encoding[704:706, 0] = 1 # Start of 2. 5prime UTR
+
+    expect_minusStrand_encoding = np.zeros((720,6)).astype(np.int8)
+
+    assert np.array_equal(nums[0], expect_plusStrand_encoding)
+    assert np.array_equal(nums[1], expect_minusStrand_encoding)
+
+    # initializing variables + reshape   
+    transitions_plusStrand = np.array(nums[0]).reshape((8,9,10,6))
+    transitions_minusStrand = np.array(nums[1]).reshape((8,9,10,6))
     transition_weights = [10,20,30,40,50,60]
-    stretch = 0
-    applied_tw_no_stretch = LSTMSequence._squish_tw_to_sw(transition_dummy, transition_weights, stretch)
+    stretch = 0 # if stretch is not called the default value is 0
+
+    # tw = Transition weights; xS = xStretch
+    applied_tw_noS_plus = LSTMSequence._squish_tw_to_sw(transitions_plusStrand, transition_weights, stretch)
+    applied_tw_noS_minus = LSTMSequence._squish_tw_to_sw(transitions_minusStrand, transition_weights, stretch)
+    expect_tw_minus = np.ones((8,9))
+    assert np.array_equal(expect_tw_minus, applied_tw_noS_minus)
+
     expect_no_stretch = np.array([
-        [1,1,1,1,10,1,1,1,1],
-        [1,1,1,1,20,1,1,1,1],
-        [1,1,1,1,30,1,1,1,1],
-        [1,1,1,1,60,1,1,1,1],
-        [1,1,1,1,50,1,1,1,1],
-        [1,1,1,1,30,1,1,1,1],
-        [1,1,1,1,60,1,1,1,1],
-        [1,1,1,1,40,1,1,10,1]
+            [1,1,1,1,10,1,1,1,1],
+            [1,1,1,1,20,1,1,1,1],
+            [1,1,1,1,30,1,1,1,1],
+            [1,1,1,1,60,1,1,1,1],
+            [1,1,1,1,50,1,1,1,1],
+            [1,1,1,1,30,1,1,1,1],
+            [1,1,1,1,60,1,1,1,1],
+            [1,1,1,1,40,1,1,10,1]
     ])
-    assert np.array_equal(applied_tw_no_stretch, expect_no_stretch)
-    
-    # Additional Test with stretched weights
+    assert np.array_equal(applied_tw_noS_plus, expect_no_stretch)
+
+    # transition weights are spread over sample weights in each direction
+    # amplifies area around the transition by: 
+    # [ tw/2**3 [ tw/2**2 [ tw/2**1 [ tw ] tw/2**1 ] tw/2**2] .. 
     stretch = 3
     expect_3_stretch = np.array([
-        [1,1.25,2.5,5,10,5,2.5,1.25,1],
-        [1,2.5,5,10,20,10,5,2.5,1],
-        [1,3.75,7.5,15,30,15,7.5,3.75,1],
-        [1,7.5,15,30,60,30,15,7.5,1],
-        [1,6.25,12.5,25,50,25,12.5,6.25,1],
-        [1,3.75,7.5,15,30,15,7.5,3.75,1],
-        [1,7.5,15,30,60,30,15,7.5,1],
-        [1,5,10,20,40,20,5,10,5],
+            [1,1.25,2.5,5,10,5,2.5,1.25,1],
+            [1,2.5,5,10,20,10,5,2.5,1],
+            [1,3.75,7.5,15,30,15,7.5,3.75,1],
+            [1,7.5,15,30,60,30,15,7.5,1],
+            [1,6.25,12.5,25,50,25,12.5,6.25,1],
+            [1,3.75,7.5,15,30,15,7.5,3.75,1],
+            [1,7.5,15,30,60,30,15,7.5,1],
+            [1,5,10,20,40,20,5,10,5], # works as intended, 
+                                      # but should be [.., 40, 20, 10, 10, 5]
+                                      # should not be a problem for smaller s_tw values 
+                                      # due to feature transition frequency 
     ])
-    applied_tw_3_stretch = LSTMSequence._squish_tw_to_sw(transition_dummy, transition_weights, stretch)
-    print (applied_tw_3_stretch, "\n", expect_3_stretch)
-    assert np.array_equal(applied_tw_3_stretch, expect_3_stretch)
-
+    applied_tw_3S_plus = LSTMSequence._squish_tw_to_sw(transitions_plusStrand, transition_weights, stretch)
+    assert np.array_equal(applied_tw_3S_plus, expect_3_stretch)
 
