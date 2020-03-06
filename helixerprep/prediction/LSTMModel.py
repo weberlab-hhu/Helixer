@@ -22,7 +22,7 @@ class LSTMSequence(HelixerSequence):
             assert not mode == 'test'
 
     def __getitem__(self, idx):
-        X, y, sw, error_rates, gene_lengths, transitions = self._get_batch_data(idx)
+        X, y, sw, error_rates, gene_lengths, transitions, coverage_scores = self._get_batch_data(idx)
         pool_size = self.model.pool_size
         assert pool_size > 1, 'pooling size of <= 1 oh oh..'
         assert y.shape[1] % pool_size == 0, 'pooling size has to evenly divide seq len'
@@ -84,9 +84,21 @@ class LSTMSequence(HelixerSequence):
                     pool_size,
                     transitions.shape[-1],
                 ))
-
+                # more reshaping and summing  up transition weights for multiplying with sample weights
                 sw_t = self.compress_tw(transitions)
                 sw = np.multiply(sw_t, sw)
+
+            if self.coverage:
+                coverage_scores = coverage_scores.reshape((coverage_scores.shape[0], -1, pool_size))
+                zero_positions = np.where(coverage_scores == 0)
+                # scale coverage scores [0,1] by adding small numbers, default = 0.1
+                # fairly good positions don't lose importance 
+                coverage_scores = np.add(coverage_scores, self.coverage_scaling)    
+                coverage_scores[zero_positions[0], zero_positions[1], zero_positions[2]] = 0
+                coverage_scores = np.sum(coverage_scores, axis=2)
+                # average scores according to pool_size
+                coverage_scores = np.divide(coverage_scores, pool_size).astype(np.float32)
+                sw = np.multiply(coverage_scores, sw)
 
             if self.error_weights:
                 # finish by multiplying the sample_weights with the error rate
