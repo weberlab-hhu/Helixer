@@ -113,7 +113,7 @@ class ConfusionMatrix():
                 X, sw = inputs[0]
                 y_true = inputs[1]
                 y_pred = model.predict_on_batch([X, sw])
-            elif len(inputs == 3):
+            elif len(inputs) == 3:
                 X, y_true, sw = inputs
                 y_pred = model.predict_on_batch(X)
             else:
