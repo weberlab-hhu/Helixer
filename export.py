@@ -23,6 +23,9 @@ if __name__ == '__main__':
     io.add_argument('--db-path-in', type=str, required=True,
                     help='Path to the Helixer SQLite input database.')
     io.add_argument('--out-dir', type=str, required=True, help='Output dir for encoded data files.')
+    io.add_argument('--add-additional', type=str,
+                    help='outputs the datasets under alternatives/{add-additional}/ (and checks sort order against '
+                         'existing "data" datasets). Use to add e.g. additional annotations from Augustus.')
 
     genomes = parser.add_argument_group("Genome selection")
     genomes.add_argument('--genomes', type=str, default='',
@@ -43,6 +46,15 @@ if __name__ == '__main__':
                       help='Whether to only output a single file named test_data.h5')
     data.add_argument('--keep-errors', action="store_true",
                       help="Set this flag if entirely erroneous sequences should _not_ be excluded")
+    data.add_argument('--export-featureless', action='store_true',
+                      help='This overrides the default behavior of ignoring coordinates without a single feature (as '
+                           'these frequently were never actually annotated). Generates a "data/featureless" which '
+                           'marks chunks from featureless coordinates that would have been skipped')
+    data.add_argument('--modes', default='all',
+                      help='either "all" (default), or a comma separated list with desired members of the following '
+                           '{X, seq_meta, y, anno_meta, transitions} that should be exported. This can be useful, for '
+                           'instance when skipping transitions (to reduce size/mem) or skipping X and seq_meta because '
+                           'you are adding an additional annotation set to an existing file.')
 
     args = parser.parse_args()
     assert not (args.genomes and args.exclude_genomes), 'Can not include and exclude together'

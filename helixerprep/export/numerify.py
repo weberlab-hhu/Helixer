@@ -190,7 +190,6 @@ class AnnotationNumerifier(Numerifier):
                 length_arr = np.full((end - start,), end - start)
                 self.gene_lengths[start:end] = np.maximum(self.gene_lengths[start:end], length_arr)
 
-
     def _encode_onehot4(self):
         # Class order: Intergenic, UTR, CDS, (non-coding Intron), Intron
         # This could be done in a more efficient way, but this way we may catch bugs
@@ -215,16 +214,17 @@ class AnnotationNumerifier(Numerifier):
         add = np.array([[0, 0, 0]])
         shifted_feature_matrix = np.vstack((self.matrix[1:], add))
 
-        y_isTransition = np.logical_xor(self.matrix[:-1], shifted_feature_matrix[:-1]).astype(np.int8)
-        y_direction_zero_to_one = np.logical_and(y_isTransition, self.matrix[1:]).astype(np.int8)
-        y_direction_one_to_zero = np.logical_and(y_isTransition, self.matrix[:-1]).astype(np.int8)
+        y_is_transition = np.logical_xor(self.matrix[:-1], shifted_feature_matrix[:-1]).astype(np.int8)
+        y_direction_zero_to_one = np.logical_and(y_is_transition, self.matrix[1:]).astype(np.int8)
+        y_direction_one_to_zero = np.logical_and(y_is_transition, self.matrix[:-1]).astype(np.int8)
         stack = np.hstack((y_direction_zero_to_one, y_direction_one_to_zero))
 
         add2 = np.array([[0, 0, 0, 0, 0, 0]])
         shape_stack = np.insert(stack, 0, add2, axis=0).astype(np.int8)
         shape_end_stack = np.insert(stack, len(stack), add2, axis=0).astype(np.int8)
-        binary_transitions  = np.logical_or(shape_stack, shape_end_stack).astype(np.int8)
-        return binary_transitions # 6 columns, one for each switch (+TR, +CDS, +In, -TR, -CDS, -In)
+        binary_transitions = np.logical_or(shape_stack, shape_end_stack).astype(np.int8)
+        return binary_transitions  # 6 columns, one for each switch (+TR, +CDS, +In, -TR, -CDS, -In)
+
 
 class CoordNumerifier(object):
     """Combines the different Numerifiers which need to operate on the same Coordinate
