@@ -1,18 +1,13 @@
 import os
 import h5py
-import copy
-import time
 import numpy as np
 import random
 import datetime
 import subprocess
 from itertools import compress
-from collections import defaultdict
 from sklearn.model_selection import train_test_split
 
 import geenuff, helixerprep
-from geenuff.base.orm import Coordinate, Genome, Feature
-from geenuff.base.helpers import full_db_path
 from geenuff.applications.exporter import GeenuffExportController
 from .numerify import CoordNumerifier
 
@@ -60,7 +55,7 @@ class HelixerExportController(object):
             'X', 'y', 'sample_weights', 'gene_lengths', 'transitions', 'err_samples',
             'fully_intergenic_samples', 'start_ends', 'species', 'seqids'
         ]
-        dsets = {key:None for key in dset_keys}
+        dsets = {key: None for key in dset_keys}
 
         # keys of the arrays that need to be padded
         numerify_keys = ['inputs', 'labels', 'label_masks', 'gene_lengths', 'transitions']
@@ -85,7 +80,7 @@ class HelixerExportController(object):
         if n_y_cols > 3:
             dsets['fully_intergenic_samples'] = np.all(dsets['y'][:, :, 0] == 1, axis=1)
         else:
-            dsets['fully_intergenic_samples']= np.all(dsets['y'][:, :, 0] == 0, axis=1)
+            dsets['fully_intergenic_samples'] = np.all(dsets['y'][:, :, 0] == 0, axis=1)
         # additional arrays
         dsets['start_ends'] = np.array(flat_data['start_ends'], dtype=np.int64)
         dsets['species'] = np.array(flat_data['species'])
