@@ -74,7 +74,7 @@ def setup_dummy_evaluation_h5(request):
     seqids = [b'chr1'] * len(start_ends)
     h5path = EVAL_H5
 
-    h5 = h5py.File(h5path)
+    h5 = h5py.File(h5path, 'a')
     h5.create_group('data')
     h5.create_dataset('/data/start_ends', data=start_ends, dtype='int64', compression='lzf')
     h5.create_dataset('/data/seqids', data=seqids, dtype='S50', compression='lzf')
@@ -852,7 +852,7 @@ def test_gene_lengths():
 def test_contiguous_bits():
     """confirm correct splitting at sequence breaks or after filtering when data is chunked for mem efficiency"""
 
-    h5 = h5py.File(EVAL_H5)
+    h5 = h5py.File(EVAL_H5, 'r')
     bits_plus, bits_minus = rnaseq.find_contiguous_segments(h5, start_i=0, end_i=h5['data/start_ends'].shape[0],
                                                             chunk_size=h5['evaluation/coverage'].shape[1])
 
@@ -878,7 +878,7 @@ def test_coverage_in_bits():
     coverage = np.arange(length)
     rev_coverage = np.arange(10**6, 10**6 + length, 1)
     print(coverage, rev_coverage)
-    h5 = h5py.File(EVAL_H5)
+    h5 = h5py.File(EVAL_H5, 'a')
     start_ends = h5['data/start_ends'][:]
     print(start_ends)
     chunk_size = h5['evaluation/coverage'].shape[1]
