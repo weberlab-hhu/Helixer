@@ -1,4 +1,7 @@
 #! /usr/bin/env python3
+"""Generates an ensemble from 2 or more prediction files. All files must have the same shape.
+The ensembling is done by averaging the individual softmax values."""
+
 import h5py
 import datetime
 import argparse

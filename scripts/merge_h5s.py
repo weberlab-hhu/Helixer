@@ -7,8 +7,16 @@ def main(data, predictions, save_to):
     h5_pred = h5py.File(predictions)
     h5_out = h5py.File(save_to, 'w')
     print(h5_data.id, h5_out.id)
-    h5py.h5o.copy(h5_data.id, b"data", h5_out.id, b"data")
-    h5py.h5o.copy(h5_pred.id, b"predictions", h5_out.id, b"predictions")
+    for key in h5_data.keys():
+        bkey = key.encode('utf-8')
+        print('copying {} from {}'.format(bkey, data))
+        # generally: b'data', (b'evalualtion', b'scores')
+        h5py.h5o.copy(h5_data.id, bkey, h5_out.id, bkey)
+    for key in h5_pred.keys():
+        bkey = key.encode('utf-8')
+        print('copying {} from {}'.format(bkey, predictions))
+        # generall: b'predictions'
+        h5py.h5o.copy(h5_pred.id, bkey, h5_out.id, bkey)
 
 
 if __name__ == '__main__':

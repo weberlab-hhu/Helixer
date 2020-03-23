@@ -1,4 +1,6 @@
 #! /usr/bin/env python3
+"""Prints the class counts of a data file"""
+
 import h5py
 import numpy as np
 import argparse

@@ -30,9 +30,11 @@ class ConfusionMatrix():
     def _add_to_cm(self, y_true, y_pred, sw):
         """Put in extra function to be testable"""
         y_pred, y_true = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
-        y_pred = ConfusionMatrix._reshape_data(y_pred)
-        y_true = ConfusionMatrix._reshape_data(y_true)
-        self.cm += confusion_matrix(y_true, y_pred, labels=range(4))
+        # add to confusion matrix as long as _some_ bases were not masked
+        if y_pred.size > 0:
+            y_pred = ConfusionMatrix._reshape_data(y_pred)
+            y_true = ConfusionMatrix._reshape_data(y_true)
+            self.cm += confusion_matrix(y_true, y_pred, labels=range(4))
 
     def count_and_calculate_one_batch(self, y_true, y_pred, sw):
         self._add_to_cm(y_true, y_pred, sw)
@@ -105,15 +107,18 @@ class ConfusionMatrix():
         for i in range(len(self.generator)):
             print(i, '/', len(self.generator) - 1, end="\r")
 
-            X, y_true, sw = self.generator[i]
-            y_pred = model.predict_on_batch(X)
-
-            # throw away additional outputs
-            if type(y_true) is list:
-                y_pred, meta_pred = y_pred
-                y_true, meta_true = y_true
-            if type(sw) is list:
-                sw = sw[0]
+            inputs = self.generator[i]
+            if len(inputs) == 2 and type(inputs[0]) is list:
+                # dilated conv input scheme
+                X, sw = inputs[0]
+                y_true = inputs[1]
+                y_pred = model.predict_on_batch([X, sw])
+            elif len(inputs) == 3:
+                X, y_true, sw = inputs
+                y_pred = model.predict_on_batch(X)
+            else:
+                print('Unknown inputs from keras sequence')
+                exit()
 
             self._add_to_cm(y_true, y_pred, sw)
         return self._print_results()

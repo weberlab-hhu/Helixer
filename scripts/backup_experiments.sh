@@ -1,4 +1,5 @@
 #! /bin/bash
+# from troodon:/mnt/data/experiments_backup
 unalias rsync &> /dev/null
 
 echo -e "\n----------------\n"

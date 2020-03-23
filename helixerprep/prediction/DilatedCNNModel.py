@@ -10,6 +10,16 @@ from HelixerModel import HelixerModel, HelixerSequence
 class DilatedCNNSequence(HelixerSequence):
     def __getitem__(self, idx):
         X, y, sw, _, _, _, = self._get_batch_data(idx)
+
+        if self.class_weights is not None:
+            cls_arrays = [y[:, :, col] == 1 for col in range(4)]  # whether a class is present
+            cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
+            # add class weights to applicable timesteps
+            cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
+            cw = np.sum(cw_arrays, axis=-1)
+            # multiply with previous sample weights
+            sw = np.multiply(sw, cw)
+
         # add the sample weights as extra input so they can be used in the custom loss function
         return [X, sw], y
 
@@ -44,7 +54,7 @@ class DilatedCNNModel(HelixerModel):
             y_pred = tf.clip_by_value(y_pred, _epsilon, 1. - _epsilon)
             neg_log_likelihood = - tf.reduce_sum(y_true * tf.log(y_pred), axis)
             # mask by sample weights
-            masked = tf.math.multiply(neg_log_likelihood, sample_weights)
+            masked = tf.multiply(neg_log_likelihood, sample_weights)
             return masked
         return loss
 
@@ -75,7 +85,7 @@ class DilatedCNNModel(HelixerModel):
             x = Dense(self.hidden_layer_size, activation="relu")(x)
 
         x = Dropout(self.dropout)(x)
-        out = Dense(4, activation="relu")(x)
+        out = Dense(4, activation="softmax")(x)
         model = Model(inputs=[input_X, input_sw], outputs=out)
         return model
 

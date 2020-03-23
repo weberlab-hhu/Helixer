@@ -46,6 +46,7 @@ class ConfusionMatrixTrain(Callback):
         self.canary_generator = canary_generator
         self.report_to_nni = report_to_nni
         self.best_val_genic_f1 = 0.0
+        self.epochs_without_improvement = 0
 
     def on_epoch_end(self, epoch, logs=None):
         val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, self.model)
@@ -59,6 +60,15 @@ class ConfusionMatrixTrain(Callback):
             self.model.save(self.save_model_path)
             print('saved new best model with genic f1 of {} at {}'.format(self.best_val_genic_f1,
                                                                           self.save_model_path))
+            self.epochs_without_improvement = 0
+        else:
+            self.epochs_without_improvement += 1
+            # hard-coded patience of 2 for now
+            if self.epochs_without_improvement > 1:
+                self.model.stop_training = True
+        # hard-coded check of genic f1 of 0.5 at epoch 10
+        if epoch == 10 and val_genic_f1 < 0.5:
+            self.model.stop_training = True
 
     def on_train_end(self, logs=None):
         if self.report_to_nni:
@@ -66,7 +76,7 @@ class ConfusionMatrixTrain(Callback):
 
 
 class HelixerSequence(Sequence):
-    def __init__(self, model, h5_file, mode, shuffle):
+    def __init__(self, model, h5_file, mode, shuffle, filter_by_score=False, filter_quantile=0.05):
         assert mode in ['train', 'val', 'test']
         self.model = model
         self.h5_file = h5_file
@@ -93,8 +103,26 @@ class HelixerSequence(Sequence):
             self.usable_idx = np.flatnonzero(np.array(h5_file['/data/err_samples']) == False)
         else:
             self.usable_idx = list(range(self.x_dset.shape[0]))
+
+        print('total chunks: {}'.format(len(self.usable_idx)))
+        if filter_by_score:
+            self._filter_usable_idx_by_score(quantile=filter_quantile)
+            print('total filtered chunks: {}'.format(len(self.usable_idx)))
+
         if shuffle:
             random.shuffle(self.usable_idx)
+
+    def _filter_usable_idx_by_score(self, quantile=0.05, score_dataset="scores/one_centered", hard=True, prob=0.5):
+        """filters or down samples data by a evidence derived score for the reference annotation in any chunk"""
+        scores = self.h5_file[score_dataset][:]
+        threshold = np.quantile(scores, quantile)
+
+        self.usable_idx = np.where(self.h5_file[score_dataset][self.usable_idx] > threshold)[0]
+        if not hard:
+            to_review = np.where(self.h5_file[score_dataset][self.usable_idx] < threshold)[0]
+            n_to_keep = int(to_review.size * prob)
+            to_keep = np.random.choice(to_review, n_to_keep, replace=False)
+            self.usable_idx = np.sort(np.concatenate((self.usable_idx, to_keep)))
 
     def _cp_into_namespace(self, names):
         """Moves class properties from self.model into this class for brevity"""
@@ -208,6 +236,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-res', '--resume-training', action='store_true')
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
         self.parser.add_argument('-ew', '--error-weights', action='store_true')
+        self.parser.add_argument('-qu', '--quantile-filter', type=float)
         # testing
         self.parser.add_argument('-lm', '--load-model-path', type=str, default='')
         self.parser.add_argument('-td', '--test-data', type=str, default='')
@@ -290,10 +319,16 @@ class HelixerModel(ABC):
 
     def gen_training_data(self):
         SequenceCls = self.sequence_cls()
+        if self.quantile_filter is None:
+            filter_by_score = False
+        else:
+            filter_by_score = True
         return SequenceCls(model=self,
                            h5_file=self.h5_train,
                            mode='train',
-                           shuffle=True)
+                           shuffle=True,
+                           filter_by_score=filter_by_score,
+                           filter_quantile=self.quantile_filter)
 
     def gen_validation_data(self):
         SequenceCls = self.sequence_cls()
@@ -475,8 +510,6 @@ class HelixerModel(ABC):
             if self.verbose:
                 print(i, '/', len(test_sequence), end='\r')
             predictions = model.predict_on_batch(test_sequence[i][0])
-            if type(predictions) is list:
-                predictions, meta_predictions = predictions
             # join last two dims when predicting one hot labels
             predictions = predictions.reshape(predictions.shape[:2] + (-1,))
             # reshape when predicting more than one point at a time
