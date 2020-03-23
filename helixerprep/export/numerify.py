@@ -154,7 +154,6 @@ class AnnotationNumerifier(Numerifier):
 
         # encoding of transitions
         binary_transition_matrix = self._encode_transitions()
-
         # encoding of the actual labels and slicing; generation of error mask and gene length array
         if self.one_hot:
             label_matrix = self._encode_onehot4()
@@ -209,7 +208,7 @@ class AnnotationNumerifier(Numerifier):
 
         one_hot4_matrix = one_hot_matrix.astype(np.int8)
         return one_hot4_matrix
-
+    
     def _encode_transitions(self):
         add = np.array([[0, 0, 0]])
         shifted_feature_matrix = np.vstack((self.matrix[1:], add))
