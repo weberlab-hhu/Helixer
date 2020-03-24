@@ -63,7 +63,7 @@ class HelixerExportController(object):
                                compression='lzf',
                                shuffle=shuffle)  # only for the compression
 
-    def _save_data(self, h5_file, flat_data, chunk_size, n_y_cols, h5_group='/data/'):
+    def _save_data(self, h5_file, flat_data, h5_group='/data/'):
         # todo, pull from flat_data dict
         dset_keys = [
             'X', 'y', 'sample_weights', 'gene_lengths', 'transitions', 'err_samples',
@@ -72,37 +72,11 @@ class HelixerExportController(object):
         dsets = {key: None for key in dset_keys}
 
         # keys of the arrays that need to be padded
-        numerify_keys = [key for key in flat_data if isinstance(flat_data[key][0], np.ndarray)]
 
-        assert len(set(len(flat_data[key]) for key in numerify_keys)) == 1, 'unequal data lengths'
-
-        n_seqs = len(flat_data['X'])
-        for i, num_key in enumerate(numerify_keys):
-            # insert all the sequences so that 0-padding is added if needed
-            # the first 5 keys in dsets match the 5 numerify keys
-            # can be done since dicts keep their insert order since 3.6
-            d = flat_data[num_key]
-            shape = (n_seqs, chunk_size)
-            if len(d[0].shape) == 2:
-                shape += (d[0].shape[1],)
-            padded_d = np.zeros(shape, dtype=d[0].dtype)
-            for j in range(n_seqs):
-                padded_d[j, :len(d[j])] = d[j]
-            dsets[num_key] = padded_d
-
-        # todo, can we setup all matrices in _one_ spot?? AKA numerifier
-        dsets['err_samples'] = np.any(dsets['sample_weights'] == 0, axis=1)
-        # just one entry per chunk
-        if n_y_cols > 3:
-            dsets['fully_intergenic_samples'] = np.all(dsets['y'][:, :, 0] == 1, axis=1)
-        else:
-            dsets['fully_intergenic_samples'] = np.all(dsets['y'][:, :, 0] == 0, axis=1)
-        # additional arrays
-        dsets['start_ends'] = np.array(flat_data['start_ends'], dtype=np.int64)
-        dsets['species'] = np.array(flat_data['species'])
-        dsets['seqids'] = np.array(flat_data['seqids'])
+        assert len(set(mat_info.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
 
         # setup keys
+        n_seqs = flat_data[0].matrix.shape[0]  # should be y, but should also not matter
         # append to or create datasets
         if h5_group + 'y' in h5_file:
             for dset_key in dsets.keys():
@@ -111,19 +85,8 @@ class HelixerExportController(object):
                 dset.resize(old_len + n_seqs, axis=0)
         else:
             old_len = 0
-            key_dtypes = (('X', 'float16'),
-                          ('y', 'int8'),
-                          ('sample_weights', 'int8'),
-                          ('gene_lengths', 'uint32'),
-                          ('transitions', 'int8'),
-                          ('err_samples', 'bool'),
-                          ('fully_intergenic_samples', 'bool'),
-                          ('species', 'S25'),
-                          ('seqids', 'S50'),
-                          ('start_ends', 'int64'))
-
-            for key, dtype in key_dtypes:
-                self._create_dataset(h5_file, h5_group + key, dsets[key], dtype)
+            for mat_info in flat_data:
+                self._create_dataset(h5_file, h5_group + mat_info.key, mat_info.matrix, mat_info.dtype)
 
         # writing to the h5 file
         for dset_key, data in dsets.items():
@@ -187,19 +150,22 @@ class HelixerExportController(object):
             self.h5_val.close()
 
     def _numerify_coord(self, coord, coord_features, chunk_size, keep_errors, one_hot):
-        coord_data = CoordNumerifier.numerify(self.geenuff_exporter, coord, coord_features, chunk_size,
+        print(chunk_size, 'chunk size')
+        coord_data = CoordNumerifier.numerify(coord, coord_features, chunk_size,
                                               one_hot)
         # keep track of variables
-        n_seqs = len(coord_data['y'])
-        n_masked_bases = sum([np.count_nonzero(m == 0) for m in coord_data['sample_weights']])
-        n_ig_bases = sum([np.count_nonzero(l[:, 0] == 1) for l in coord_data['y']])
+        y = [cd.matrix for cd in coord_data if cd.key == 'y'][0]
+        sample_weights = [cd.matrix for cd in coord_data if cd.key == 'sample_weights']
+        n_seqs = y.shape[0]
+        n_masked_bases = sum([np.count_nonzero(m == 0) for m in sample_weights])  # todo, use numpy
+        n_ig_bases = sum([np.count_nonzero(l[:, 0] == 1) for l in y])
         # filter out sequences that are completely masked as error
         if not keep_errors:
-            valid_data = [s.any() for s in coord_data['sample_weights']]
+            valid_data = [s.any() for s in sample_weights]
             n_invalid_seqs = n_seqs - valid_data.count(True)
             if n_invalid_seqs > 0:
-                for key in coord_data.keys():
-                    coord_data[key] = list(compress(coord_data[key], valid_data))
+                for key in coord_data.keys():  # todo, different looping method
+                    coord_data[key] = list(compress(coord_data[key], valid_data))  # todo, should still be using numpy
         else:
             n_invalid_seqs = 0
         masked_bases_perc = n_masked_bases / (coord.length * 2) * 100
@@ -218,7 +184,6 @@ class HelixerExportController(object):
 
         train_coords, val_coords = self._split_coords_by_N90(genome_coords, val_size)
         n_coords_done = 1
-        n_y_cols = 4 if one_hot else 3
         for genome_id, coords in genome_coords.items():
             for (coord_id, coord_len) in coords:
                 coord = self.geenuff_exporter.get_coord_by_id(coord_id)
@@ -228,14 +193,14 @@ class HelixerExportController(object):
 
                 flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc = numerify_outputs
                 if self.only_test_set:
-                    self._save_data(self.h5_test, flat_data, chunk_size, n_y_cols)
+                    self._save_data(self.h5_test, flat_data)
                     assigned_set = 'test'
                 else:
                     if coord_id in train_coords:
-                        self._save_data(self.h5_train, flat_data, chunk_size, n_y_cols)
+                        self._save_data(self.h5_train, flat_data)
                         assigned_set = 'train'
                     else:
-                        self._save_data(self.h5_val, flat_data, chunk_size, n_y_cols)
+                        self._save_data(self.h5_val, flat_data)
                         assigned_set = 'val'
                 print((f'{n_coords_done}/{n_coords} Numerified {coord} of {coord.genome.species} '
                        f"with {len(coord.features)} features in {len(flat_data['X'])} chunks, "

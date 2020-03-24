@@ -226,43 +226,75 @@ class AnnotationNumerifier(Numerifier):
         return binary_transitions  # 6 columns, one for each switch (+TR, +CDS, +In, -TR, -CDS, -In)
 
 
+class MatAndInfo:
+    """organizes data and meta info for post-processing and saving a matrix"""
+    def __init__(self, key, matrix, dtype):
+        self.key = key
+        self.matrix = matrix
+        self.dtype = dtype
+
+
 class CoordNumerifier(object):
     """Combines the different Numerifiers which need to operate on the same Coordinate
     to ensure consistent parameters. Selects all Features of the given Coordinate.
     """
+
     @staticmethod
-    def numerify(geenuff_exporter, coord, coord_features, max_len, one_hot=True):
-        assert isinstance(max_len, int) and max_len > 0
+    def pad(d):
+        n_seqs = len(d)
+        # insert all the sequences so that 0-padding is added if needed
+        shape = tuple([n_seqs] + list(d[0].shape))
+        padded_d = np.zeros(shape, dtype=d[0].dtype)
+        for j in range(n_seqs):
+            padded_d[j, :len(d[j])] = d[j]
+        return padded_d
+
+    @staticmethod
+    def numerify(coord, coord_features, max_len, one_hot=True):
+        assert isinstance(max_len, int) and max_len > 0, 'what is {} of type {}'.format(max_len, type(max_len))
 
         anno_numerifier = AnnotationNumerifier(coord=coord, features=coord_features, max_len=max_len,
                                                one_hot=one_hot)
         seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len)
 
         # returns results for both strands, with the plus strand first in the list
-        inputs, input_masks = seq_numerifier.coord_to_matrices()
-        labels, label_masks, gene_lengths, transitions = anno_numerifier.coord_to_matrices()
+        x, input_masks = seq_numerifier.coord_to_matrices()
+        y, sample_weights, gene_lengths, transitions = anno_numerifier.coord_to_matrices()
+
+        x, y, sample_weights, gene_lengths, transitions = \
+            (CoordNumerifier.pad(x) for x in [x, y, sample_weights, gene_lengths, transitions])
 
         start_ends = anno_numerifier.paired_steps
         # flip the start ends back for - strand and append
         start_ends += [(x[1], x[0]) for x in anno_numerifier.paired_steps[::-1]]
+        start_ends = np.array(start_ends, dtype=np.int64)
 
         # mark examples from featureless coordinate / assume there is no trustworthy annotation
         if not coord_features:
             logging.warning('Sequence {} has no annotations'.format(coord.seqid))
-            is_annotated = [0] * len(inputs)
+            is_annotated = [0] * len(x)
         else:
-            is_annotated = [1] * len(inputs)
+            is_annotated = [1] * len(x)
+        is_annotated = np.array(is_annotated, dtype=np.bool)
+
+        # todo, can we setup all matrices in _one_ spot?? AKA numerifier
+        err_samples = np.any(sample_weights == 0, axis=1)
+        # just one entry per chunk
+        if one_hot:
+            fully_intergenic_samples = np.all(y[:, :, 0] == 0, axis=1)
+        else:
+            fully_intergenic_samples = np.all(y[:, :, 0] == 1, axis=1)
 
         # do not output the input_masks as it is not used for anything
-        out = {
-            'X': inputs,
-            'y': labels,
-            'sample_weights': label_masks,
-            'gene_lengths': gene_lengths,
-            'transitions': transitions,
-            'species': [coord.genome.species.encode('ASCII')] * len(inputs),
-            'seqids': [coord.seqid.encode('ASCII')] * len(inputs),
-            'start_ends': start_ends,
-            'is_annotated': is_annotated,
-        }
+        out = (MatAndInfo('y', y, 'int8'),  # y should always be first (bc currently we always want it)
+               MatAndInfo('X', x, 'float16'),
+               MatAndInfo('sample_weights', sample_weights, 'int8'),
+               MatAndInfo('gene_lengths', gene_lengths, 'uint32'),
+               MatAndInfo('transitions', transitions, 'int8'),
+               MatAndInfo('err_samples', err_samples, 'bool'),
+               MatAndInfo('fully_intergenic_samples', fully_intergenic_samples,  'bool'),
+               MatAndInfo('species', np.array([coord.genome.species.encode('ASCII')] * len(x)), 'S25'),
+               MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(x)), 'S50'),
+               MatAndInfo('start_ends', start_ends, 'int64'),
+               MatAndInfo('is_annotated', is_annotated, 'bool'))
         return out
