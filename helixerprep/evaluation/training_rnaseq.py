@@ -272,8 +272,8 @@ def main(species, bam, h5_data, d_utp, dont_score):
             y = h5['data/y'][i:(i + by_out)]
             datay = y.reshape([-1, 4])
             _, chunk_size, n_cats = y.shape
-            coverage = h5['evaluation/coverage'][i:(i + by)].ravel()
-            spliced_coverage = h5['evaluation/spliced_coverage'][i:(i + by)].ravel()
+            coverage = h5['evaluation/coverage'][i:(i + by_out)].ravel()
+            spliced_coverage = h5['evaluation/spliced_coverage'][i:(i + by_out)].ravel()
             by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size])
             for scorer in scorers:
                 raw_score, mask = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
