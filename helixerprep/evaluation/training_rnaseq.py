@@ -264,10 +264,14 @@ def main(species, bam, h5_data, d_utp, dont_score):
         print("scoring {}-{}".format(species_start, species_end), file=sys.stderr)
         by = 500
         for i in range(species_start, species_end, by):
+            if i + by > species_end:
+                by_out = species_end - i
+            else:
+                by_out = by
             i_rel = i - species_start
-            y = h5['data/y'][i:(i + by)]
+            y = h5['data/y'][i:(i + by_out)]
             datay = y.reshape([-1, 4])
-            by_out, chunk_size, n_cats = y.shape
+            _, chunk_size, n_cats = y.shape
             coverage = h5['evaluation/coverage'][i:(i + by)].ravel()
             spliced_coverage = h5['evaluation/spliced_coverage'][i:(i + by)].ravel()
             by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size])
