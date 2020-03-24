@@ -73,7 +73,7 @@ class HelixerExportController(object):
 
         # keys of the arrays that need to be padded
 
-        assert len(set(mat_info.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
+        assert len(set(mat_info.matrix.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
 
         # setup keys
         n_seqs = flat_data[0].matrix.shape[0]  # should be y, but should also not matter
@@ -89,8 +89,8 @@ class HelixerExportController(object):
                 self._create_dataset(h5_file, h5_group + mat_info.key, mat_info.matrix, mat_info.dtype)
 
         # writing to the h5 file
-        for dset_key, data in dsets.items():
-            h5_file[h5_group + dset_key][old_len:] = data
+        for mat_info in flat_data:
+            h5_file[h5_group + mat_info.key][old_len:] = mat_info.matrix
         h5_file.flush()
 
     def _split_coords_by_N90(self, genome_coords, val_size):
@@ -155,17 +155,19 @@ class HelixerExportController(object):
                                               one_hot)
         # keep track of variables
         y = [cd.matrix for cd in coord_data if cd.key == 'y'][0]
-        sample_weights = [cd.matrix for cd in coord_data if cd.key == 'sample_weights']
+        sample_weights = [cd.matrix for cd in coord_data if cd.key == 'sample_weights'][0]
         n_seqs = y.shape[0]
         n_masked_bases = sum([np.count_nonzero(m == 0) for m in sample_weights])  # todo, use numpy
         n_ig_bases = sum([np.count_nonzero(l[:, 0] == 1) for l in y])
         # filter out sequences that are completely masked as error
         if not keep_errors:
-            valid_data = [s.any() for s in sample_weights]
-            n_invalid_seqs = n_seqs - valid_data.count(True)
+            valid_data = np.any(sample_weights, axis=1)
+            n_invalid_seqs = n_seqs - np.sum(valid_data)
             if n_invalid_seqs > 0:
-                for key in coord_data.keys():  # todo, different looping method
-                    coord_data[key] = list(compress(coord_data[key], valid_data))  # todo, should still be using numpy
+                for mat_info in coord_data:
+                    mat_info.matrix = mat_info.matrix[valid_data]
+                #for key in coord_data.keys():  # todo, different looping method
+                #    coord_data[key] = list(compress(coord_data[key], valid_data))  # todo, should still be using numpy
         else:
             n_invalid_seqs = 0
         masked_bases_perc = n_masked_bases / (coord.length * 2) * 100
@@ -203,14 +205,12 @@ class HelixerExportController(object):
                         self._save_data(self.h5_val, flat_data)
                         assigned_set = 'val'
                 print((f'{n_coords_done}/{n_coords} Numerified {coord} of {coord.genome.species} '
-                       f"with {len(coord.features)} features in {len(flat_data['X'])} chunks, "
+                       f"with {len(coord.features)} features in {flat_data[0].matrix.shape[0]} chunks, "
                        f'err rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
                        f'fully err seqs: {invalid_seqs_perc:.2f}% ({assigned_set})'))
                 n_coords_done += 1
                 # free all datasets so we don't keep two all the time
-                dset_keys = list(flat_data.keys())
-                for key in dset_keys:
-                    del flat_data[key]
+                del flat_data
 
         self._add_data_attrs(genomes, exclude, keep_errors)
         self._close_files()

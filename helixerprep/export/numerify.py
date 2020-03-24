@@ -233,6 +233,10 @@ class MatAndInfo:
         self.matrix = matrix
         self.dtype = dtype
 
+    def __repr__(self):
+        return "key: {}, matrix shape: {}, matrix dtype {}: target dtype {}".format(self.key, self.matrix.shape,
+                                                                                    self.matrix.dtype, self.dtype)
+
 
 class CoordNumerifier(object):
     """Combines the different Numerifiers which need to operate on the same Coordinate
