@@ -233,8 +233,6 @@ class CoordNumerifier(object):
     @staticmethod
     def numerify(geenuff_exporter, coord, coord_features, max_len, one_hot=True):
         assert isinstance(max_len, int) and max_len > 0
-        if not coord_features:
-            logging.warning('Sequence {} has no annoations'.format(coord.seqid))
 
         anno_numerifier = AnnotationNumerifier(coord=coord, features=coord_features, max_len=max_len,
                                                one_hot=one_hot)
@@ -248,15 +246,23 @@ class CoordNumerifier(object):
         # flip the start ends back for - strand and append
         start_ends += [(x[1], x[0]) for x in anno_numerifier.paired_steps[::-1]]
 
+        # mark examples from featureless coordinate / assume there is no trustworthy annotation
+        if not coord_features:
+            logging.warning('Sequence {} has no annotations'.format(coord.seqid))
+            is_annotated = [0] * len(inputs)
+        else:
+            is_annotated = [1] * len(inputs)
+
         # do not output the input_masks as it is not used for anything
         out = {
-            'inputs': inputs,
-            'labels': labels,
-            'label_masks': label_masks,
+            'X': inputs,
+            'y': labels,
+            'sample_weights': label_masks,
             'gene_lengths': gene_lengths,
             'transitions': transitions,
             'species': [coord.genome.species.encode('ASCII')] * len(inputs),
             'seqids': [coord.seqid.encode('ASCII')] * len(inputs),
             'start_ends': start_ends,
+            'is_annotated': is_annotated,
         }
         return out

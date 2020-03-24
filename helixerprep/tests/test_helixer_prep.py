@@ -53,10 +53,10 @@ def setup_dummy_db(request):
     yield None
 
     # clean up tmp files
-    for p in [TMP_DB] + [H5_OUT_FOLDER + f for f in os.listdir(H5_OUT_FOLDER)]:
-        if os.path.exists(p):
-            os.remove(p)
-    os.rmdir(H5_OUT_FOLDER)
+    #for p in [TMP_DB] + [H5_OUT_FOLDER + f for f in os.listdir(H5_OUT_FOLDER)]:
+    #    if os.path.exists(p):
+    #        os.remove(p)
+    #os.rmdir(H5_OUT_FOLDER)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -86,7 +86,6 @@ def setup_dummy_evaluation_h5(request):
     yield None  # all tests are run
 
     os.remove(h5path)
-
 
 
 ### helper functions ###
