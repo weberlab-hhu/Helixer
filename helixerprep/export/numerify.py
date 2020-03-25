@@ -244,10 +244,10 @@ class CoordNumerifier(object):
     """
 
     @staticmethod
-    def pad(d):
+    def pad(d, chunk_size):
         n_seqs = len(d)
         # insert all the sequences so that 0-padding is added if needed
-        shape = tuple([n_seqs] + list(d[0].shape))
+        shape = tuple([n_seqs, chunk_size] + list(d[0].shape[1:]))
         padded_d = np.zeros(shape, dtype=d[0].dtype)
         for j in range(n_seqs):
             padded_d[j, :len(d[j])] = d[j]
@@ -266,7 +266,7 @@ class CoordNumerifier(object):
         y, sample_weights, gene_lengths, transitions = anno_numerifier.coord_to_matrices()
 
         x, y, sample_weights, gene_lengths, transitions = \
-            (CoordNumerifier.pad(x) for x in [x, y, sample_weights, gene_lengths, transitions])
+            (CoordNumerifier.pad(x, max_len) for x in [x, y, sample_weights, gene_lengths, transitions])
 
         start_ends = anno_numerifier.paired_steps
         # flip the start ends back for - strand and append
@@ -281,7 +281,7 @@ class CoordNumerifier(object):
             is_annotated = [1] * len(x)
         is_annotated = np.array(is_annotated, dtype=np.bool)
 
-        # todo, can we setup all matrices in _one_ spot?? AKA numerifier
+        # additional derived matrices
         err_samples = np.any(sample_weights == 0, axis=1)
         # just one entry per chunk
         if one_hot:

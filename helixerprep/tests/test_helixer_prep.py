@@ -52,10 +52,10 @@ def setup_dummy_db(request):
     yield None
 
     # clean up tmp files
-    #for p in [TMP_DB] + [H5_OUT_FOLDER + f for f in os.listdir(H5_OUT_FOLDER)]:
-    #    if os.path.exists(p):
-    #        os.remove(p)
-    #os.rmdir(H5_OUT_FOLDER)
+    for p in [TMP_DB] + [H5_OUT_FOLDER + f for f in os.listdir(H5_OUT_FOLDER)]:
+        if os.path.exists(p):
+            os.remove(p)
+    os.rmdir(H5_OUT_FOLDER)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -299,46 +299,47 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
                       keep_errors=False, all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
-    inputs = f['/data/X']
-    labels = f['/data/y']
-    label_masks = f['/data/sample_weights']
+    x = f['/data/X']
+    y = f['/data/y']
+    sample_weights = f['/data/sample_weights']
 
-    # five chunks for each the two coordinates and *2 for each strand and -2 for
+    # five chunks for each the two annotated coordinates and one for the unannotated coord
+    # then *2 for each strand and -2 for
     # completely erroneous sequences (at the end of the minus strand of the 2nd coord)
     # also tests if we ignore the third coordinate, that does not have any annotations
-    assert len(inputs) == len(labels) == len(label_masks) == 18
+    assert len(x) == len(y) == len(sample_weights) == 20
 
     # prep seq
-    seq_expect = np.full((405, 4), 0.25)
+    x_expect = np.full((405, 4), 0.25)
     # set start codon
-    seq_expect[10] = numerify.AMBIGUITY_DECODE['A']
-    seq_expect[11] = numerify.AMBIGUITY_DECODE['T']
-    seq_expect[12] = numerify.AMBIGUITY_DECODE['G']
+    x_expect[10] = numerify.AMBIGUITY_DECODE['A']
+    x_expect[11] = numerify.AMBIGUITY_DECODE['T']
+    x_expect[12] = numerify.AMBIGUITY_DECODE['G']
     # stop codons
-    seq_expect[117] = numerify.AMBIGUITY_DECODE['T']
-    seq_expect[118] = numerify.AMBIGUITY_DECODE['A']
-    seq_expect[119] = numerify.AMBIGUITY_DECODE['G']
-    seq_expect[298] = numerify.AMBIGUITY_DECODE['T']
-    seq_expect[299] = numerify.AMBIGUITY_DECODE['G']
-    seq_expect[300] = numerify.AMBIGUITY_DECODE['A']
-    assert np.array_equal(inputs[0], seq_expect[:400])
-    assert np.array_equal(inputs[1][:5], seq_expect[400:])
+    x_expect[117] = numerify.AMBIGUITY_DECODE['T']
+    x_expect[118] = numerify.AMBIGUITY_DECODE['A']
+    x_expect[119] = numerify.AMBIGUITY_DECODE['G']
+    x_expect[298] = numerify.AMBIGUITY_DECODE['T']
+    x_expect[299] = numerify.AMBIGUITY_DECODE['G']
+    x_expect[300] = numerify.AMBIGUITY_DECODE['A']
+    assert np.array_equal(x[0], x_expect[:400])
+    assert np.array_equal(x[1][:5], x_expect[400:])
 
     # prep anno
-    label_expect = np.zeros((405, 3), dtype=np.float16)
-    label_expect[0:400, 0] = 1.  # set genic/in raw transcript
-    label_expect[10:301, 1] = 1.  # set in transcript
-    label_expect[21:110, 2] = 1.  # both introns
-    label_expect[120:200, 2] = 1.
-    assert np.array_equal(labels[0], label_expect[:400])
-    assert np.array_equal(labels[1][:5], label_expect[400:])
+    y_expect = np.zeros((405, 3), dtype=np.float16)
+    y_expect[0:400, 0] = 1.  # set genic/in raw transcript
+    y_expect[10:301, 1] = 1.  # set in transcript
+    y_expect[21:110, 2] = 1.  # both introns
+    y_expect[120:200, 2] = 1.
+    assert np.array_equal(y[0], y_expect[:400])
+    assert np.array_equal(y[1][:5], y_expect[400:])
 
     # prep anno mask
-    label_mask_expect = np.ones((405, ), dtype=np.int8)
-    label_mask_expect[:110] = 0
-    label_mask_expect[120:] = 0
-    assert np.array_equal(label_masks[0], label_mask_expect[:400])
-    assert np.array_equal(label_masks[1][:5], label_mask_expect[400:])
+    sample_weight_expect = np.ones((405, ), dtype=np.int8)
+    sample_weight_expect[:110] = 0
+    sample_weight_expect[120:] = 0
+    assert np.array_equal(sample_weights[0], sample_weight_expect[:400])
+    assert np.array_equal(sample_weights[1][:5], sample_weight_expect[400:])
 
 
 def test_coord_numerifier_and_h5_gen_minus_strand():
@@ -349,55 +350,57 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
                       keep_errors=False, all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
-    inputs = f['/data/X']
-    labels = f['/data/y']
-    label_masks = f['/data/sample_weights']
+    x = f['/data/X']
+    y = f['/data/y']
+    sample_weights = f['/data/sample_weights']
 
-    assert len(inputs) == len(labels) == len(label_masks) == 33
-    # the last 5 inputs/labels should be for the 2nd coord and the minus strand
-    # orginally there where 9 but 4 were tossed out due to be fully erroneous
+    assert len(x) == len(y) == len(sample_weights) == 37
+
+    # the x/y selected below  should be for the 2nd coord and the minus strand
+    # orginally there where 9 but 4 were tossed out because they were fully erroneous
     # all the sequences are also 0-padded
-    inputs = inputs[-5:]
-    labels = labels[-5:]
-    label_masks = label_masks[-5:]
+    a, b = 28, 33
+    x = x[a:b]
+    y = y[a:b]
+    sample_weights = sample_weights[a:b]
 
-    seq_expect = np.full((955, 4), 0.25)
+    x_expect = np.full((955, 4), 0.25)
     # start codon
-    seq_expect[929] = np.flip(AMBIGUITY_DECODE['T'])
-    seq_expect[928] = np.flip(AMBIGUITY_DECODE['A'])
-    seq_expect[927] = np.flip(AMBIGUITY_DECODE['C'])
+    x_expect[929] = np.flip(AMBIGUITY_DECODE['T'])
+    x_expect[928] = np.flip(AMBIGUITY_DECODE['A'])
+    x_expect[927] = np.flip(AMBIGUITY_DECODE['C'])
     # stop codon of second transcript
-    seq_expect[902] = np.flip(AMBIGUITY_DECODE['A'])
-    seq_expect[901] = np.flip(AMBIGUITY_DECODE['T'])
-    seq_expect[900] = np.flip(AMBIGUITY_DECODE['C'])
+    x_expect[902] = np.flip(AMBIGUITY_DECODE['A'])
+    x_expect[901] = np.flip(AMBIGUITY_DECODE['T'])
+    x_expect[900] = np.flip(AMBIGUITY_DECODE['C'])
     # stop codon of first transcript
-    seq_expect[776] = np.flip(AMBIGUITY_DECODE['A'])
-    seq_expect[775] = np.flip(AMBIGUITY_DECODE['T'])
-    seq_expect[774] = np.flip(AMBIGUITY_DECODE['C'])
+    x_expect[776] = np.flip(AMBIGUITY_DECODE['A'])
+    x_expect[775] = np.flip(AMBIGUITY_DECODE['T'])
+    x_expect[774] = np.flip(AMBIGUITY_DECODE['C'])
     # flip as the sequence is read 5p to 3p
-    seq_expect = np.flip(seq_expect, axis=0)
+    x_expect = np.flip(x_expect, axis=0)
     # insert 0-padding
-    seq_expect = np.insert(seq_expect, 155, np.zeros((45, 4)), axis=0)
-    assert np.array_equal(inputs[0], seq_expect[:200])
-    assert np.array_equal(inputs[1][:50], seq_expect[200:250])
+    x_expect = np.insert(x_expect, 155, np.zeros((45, 4)), axis=0)
+    assert np.array_equal(x[0], x_expect[:200])
+    assert np.array_equal(x[1][:50], x_expect[200:250])
 
-    label_expect = np.zeros((955, 3), dtype=np.float16)
-    label_expect[749:950, 0] = 1.  # genic region
-    label_expect[774:930, 1] = 1.  # transcript (2 overlapping ones)
-    label_expect[850:919, 2] = 1.  # intron first transcript
-    label_expect[800:879, 2] = 1.  # intron second transcript
-    label_expect = np.flip(label_expect, axis=0)
-    label_expect = np.insert(label_expect, 155, np.zeros((45, 3)), axis=0)
-    assert np.array_equal(labels[0], label_expect[:200])
-    assert np.array_equal(labels[1][:50], label_expect[200:250])
+    y_expect = np.zeros((955, 3), dtype=np.float16)
+    y_expect[749:950, 0] = 1.  # genic region
+    y_expect[774:930, 1] = 1.  # transcript (2 overlapping ones)
+    y_expect[850:919, 2] = 1.  # intron first transcript
+    y_expect[800:879, 2] = 1.  # intron second transcript
+    y_expect = np.flip(y_expect, axis=0)
+    y_expect = np.insert(y_expect, 155, np.zeros((45, 3)), axis=0)
+    assert np.array_equal(y[0], y_expect[:200])
+    assert np.array_equal(y[1][:50], y_expect[200:250])
 
-    label_mask_expect = np.ones((955, ), dtype=np.int8)
-    label_mask_expect[925:] = 0
-    label_mask_expect[749:850] = 0
-    label_mask_expect = np.flip(label_mask_expect)
-    label_mask_expect = np.insert(label_mask_expect, 155, np.zeros((45,)), axis=0)
-    assert np.array_equal(label_masks[0], label_mask_expect[:200])
-    assert np.array_equal(label_masks[1][:50], label_mask_expect[200:250])
+    sample_weight_expect = np.ones((955, ), dtype=np.int8)
+    sample_weight_expect[925:] = 0
+    sample_weight_expect[749:850] = 0
+    sample_weight_expect = np.flip(sample_weight_expect)
+    sample_weight_expect = np.insert(sample_weight_expect, 155, np.zeros((45,)), axis=0)
+    assert np.array_equal(sample_weights[0], sample_weight_expect[:200])
+    assert np.array_equal(sample_weights[1][:50], sample_weight_expect[200:250])
 
 
 def test_numerify_with_end_neg1():
@@ -814,7 +817,7 @@ def test_gene_lengths():
     f = h5py.File(H5_OUT_FILE, 'r')
     gl = f['/data/gene_lengths']
     y = f['/data/y']
-    assert len(gl) == 4  # one for each coord and strand
+    assert len(gl) == 6  # one for each coord and strand
 
     # check if there is a value > 0 wherever there is something genic
     for i in range(len(gl)):

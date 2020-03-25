@@ -90,6 +90,7 @@ class HelixerExportController(object):
 
         # writing to the h5 file
         for mat_info in flat_data:
+            print(h5_file[h5_group + mat_info.key].shape, old_len, n_seqs, 'shape, oldlen, nseqs')
             h5_file[h5_group + mat_info.key][old_len:] = mat_info.matrix
         h5_file.flush()
 
@@ -157,8 +158,11 @@ class HelixerExportController(object):
         y = [cd.matrix for cd in coord_data if cd.key == 'y'][0]
         sample_weights = [cd.matrix for cd in coord_data if cd.key == 'sample_weights'][0]
         n_seqs = y.shape[0]
-        n_masked_bases = sum([np.count_nonzero(m == 0) for m in sample_weights])  # todo, use numpy
-        n_ig_bases = sum([np.count_nonzero(l[:, 0] == 1) for l in y])
+        n_masked_bases = np.sum(sample_weights > 0)
+        if not one_hot:
+            n_ig_bases = np.sum(y[:, :, 0])
+        else:
+            n_ig_bases = np.sum(1 - y[:, :, 0])  # where transcript is 1, it's intergenic
         # filter out sequences that are completely masked as error
         if not keep_errors:
             valid_data = np.any(sample_weights, axis=1)
@@ -166,8 +170,6 @@ class HelixerExportController(object):
             if n_invalid_seqs > 0:
                 for mat_info in coord_data:
                     mat_info.matrix = mat_info.matrix[valid_data]
-                #for key in coord_data.keys():  # todo, different looping method
-                #    coord_data[key] = list(compress(coord_data[key], valid_data))  # todo, should still be using numpy
         else:
             n_invalid_seqs = 0
         masked_bases_perc = n_masked_bases / (coord.length * 2) * 100
