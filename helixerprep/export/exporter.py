@@ -156,15 +156,17 @@ class HelixerExportController(object):
                                               one_hot)
         # keep track of variables
         y = [cd.matrix for cd in coord_data if cd.key == 'y'][0]
+        x = [cd.matrix for cd in coord_data if cd.key == 'X'][0]
         sample_weights = [cd.matrix for cd in coord_data if cd.key == 'sample_weights'][0]
-        is_annotated = [cd.matrix for cd in coord_data if cd.key == 'is_annotated'][0]
 
         n_seqs = y.shape[0]
         n_masked_bases = np.sum(sample_weights > 0)
         if not one_hot:
             n_ig_bases = np.sum(y[:, :, 0])
         else:
-            n_ig_bases = np.sum(1 - y[:, :, 0])  # where transcript is 1, it's intergenic
+            n_ig_bases = np.sum(1 - y[:, :, 0])  # where transcript is 1, it's genic, but this counts padding
+            n_ig_bases -= np.sum(1 - np.sum(x, axis=2))  # subtract padding
+
         # filter out sequences that are completely masked as error or had 0-features in the coord
         n_invalid_chunks = 0
         if not keep_errors:
@@ -173,6 +175,7 @@ class HelixerExportController(object):
 
         n_featureless_chunks = 0
         if not keep_featureless:
+            is_annotated = [cd.matrix for cd in coord_data if cd.key == 'is_annotated'][0]
             n_featureless_chunks = self._filter_chunks_by_mask(coord_data, mask=is_annotated)
 
         masked_bases_perc = n_masked_bases / (coord.length * 2) * 100
