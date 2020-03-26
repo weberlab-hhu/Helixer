@@ -110,7 +110,7 @@ class LSTMSequence(HelixerSequence):
         return X, y, sw
 
     def compress_tw(self, transitions):
-        return self._squish_tw_to_sw(transitions, self.transition_weights, self.stretched_transition_weights)
+        return self._squish_tw_to_sw(transitions, self.transition_weights, self.stretch_transition_weights)
 
     @staticmethod
     def _squish_tw_to_sw(transitions, tw, stretch):

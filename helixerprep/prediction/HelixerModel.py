@@ -81,7 +81,7 @@ class HelixerSequence(Sequence):
         self.model = model
         self.h5_file = h5_file
         self.mode = mode
-        self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights','stretched_transition_weights','coverage','coverage_scaling',
+        self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights','stretch_transition_weights','coverage','coverage_scaling',
                                  'overlap', 'overlap_offset', 'core_length', 'min_seqs_for_overlapping',
                                  'debug', 'exclude_errors', 'error_weights', 'gene_lengths',
                                  'gene_lengths_average', 'gene_lengths_exponent', 'gene_lengths_cutoff'])
@@ -231,7 +231,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-tw', '--transition-weights', type=str, default='None')
         self.parser.add_argument('-s-tw', '--stretch-transition-weights', type=int, default=0)
         self.parser.add_argument('-cov','--coverage',action='store_true')
-        self.parser.add_argument('-covs','--coverage_scaling', type=float, default=0.1)
+        self.parser.add_argument('-covs','--coverage-scaling', type=float, default=0.1)
         self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
         self.parser.add_argument('-res', '--resume-training', action='store_true')
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
