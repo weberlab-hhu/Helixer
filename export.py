@@ -52,8 +52,8 @@ if __name__ == '__main__':
                            'which can mask chunks from featureless coordinates that would have been skipped')
     data.add_argument('--modes', default='all',
                       help='either "all" (default), or a comma separated list with desired members of the following '
-                           '{X, seq_meta, y, anno_meta, transitions} that should be exported. This can be useful, for '
-                           'instance when skipping transitions (to reduce size/mem) or skipping X and seq_meta because '
+                           '{X, y, transitions} that should be exported. This can be useful, for '
+                           'instance when skipping transitions (to reduce size/mem) or skipping X because '
                            'you are adding an additional annotation set to an existing file.')
 
     args = parser.parse_args()

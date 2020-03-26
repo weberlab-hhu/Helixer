@@ -127,7 +127,12 @@ class AnnotationNumerifier(Numerifier):
         types.GeenuffFeature.geenuff_cds: 1,
         types.GeenuffFeature.geenuff_intron: 2,
      }
-
+    # todo, major refactor so that everything is handled in a symmetric fashion, and so that it's possible
+    #  to skip onehot, sample_weights, gene_length, or transitions without a maze of if/else statements
+    #  maybe have first pass & second pass matrix gen functions, and loop through those that exist at each step??
+    #  Second pass could also be written to h5 in a second round to reduce mem usage if need be. Or first pass is
+    #  a generator that autodetects splittable intergenic regions every 10mb or so.
+    
     def __init__(self, coord, features, max_len, one_hot=True):
         Numerifier.__init__(self, n_cols=3, coord=coord, max_len=max_len, dtype=np.int8)
         self.features = features
@@ -254,7 +259,7 @@ class CoordNumerifier(object):
         return padded_d
 
     @staticmethod
-    def numerify(coord, coord_features, max_len, one_hot=True):
+    def numerify(coord, coord_features, max_len, one_hot=True, mode=('X', 'y', 'anno_meta', 'transitions')):
         assert isinstance(max_len, int) and max_len > 0, 'what is {} of type {}'.format(max_len, type(max_len))
 
         anno_numerifier = AnnotationNumerifier(coord=coord, features=coord_features, max_len=max_len,
