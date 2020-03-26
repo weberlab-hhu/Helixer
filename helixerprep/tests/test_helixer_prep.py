@@ -307,7 +307,7 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
     # then *2 for each strand and -2 for
     # completely erroneous sequences (at the end of the minus strand of the 2nd coord)
     # also tests if we ignore the third coordinate, that does not have any annotations
-    assert len(x) == len(y) == len(sample_weights) == 20
+    assert len(x) == len(y) == len(sample_weights) == 18
 
     # prep seq
     x_expect = np.full((405, 4), 0.25)
@@ -354,7 +354,7 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     y = f['/data/y']
     sample_weights = f['/data/sample_weights']
 
-    assert len(x) == len(y) == len(sample_weights) == 37
+    assert len(x) == len(y) == len(sample_weights) == 33
 
     # the x/y selected below  should be for the 2nd coord and the minus strand
     # orginally there where 9 but 4 were tossed out because they were fully erroneous
@@ -817,7 +817,7 @@ def test_gene_lengths():
     f = h5py.File(H5_OUT_FILE, 'r')
     gl = f['/data/gene_lengths']
     y = f['/data/y']
-    assert len(gl) == 6  # one for each coord and strand
+    assert len(gl) == 4  # one for each coord and strand
 
     # check if there is a value > 0 wherever there is something genic
     for i in range(len(gl)):
@@ -847,6 +847,29 @@ def test_gene_lengths():
     assert np.array_equal(gl_3[949:1350], np.full((1350 - 949,), 401, dtype=np.uint32))
     assert np.array_equal(gl_3[1350:1549], np.full((1549 - 1350,), 0, dtype=np.uint32))
     assert np.array_equal(gl_3[1549:1750], np.full((1750 - 1549,), 201, dtype=np.uint32))
+    f.close()
+
+
+def test_featureless_filter():
+    """Tests the exclusion/inclusion of chunks from featureless coordinates"""
+    _, controller, _ = setup_dummyloci()
+    # dump the whole db in chunks into a .h5 file
+    controller.export(chunk_size=5000, genomes='', exclude='', val_size=0.2, one_hot=True,
+                      keep_errors=False, all_transcripts=True)
+
+    f = h5py.File(H5_OUT_FILE, 'r')
+    y = f['/data/y']
+    assert len(y) == 4  # one for each coord and strand, without featureless coord 3 (filtered)
+    f.close()
+    # dump the whole db in chunks into a .h5 file
+    _, controller, _ = setup_dummyloci()
+    controller.export(chunk_size=5000, genomes='', exclude='', val_size=0.2, one_hot=True,
+                      keep_errors=False, all_transcripts=True, keep_featureless=True)
+
+    f = h5py.File(H5_OUT_FILE, 'r')
+    y = f['/data/y']
+    assert len(y) == 6  # one for each coord and strand, with featureless coord 3 (kept)
+    f.close()
 
 
 ### RNAseq / coverage or scoring related (evaluation)

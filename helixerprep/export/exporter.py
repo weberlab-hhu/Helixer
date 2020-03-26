@@ -4,7 +4,6 @@ import numpy as np
 import random
 import datetime
 import subprocess
-from itertools import compress
 from sklearn.model_selection import train_test_split
 
 import geenuff, helixerprep
@@ -64,14 +63,6 @@ class HelixerExportController(object):
                                shuffle=shuffle)  # only for the compression
 
     def _save_data(self, h5_file, flat_data, h5_group='/data/'):
-        # todo, pull from flat_data dict
-        dset_keys = [
-            'X', 'y', 'sample_weights', 'gene_lengths', 'transitions', 'err_samples',
-            'fully_intergenic_samples', 'start_ends', 'species', 'seqids'
-        ]
-        dsets = {key: None for key in dset_keys}
-
-        # keys of the arrays that need to be padded
 
         assert len(set(mat_info.matrix.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
 
@@ -79,8 +70,8 @@ class HelixerExportController(object):
         n_seqs = flat_data[0].matrix.shape[0]  # should be y, but should also not matter
         # append to or create datasets
         if h5_group + 'y' in h5_file:
-            for dset_key in dsets.keys():
-                dset = h5_file[h5_group + dset_key]
+            for mat_info in flat_data:
+                dset = h5_file[h5_group + mat_info.key]
                 old_len = dset.shape[0]
                 dset.resize(old_len + n_seqs, axis=0)
         else:
@@ -150,35 +141,49 @@ class HelixerExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    def _numerify_coord(self, coord, coord_features, chunk_size, keep_errors, one_hot):
+    @staticmethod
+    def _filter_chunks_by_mask(coord_data, mask):
+        """masks all matrices in coord_data, and counts filterd chunks"""
+        count_to_drop = mask.shape[0] - np.sum(mask)
+        if count_to_drop > 0:
+            for mat_info in coord_data:
+                mat_info.matrix = mat_info.matrix[mask]
+        return count_to_drop
+
+    def _numerify_coord(self, coord, coord_features, chunk_size, keep_errors, one_hot, keep_featureless):
         print(chunk_size, 'chunk size')
         coord_data = CoordNumerifier.numerify(coord, coord_features, chunk_size,
                                               one_hot)
         # keep track of variables
         y = [cd.matrix for cd in coord_data if cd.key == 'y'][0]
         sample_weights = [cd.matrix for cd in coord_data if cd.key == 'sample_weights'][0]
+        is_annotated = [cd.matrix for cd in coord_data if cd.key == 'is_annotated'][0]
+
         n_seqs = y.shape[0]
         n_masked_bases = np.sum(sample_weights > 0)
         if not one_hot:
             n_ig_bases = np.sum(y[:, :, 0])
         else:
             n_ig_bases = np.sum(1 - y[:, :, 0])  # where transcript is 1, it's intergenic
-        # filter out sequences that are completely masked as error
+        # filter out sequences that are completely masked as error or had 0-features in the coord
+        n_invalid_chunks = 0
         if not keep_errors:
             valid_data = np.any(sample_weights, axis=1)
-            n_invalid_seqs = n_seqs - np.sum(valid_data)
-            if n_invalid_seqs > 0:
-                for mat_info in coord_data:
-                    mat_info.matrix = mat_info.matrix[valid_data]
-        else:
-            n_invalid_seqs = 0
+            n_invalid_chunks = self._filter_chunks_by_mask(coord_data, mask=valid_data)
+
+        n_featureless_chunks = 0
+        if not keep_featureless:
+            n_featureless_chunks = self._filter_chunks_by_mask(coord_data, mask=is_annotated)
+
         masked_bases_perc = n_masked_bases / (coord.length * 2) * 100
         ig_bases_perc = n_ig_bases / (coord.length * 2) * 100
-        invalid_seqs_perc = n_invalid_seqs / n_seqs * 100
-        return coord_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc
+        invalid_chunks_perc = n_invalid_chunks / n_seqs * 100
+        featureless_chunks_perc = n_featureless_chunks / n_seqs * 100
+
+        return coord_data, coord, masked_bases_perc, ig_bases_perc, invalid_chunks_perc, featureless_chunks_perc
 
     def export(self, chunk_size, genomes, exclude, val_size, keep_errors, one_hot=True,
-               all_transcripts=False):
+               all_transcripts=False, keep_featureless=False):
         genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude,
                                                                    all_transcripts=all_transcripts)
         # make version without features for shorter downstream code
@@ -193,9 +198,11 @@ class HelixerExportController(object):
                 coord = self.geenuff_exporter.get_coord_by_id(coord_id)
                 coord_features = genome_coord_features[genome_id][(coord_id, coord_len)]
                 numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size, keep_errors,
-                                                        one_hot)
+                                                        one_hot, keep_featureless)
 
-                flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc = numerify_outputs
+                flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc, featureless_chunks_perc = \
+                    numerify_outputs
+
                 if self.only_test_set:
                     self._save_data(self.h5_test, flat_data)
                     assigned_set = 'test'
@@ -209,7 +216,8 @@ class HelixerExportController(object):
                 print((f'{n_coords_done}/{n_coords} Numerified {coord} of {coord.genome.species} '
                        f"with {len(coord.features)} features in {flat_data[0].matrix.shape[0]} chunks, "
                        f'err rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
-                       f'fully err seqs: {invalid_seqs_perc:.2f}% ({assigned_set})'))
+                       f'filtered fully err chunks: {invalid_seqs_perc:.2f}% ({assigned_set}), '
+                       f'filtered chunks from featureless coordinates {featureless_chunks_perc:.2f}%'))
                 n_coords_done += 1
                 # free all datasets so we don't keep two all the time
                 del flat_data
