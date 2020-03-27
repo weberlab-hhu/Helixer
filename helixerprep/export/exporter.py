@@ -151,39 +151,52 @@ class HelixerExportController(object):
         return count_to_drop
 
     def _numerify_coord(self, coord, coord_features, chunk_size, keep_errors, one_hot, keep_featureless):
-        print(chunk_size, 'chunk size')
-        coord_data = CoordNumerifier.numerify(coord, coord_features, chunk_size,
-                                              one_hot)
-        # keep track of variables
-        y = [cd.matrix for cd in coord_data if cd.key == 'y'][0]
-        x = [cd.matrix for cd in coord_data if cd.key == 'X'][0]
-        sample_weights = [cd.matrix for cd in coord_data if cd.key == 'sample_weights'][0]
+        coord_data_gen = CoordNumerifier.numerify(coord, coord_features, chunk_size,
+                                                  one_hot)
 
-        n_seqs = y.shape[0]
-        n_masked_bases = np.sum(sample_weights > 0)
-        if not one_hot:
-            n_ig_bases = np.sum(y[:, :, 0])
-        else:
-            n_ig_bases = np.sum(1 - y[:, :, 0])  # where transcript is 1, it's genic, but this counts padding
-            n_ig_bases -= np.sum(1 - np.sum(x, axis=2))  # subtract padding
-
-        # filter out sequences that are completely masked as error or had 0-features in the coord
+        # the following will all be used to calculated a percentage, which is yielded but ignored until the end
+        n_chunks = 0
         n_invalid_chunks = 0
-        if not keep_errors:
-            valid_data = np.any(sample_weights, axis=1)
-            n_invalid_chunks = self._filter_chunks_by_mask(coord_data, mask=valid_data)
-
         n_featureless_chunks = 0
-        if not keep_featureless:
-            is_annotated = [cd.matrix for cd in coord_data if cd.key == 'is_annotated'][0]
-            n_featureless_chunks = self._filter_chunks_by_mask(coord_data, mask=is_annotated)
+        n_bases = 0
+        n_ig_bases = 0
+        n_masked_bases = 0
 
-        masked_bases_perc = n_masked_bases / (coord.length * 2) * 100
-        ig_bases_perc = n_ig_bases / (coord.length * 2) * 100
-        invalid_chunks_perc = n_invalid_chunks / n_seqs * 100
-        featureless_chunks_perc = n_featureless_chunks / n_seqs * 100
+        for coord_data in coord_data_gen:
+            # easy access to matrices
+            y = [cd.matrix for cd in coord_data if cd.key == 'y'][0]
+            x = [cd.matrix for cd in coord_data if cd.key == 'X'][0]
+            sample_weights = [cd.matrix for cd in coord_data if cd.key == 'sample_weights'][0]
 
-        return coord_data, coord, masked_bases_perc, ig_bases_perc, invalid_chunks_perc, featureless_chunks_perc
+            # count things
+            n_chunks += y.shape[0]
+            n_masked_bases += np.sum(sample_weights == 0)  # sample weights already 0 where there's padding, ignore
+
+            padded_bases = np.sum(1 - np.sum(x, axis=2))
+            n_bases += np.prod(y.shape[:2]) - padded_bases
+
+            if not one_hot:
+                n_ig_bases += np.sum(y[:, :, 0])
+            else:
+                n_ig_bases += np.sum(1 - y[:, :, 0])  # where transcript is 1, it's genic, but this counts padding
+                n_ig_bases -= padded_bases  # subtract padding
+
+            # count and filter things
+            # filter out sequences that are completely masked as error or had 0-features in the coord
+            if not keep_errors:
+                valid_data = np.any(sample_weights, axis=1)
+                n_invalid_chunks += self._filter_chunks_by_mask(coord_data, mask=valid_data)
+
+            if not keep_featureless:
+                is_annotated = [cd.matrix for cd in coord_data if cd.key == 'is_annotated'][0]
+                n_featureless_chunks += self._filter_chunks_by_mask(coord_data, mask=is_annotated)
+
+            masked_bases_perc = n_masked_bases / n_bases * 100
+            ig_bases_perc = n_ig_bases / n_bases * 100
+            invalid_chunks_perc = n_invalid_chunks / n_chunks * 100
+            featureless_chunks_perc = n_featureless_chunks / n_chunks * 100
+
+            yield coord_data, coord, masked_bases_perc, ig_bases_perc, invalid_chunks_perc, featureless_chunks_perc
 
     def export(self, chunk_size, genomes, exclude, val_size, keep_errors, one_hot=True,
                all_transcripts=False, keep_featureless=False):
@@ -203,22 +216,22 @@ class HelixerExportController(object):
                 numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size, keep_errors,
                                                         one_hot, keep_featureless)
 
-                flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc, featureless_chunks_perc = \
-                    numerify_outputs
+                for flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc, \
+                    featureless_chunks_perc in numerify_outputs:
 
-                if self.only_test_set:
-                    self._save_data(self.h5_test, flat_data)
-                    assigned_set = 'test'
-                else:
-                    if coord_id in train_coords:
-                        self._save_data(self.h5_train, flat_data)
-                        assigned_set = 'train'
+                    if self.only_test_set:
+                        self._save_data(self.h5_test, flat_data)
+                        assigned_set = 'test'
                     else:
-                        self._save_data(self.h5_val, flat_data)
-                        assigned_set = 'val'
+                        if coord_id in train_coords:
+                            self._save_data(self.h5_train, flat_data)
+                            assigned_set = 'train'
+                        else:
+                            self._save_data(self.h5_val, flat_data)
+                            assigned_set = 'val'
                 print((f'{n_coords_done}/{n_coords} Numerified {coord} of {coord.genome.species} '
                        f"with {len(coord.features)} features in {flat_data[0].matrix.shape[0]} chunks, "
-                       f'err rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
+                       f'masked rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
                        f'filtered fully err chunks: {invalid_seqs_perc:.2f}% ({assigned_set}), '
                        f'filtered chunks from featureless coordinates {featureless_chunks_perc:.2f}%'))
                 n_coords_done += 1

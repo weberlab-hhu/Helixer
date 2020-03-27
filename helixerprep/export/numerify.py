@@ -306,4 +306,5 @@ class CoordNumerifier(object):
                MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(x)), 'S50'),
                MatAndInfo('start_ends', start_ends, 'int64'),
                MatAndInfo('is_annotated', is_annotated, 'bool'))
-        return out
+        yield out  # todo, yield will of course make more sense once we chunk up the data some, and once the
+        #             other numerifiers also yield...
