@@ -259,52 +259,139 @@ class CoordNumerifier(object):
         return padded_d
 
     @staticmethod
-    def numerify(coord, coord_features, max_len, one_hot=True, mode=('X', 'y', 'anno_meta', 'transitions')):
+    def numerify(coord, coord_features, max_len, one_hot=True, mode=('X', 'y', 'anno_meta', 'transitions'),
+                 write_by=5000000):
         assert isinstance(max_len, int) and max_len > 0, 'what is {} of type {}'.format(max_len, type(max_len))
+        coord_features = sorted(coord_features, key=lambda f: min(f.start, f.end))  # sort by ~ +strand start
+        split_finder = SplitFinder(features=coord_features, write_by=write_by, coord_length=coord.len,
+                                   chunk_size=max_len)
+        ends = iter(split_finder.splits)
+        start = 0
+        for f_set in split_finder.split_features():
+            end = next(ends)
 
-        anno_numerifier = AnnotationNumerifier(coord=coord, features=coord_features, max_len=max_len,
-                                               one_hot=one_hot)
-        seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len)
+            # todo, run for just start-end and f_set
+            anno_numerifier = AnnotationNumerifier(coord=coord, features=coord_features, max_len=max_len,
+                                                   one_hot=one_hot)
+            seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len)
 
-        # returns results for both strands, with the plus strand first in the list
-        x, input_masks = seq_numerifier.coord_to_matrices()
-        y, sample_weights, gene_lengths, transitions = anno_numerifier.coord_to_matrices()
+            # returns results for both strands, with the plus strand first in the list
+            x, input_masks = seq_numerifier.coord_to_matrices()
+            y, sample_weights, gene_lengths, transitions = anno_numerifier.coord_to_matrices()
 
-        x, y, sample_weights, gene_lengths, transitions = \
-            (CoordNumerifier.pad(x, max_len) for x in [x, y, sample_weights, gene_lengths, transitions])
+            x, y, sample_weights, gene_lengths, transitions = \
+                (CoordNumerifier.pad(x, max_len) for x in [x, y, sample_weights, gene_lengths, transitions])
 
-        start_ends = anno_numerifier.paired_steps
-        # flip the start ends back for - strand and append
-        start_ends += [(x[1], x[0]) for x in anno_numerifier.paired_steps[::-1]]
-        start_ends = np.array(start_ends, dtype=np.int64)
+            start_ends = anno_numerifier.paired_steps
+            # flip the start ends back for - strand and append
+            start_ends += [(x[1], x[0]) for x in anno_numerifier.paired_steps[::-1]]
+            start_ends = np.array(start_ends, dtype=np.int64)
 
-        # mark examples from featureless coordinate / assume there is no trustworthy annotation
-        if not coord_features:
-            logging.warning('Sequence {} has no annotations'.format(coord.seqid))
-            is_annotated = [0] * len(x)
+            # mark examples from featureless coordinate / assume there is no trustworthy annotation
+            if not coord_features:
+                logging.warning('Sequence {} has no annotations'.format(coord.seqid))
+                is_annotated = [0] * len(x)
+            else:
+                is_annotated = [1] * len(x)
+            is_annotated = np.array(is_annotated, dtype=np.bool)
+
+            # additional derived matrices
+            err_samples = np.any(sample_weights == 0, axis=1)
+            # just one entry per chunk
+            if one_hot:
+                fully_intergenic_samples = np.all(y[:, :, 0] == 0, axis=1)
+            else:
+                fully_intergenic_samples = np.all(y[:, :, 0] == 1, axis=1)
+
+            # do not output the input_masks as it is not used for anything
+            out = (MatAndInfo('y', y, 'int8'),  # y should always be first (bc currently we always want it)
+                   MatAndInfo('X', x, 'float16'),
+                   MatAndInfo('sample_weights', sample_weights, 'int8'),
+                   MatAndInfo('gene_lengths', gene_lengths, 'uint32'),
+                   MatAndInfo('transitions', transitions, 'int8'),
+                   MatAndInfo('err_samples', err_samples, 'bool'),
+                   MatAndInfo('fully_intergenic_samples', fully_intergenic_samples,  'bool'),
+                   MatAndInfo('species', np.array([coord.genome.species.encode('ASCII')] * len(x)), 'S25'),
+                   MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(x)), 'S50'),
+                   MatAndInfo('start_ends', start_ends, 'int64'),
+                   MatAndInfo('is_annotated', is_annotated, 'bool'))
+            yield out  # todo, yield will of course make more sense once we chunk up the data some, and once the
+            #             other numerifiers also yield...
+            start = end
+
+class SplitFinder:
+    # todo, tryout and test
+    def __init__(self, features, write_by, coord_length, chunk_size):
+        assert not write_by % chunk_size, "number of bp to write at once 'write_by' must be a multiple of 'chunk_size'"
+        self.features = features
+        self.write_by = write_by  # target writing this many bp to the h5 file at once
+        self.coord_length = coord_length
+        self.chunk_size = chunk_size
+        self.splits = tuple(self._find_splits())
+
+    def split_features(self):
+        """get all features from start of list that aren't passed _to_"""
+        # todo: make sure they're sorted before getting here
+        i = 0
+        in_split = []
+        in_next_split = []
+        for end in self.splits:
+            feature = self.features[i]
+            while self._feature_not_past(feature, end):
+                in_split.append(feature)
+                if self._feature_ends_after(feature, end):  # basically this is 'if overlaps end' in context
+                    in_next_split.append(feature)
+                i += 1
+                feature = self.features[i]
+            yield in_split
+            in_split = in_next_split
+            in_next_split = []
+
+    @staticmethod
+    def _feature_not_past(feature, to):
+        """whether feature is before or overlaps end by any measure"""
+        if feature.is_plus_strand:
+            return feature.start < to
         else:
-            is_annotated = [1] * len(x)
-        is_annotated = np.array(is_annotated, dtype=np.bool)
+            # although the end is exclusive and this gets one position where the feature itself has no overlap;
+            # for transitions themselves we potentially want to make sure the feature.end is included
+            return feature.end < to
 
-        # additional derived matrices
-        err_samples = np.any(sample_weights == 0, axis=1)
-        # just one entry per chunk
-        if one_hot:
-            fully_intergenic_samples = np.all(y[:, :, 0] == 0, axis=1)
+    @staticmethod
+    def _feature_ends_after(feature, to):
+        """combines with _feature_not_past to define overlaps of trailing edge 'to'"""
+        # overlapping features will be saved and numerified with the next write_by split as well
+        if feature.is_plus_strand:
+            # include as soon as end is after, despite exclusive end, to include the transition just in case
+            return feature.end >= to
         else:
-            fully_intergenic_samples = np.all(y[:, :, 0] == 1, axis=1)
+            return feature.start >= to
 
-        # do not output the input_masks as it is not used for anything
-        out = (MatAndInfo('y', y, 'int8'),  # y should always be first (bc currently we always want it)
-               MatAndInfo('X', x, 'float16'),
-               MatAndInfo('sample_weights', sample_weights, 'int8'),
-               MatAndInfo('gene_lengths', gene_lengths, 'uint32'),
-               MatAndInfo('transitions', transitions, 'int8'),
-               MatAndInfo('err_samples', err_samples, 'bool'),
-               MatAndInfo('fully_intergenic_samples', fully_intergenic_samples,  'bool'),
-               MatAndInfo('species', np.array([coord.genome.species.encode('ASCII')] * len(x)), 'S25'),
-               MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(x)), 'S50'),
-               MatAndInfo('start_ends', start_ends, 'int64'),
-               MatAndInfo('is_annotated', is_annotated, 'bool'))
-        yield out  # todo, yield will of course make more sense once we chunk up the data some, and once the
-        #             other numerifiers also yield...
+    def _find_splits(self):
+        """yields splits of ~write_by size that can be safely split at"""
+        tr_mask = self._transition_mask()
+        for i in range(self.coord_length, self.coord_length, self.write_by):
+            if i not in tr_mask:
+                yield i
+            else:
+                for i_fudge in range(i, i + self.write_by, self.chunk_size):
+                    if i_fudge not in tr_mask:
+                        yield i_fudge
+                        break
+        yield self.coord_length
+
+    def _transition_mask(self):
+        """mark all possible splits where there is a transition, so splitting there would change the numerify results"""
+        tr_mask = set()
+        for feature in self.features:
+            for tr in self._plus_strand_transitions(feature):
+                if not tr % self.chunk_size:
+                    tr_mask.add(tr)
+        return tr_mask
+
+    @staticmethod
+    def _plus_strand_transitions(feature):
+        if feature.is_plus_strand:
+            return feature.start, feature.end
+        else:
+            return feature.start - 1, feature.end - 1
