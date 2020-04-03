@@ -50,7 +50,9 @@ class Stepper(object):
 
 
 class Numerifier(ABC):
-    def __init__(self, n_cols, coord, max_len, dtype=np.float32):
+    def __init__(self, n_cols, coord, max_len, dtype=np.float32, start=0, end=None):
+        if end is None:
+            end = coord.length
         assert isinstance(n_cols, int)
         self.n_cols = n_cols
         self.coord = coord
@@ -58,8 +60,11 @@ class Numerifier(ABC):
         self.dtype = dtype
         self.matrix = None
         self.error_mask = None
+        self.start = start
+        self.end = end
         # set paired steps
-        partitioner = Stepper(end=self.coord.length, by=self.max_len)
+        partitioner = Stepper(end=self.end, by=self.max_len)
+        partitioner.at = self.start
         self.paired_steps = list(partitioner.step_to_end())
 
         super().__init__()
@@ -85,36 +90,34 @@ class Numerifier(ABC):
         return all_slices
 
     def _zero_matrix(self):
-        length = len(self.coord.sequence)
+        length = self.end - self.start
         self.matrix = np.zeros((length, self.n_cols,), self.dtype)
         # 0 means error so this can be used directly as sample weight later on
         self.error_mask = np.ones((length,), np.int8)
 
 
 class SequenceNumerifier(Numerifier):
-    def __init__(self, coord, max_len):
-        super().__init__(n_cols=4, coord=coord, max_len=max_len, dtype=np.float16)
+    def __init__(self, coord, max_len, start, end):
+        super().__init__(n_cols=4, coord=coord, max_len=max_len, dtype=np.float16, start=start, end=end)
 
     def coord_to_matrices(self):
         """Does not alter the error mask unlike in AnnotationNumerifier"""
         self._zero_matrix()
         # plus strand, actual numerification of the sequence
-        for i, bp in enumerate(self.coord.sequence):
+        for i, bp in enumerate(self.coord.sequence[self.start:self.end]):
             self.matrix[i] = AMBIGUITY_DECODE[bp]
         # very important to copy here
-        data_plus, error_mask_plus = self._slice_matrices(True,
-                                                          np.copy(self.matrix),
-                                                          np.copy(self.error_mask))
+        data_plus = self._slice_matrices(True,
+                                         np.copy(self.matrix))
 
-        # minus strand, just flip
-        self.matrix = np.flip(self.matrix, axis=1)  # invert base
-        data_minus, error_mask_minus = self._slice_matrices(False,
-                                                            self.matrix,
-                                                            self.error_mask)
+        # minus strand
+        self.matrix = np.flip(self.matrix, axis=1)  # complementary base
+        data_minus = self._slice_matrices(False,  # slice matrix will reverse direction
+                                          self.matrix)
+
         # put everything together
-        data = data_plus + data_minus
-        error_masks = error_mask_plus + error_mask_minus
-        return data, error_masks
+        data = {'plus': data_plus, 'minus': data_minus}
+        return data
 
 
 class AnnotationNumerifier(Numerifier):
@@ -133,8 +136,8 @@ class AnnotationNumerifier(Numerifier):
     #  Second pass could also be written to h5 in a second round to reduce mem usage if need be. Or first pass is
     #  a generator that autodetects splittable intergenic regions every 10mb or so.
     
-    def __init__(self, coord, features, max_len, one_hot=True):
-        Numerifier.__init__(self, n_cols=3, coord=coord, max_len=max_len, dtype=np.int8)
+    def __init__(self, coord, features, max_len, one_hot=True, start=0, end=None):
+        Numerifier.__init__(self, n_cols=3, coord=coord, max_len=max_len, dtype=np.int8, start=start, end=end)
         self.features = features
         self.one_hot = one_hot
         self.coord = coord
@@ -265,18 +268,19 @@ class CoordNumerifier(object):
         coord_features = sorted(coord_features, key=lambda f: min(f.start, f.end))  # sort by ~ +strand start
         split_finder = SplitFinder(features=coord_features, write_by=write_by, coord_length=coord.len,
                                    chunk_size=max_len)
-        ends = iter(split_finder.splits)
-        start = 0
-        for f_set in split_finder.split_features():
-            end = next(ends)
+        bp_coords = iter(split_finder.coords)
+        for f_set, bp_coord, h5_coord in \
+                zip(split_finder.split_features(), split_finder.coords, split_finder.relative_h5_coords):
+            start, end = bp_coord
 
             # todo, run for just start-end and f_set
             anno_numerifier = AnnotationNumerifier(coord=coord, features=coord_features, max_len=max_len,
                                                    one_hot=one_hot)
-            seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len)
+            seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=start, end=end)
 
             # returns results for both strands, with the plus strand first in the list
-            x, input_masks = seq_numerifier.coord_to_matrices()
+            # todo, this needs to change so that + & - strand are returned and handled as two arrays
+            x = seq_numerifier.coord_to_matrices()
             y, sample_weights, gene_lengths, transitions = anno_numerifier.coord_to_matrices()
 
             x, y, sample_weights, gene_lengths, transitions = \
@@ -315,9 +319,9 @@ class CoordNumerifier(object):
                    MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(x)), 'S50'),
                    MatAndInfo('start_ends', start_ends, 'int64'),
                    MatAndInfo('is_annotated', is_annotated, 'bool'))
-            yield out  # todo, yield will of course make more sense once we chunk up the data some, and once the
+            yield out, h5_coord  # todo, yield will of course make more sense once we chunk up the data some, and once the
             #             other numerifiers also yield...
-            start = end
+
 
 class SplitFinder:
     # todo, tryout and test
@@ -328,10 +332,15 @@ class SplitFinder:
         self.coord_length = coord_length
         self.chunk_size = chunk_size
         self.splits = tuple(self._find_splits())
+        self.relative_h5_coords = tuple(self._get_rel_h5_coords_for_splits())
+
+    @property
+    def coords(self):
+        starts = [0] + list(self.splits)[:-1]
+        return tuple(zip(starts, self.splits))
 
     def split_features(self):
         """get all features from start of list that aren't passed _to_"""
-        # todo: make sure they're sorted before getting here
         i = 0
         in_split = []
         in_next_split = []
@@ -346,6 +355,25 @@ class SplitFinder:
             yield in_split
             in_split = in_next_split
             in_next_split = []
+
+    def _get_rel_h5_coords_for_splits(self):
+        """calculates where to write the +/- strand super-chunk splits in the h5 file"""
+        # calculate the positive strand first
+        postive_h5_ends = []
+        postive_h5_starts = [0]
+        for end in self.splits:
+            p_h5 = end // self.chunk_size
+            if end % self.chunk_size:  # end of seq, will be padded to full chunk size
+                p_h5 += 1
+            else:
+                postive_h5_starts.append(p_h5)
+            postive_h5_ends.append(p_h5)
+
+        postive_h5s = zip(postive_h5_starts, postive_h5_ends)
+        # calculate the negative strand as positive strand, but backwards from end
+        h5_end = postive_h5_ends[-1] * 2
+        negative_h5s = [(h5_end - x[1], h5_end - x[0]) for x in postive_h5s]
+        return zip(postive_h5s, negative_h5s)
 
     @staticmethod
     def _feature_not_past(feature, to):

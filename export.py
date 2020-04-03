@@ -14,7 +14,7 @@ def main(args):
         args.exclude_genomes = args.exclude_genomes.split(',')
 
     controller.export(chunk_size=args.chunk_size, genomes=args.genomes, exclude=args.exclude_genomes,
-                      val_size=args.val_size, keep_errors=args.keep_errors, keep_featureless=args.export_featureless)
+                      val_size=args.val_size, keep_featureless=args.export_featureless)
 
 
 if __name__ == '__main__':
@@ -44,8 +44,6 @@ if __name__ == '__main__':
                       help='The chance for a sequence or coordinate to end up in validation_data.h5' )
     data.add_argument('--only-test-set', action='store_true',
                       help='Whether to only output a single file named test_data.h5')
-    data.add_argument('--keep-errors', action="store_true",
-                      help="Set this flag if entirely erroneous sequences should _not_ be excluded")
     data.add_argument('--export-featureless', action='store_true',
                       help='This overrides the default behavior of ignoring coordinates without a single feature (as '
                            'these frequently were never actually annotated). Anyways generates a "data/is_annotated" '

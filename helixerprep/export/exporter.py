@@ -150,9 +150,9 @@ class HelixerExportController(object):
                 mat_info.matrix = mat_info.matrix[mask]
         return count_to_drop
 
-    def _numerify_coord(self, coord, coord_features, chunk_size, keep_errors, one_hot, keep_featureless):
-        coord_data_gen = CoordNumerifier.numerify(coord, coord_features, chunk_size,
-                                                  one_hot)
+    def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, keep_featureless):
+        coord_data_gen, h5_coord = CoordNumerifier.numerify(coord, coord_features, chunk_size,
+                                                            one_hot)
 
         # the following will all be used to calculated a percentage, which is yielded but ignored until the end
         n_chunks = 0
@@ -181,11 +181,12 @@ class HelixerExportController(object):
                 n_ig_bases += np.sum(1 - y[:, :, 0])  # where transcript is 1, it's genic, but this counts padding
                 n_ig_bases -= padded_bases  # subtract padding
 
+            # removing so we can calculate where -strand will be written to
             # count and filter things
             # filter out sequences that are completely masked as error or had 0-features in the coord
-            if not keep_errors:
-                valid_data = np.any(sample_weights, axis=1)
-                n_invalid_chunks += self._filter_chunks_by_mask(coord_data, mask=valid_data)
+            # if not keep_errors:
+            #    valid_data = np.any(sample_weights, axis=1)
+            #    n_invalid_chunks += self._filter_chunks_by_mask(coord_data, mask=valid_data)
 
             if not keep_featureless:
                 is_annotated = [cd.matrix for cd in coord_data if cd.key == 'is_annotated'][0]
@@ -193,13 +194,15 @@ class HelixerExportController(object):
 
             masked_bases_perc = n_masked_bases / n_bases * 100
             ig_bases_perc = n_ig_bases / n_bases * 100
-            invalid_chunks_perc = n_invalid_chunks / n_chunks * 100
+            invalid_chunks_perc = n_invalid_chunks / n_chunks * 100  # todo, rm, this is always 0% now
             featureless_chunks_perc = n_featureless_chunks / n_chunks * 100
 
-            yield coord_data, coord, masked_bases_perc, ig_bases_perc, invalid_chunks_perc, featureless_chunks_perc
+            yield coord_data, coord, masked_bases_perc, ig_bases_perc, invalid_chunks_perc, featureless_chunks_perc, \
+                  h5_coord
 
-    def export(self, chunk_size, genomes, exclude, val_size, keep_errors, one_hot=True,
+    def export(self, chunk_size, genomes, exclude, val_size, one_hot=True,
                all_transcripts=False, keep_featureless=False):
+        keep_errors = True
         genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude,
                                                                    all_transcripts=all_transcripts)
         # make version without features for shorter downstream code
@@ -213,11 +216,11 @@ class HelixerExportController(object):
             for (coord_id, coord_len) in coords:
                 coord = self.geenuff_exporter.get_coord_by_id(coord_id)
                 coord_features = genome_coord_features[genome_id][(coord_id, coord_len)]
-                numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size, keep_errors,
+                numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size,
                                                         one_hot, keep_featureless)
 
                 for flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc, \
-                    featureless_chunks_perc in numerify_outputs:
+                    featureless_chunks_perc, h5_coord in numerify_outputs:
 
                     if self.only_test_set:
                         self._save_data(self.h5_test, flat_data)
