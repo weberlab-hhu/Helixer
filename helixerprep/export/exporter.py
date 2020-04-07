@@ -29,6 +29,8 @@ class HelixerExportController(object):
             self.h5_train = h5py.File(os.path.join(data_dir, 'training_data.h5'), 'w')
             self.h5_val = h5py.File(os.path.join(data_dir, 'validation_data.h5'), 'w')
 
+        self.h5_coord_offset = 0
+
     @staticmethod
     def _split_sequences(flat_data, val_size):
         """Basically does the same as sklearn.model_selection.train_test_split except
@@ -62,28 +64,33 @@ class HelixerExportController(object):
                                compression='lzf',
                                shuffle=shuffle)  # only for the compression
 
-    def _save_data(self, h5_file, flat_data, h5_group='/data/'):
+    def _save_data(self, h5_file, flat_data, h5_coords, n_chunks, first_round_for_coordinate, h5_group='/data/'):
 
         assert len(set(mat_info.matrix.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
 
-        # setup keys
-        n_seqs = flat_data[0].matrix.shape[0]  # should be y, but should also not matter
+        if first_round_for_coordinate:
+            self._create_or_expand_datasets(h5_file, h5_group, flat_data, n_chunks)
+
+        # h5_coords are relative for the coordinate/chromosome, so offset by previous length
+        old_len = h5_file[h5_group + 'y'].shape[0]
+        start = old_len + h5_coords[0]
+        end = old_len + h5_coords[1]
+
+        # writing to the h5 file
+        for mat_info in flat_data:
+            h5_file[h5_group + mat_info.key][start:end] = mat_info.matrix
+        h5_file.flush()
+
+    def _create_or_expand_datasets(self, h5_file, h5_group, flat_data, n_chunks):
         # append to or create datasets
         if h5_group + 'y' in h5_file:
             for mat_info in flat_data:
                 dset = h5_file[h5_group + mat_info.key]
                 old_len = dset.shape[0]
-                dset.resize(old_len + n_seqs, axis=0)
+                dset.resize(old_len + n_chunks, axis=0)
         else:
-            old_len = 0
             for mat_info in flat_data:
                 self._create_dataset(h5_file, h5_group + mat_info.key, mat_info.matrix, mat_info.dtype)
-
-        # writing to the h5 file
-        for mat_info in flat_data:
-            print(h5_file[h5_group + mat_info.key].shape, old_len, n_seqs, 'shape, oldlen, nseqs')
-            h5_file[h5_group + mat_info.key][old_len:] = mat_info.matrix
-        h5_file.flush()
 
     def _split_coords_by_N90(self, genome_coords, val_size):
         """Splits the given coordinates in a train and val set. It does so by doing it individually for
@@ -201,7 +208,7 @@ class HelixerExportController(object):
                   h5_coord
 
     def export(self, chunk_size, genomes, exclude, val_size, one_hot=True,
-               all_transcripts=False, keep_featureless=False):
+               all_transcripts=False, keep_featureless=False, h5_group='/data/'):
         keep_errors = True
         genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude,
                                                                    all_transcripts=all_transcripts)
@@ -214,24 +221,35 @@ class HelixerExportController(object):
         n_coords_done = 1
         for genome_id, coords in genome_coords.items():
             for (coord_id, coord_len) in coords:
+                # calculate how many chunks will be produced
+                n_chunks = coord_len // chunk_size
+                if coord_len % chunk_size:
+                    n_chunks += 1  # bc pad to size
+                n_chunks *= 2  # for + & - strand
+
                 coord = self.geenuff_exporter.get_coord_by_id(coord_id)
                 coord_features = genome_coord_features[genome_id][(coord_id, coord_len)]
                 numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size,
                                                         one_hot, keep_featureless)
-
+                first_round_for_coordinate = True
                 for flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc, \
                     featureless_chunks_perc, h5_coord in numerify_outputs:
 
                     if self.only_test_set:
-                        self._save_data(self.h5_test, flat_data)
+                        self._save_data(self.h5_test, flat_data, h5_coords=h5_coord, n_chunks=n_chunks,
+                                        first_round_for_coordinate=first_round_for_coordinate, h5_group=h5_group)
                         assigned_set = 'test'
                     else:
                         if coord_id in train_coords:
-                            self._save_data(self.h5_train, flat_data)
+                            self._save_data(self.h5_train, flat_data, h5_coords=h5_coord, n_chunks=n_chunks,
+                                            first_round_for_coordinate=first_round_for_coordinate, h5_group=h5_group)
                             assigned_set = 'train'
                         else:
-                            self._save_data(self.h5_val, flat_data)
+                            self._save_data(self.h5_val, flat_data, h5_coords=h5_coord, n_chunks=n_chunks,
+                                            first_round_for_coordinate=first_round_for_coordinate, h5_group=h5_group)
                             assigned_set = 'val'
+                    first_round_for_coordinate = False
+
                 print((f'{n_coords_done}/{n_coords} Numerified {coord} of {coord.genome.species} '
                        f"with {len(coord.features)} features in {flat_data[0].matrix.shape[0]} chunks, "
                        f'masked rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '

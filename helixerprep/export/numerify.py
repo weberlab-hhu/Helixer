@@ -140,11 +140,13 @@ class AnnotationNumerifier(Numerifier):
         Numerifier.__init__(self, n_cols=3, coord=coord, max_len=max_len, dtype=np.int8, start=start, end=end)
         self.features = features
         self.one_hot = one_hot
+        self.start = start
+        self.end = end
         self.coord = coord
         self._zero_gene_lengths()
 
     def _zero_gene_lengths(self):
-        self.gene_lengths = np.zeros((len(self.coord.sequence),), dtype=np.uint32)
+        self.gene_lengths = np.zeros((self.end - self.start,), dtype=np.uint32)
 
     def coord_to_matrices(self):
         """Always numerifies both strands one after the other."""
@@ -152,7 +154,7 @@ class AnnotationNumerifier(Numerifier):
         minus_strand = self._encode_strand(False)
 
         # put everything together
-        combined_data = tuple(plus_strand[i] + minus_strand[i] for i in range(len(plus_strand)))
+        combined_data = tuple(({'plus': plus_strand[i], 'minus': minus_strand[i]} for i in range(len(plus_strand))))
         return combined_data
 
     def _encode_strand(self, is_plus_strand):
@@ -181,8 +183,8 @@ class AnnotationNumerifier(Numerifier):
             # don't include features from the other strand
             if not feature.is_plus_strand == is_plus_strand:
                 continue
-            start = feature.start
-            end = feature.end
+            start = feature.start - self.start  # self.start used as offset for writing chunk
+            end = feature.end - self.start
             if not is_plus_strand:
                 start, end = end + 1, start + 1
             if feature.type in AnnotationNumerifier.feature_to_col.keys():
@@ -268,59 +270,67 @@ class CoordNumerifier(object):
         coord_features = sorted(coord_features, key=lambda f: min(f.start, f.end))  # sort by ~ +strand start
         split_finder = SplitFinder(features=coord_features, write_by=write_by, coord_length=coord.len,
                                    chunk_size=max_len)
-        bp_coords = iter(split_finder.coords)
+
         for f_set, bp_coord, h5_coord in \
                 zip(split_finder.split_features(), split_finder.coords, split_finder.relative_h5_coords):
             start, end = bp_coord
 
             # todo, run for just start-end and f_set
-            anno_numerifier = AnnotationNumerifier(coord=coord, features=coord_features, max_len=max_len,
-                                                   one_hot=one_hot)
+            anno_numerifier = AnnotationNumerifier(coord=coord, features=f_set, max_len=max_len,
+                                                   one_hot=one_hot, start=start, end=end)
             seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=start, end=end)
 
             # returns results for both strands, with the plus strand first in the list
             # todo, this needs to change so that + & - strand are returned and handled as two arrays
-            x = seq_numerifier.coord_to_matrices()
-            y, sample_weights, gene_lengths, transitions = anno_numerifier.coord_to_matrices()
+            xb = seq_numerifier.coord_to_matrices()
+            yb, sample_weightsb, gene_lengthsb, transitionsb = anno_numerifier.coord_to_matrices()
 
-            x, y, sample_weights, gene_lengths, transitions = \
-                (CoordNumerifier.pad(x, max_len) for x in [x, y, sample_weights, gene_lengths, transitions])
+            for strand in ['plus', 'minus']:
+                x, y, sample_weights, gene_lengths, transitions = \
+                    (CoordNumerifier.pad(x, max_len) for x in [xb[strand],
+                                                               yb[strand],
+                                                               sample_weightsb[strand],
+                                                               gene_lengthsb[strand],
+                                                               transitionsb[strand]])
 
-            start_ends = anno_numerifier.paired_steps
-            # flip the start ends back for - strand and append
-            start_ends += [(x[1], x[0]) for x in anno_numerifier.paired_steps[::-1]]
-            start_ends = np.array(start_ends, dtype=np.int64)
+                # todo, move to be part of anno numerifier??
+                if strand == 'plus':
+                    start_ends = anno_numerifier.paired_steps
+                else:
+                    # flip the start ends back for - strand
+                    start_ends = [(x[1], x[0]) for x in anno_numerifier.paired_steps[::-1]]
+                start_ends = np.array(start_ends, dtype=np.int64)
 
-            # mark examples from featureless coordinate / assume there is no trustworthy annotation
-            if not coord_features:
-                logging.warning('Sequence {} has no annotations'.format(coord.seqid))
-                is_annotated = [0] * len(x)
-            else:
-                is_annotated = [1] * len(x)
-            is_annotated = np.array(is_annotated, dtype=np.bool)
+                # mark examples from featureless coordinate / assume there is no trustworthy annotation
+                if not coord_features:
+                    logging.warning('Sequence {} has no annotations'.format(coord.seqid))
+                    is_annotated = [0] * len(x)
+                else:
+                    is_annotated = [1] * len(x)
+                is_annotated = np.array(is_annotated, dtype=np.bool)
 
-            # additional derived matrices
-            err_samples = np.any(sample_weights == 0, axis=1)
-            # just one entry per chunk
-            if one_hot:
-                fully_intergenic_samples = np.all(y[:, :, 0] == 0, axis=1)
-            else:
-                fully_intergenic_samples = np.all(y[:, :, 0] == 1, axis=1)
+                # additional derived matrices
+                err_samples = np.any(sample_weights == 0, axis=1)
+                # just one entry per chunk
+                if one_hot:
+                    fully_intergenic_samples = np.all(y[:, :, 0] == 0, axis=1)
+                else:
+                    fully_intergenic_samples = np.all(y[:, :, 0] == 1, axis=1)
 
-            # do not output the input_masks as it is not used for anything
-            out = (MatAndInfo('y', y, 'int8'),  # y should always be first (bc currently we always want it)
-                   MatAndInfo('X', x, 'float16'),
-                   MatAndInfo('sample_weights', sample_weights, 'int8'),
-                   MatAndInfo('gene_lengths', gene_lengths, 'uint32'),
-                   MatAndInfo('transitions', transitions, 'int8'),
-                   MatAndInfo('err_samples', err_samples, 'bool'),
-                   MatAndInfo('fully_intergenic_samples', fully_intergenic_samples,  'bool'),
-                   MatAndInfo('species', np.array([coord.genome.species.encode('ASCII')] * len(x)), 'S25'),
-                   MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(x)), 'S50'),
-                   MatAndInfo('start_ends', start_ends, 'int64'),
-                   MatAndInfo('is_annotated', is_annotated, 'bool'))
-            yield out, h5_coord  # todo, yield will of course make more sense once we chunk up the data some, and once the
-            #             other numerifiers also yield...
+                # do not output the input_masks as it is not used for anything
+                out = (MatAndInfo('y', y, 'int8'),  # y should always be first (bc currently we always want it)
+                       MatAndInfo('X', x, 'float16'),
+                       MatAndInfo('sample_weights', sample_weights, 'int8'),
+                       MatAndInfo('gene_lengths', gene_lengths, 'uint32'),
+                       MatAndInfo('transitions', transitions, 'int8'),
+                       MatAndInfo('err_samples', err_samples, 'bool'),
+                       MatAndInfo('fully_intergenic_samples', fully_intergenic_samples,  'bool'),
+                       MatAndInfo('species', np.array([coord.genome.species.encode('ASCII')] * len(x)), 'S25'),
+                       MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(x)), 'S50'),
+                       MatAndInfo('start_ends', start_ends, 'int64'),
+                       MatAndInfo('is_annotated', is_annotated, 'bool'))
+                yield out, h5_coord[strand]  # todo, yield will of course make more sense once we chunk up the data some, and once the
+                #             other numerifiers also yield...
 
 
 class SplitFinder:
@@ -373,7 +383,7 @@ class SplitFinder:
         # calculate the negative strand as positive strand, but backwards from end
         h5_end = postive_h5_ends[-1] * 2
         negative_h5s = [(h5_end - x[1], h5_end - x[0]) for x in postive_h5s]
-        return zip(postive_h5s, negative_h5s)
+        return ({'plus': x[0], 'minus': x[1]} for x in zip(postive_h5s, negative_h5s))
 
     @staticmethod
     def _feature_not_past(feature, to):
