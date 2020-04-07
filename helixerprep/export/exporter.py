@@ -51,28 +51,14 @@ class HelixerExportController(object):
                     val_arrays[key].append(flat_data[key][i])
         return train_arrays, val_arrays
 
-    @staticmethod
-    def _create_dataset(h5_file, key, matrix, dtype):
-        shape = list(matrix.shape)
-        shuffle = len(shape) > 1
-
-        h5_file.create_dataset(key,
-                               shape=shape,
-                               maxshape=tuple([None] + shape[1:]),
-                               chunks=tuple([1] + shape[1:]),
-                               dtype=dtype,
-                               compression='lzf',
-                               shuffle=shuffle)  # only for the compression
-
     def _save_data(self, h5_file, flat_data, h5_coords, n_chunks, first_round_for_coordinate, h5_group='/data/'):
-
         assert len(set(mat_info.matrix.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
 
         if first_round_for_coordinate:
             self._create_or_expand_datasets(h5_file, h5_group, flat_data, n_chunks)
 
         # h5_coords are relative for the coordinate/chromosome, so offset by previous length
-        old_len = h5_file[h5_group + 'y'].shape[0]
+        old_len = self.h5_coord_offset
         start = old_len + h5_coords[0]
         end = old_len + h5_coords[1]
 
@@ -83,14 +69,28 @@ class HelixerExportController(object):
 
     def _create_or_expand_datasets(self, h5_file, h5_group, flat_data, n_chunks):
         # append to or create datasets
-        if h5_group + 'y' in h5_file:
-            for mat_info in flat_data:
-                dset = h5_file[h5_group + mat_info.key]
-                old_len = dset.shape[0]
-                dset.resize(old_len + n_chunks, axis=0)
-        else:
+        if h5_group + 'y' not in h5_file:
             for mat_info in flat_data:
                 self._create_dataset(h5_file, h5_group + mat_info.key, mat_info.matrix, mat_info.dtype)
+
+        old_len = h5_file[h5_group + flat_data[0].key].shape[0]
+        self.h5_coord_offset = old_len
+        for mat_info in flat_data:
+            dset = h5_file[h5_group + mat_info.key]
+            dset.resize(old_len + n_chunks, axis=0)
+
+    @staticmethod
+    def _create_dataset(h5_file, key, matrix, dtype):
+        shape = list(matrix.shape)
+        shuffle = len(shape) > 1
+        shape[0] = 0  # create w/o size
+        h5_file.create_dataset(key,
+                               shape=shape,
+                               maxshape=tuple([None] + shape[1:]),
+                               chunks=tuple([1] + shape[1:]),
+                               dtype=dtype,
+                               compression='lzf',
+                               shuffle=shuffle)  # only for the compression
 
     def _split_coords_by_N90(self, genome_coords, val_size):
         """Splits the given coordinates in a train and val set. It does so by doing it individually for
@@ -148,18 +148,10 @@ class HelixerExportController(object):
             self.h5_train.close()
             self.h5_val.close()
 
-    @staticmethod
-    def _filter_chunks_by_mask(coord_data, mask):
-        """masks all matrices in coord_data, and counts filterd chunks"""
-        count_to_drop = mask.shape[0] - np.sum(mask)
-        if count_to_drop > 0:
-            for mat_info in coord_data:
-                mat_info.matrix = mat_info.matrix[mask]
-        return count_to_drop
-
     def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, keep_featureless):
-        coord_data_gen, h5_coord = CoordNumerifier.numerify(coord, coord_features, chunk_size,
-                                                            one_hot)
+        """filtering and stats"""
+        coord_data_gen = CoordNumerifier.numerify(coord, coord_features, chunk_size,
+                                                  one_hot)
 
         # the following will all be used to calculated a percentage, which is yielded but ignored until the end
         n_chunks = 0
@@ -169,7 +161,10 @@ class HelixerExportController(object):
         n_ig_bases = 0
         n_masked_bases = 0
 
-        for coord_data in coord_data_gen:
+        for coord_data, h5_coord in coord_data_gen:
+            if not keep_featureless and not bool(coord_features):
+                print('continuing w/o exporting one super-chunk {} on {}'.format(h5_coord, coord))
+                continue  # don't process or export featureless coordinates unless explicitly requested
             # easy access to matrices
             y = [cd.matrix for cd in coord_data if cd.key == 'y'][0]
             x = [cd.matrix for cd in coord_data if cd.key == 'X'][0]
@@ -187,17 +182,6 @@ class HelixerExportController(object):
             else:
                 n_ig_bases += np.sum(1 - y[:, :, 0])  # where transcript is 1, it's genic, but this counts padding
                 n_ig_bases -= padded_bases  # subtract padding
-
-            # removing so we can calculate where -strand will be written to
-            # count and filter things
-            # filter out sequences that are completely masked as error or had 0-features in the coord
-            # if not keep_errors:
-            #    valid_data = np.any(sample_weights, axis=1)
-            #    n_invalid_chunks += self._filter_chunks_by_mask(coord_data, mask=valid_data)
-
-            if not keep_featureless:
-                is_annotated = [cd.matrix for cd in coord_data if cd.key == 'is_annotated'][0]
-                n_featureless_chunks += self._filter_chunks_by_mask(coord_data, mask=is_annotated)
 
             masked_bases_perc = n_masked_bases / n_bases * 100
             ig_bases_perc = n_ig_bases / n_bases * 100
@@ -234,7 +218,7 @@ class HelixerExportController(object):
                 first_round_for_coordinate = True
                 for flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc, \
                     featureless_chunks_perc, h5_coord in numerify_outputs:
-
+                    y = flat_data[0]
                     if self.only_test_set:
                         self._save_data(self.h5_test, flat_data, h5_coords=h5_coord, n_chunks=n_chunks,
                                         first_round_for_coordinate=first_round_for_coordinate, h5_group=h5_group)
@@ -249,15 +233,15 @@ class HelixerExportController(object):
                                             first_round_for_coordinate=first_round_for_coordinate, h5_group=h5_group)
                             assigned_set = 'val'
                     first_round_for_coordinate = False
-
-                print((f'{n_coords_done}/{n_coords} Numerified {coord} of {coord.genome.species} '
-                       f"with {len(coord.features)} features in {flat_data[0].matrix.shape[0]} chunks, "
-                       f'masked rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
-                       f'filtered fully err chunks: {invalid_seqs_perc:.2f}% ({assigned_set}), '
-                       f'filtered chunks from featureless coordinates {featureless_chunks_perc:.2f}%'))
+                try:
+                    print((f'{n_coords_done}/{n_coords} Numerified {coord} of {coord.genome.species} '
+                           f"with {len(coord.features)} features in {flat_data[0].matrix.shape[0]} chunks, "
+                           f'masked rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
+                           f'filtered fully err chunks: {invalid_seqs_perc:.2f}% ({assigned_set}), '
+                           f'filtered chunks from featureless coordinates {featureless_chunks_perc:.2f}%'))
+                except UnboundLocalError as e:
+                    print('please fix me so I do not throw e at featureless coordinates.... anyway, swallowing:', e)
                 n_coords_done += 1
-                # free all datasets so we don't keep two all the time
-                del flat_data
 
         self._add_data_attrs(genomes, exclude, keep_errors)
         self._close_files()

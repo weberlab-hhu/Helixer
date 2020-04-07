@@ -183,7 +183,7 @@ def test_stepper():
 def test_short_sequence_numerify():
     _, coords = memory_import_fasta('testdata/basic_sequences.fa')
     numerifier = SequenceNumerifier(coord=coords[3], max_len=100)
-    matrix = numerifier.coord_to_matrices()[0][0]
+    matrix = numerifier.coord_to_matrices()['plus'][0]
     # ATATATAT
     x = [0., 1, 0, 0, 0., 0, 1, 0]
     expect = np.array(x * 4).reshape((-1, 4))
@@ -191,7 +191,7 @@ def test_short_sequence_numerify():
 
     # on the minus strand
     numerifier = SequenceNumerifier(coord=coords[3], max_len=100)
-    matrix = numerifier.coord_to_matrices()[0][0]
+    matrix = numerifier.coord_to_matrices()['plus'][0]
 
     seq_comp = reverse_complement(coords[3].sequence)
     expect = [numerify.AMBIGUITY_DECODE[bp] for bp in seq_comp]
@@ -205,7 +205,7 @@ def test_base_level_annotation_numerify():
                                       features=coord.features,
                                       max_len=5000,
                                       one_hot=False)
-    nums = numerifier.coord_to_matrices()[0][0][:405]
+    nums = numerifier.coord_to_matrices()[0]["plus"][0][:405]
     expect = np.zeros([405, 3], dtype=np.float32)
     expect[0:400, 0] = 1.  # set genic/in raw transcript
     expect[10:301, 1] = 1.  # set in transcript
@@ -217,7 +217,8 @@ def test_base_level_annotation_numerify():
 def test_sequence_slicing():
     _, coords = memory_import_fasta('testdata/basic_sequences.fa')
     seq_numerifier = SequenceNumerifier(coord=coords[0], max_len=50)
-    num_list = seq_numerifier.coord_to_matrices()[0]
+    num_mats = seq_numerifier.coord_to_matrices()
+    num_list = num_mats["plus"] + num_mats["minus"]
     print([x.shape for x in num_list])
     # [(50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (50, 4), (5, 4)]
     assert len(num_list) == 9 * 2  # both strands
@@ -240,18 +241,23 @@ def test_coherent_slicing():
                                            features=coord.features,
                                            max_len=100,
                                            one_hot=False)
-    seq_slices, seq_error_masks = seq_numerifier.coord_to_matrices()
-    anno_slices, anno_error_masks, gene_lengths, transitions = anno_numerifier.coord_to_matrices()
-    assert (len(seq_slices) == len(anno_slices) == len(gene_lengths) == len(transitions) ==
-            len(anno_error_masks) == len(seq_error_masks) == 19 * 2)
 
-    for s, a, se, ae in zip(seq_slices, anno_slices, seq_error_masks, anno_error_masks):
-        assert s.shape[0] == a.shape[0] == se.shape[0] == ae.shape[0]
+    seq_mats = seq_numerifier.coord_to_matrices()
+    # appending +&- is historical / avoiding re-writing the test...
+    seq_slices = seq_mats['plus'] + seq_mats['minus']
+
+    anno_mats = anno_numerifier.coord_to_matrices()
+    anno_mats = [x["plus"] + x['minus'] for x in anno_mats]
+    anno_slices, anno_error_masks, gene_lengths, transitions = anno_mats
+    assert (len(seq_slices) == len(anno_slices) == len(gene_lengths) == len(transitions) ==
+            len(anno_error_masks) == 19 * 2)
+
+    for s, a, ae in zip(seq_slices, anno_slices,  anno_error_masks):
+        assert s.shape[0] == a.shape[0] == ae.shape[0]
 
     # testing sequence error masks
     expect = np.ones((1801 * 2, ), dtype=np.int8)
-    # sequence error mask should be empty
-    assert np.array_equal(expect, np.concatenate(seq_error_masks))
+
     # annotation error mask of test case 1 should reflect faulty exon/CDS ranges
     expect[:110] = 0
     expect[120:499] = 0  # error from test case 1
@@ -270,13 +276,13 @@ def test_minus_strand_numerify():
     nums = numerifier.coord_to_matrices()[0]
     # first, we should make sure the opposite strand is unmarked when empty
     expect = np.zeros([100, 3], dtype=np.float32)
-    assert np.array_equal(nums[0], expect)
+    assert np.array_equal(nums["plus"][0], expect)
 
     # and now that we get the expect range on the minus strand,
     # keeping in mind the 40 is inclusive, and the 9, not
     expect[10:41, 0] = 1.
     expect = np.flip(expect, axis=0)
-    assert np.array_equal(nums[1], expect)  # nums[1] is now from the minus strand
+    assert np.array_equal(nums["minus"][0], expect)
 
     # with cutting
     numerifier = AnnotationNumerifier(coord=coord,
@@ -288,20 +294,21 @@ def test_minus_strand_numerify():
     expect = np.zeros([100, 3], dtype=np.float32)
     expect[10:41, 0] = 1.
 
-    assert np.array_equal(nums[2], np.flip(expect[50:100], axis=0))
-    assert np.array_equal(nums[3], np.flip(expect[0:50], axis=0))
+    assert np.array_equal(nums['minus'][0], np.flip(expect[50:100], axis=0))
+    assert np.array_equal(nums['minus'][1], np.flip(expect[0:50], axis=0))
 
 
 def test_coord_numerifier_and_h5_gen_plus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=400, genomes='', exclude='', val_size=0.2, one_hot=False,
-                      keep_errors=False, all_transcripts=True)
+                      all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
-    x = f['/data/X']
-    y = f['/data/y']
-    sample_weights = f['/data/sample_weights']
+    not_erroneous = f['/data/err_samples'][:]
+    x = f['/data/X'][:][not_erroneous]
+    y = f['/data/y'][:][not_erroneous]
+    sample_weights = f['/data/sample_weights'][:][not_erroneous]
 
     # five chunks for each the two annotated coordinates and one for the unannotated coord
     # then *2 for each strand and -2 for
@@ -347,12 +354,13 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=200, genomes='', exclude='', val_size=0.2, one_hot=False,
-                      keep_errors=False, all_transcripts=True)
+                      all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
-    x = f['/data/X']
-    y = f['/data/y']
-    sample_weights = f['/data/sample_weights']
+    not_erroneous = f['/data/err_samples'][:]
+    x = f['/data/X'][:][not_erroneous]
+    y = f['/data/y'][:][not_erroneous]
+    sample_weights = f['/data/sample_weights'][:][not_erroneous]
 
     assert len(x) == len(y) == len(sample_weights) == 33
 
@@ -411,11 +419,12 @@ def test_numerify_with_end_neg1():
                                           one_hot=False)
 
         if is_plus_strand:
-            nums, masks, _, _ = [x[0] for x in numerifier.coord_to_matrices()]
+            nums, masks, _, _ = [x["plus"][0] for x in numerifier.coord_to_matrices()]
         else:
-            nums, masks, _, _ = [x[1] for x in numerifier.coord_to_matrices()]
+            nums, masks, _, _ = [x["minus"][0] for x in numerifier.coord_to_matrices()]
 
         if not np.array_equal(nums, expect):
+            print(nums)
             for i in range(nums.shape[0]):
                 if not np.all(nums[i] == expect[i]):
                     print("nums[i] != expect[i]: {} != {}, @ {}".format(nums[i], expect[i], i))
@@ -612,7 +621,7 @@ def test_one_hot_encodings():
                                       max_len=5000,
                                       one_hot=False)
 
-    y_multi = numerifier.coord_to_matrices()[0][0]
+    y_multi = numerifier.coord_to_matrices()[0]["plus"][0]
     # count classes
     uniques_multi = np.unique(y_multi, return_counts=True, axis=0)
 
@@ -621,7 +630,7 @@ def test_one_hot_encodings():
                                       features=coord.features,
                                       max_len=5000,
                                       one_hot=True)
-    y_one_hot_4 = numerifier.coord_to_matrices()[0][0]
+    y_one_hot_4 = numerifier.coord_to_matrices()[0]["plus"][0]
     uniques_4 = np.unique(y_one_hot_4, return_counts=True, axis=0)
     # this loop has to be changed when using accounting for non-coding introns as well
     for i in range(len(classes_multi)):
@@ -812,11 +821,12 @@ def test_gene_lengths():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=5000, genomes='', exclude='', val_size=0.2, one_hot=True,
-                      keep_errors=False, all_transcripts=True)
+                      all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     gl = f['/data/gene_lengths']
     y = f['/data/y']
+
     assert len(gl) == 4  # one for each coord and strand
 
     # check if there is a value > 0 wherever there is something genic
@@ -855,16 +865,21 @@ def test_featureless_filter():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     controller.export(chunk_size=5000, genomes='', exclude='', val_size=0.2, one_hot=True,
-                      keep_errors=False, all_transcripts=True)
+                      all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     y = f['/data/y']
+    sw = f['/data/sample_weights'][:]
+    print(sw.shape)
+    print(sw)
+    print(np.all(sw == 0, axis=1), 'wwwwwwwww')
+    print(f['data/X'][:])
     assert len(y) == 4  # one for each coord and strand, without featureless coord 3 (filtered)
     f.close()
     # dump the whole db in chunks into a .h5 file
     _, controller, _ = setup_dummyloci()
     controller.export(chunk_size=5000, genomes='', exclude='', val_size=0.2, one_hot=True,
-                      keep_errors=False, all_transcripts=True, keep_featureless=True)
+                      all_transcripts=True, keep_featureless=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     y = f['/data/y']
