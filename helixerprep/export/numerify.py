@@ -63,10 +63,8 @@ class Numerifier(ABC):
         self.start = start
         self.end = end
         # set paired steps
-        partitioner = Stepper(end=self.end, by=self.max_len)
-        partitioner.at = self.start
+        partitioner = Stepper(end=self.end - self.start, by=self.max_len)
         self.paired_steps = list(partitioner.step_to_end())
-
         super().__init__()
 
     @abstractmethod
@@ -185,6 +183,10 @@ class AnnotationNumerifier(Numerifier):
             end = feature.end - self.start
             if not is_plus_strand:
                 start, end = end + 1, start + 1
+            # save ori length and crop to size
+            gene_length = end - start
+            start = max(start, 0)
+            end = min(end, self.matrix.shape[0])
             if feature.type in AnnotationNumerifier.feature_to_col.keys():
                 col = AnnotationNumerifier.feature_to_col[feature.type]
                 self.matrix[start:end, col] = 1
@@ -195,7 +197,7 @@ class AnnotationNumerifier(Numerifier):
             # also fill self.gene_lengths
             # give precedence for the longer transcript if present
             if feature.type.value == types.GEENUFF_TRANSCRIPT:
-                length_arr = np.full((end - start,), end - start)
+                length_arr = np.full(shape=(end - start,), fill_value=gene_length)
                 self.gene_lengths[start:end] = np.maximum(self.gene_lengths[start:end], length_arr)
 
     def _encode_onehot4(self):
@@ -293,6 +295,7 @@ class CoordNumerifier(object):
                     # flip the start ends back for - strand
                     start_ends = [(x[1], x[0]) for x in anno_numerifier.paired_steps[::-1]]
                 start_ends = np.array(start_ends, dtype=np.int64)
+                start_ends += bp_coord[0]
 
                 # mark examples from featureless coordinate / assume there is no trustworthy annotation
                 if not coord_features:
@@ -328,12 +331,15 @@ class CoordNumerifier(object):
 class SplitFinder:
     # todo, tryout and test
     def __init__(self, features, write_by, coord_length, chunk_size):
-        assert not write_by % chunk_size, "number of bp to write at once 'write_by' must be a multiple of 'chunk_size'"
+        if write_by % chunk_size:
+            raise ValueError("number of bp to write at once 'write_by' ({}) must be a multiple of "
+                             "'chunk_size' ({})".format(write_by, chunk_size))
         self.features = features
         self.write_by = write_by  # target writing this many bp to the h5 file at once
         self.coord_length = coord_length
         self.chunk_size = chunk_size
         self.splits = tuple(self._find_splits())
+        print(len(self.splits), 'expected num of chunks to write in', self.write_by)
         self.relative_h5_coords = tuple(self._get_rel_h5_coords_for_splits())
 
     @property
@@ -408,7 +414,7 @@ class SplitFinder:
     def _find_splits(self):
         """yields splits of ~write_by size that can be safely split at"""
         tr_mask = self._transition_mask()
-        for i in range(self.coord_length, self.coord_length, self.write_by):
+        for i in range(self.write_by, self.coord_length, self.write_by):
             if i not in tr_mask:
                 yield i
             else:

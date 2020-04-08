@@ -961,3 +961,51 @@ def test_coverage_in_bits():
             assert cov_chunk[-1] == pystart + 10**6
             assert cov_chunk[0] == pyend + 10 ** 6 - 1
     h5.close()
+
+
+def test_super_chunking4write():
+    """Tests that the exact same h5 is produced, regardless of how many super-chunks it is written in"""
+    _, controller, _ = setup_dummyloci()
+    # dump the whole db in chunks into a .h5 file
+    n_writing_chunks = controller.export(chunk_size=500, genomes='', exclude='', val_size=0.2, one_hot=True,
+                                         all_transcripts=True,
+                                         write_by=10_000_000_000)  # write by left large enough to yield just once
+
+    f = h5py.File(H5_OUT_FILE, 'r')
+    y0 = np.array(f['/data/y'][:])
+    se0 = np.array(f['/data/start_ends'][:])
+    seqids0 = np.array(f['/data/seqids'][:])
+    species0 = np.array(f['/data/species'][:])
+    gl0 = np.array(f['/data/gene_lengths'][:])
+    x0 = np.array(f['/data/X'][:])
+
+    assert n_writing_chunks == 4  # 2 per feature-containing coordinate
+    _, controller, _ = setup_dummyloci()
+    # dump the whole db in chunks into a .h5 file
+    n_writing_chunks = controller.export(chunk_size=500, genomes='', exclude='', val_size=0.2, one_hot=True,
+                                         all_transcripts=True,
+                                         write_by=1000)  # write by should result in multiple super-chunks
+
+    f = h5py.File(H5_OUT_FILE, 'r')
+    y1 = np.array(f['/data/y'][:])
+    se1 = np.array(f['/data/start_ends'][:])
+    seqids1 = np.array(f['/data/seqids'][:])
+    species1 = np.array(f['/data/species'][:])
+    gl1 = np.array(f['/data/gene_lengths'][:])
+    x1 = np.array(f['/data/X'][:])
+    assert np.all(se0 == se1)
+    assert np.all(seqids0 == seqids1)
+    assert np.all(species0 == species1)
+    assert np.all(x0 == x1)
+    assert np.all(y0 == y1)
+    assert np.all(gl0 == gl1)
+    # this makes sure it's being writen in multiple pieces at all
+    assert n_writing_chunks == 8  # 4 per feature-containing coordinate (each is 1000 < 2000 in length)
+
+    # finally, make sure it fails on invalid write_by val
+    _, controller, _ = setup_dummyloci()
+    # dump the whole db in chunks into a .h5 file
+    with pytest.raises(ValueError):
+        controller.export(chunk_size=500, genomes='', exclude='', val_size=0.2, one_hot=True,
+                          all_transcripts=True,
+                          write_by=1001)  # write by should result in multiple super-chunks
