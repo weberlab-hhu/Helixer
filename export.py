@@ -14,7 +14,7 @@ def main(args):
         args.exclude_genomes = args.exclude_genomes.split(',')
 
     controller.export(chunk_size=args.chunk_size, genomes=args.genomes, exclude=args.exclude_genomes,
-                      val_size=args.val_size, keep_featureless=args.export_featureless)
+                      val_size=args.val_size, keep_featureless=args.export_featureless, write_by=args.write_by)
 
 
 if __name__ == '__main__':
@@ -53,6 +53,9 @@ if __name__ == '__main__':
                            '{X, y, transitions} that should be exported. This can be useful, for '
                            'instance when skipping transitions (to reduce size/mem) or skipping X because '
                            'you are adding an additional annotation set to an existing file.')
+    data.add_argument('--write-by', type=int, default=10_000_000_000,
+                      help='write in super-chunks with this many bp, '
+                           'must be divisible by chunk-size')
 
     args = parser.parse_args()
     assert not (args.genomes and args.exclude_genomes), 'Can not include and exclude together'

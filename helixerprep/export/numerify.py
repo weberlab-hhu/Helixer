@@ -3,11 +3,10 @@
 import numpy as np
 import logging
 from abc import ABC, abstractmethod
-from sqlalchemy.orm.exc import NoResultFound
 
 from geenuff.base import types
-from geenuff.base.orm import Coordinate, Genome
-from ..core.orm import Mer
+# todo, refactor so this is in a more general location
+from helixerprep.evaluation.rnaseq import find_contiguous_segments
 
 
 AMBIGUITY_DECODE = {
@@ -264,14 +263,22 @@ class CoordNumerifier(object):
         return padded_d
 
     @staticmethod
+    def numerify_to_match(coord, coord_features, one_hot, mode=None, h5=None):
+        pass
+
+    @staticmethod
     def numerify(coord, coord_features, max_len, one_hot=True, mode=('X', 'y', 'anno_meta', 'transitions'),
                  write_by=5000000):
         assert isinstance(max_len, int) and max_len > 0, 'what is {} of type {}'.format(max_len, type(max_len))
         coord_features = sorted(coord_features, key=lambda f: min(f.start, f.end))  # sort by ~ +strand start
         split_finder = SplitFinder(features=coord_features, write_by=write_by, coord_length=coord.length,
                                    chunk_size=max_len)
-        for f_set, bp_coord, h5_coord in \
-                zip(split_finder.split_features(), split_finder.coords, split_finder.relative_h5_coords):
+        for f_set, bp_coord, h5_coord in split_finder.feature_n_coord_gen():
+            yield CoordNumerifier._numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len,
+                                                              one_hot, coord_features)
+
+    @staticmethod
+    def _numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len, one_hot, coord_features):
             start, end = bp_coord
 
             anno_numerifier = AnnotationNumerifier(coord=coord, features=f_set, max_len=max_len,
@@ -325,11 +332,10 @@ class CoordNumerifier(object):
                        MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(x)), 'S50'),
                        MatAndInfo('start_ends', start_ends, 'int64'),
                        MatAndInfo('is_annotated', is_annotated, 'bool'))
-                yield out, h5_coord[strand]
+                return out, h5_coord[strand]
 
 
 class SplitFinder:
-    # todo, tryout and test
     def __init__(self, features, write_by, coord_length, chunk_size):
         if write_by % chunk_size:
             raise ValueError("number of bp to write at once 'write_by' ({}) must be a multiple of "
@@ -346,6 +352,10 @@ class SplitFinder:
     def coords(self):
         starts = [0] + list(self.splits)[:-1]
         return tuple(zip(starts, self.splits))
+
+    def feature_n_coord_gen(self):
+        """generator for feature subset, bp coordinates, and h5 coordinates (for +/-)"""
+        return zip(self.split_features(), self.coords, self.relative_h5_coords)
 
     def split_features(self):
         """get all features from start of list that aren't passed _to_"""
