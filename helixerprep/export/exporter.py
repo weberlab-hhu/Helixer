@@ -9,9 +9,15 @@ from sklearn.model_selection import train_test_split
 import geenuff, helixerprep
 from geenuff.applications.exporter import GeenuffExportController
 from .numerify import CoordNumerifier
+# todo, refactor so this is in a more general location
+from helixerprep.evaluation.rnaseq import find_contiguous_segments, gen_coords
 
 
 class HelixerExportController(object):
+    TEST = 'test'
+    VAL = 'val'
+    TRAIN = 'train'
+
     def __init__(self, db_path_in, data_dir, only_test_set=False):
         self.db_path_in = db_path_in
         self.only_test_set = only_test_set
@@ -21,15 +27,18 @@ class HelixerExportController(object):
         elif os.listdir(data_dir):
             print('Output directory must be empty or not existing')
             exit()
+        self.h5 = {}
         if self.only_test_set:
             print('Exporting all data into test_data.h5')
-            self.h5_test = h5py.File(os.path.join(data_dir, 'test_data.h5'), 'w')
+            self.h5[HelixerExportController.TEST] = h5py.File(os.path.join(data_dir, 'test_data.h5'), 'w')
         else:
             print('Splitting data into training_data.h5 and validation_data.h5')
-            self.h5_train = h5py.File(os.path.join(data_dir, 'training_data.h5'), 'w')
-            self.h5_val = h5py.File(os.path.join(data_dir, 'validation_data.h5'), 'w')
+            self.h5[HelixerExportController.TRAIN] = h5py.File(os.path.join(data_dir, 'training_data.h5'), 'w')
+            self.h5[HelixerExportController.VAL] = h5py.File(os.path.join(data_dir, 'validation_data.h5'), 'w')
 
-        self.h5_coord_offset = {'test': 0, 'val': 0, 'train': 0}
+        self.h5_coord_offset = {HelixerExportController.TEST: 0,
+                                HelixerExportController.VAL: 0,
+                                HelixerExportController.TRAIN: 0}
 
     @staticmethod
     def _split_sequences(flat_data, val_size):
@@ -51,8 +60,9 @@ class HelixerExportController(object):
                     val_arrays[key].append(flat_data[key][i])
         return train_arrays, val_arrays
 
-    def _save_data(self, h5_file, flat_data, h5_coords, n_chunks, first_round_for_coordinate,
+    def _save_data(self, flat_data, h5_coords, n_chunks, first_round_for_coordinate,
                    assigned_set, h5_group='/data/'):
+        h5_file = self.h5[assigned_set]
         assert len(set(mat_info.matrix.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
 
         if first_round_for_coordinate:
@@ -136,18 +146,12 @@ class HelixerExportController(object):
                 attrs[module.__name__ + '_commit'] = 'error'
         # insert attrs into .h5 file
         for key, value in attrs.items():
-            if self.only_test_set:
-                self.h5_test.attrs[key] = value
-            else:
-                self.h5_train.attrs[key] = value
-                self.h5_val.attrs[key] = value
+            for assigned_set in self.h5:
+                self.h5[assigned_set].attrs[key] = value
 
     def _close_files(self):
-        if self.only_test_set:
-            self.h5_test.close()
-        else:
-            self.h5_train.close()
-            self.h5_val.close()
+        for key in self.h5:
+            self.h5[key].close()
 
     def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, keep_featureless, write_by):
         """filtering and stats"""
@@ -194,6 +198,13 @@ class HelixerExportController(object):
 
     def export(self, chunk_size, genomes, exclude, val_size, one_hot=True,
                all_transcripts=False, keep_featureless=False, h5_group='/data/', write_by=10_000_000_000):
+        match_existing = False
+        if h5_group != '/data/':
+            match_existing = True
+            # todo, get coordinates for species and seqids... (for each existing h5)
+            #  turn these into a SplitFinder.feature_n_coord_gen matching formatted thing
+            #  pull up to use for export at every coordinate
+
         keep_errors = True
         genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude,
                                                                    all_transcripts=all_transcripts)
@@ -220,23 +231,18 @@ class HelixerExportController(object):
                 first_round_for_coordinate = True
                 for flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc, \
                     featureless_chunks_perc, h5_coord in numerify_outputs:
-                    y = flat_data[0]
+
                     if self.only_test_set:
-                        assigned_set = 'test'
-                        self._save_data(self.h5_test, flat_data, h5_coords=h5_coord, n_chunks=n_chunks,
-                                        first_round_for_coordinate=first_round_for_coordinate, h5_group=h5_group,
-                                        assigned_set=assigned_set)
+                        assigned_set = HelixerExportController.TEST
                     else:
                         if coord_id in train_coords:
-                            assigned_set = 'train'
-                            self._save_data(self.h5_train, flat_data, h5_coords=h5_coord, n_chunks=n_chunks,
-                                            first_round_for_coordinate=first_round_for_coordinate, h5_group=h5_group,
-                                            assigned_set=assigned_set)
+                            assigned_set = HelixerExportController.TRAIN
                         else:
-                            assigned_set = 'val'
-                            self._save_data(self.h5_val, flat_data, h5_coords=h5_coord, n_chunks=n_chunks,
-                                            first_round_for_coordinate=first_round_for_coordinate, h5_group=h5_group,
-                                            assigned_set=assigned_set)
+                            assigned_set = HelixerExportController.VAL
+
+                    self._save_data(flat_data, h5_coords=h5_coord, n_chunks=n_chunks,
+                                    first_round_for_coordinate=first_round_for_coordinate, h5_group=h5_group,
+                                    assigned_set=assigned_set)
                     first_round_for_coordinate = False
                     n_writing_chunks += 1
                 try:

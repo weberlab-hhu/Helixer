@@ -5,8 +5,6 @@ import logging
 from abc import ABC, abstractmethod
 
 from geenuff.base import types
-# todo, refactor so this is in a more general location
-from helixerprep.evaluation.rnaseq import find_contiguous_segments
 
 
 AMBIGUITY_DECODE = {
@@ -263,8 +261,11 @@ class CoordNumerifier(object):
         return padded_d
 
     @staticmethod
-    def numerify_to_match(coord, coord_features, one_hot, mode=None, h5=None):
-        pass
+    def numerify_to_match(coord, coord_features, max_len, one_hot, mode=None, h5=None):
+        if h5 is None:
+            raise ValueError("I didn't want to change argument order yet, but the h5 is required, sorry")
+
+        #bits_plus, bits_minus = find_contiguous_segments(h5, , , max_len)
 
     @staticmethod
     def numerify(coord, coord_features, max_len, one_hot=True, mode=('X', 'y', 'anno_meta', 'transitions'),
@@ -274,8 +275,9 @@ class CoordNumerifier(object):
         split_finder = SplitFinder(features=coord_features, write_by=write_by, coord_length=coord.length,
                                    chunk_size=max_len)
         for f_set, bp_coord, h5_coord in split_finder.feature_n_coord_gen():
-            yield CoordNumerifier._numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len,
-                                                              one_hot, coord_features)
+            for strand_res in CoordNumerifier._numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len,
+                                                                          one_hot, coord_features):
+                yield strand_res
 
     @staticmethod
     def _numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len, one_hot, coord_features):
@@ -332,9 +334,10 @@ class CoordNumerifier(object):
                        MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(x)), 'S50'),
                        MatAndInfo('start_ends', start_ends, 'int64'),
                        MatAndInfo('is_annotated', is_annotated, 'bool'))
-                return out, h5_coord[strand]
+                yield out, h5_coord[strand]
 
 
+# todo, consider moving to seperate splitting file or exporter...?
 class SplitFinder:
     def __init__(self, features, write_by, coord_length, chunk_size):
         if write_by % chunk_size:
