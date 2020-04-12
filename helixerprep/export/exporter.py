@@ -1,5 +1,4 @@
 import os
-import more_itertools
 import h5py
 import numpy as np
 import random
@@ -7,10 +6,10 @@ import datetime
 import subprocess
 from sklearn.model_selection import train_test_split
 
-import geenuff, helixerprep
+import geenuff
+import helixerprep
 from geenuff.applications.exporter import GeenuffExportController
 from .numerify import CoordNumerifier
-from helixerprep.evaluation.training_rnaseq import species_range
 
 
 class HelixerExportController(object):
@@ -18,23 +17,37 @@ class HelixerExportController(object):
     VAL = 'val'
     TRAIN = 'train'
 
-    def __init__(self, db_path_in, data_dir, only_test_set=False):
+    def __init__(self, db_path_in, data_dir, only_test_set=False, match_existing=False, h5_group='/data/'):
         self.db_path_in = db_path_in
         self.only_test_set = only_test_set
         self.geenuff_exporter = GeenuffExportController(self.db_path_in, longest=True)
-        if not os.path.isdir(data_dir):
-            os.makedirs(data_dir)
-        elif os.listdir(data_dir):
-            print('Output directory must be empty or not existing')
-            exit()
+
+        # h5 export details
+        self.match_existing = match_existing
+        self.h5_group = h5_group
+        if match_existing:
+            mode = 'a'
+            # confirm files exist
+            if self.only_test_set:
+                assert os.path.exists(os.path.join(data_dir, 'test_data.h5')), 'data_dir lacks expected test_data.h5'
+            else:
+                for h5 in ['training_data.h5', 'validation_data.h5']:
+                    assert os.path.exists(os.path.join(data_dir, h5)), 'data_dir lacks expected {}'.format(h5)
+        else:
+            mode = 'w'
+            if not os.path.isdir(data_dir):
+                os.makedirs(data_dir)
+            elif os.listdir(data_dir):
+                print('Output directory must be empty or not existing')
+                exit()
         self.h5 = {}
         if self.only_test_set:
             print('Exporting all data into test_data.h5')
-            self.h5[HelixerExportController.TEST] = h5py.File(os.path.join(data_dir, 'test_data.h5'), 'w')
+            self.h5[HelixerExportController.TEST] = h5py.File(os.path.join(data_dir, 'test_data.h5'), mode)
         else:
             print('Splitting data into training_data.h5 and validation_data.h5')
-            self.h5[HelixerExportController.TRAIN] = h5py.File(os.path.join(data_dir, 'training_data.h5'), 'w')
-            self.h5[HelixerExportController.VAL] = h5py.File(os.path.join(data_dir, 'validation_data.h5'), 'w')
+            self.h5[HelixerExportController.TRAIN] = h5py.File(os.path.join(data_dir, 'training_data.h5'), mode)
+            self.h5[HelixerExportController.VAL] = h5py.File(os.path.join(data_dir, 'validation_data.h5'), mode)
 
         self.h5_coord_offset = {HelixerExportController.TEST: 0,
                                 HelixerExportController.VAL: 0,
@@ -80,7 +93,7 @@ class HelixerExportController(object):
                 expected = h5_file['/data/' + key][start:end]
                 for mat_info in flat_data:
                     if mat_info.key == key:
-                        assert np.all(mat_info.matrix == expected)
+                        assert np.all(mat_info.matrix == expected), '{} != {} :-('.format(mat_info.matrix, expected)
 
         # writing to the h5 file
         for mat_info in flat_data:
@@ -181,14 +194,13 @@ class HelixerExportController(object):
                 continue  # don't process or export featureless coordinates unless explicitly requested
             # easy access to matrices
             y = [cd.matrix for cd in coord_data if cd.key == 'y'][0]
-            x = [cd.matrix for cd in coord_data if cd.key == 'X'][0]
             sample_weights = [cd.matrix for cd in coord_data if cd.key == 'sample_weights'][0]
 
             # count things
             n_chunks += y.shape[0]
             n_masked_bases += np.sum(sample_weights == 0)  # sample weights already 0 where there's padding, ignore
 
-            padded_bases = np.sum(1 - np.sum(x, axis=2))
+            padded_bases = np.sum(1 - np.sum(y, axis=2))  # todo, this fails on one-hot...
             n_bases += np.prod(y.shape[:2]) - padded_bases
 
             if not one_hot:
@@ -206,9 +218,10 @@ class HelixerExportController(object):
                   h5_coord
 
     def export(self, chunk_size, genomes, exclude, val_size, one_hot=True,
-               all_transcripts=False, keep_featureless=False, h5_group='/data/', write_by=10_000_000_000,
-               match_existing=False, modes=('X', 'y', 'anno_meta', 'transitions')):
-
+               all_transcripts=False, keep_featureless=False, write_by=10_000_000_000,
+               modes=('X', 'y', 'anno_meta', 'transitions')):
+        match_existing = self.match_existing
+        h5_group = self.h5_group
         keep_errors = True
         genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude,
                                                                    all_transcripts=all_transcripts)
@@ -245,9 +258,10 @@ class HelixerExportController(object):
                         else:
                             assigned_set = HelixerExportController.VAL
 
-                    if (match_existing and keep_featureless and
-                        coord != self.h5[assigned_set]['/data/seqid/'][self.h5_coord_offset[assigned_set]]):
+                    if (match_existing and
+                        coord != self.h5[assigned_set]['/data/seqids/'][self.h5_coord_offset[assigned_set]]):
                         continue  # low efficiency (but rarely used) skip for coordinates missing in existing h5
+                        # todo, this is currently always true...
 
                     self._save_data(flat_data, h5_coords=h5_coord, n_chunks=n_chunks,
                                     first_round_for_coordinate=first_round_for_coordinate, h5_group=h5_group,

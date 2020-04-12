@@ -326,8 +326,8 @@ class CoordNumerifier(object):
                    MatAndInfo('transitions', transitions, 'int8'),
                    MatAndInfo('err_samples', err_samples, 'bool'),
                    MatAndInfo('fully_intergenic_samples', fully_intergenic_samples,  'bool'),
-                   MatAndInfo('species', np.array([coord.genome.species.encode('ASCII')] * len(x)), 'S25'),
-                   MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(x)), 'S50'),
+                   MatAndInfo('species', np.array([coord.genome.species.encode('ASCII')] * len(y)), 'S25'),
+                   MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(y)), 'S50'),
                    MatAndInfo('start_ends', start_ends, 'int64'),
                    MatAndInfo('is_annotated', is_annotated, 'bool')]
             if export_x:

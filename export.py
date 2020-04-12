@@ -6,7 +6,6 @@ from helixerprep.export.exporter import HelixerExportController
 
 
 def main(args):
-    controller = HelixerExportController(args.db_path_in, args.out_dir, args.only_test_set)
 
     if args.genomes != '':
         args.genomes = args.genomes.split(',')
@@ -20,14 +19,16 @@ def main(args):
 
     if args.add_additional is not None:
         match_existing = True
-        h5_group = '/alternative/' + args.add_additional
+        h5_group = '/alternative/' + args.add_additional + '/'
     else:
         match_existing = False
         h5_group = '/data/'
 
+    controller = HelixerExportController(args.db_path_in, args.out_dir, args.only_test_set,
+                                         match_existing=match_existing, h5_group=h5_group)
     controller.export(chunk_size=args.chunk_size, genomes=args.genomes, exclude=args.exclude_genomes,
                       val_size=args.val_size, keep_featureless=args.export_featureless, write_by=args.write_by,
-                      h5_group=h5_group, match_existing=match_existing, modes=modes)
+                      modes=modes)
 
 
 if __name__ == '__main__':
