@@ -13,8 +13,21 @@ def main(args):
     if args.exclude_genomes != '':
         args.exclude_genomes = args.exclude_genomes.split(',')
 
+    if args.modes == 'all':
+        modes = ('X', 'y', 'anno_meta', 'transitions')  # todo, only X does anything atm
+    else:
+        modes = tuple(args.modes.split(','))
+
+    if args.add_additional is not None:
+        match_existing = True
+        h5_group = '/alternative/' + args.add_additional
+    else:
+        match_existing = False
+        h5_group = '/data/'
+
     controller.export(chunk_size=args.chunk_size, genomes=args.genomes, exclude=args.exclude_genomes,
-                      val_size=args.val_size, keep_featureless=args.export_featureless, write_by=args.write_by)
+                      val_size=args.val_size, keep_featureless=args.export_featureless, write_by=args.write_by,
+                      h5_group=h5_group, match_existing=match_existing, modes=modes)
 
 
 if __name__ == '__main__':
@@ -50,7 +63,7 @@ if __name__ == '__main__':
                            'which can mask chunks from featureless coordinates that would have been skipped')
     data.add_argument('--modes', default='all',
                       help='either "all" (default), or a comma separated list with desired members of the following '
-                           '{X, y, transitions} that should be exported. This can be useful, for '
+                           '{X, y, anno_meta, transitions} that should be exported. This can be useful, for '
                            'instance when skipping transitions (to reduce size/mem) or skipping X because '
                            'you are adding an additional annotation set to an existing file.')
     data.add_argument('--write-by', type=int, default=10_000_000_000,

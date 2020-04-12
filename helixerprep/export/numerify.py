@@ -261,13 +261,6 @@ class CoordNumerifier(object):
         return padded_d
 
     @staticmethod
-    def numerify_to_match(coord, coord_features, max_len, one_hot, mode=None, h5=None):
-        if h5 is None:
-            raise ValueError("I didn't want to change argument order yet, but the h5 is required, sorry")
-
-        #bits_plus, bits_minus = find_contiguous_segments(h5, , , max_len)
-
-    @staticmethod
     def numerify(coord, coord_features, max_len, one_hot=True, mode=('X', 'y', 'anno_meta', 'transitions'),
                  write_by=5000000):
         assert isinstance(max_len, int) and max_len > 0, 'what is {} of type {}'.format(max_len, type(max_len))
@@ -276,65 +269,71 @@ class CoordNumerifier(object):
                                    chunk_size=max_len)
         for f_set, bp_coord, h5_coord in split_finder.feature_n_coord_gen():
             for strand_res in CoordNumerifier._numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len,
-                                                                          one_hot, coord_features):
+                                                                          one_hot, coord_features, mode):
                 yield strand_res
 
     @staticmethod
-    def _numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len, one_hot, coord_features):
-            start, end = bp_coord
+    def _numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len, one_hot, coord_features, mode):
+        export_x = 'X' in mode
+        start, end = bp_coord
 
-            anno_numerifier = AnnotationNumerifier(coord=coord, features=f_set, max_len=max_len,
-                                                   one_hot=one_hot, start=start, end=end)
-            seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=start, end=end)
+        anno_numerifier = AnnotationNumerifier(coord=coord, features=f_set, max_len=max_len,
+                                               one_hot=one_hot, start=start, end=end)
+        seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=start, end=end)
 
-            # everything with _b below is for "both strands" and is {"plus": +_np_array, "minus": -_np_array }
+        # everything with _b below is for "both strands" and is {"plus": +_np_array, "minus": -_np_array }
+        # todo, make mode more elegant / extensible
+        if export_x:
             xb = seq_numerifier.coord_to_matrices()
-            yb, sample_weightsb, gene_lengthsb, transitionsb = anno_numerifier.coord_to_matrices()
-            for strand in ['plus', 'minus']:
-                x, y, sample_weights, gene_lengths, transitions = \
-                    (CoordNumerifier.pad(x, max_len) for x in [xb[strand],
-                                                               yb[strand],
-                                                               sample_weightsb[strand],
-                                                               gene_lengthsb[strand],
-                                                               transitionsb[strand]])
-                # todo, move to be part of anno numerifier??
-                if strand == 'plus':
-                    start_ends = anno_numerifier.paired_steps
-                else:
-                    # flip the start ends back for - strand
-                    start_ends = [(x[1], x[0]) for x in anno_numerifier.paired_steps[::-1]]
-                start_ends = np.array(start_ends, dtype=np.int64)
-                start_ends += bp_coord[0]
+        yb, sample_weightsb, gene_lengthsb, transitionsb = anno_numerifier.coord_to_matrices()
+        for strand in ['plus', 'minus']:
+            if export_x:
+                x = CoordNumerifier.pad(xb[strand], max_len)
+            y, sample_weights, gene_lengths, transitions = \
+                (CoordNumerifier.pad(x, max_len) for x in [yb[strand],
+                                                           sample_weightsb[strand],
+                                                           gene_lengthsb[strand],
+                                                           transitionsb[strand]])
+            # todo, move to be part of anno numerifier??
+            if strand == 'plus':
+                start_ends = anno_numerifier.paired_steps
+            else:
+                # flip the start ends back for - strand
+                start_ends = [(x[1], x[0]) for x in anno_numerifier.paired_steps[::-1]]
+            start_ends = np.array(start_ends, dtype=np.int64)
+            start_ends += bp_coord[0]
 
-                # mark examples from featureless coordinate / assume there is no trustworthy annotation
-                if not coord_features:
-                    logging.warning('Sequence {} has no annotations'.format(coord.seqid))
-                    is_annotated = [0] * len(x)
-                else:
-                    is_annotated = [1] * len(x)
-                is_annotated = np.array(is_annotated, dtype=np.bool)
+            # mark examples from featureless coordinate / assume there is no trustworthy annotation
+            if not coord_features:
+                logging.warning('Sequence {} has no annotations'.format(coord.seqid))
+                is_annotated = [0] * len(y)
+            else:
+                is_annotated = [1] * len(y)
+            is_annotated = np.array(is_annotated, dtype=np.bool)
 
-                # additional derived matrices
-                err_samples = np.any(sample_weights, axis=1)
-                # just one entry per chunk
-                if one_hot:
-                    fully_intergenic_samples = np.all(y[:, :, 0] == 0, axis=1)
-                else:
-                    fully_intergenic_samples = np.all(y[:, :, 0] == 1, axis=1)
+            # additional derived matrices
+            err_samples = np.any(sample_weights, axis=1)
+            # just one entry per chunk
+            if one_hot:
+                fully_intergenic_samples = np.all(y[:, :, 0] == 0, axis=1)
+            else:
+                fully_intergenic_samples = np.all(y[:, :, 0] == 1, axis=1)
 
-                # do not output the input_masks as it is not used for anything
-                out = (MatAndInfo('y', y, 'int8'),  # y should always be first (bc currently we always want it)
-                       MatAndInfo('X', x, 'float16'),
-                       MatAndInfo('sample_weights', sample_weights, 'int8'),
-                       MatAndInfo('gene_lengths', gene_lengths, 'uint32'),
-                       MatAndInfo('transitions', transitions, 'int8'),
-                       MatAndInfo('err_samples', err_samples, 'bool'),
-                       MatAndInfo('fully_intergenic_samples', fully_intergenic_samples,  'bool'),
-                       MatAndInfo('species', np.array([coord.genome.species.encode('ASCII')] * len(x)), 'S25'),
-                       MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(x)), 'S50'),
-                       MatAndInfo('start_ends', start_ends, 'int64'),
-                       MatAndInfo('is_annotated', is_annotated, 'bool'))
-                yield out, h5_coord[strand]
+            # do not output the input_masks as it is not used for anything
+            out = [MatAndInfo('y', y, 'int8'),  # y should always be first (bc currently we always want it)
+                   MatAndInfo('sample_weights', sample_weights, 'int8'),
+                   MatAndInfo('gene_lengths', gene_lengths, 'uint32'),
+                   MatAndInfo('transitions', transitions, 'int8'),
+                   MatAndInfo('err_samples', err_samples, 'bool'),
+                   MatAndInfo('fully_intergenic_samples', fully_intergenic_samples,  'bool'),
+                   MatAndInfo('species', np.array([coord.genome.species.encode('ASCII')] * len(x)), 'S25'),
+                   MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(x)), 'S50'),
+                   MatAndInfo('start_ends', start_ends, 'int64'),
+                   MatAndInfo('is_annotated', is_annotated, 'bool')]
+            if export_x:
+                out.append(MatAndInfo('X', x, 'float16'))
+            out = tuple(out)
+            yield out, h5_coord[strand]
 
 
 # todo, consider moving to seperate splitting file or exporter...?

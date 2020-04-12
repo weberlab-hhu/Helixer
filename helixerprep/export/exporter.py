@@ -1,4 +1,5 @@
 import os
+import more_itertools
 import h5py
 import numpy as np
 import random
@@ -9,8 +10,7 @@ from sklearn.model_selection import train_test_split
 import geenuff, helixerprep
 from geenuff.applications.exporter import GeenuffExportController
 from .numerify import CoordNumerifier
-# todo, refactor so this is in a more general location
-from helixerprep.evaluation.rnaseq import find_contiguous_segments, gen_coords
+from helixerprep.evaluation.training_rnaseq import species_range
 
 
 class HelixerExportController(object):
@@ -61,7 +61,7 @@ class HelixerExportController(object):
         return train_arrays, val_arrays
 
     def _save_data(self, flat_data, h5_coords, n_chunks, first_round_for_coordinate,
-                   assigned_set, h5_group='/data/'):
+                   assigned_set, h5_group='/data/', match_existing=False):
         h5_file = self.h5[assigned_set]
         assert len(set(mat_info.matrix.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
 
@@ -72,6 +72,15 @@ class HelixerExportController(object):
         old_len = self.h5_coord_offset[assigned_set]
         start = old_len + h5_coords[0]
         end = old_len + h5_coords[1]
+
+        # sanity check sort order
+        if match_existing:
+            # take species, seqids, and start_ends and assert the match those under '/data/'
+            for key in ['seqids', 'start_ends', 'species']:
+                expected = h5_file['/data/' + key][start:end]
+                for mat_info in flat_data:
+                    if mat_info.key == key:
+                        assert np.all(mat_info.matrix == expected)
 
         # writing to the h5 file
         for mat_info in flat_data:
@@ -153,10 +162,10 @@ class HelixerExportController(object):
         for key in self.h5:
             self.h5[key].close()
 
-    def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, keep_featureless, write_by):
+    def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, keep_featureless, write_by, modes):
         """filtering and stats"""
         coord_data_gen = CoordNumerifier.numerify(coord, coord_features, chunk_size,
-                                                  one_hot, write_by=write_by)
+                                                  one_hot, write_by=write_by, mode=modes)
 
         # the following will all be used to calculated a percentage, which is yielded but ignored until the end
         n_chunks = 0
@@ -197,19 +206,15 @@ class HelixerExportController(object):
                   h5_coord
 
     def export(self, chunk_size, genomes, exclude, val_size, one_hot=True,
-               all_transcripts=False, keep_featureless=False, h5_group='/data/', write_by=10_000_000_000):
-        match_existing = False
-        if h5_group != '/data/':
-            match_existing = True
-            # todo, get coordinates for species and seqids... (for each existing h5)
-            #  turn these into a SplitFinder.feature_n_coord_gen matching formatted thing
-            #  pull up to use for export at every coordinate
+               all_transcripts=False, keep_featureless=False, h5_group='/data/', write_by=10_000_000_000,
+               match_existing=False, modes=('X', 'y', 'anno_meta', 'transitions')):
 
         keep_errors = True
         genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude,
                                                                    all_transcripts=all_transcripts)
         # make version without features for shorter downstream code
         genome_coords = {g_id: list(values.keys()) for g_id, values in genome_coord_features.items()}
+
         n_coords = sum([len(coords) for genome_id, coords in genome_coords.items()])
         print('\n{} coordinates chosen to numerify'.format(n_coords))
 
@@ -227,11 +232,11 @@ class HelixerExportController(object):
                 coord = self.geenuff_exporter.get_coord_by_id(coord_id)
                 coord_features = genome_coord_features[genome_id][(coord_id, coord_len)]
                 numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size,
-                                                        one_hot, keep_featureless, write_by=write_by)
+                                                        one_hot, keep_featureless, write_by=write_by,
+                                                        modes=modes)
                 first_round_for_coordinate = True
                 for flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc, \
                     featureless_chunks_perc, h5_coord in numerify_outputs:
-
                     if self.only_test_set:
                         assigned_set = HelixerExportController.TEST
                     else:
@@ -240,9 +245,13 @@ class HelixerExportController(object):
                         else:
                             assigned_set = HelixerExportController.VAL
 
+                    if (match_existing and keep_featureless and
+                        coord != self.h5[assigned_set]['/data/seqid/'][self.h5_coord_offset[assigned_set]]):
+                        continue  # low efficiency (but rarely used) skip for coordinates missing in existing h5
+
                     self._save_data(flat_data, h5_coords=h5_coord, n_chunks=n_chunks,
                                     first_round_for_coordinate=first_round_for_coordinate, h5_group=h5_group,
-                                    assigned_set=assigned_set)
+                                    assigned_set=assigned_set, match_existing=match_existing)
                     first_round_for_coordinate = False
                     n_writing_chunks += 1
                 try:
