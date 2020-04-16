@@ -11,6 +11,8 @@ import helixerprep
 from geenuff.applications.exporter import GeenuffExportController
 from .numerify import CoordNumerifier
 
+from collections import defaultdict
+
 
 class HelixerExportController(object):
     TEST = 'test'
@@ -74,7 +76,7 @@ class HelixerExportController(object):
         return train_arrays, val_arrays
 
     def _save_data(self, flat_data, h5_coords, n_chunks, first_round_for_coordinate,
-                   assigned_set, h5_group='/data/', match_existing=False):
+                   assigned_set, h5_group='/data/'):
         h5_file = self.h5[assigned_set]
         assert len(set(mat_info.matrix.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
 
@@ -87,7 +89,7 @@ class HelixerExportController(object):
         end = old_len + h5_coords[1]
 
         # sanity check sort order
-        if match_existing:
+        if self.match_existing:
             # take species, seqids, and start_ends and assert the match those under '/data/'
             for key in ['seqids', 'start_ends', 'species']:
                 expected = h5_file['/data/' + key][start:end]
@@ -150,6 +152,46 @@ class HelixerExportController(object):
                     train_coord_ids += genome_train_coord_ids
                     val_coord_ids += genome_val_coord_ids
         return train_coord_ids, val_coord_ids
+
+    def _split_coords_by_existing(self, genome_coors):
+        if self.only_test_set:  # output won't be used for anything
+            return [], []
+        else:
+            train_coord_ids = []
+            val_coord_ids = []
+            train_in_h5 = self._get_sp_seqids_from_h5(HelixerExportController.TRAIN)
+            val_in_h5 = self._get_sp_seqids_from_h5(HelixerExportController.VAL)
+            # prep all coordinate IDs so that they'll match that from h5
+            for g_id in genome_coors:
+                first4genome = True
+                for coord_id, coord_len in genome_coors[g_id]:
+                    # get coord (to later access species name and sequence name)
+                    coord = self.geenuff_exporter.get_coord_by_id(coord_id)
+                    if first4genome:
+                        sp = coord.genome.species.encode('ASCII')
+                        first4genome = False
+                    seqid = coord.seqid.encode('ASCII')
+                    if seqid in val_in_h5[sp]:
+                        val_coord_ids.append(coord_id)
+                    elif seqid in train_in_h5[sp]:
+                        train_coord_ids.append(coord_id)
+                    else:
+                        print('{} not found in existing h5s, maybe featureless in existing, '
+                              'but worry if you see a whole lot of this warning...'.format(seqid))
+            print([self.geenuff_exporter.get_coord_by_id(x).seqid for x in train_coord_ids[:20]])
+            print([self.geenuff_exporter.get_coord_by_id(x).seqid for x in val_coord_ids[:20]])
+            return train_coord_ids, val_coord_ids
+
+    def _get_sp_seqids_from_h5(self, assigned_set, by=1000):
+        """from flat h5 datasets to dict with {species: [seqid, seqid2, ...], ...}"""
+        h5 = self.h5[assigned_set]
+        out = defaultdict(set)
+        for i in range(0, h5['data/y'].shape[0], by):
+            species = h5['data/species'][i:(i + by)]
+            seqids = h5['data/seqids'][i:(i + by)]
+            for j in range(len(seqids)):
+                out[species[j]].add(seqids[j])
+        return dict(out)
 
     def _add_data_attrs(self, genomes, exclude, keep_errors):
         attrs = {
@@ -220,7 +262,6 @@ class HelixerExportController(object):
     def export(self, chunk_size, genomes, exclude, val_size, one_hot=True,
                all_transcripts=False, keep_featureless=False, write_by=10_000_000_000,
                modes=('X', 'y', 'anno_meta', 'transitions')):
-        match_existing = self.match_existing
         h5_group = self.h5_group
         keep_errors = True
         genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude,
@@ -230,8 +271,10 @@ class HelixerExportController(object):
 
         n_coords = sum([len(coords) for genome_id, coords in genome_coords.items()])
         print('\n{} coordinates chosen to numerify'.format(n_coords))
-
-        train_coords, val_coords = self._split_coords_by_N90(genome_coords, val_size)
+        if self.match_existing:
+            train_coords, val_coords = self._split_coords_by_existing(genome_coors=genome_coords)
+        else:
+            train_coords, val_coords = self._split_coords_by_N90(genome_coords, val_size)
         n_coords_done = 1
         n_writing_chunks = 0
         for genome_id, coords in genome_coords.items():
@@ -253,19 +296,18 @@ class HelixerExportController(object):
                     if self.only_test_set:
                         assigned_set = HelixerExportController.TEST
                     else:
-                        if coord_id in train_coords:
+                        if coord_id in val_coords:
+                            assigned_set = HelixerExportController.VAL
+                        elif coord_id in train_coords:
                             assigned_set = HelixerExportController.TRAIN
                         else:
-                            assigned_set = HelixerExportController.VAL
-
-                    if (match_existing and
-                        coord != self.h5[assigned_set]['/data/seqids/'][self.h5_coord_offset[assigned_set]]):
-                        continue  # low efficiency (but rarely used) skip for coordinates missing in existing h5
-                        # todo, this is currently always true...
+                            print('set could not be assigned for {}, continuing without saving'.format(coord.seqid))
+                            assert self.match_existing
+                            continue
 
                     self._save_data(flat_data, h5_coords=h5_coord, n_chunks=n_chunks,
                                     first_round_for_coordinate=first_round_for_coordinate, h5_group=h5_group,
-                                    assigned_set=assigned_set, match_existing=match_existing)
+                                    assigned_set=assigned_set)
                     first_round_for_coordinate = False
                     n_writing_chunks += 1
                 try:
