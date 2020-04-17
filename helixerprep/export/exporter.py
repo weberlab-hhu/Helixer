@@ -153,34 +153,44 @@ class HelixerExportController(object):
                     val_coord_ids += genome_val_coord_ids
         return train_coord_ids, val_coord_ids
 
-    def _split_coords_by_existing(self, genome_coors):
-        if self.only_test_set:  # output won't be used for anything
-            return [], []
+    def _split_coords_by_existing(self, genome_coords):
+        if self.only_test_set:
+            val_coord_ids = []
+            test_in_h5 = self._get_sp_seqids_from_h5(HelixerExportController.TEST)
+            for g_id, coord_id, sp, seqid in self._gen_sp_seqid(genome_coords):
+                if seqid in test_in_h5:
+                    val_coord_ids.append(coord_id)
+                else:
+                    print('{} not found in existing h5s, maybe featureless in existing, '
+                          'but worry if you see a whole lot of this warning...'.format(seqid))
+            return [], val_coord_ids
         else:
             train_coord_ids = []
             val_coord_ids = []
             train_in_h5 = self._get_sp_seqids_from_h5(HelixerExportController.TRAIN)
             val_in_h5 = self._get_sp_seqids_from_h5(HelixerExportController.VAL)
             # prep all coordinate IDs so that they'll match that from h5
-            for g_id in genome_coors:
-                first4genome = True
-                for coord_id, coord_len in genome_coors[g_id]:
-                    # get coord (to later access species name and sequence name)
-                    coord = self.geenuff_exporter.get_coord_by_id(coord_id)
-                    if first4genome:
-                        sp = coord.genome.species.encode('ASCII')
-                        first4genome = False
-                    seqid = coord.seqid.encode('ASCII')
-                    if seqid in val_in_h5[sp]:
-                        val_coord_ids.append(coord_id)
-                    elif seqid in train_in_h5[sp]:
-                        train_coord_ids.append(coord_id)
-                    else:
-                        print('{} not found in existing h5s, maybe featureless in existing, '
-                              'but worry if you see a whole lot of this warning...'.format(seqid))
-            print([self.geenuff_exporter.get_coord_by_id(x).seqid for x in train_coord_ids[:20]])
-            print([self.geenuff_exporter.get_coord_by_id(x).seqid for x in val_coord_ids[:20]])
+            for g_id, coord_id, sp, seqid in self._gen_sp_seqid(genome_coords):
+                if seqid in val_in_h5[sp]:
+                    val_coord_ids.append(coord_id)
+                elif seqid in train_in_h5[sp]:
+                    train_coord_ids.append(coord_id)
+                else:
+                    print('{} not found in existing h5s, maybe featureless in existing, '
+                          'but worry if you see a whole lot of this warning...'.format(seqid))
             return train_coord_ids, val_coord_ids
+
+    def _gen_sp_seqid(self, genome_coords):
+        for g_id in genome_coords:
+            first4genome = True
+            for coord_id, coord_len in genome_coords[g_id]:
+                # get coord (to later access species name and sequence name)
+                coord = self.geenuff_exporter.get_coord_by_id(coord_id)
+                if first4genome:
+                    sp = coord.genome.species.encode('ASCII')
+                    first4genome = False
+                seqid = coord.seqid.encode('ASCII')
+                yield g_id, coord_id, sp, seqid
 
     def _get_sp_seqids_from_h5(self, assigned_set, by=1000):
         """from flat h5 datasets to dict with {species: [seqid, seqid2, ...], ...}"""
@@ -272,7 +282,7 @@ class HelixerExportController(object):
         n_coords = sum([len(coords) for genome_id, coords in genome_coords.items()])
         print('\n{} coordinates chosen to numerify'.format(n_coords))
         if self.match_existing:
-            train_coords, val_coords = self._split_coords_by_existing(genome_coors=genome_coords)
+            train_coords, val_coords = self._split_coords_by_existing(genome_coords=genome_coords)
         else:
             train_coords, val_coords = self._split_coords_by_N90(genome_coords, val_size)
         n_coords_done = 1
