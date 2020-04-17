@@ -10,20 +10,29 @@ import argparse
 import matplotlib.pyplot as plt
 
 
-def plot_comparison(f1_before, f1_after, acc_before, acc_after, title, picture_name, folder):
+def plot_comparison(f1_before, f1_after, acc_before, acc_after, title, picture_name, folder,
+                    tight=False):
     plt.cla()
     plt.title(title)
-    plt.plot(range(100), f1_before, color='chocolate', linestyle='dashed',
-             label='regular genic f1')
-    plt.plot(range(100), f1_after, color='chocolate', label='genic f1 with overlapping')
-    plt.plot(range(100), acc_before, color='royalblue', linestyle='dashed',
-             label='regular accuracy')
-    plt.plot(range(100), acc_after, color='royalblue', label='accuracy with overlapping')
+    # old colors were 'chocolate' and 'royalblue'
+    plt.plot(range(100), f1_before, color='tab:red', linestyle='dashed',
+             label='Regular Genic F1')
+    plt.plot(range(100), f1_after, color='tab:red', label='Genic F1 with Overlapping')
+    plt.plot(range(100), acc_before, color='tab:purple', linestyle='dashed',
+             label='Regular Accuracy')
+    plt.plot(range(100), acc_after, color='tab:purple', label='Accuracy with Overlapping')
     plt.ylim((0.0, 1.0))
-    plt.xlabel('chunk of length')
+
+    ticks = [0, 25, 50, 75, 100]
+    plt.xticks(ticks, [str(t * 200) for t in ticks])
+    plt.xlabel('Basepair Offset in Sequence')
+
     plt.legend(loc='lower left')
     file_path = os.path.join(folder, picture_name)
-    plt.savefig(file_path)
+    if tight:
+        plt.savefig(file_path, bbox_inches='tight' )
+    else:
+        plt.savefig(file_path)
     print(file_path, 'saved')
 
 
@@ -72,7 +81,7 @@ for species in os.listdir(args.before_main_folder):
                     genic_f1s['after'][-1],
                     accuracies['before'][-1],
                     accuracies['after'][-1],
-                    f'Performance by sequence position of {species}',
+                    f'Performance by Sequence Position of {species}',
                     f'{species}_comparison',
                     args.output_folder)
 
@@ -86,6 +95,7 @@ plot_comparison(f1s_avg['before'],
                 f1s_avg['after'],
                 accs_avg['before'],
                 accs_avg['after'],
-                f'Average performance by sequence position on all species',
+                f'Average Plant Performance by Input Sequence Position',
                 f'aggregate_comparison',
-                args.output_folder)
+                args.output_folder,
+                tight=True)
