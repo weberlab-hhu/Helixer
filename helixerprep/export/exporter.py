@@ -157,8 +157,8 @@ class HelixerExportController(object):
         if self.only_test_set:
             val_coord_ids = []
             test_in_h5 = self._get_sp_seqids_from_h5(HelixerExportController.TEST)
-            for g_id, coord_id, sp, seqid in self._gen_sp_seqid(genome_coords):
-                if seqid in test_in_h5:
+            for g_id, coord_id, sp, seqid, _ in self._gen_sp_seqid(genome_coords):
+                if seqid in test_in_h5[sp]:
                     val_coord_ids.append(coord_id)
                 else:
                     print('{} not found in existing h5s, maybe featureless in existing, '
@@ -170,7 +170,7 @@ class HelixerExportController(object):
             train_in_h5 = self._get_sp_seqids_from_h5(HelixerExportController.TRAIN)
             val_in_h5 = self._get_sp_seqids_from_h5(HelixerExportController.VAL)
             # prep all coordinate IDs so that they'll match that from h5
-            for g_id, coord_id, sp, seqid in self._gen_sp_seqid(genome_coords):
+            for g_id, coord_id, sp, seqid, _ in self._gen_sp_seqid(genome_coords):
                 if seqid in val_in_h5[sp]:
                     val_coord_ids.append(coord_id)
                 elif seqid in train_in_h5[sp]:
@@ -190,18 +190,46 @@ class HelixerExportController(object):
                     sp = coord.genome.species.encode('ASCII')
                     first4genome = False
                 seqid = coord.seqid.encode('ASCII')
-                yield g_id, coord_id, sp, seqid
+                yield g_id, coord_id, sp, seqid, coord_len
 
     def _get_sp_seqids_from_h5(self, assigned_set, by=1000):
         """from flat h5 datasets to dict with {species: [seqid, seqid2, ...], ...}"""
         h5 = self.h5[assigned_set]
-        out = defaultdict(set)
+        out = defaultdict(dict)
         for i in range(0, h5['data/y'].shape[0], by):
             species = h5['data/species'][i:(i + by)]
             seqids = h5['data/seqids'][i:(i + by)]
             for j in range(len(seqids)):
-                out[species[j]].add(seqids[j])
+                out[species[j]][seqids[j]] = 0
+        out = dict(out)
+        for key in out:
+            out[key] = list(out[key].keys())
         return dict(out)
+
+    def _resort_genome_coords_from_existing(self, genome_coords):
+        # setup keys to go from the h5 naming to the db naming
+        pre_decode = self._gen_sp_seqid(genome_coords)
+        gkey = {}
+        ckey = {}
+        for g_id, coord_id, sp, seqid, coord_len in pre_decode:
+            gkey[sp] = g_id
+            if sp not in ckey:
+                ckey[sp] = {}
+            ckey[sp][seqid] = (coord_id, coord_len)
+
+        # pull ordering from h5s, but replace with ids from db
+        gc = {}
+        for assigned_set in self.h5:
+            in_h5 = self._get_sp_seqids_from_h5(assigned_set)
+            for sp in in_h5:
+                g_id = gkey[sp]
+                if g_id not in gc:
+                    gc[g_id] = []
+                for seqid in in_h5[sp]:
+                    coord_tuple = ckey[sp][seqid]
+                    gc[g_id].append(coord_tuple)
+        return gc
+
 
     def _add_data_attrs(self, genomes, exclude, keep_errors):
         attrs = {
@@ -283,6 +311,8 @@ class HelixerExportController(object):
         print('\n{} coordinates chosen to numerify'.format(n_coords))
         if self.match_existing:
             train_coords, val_coords = self._split_coords_by_existing(genome_coords=genome_coords)
+            # resort coordinates to match existing as well (bc length sort doesn't work on ties)
+            genome_coords = self._resort_genome_coords_from_existing(genome_coords)
         else:
             train_coords, val_coords = self._split_coords_by_N90(genome_coords, val_size)
         n_coords_done = 1
