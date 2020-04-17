@@ -294,7 +294,13 @@ class HelixerExportController(object):
                 for flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc, \
                     featureless_chunks_perc, h5_coord in numerify_outputs:
                     if self.only_test_set:
-                        assigned_set = HelixerExportController.TEST
+                        if self.match_existing:
+                            if coord_id in val_coords + train_coords:
+                                assigned_set = HelixerExportController.TEST
+                            else:
+                                continue
+                        else:
+                            assigned_set = HelixerExportController.TEST
                     else:
                         if coord_id in val_coords:
                             assigned_set = HelixerExportController.VAL
