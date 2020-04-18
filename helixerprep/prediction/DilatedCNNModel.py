@@ -7,9 +7,14 @@ from keras.models import Sequential, Model
 from keras.layers import Conv1D, Dense, Flatten, Dropout, Input
 from HelixerModel import HelixerModel, HelixerSequence
 
+# finding custom loss at load_model
+from keras.models import load_model
+from keras_layer_normalization import LayerNormalization
+from keras.losses import categorical_crossentropy
+
 class DilatedCNNSequence(HelixerSequence):
     def __getitem__(self, idx):
-        X, y, sw, _, _, _, = self._get_batch_data(idx)
+        X, y, sw, _, _, _, _ = self._get_batch_data(idx)
 
         if self.class_weights is not None:
             cls_arrays = [y[:, :, col] == 1 for col in range(4)]  # whether a class is present
@@ -21,7 +26,11 @@ class DilatedCNNSequence(HelixerSequence):
             sw = np.multiply(sw, cw)
 
         # add the sample weights as extra input so they can be used in the custom loss function
-        return [X, sw], y
+
+        if self.mode == 'train':
+            return [X, sw], y
+        else:  # hack to get single X for prediction
+            return X, y
 
 class DilatedCNNModel(HelixerModel):
 
@@ -94,6 +103,15 @@ class DilatedCNNModel(HelixerModel):
                       # loss='categorical_crossentropy',
                       loss=self.custom_loss(model.inputs[1]),
                       metrics=['accuracy'])
+
+    def _load_helixer_model(self):
+        print('WARNING: cannot currently use custom_loss for training..')
+        model = load_model(self.load_model_path, custom_objects = {
+            'LayerNormalization': LayerNormalization,
+            'loss': categorical_crossentropy,  # todo, fix to use custom loss
+            # the above is OK for predictions / eval that doesn't use loss...
+        })
+        return model
 
 
 if __name__ == '__main__':
