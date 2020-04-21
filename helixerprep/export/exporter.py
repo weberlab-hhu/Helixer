@@ -368,3 +368,22 @@ class HelixerExportController(object):
         self._add_data_attrs(genomes, exclude, keep_errors)
         self._close_files()
         return n_writing_chunks  # for testing only atm
+
+
+class CoordTracker:
+    def __init__(self, h5, i_h5_start, i_h5_end, start_ends, species, seqid):
+        self.h5 = h5
+        # convenience variables (so they don't have to be re-calculated)
+        self.i_h5_start = i_h5_start
+        self.i_h5_end = i_h5_end
+        self.start_ends = start_ends
+        self.species = species
+        self.seqid = seqid
+        # the following counts the difference between the unmasked chunks of the
+        # data to export and the potentially masked chunks of the existing h5
+        self.masked_so_far = 0
+
+    def mk_mask(self, flat_data, h5_coords):
+        fd_species = [x.matrix for x in flat_data if x.key == 'species'][0]
+        fd_seqids = [x.matrix for x in flat_data if x.key == 'seqids'][0]
+        fd_start_ends = [x.matrix for x in flat_data if x.key == 'start_ends'][0]
