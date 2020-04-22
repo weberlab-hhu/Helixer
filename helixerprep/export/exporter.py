@@ -66,11 +66,11 @@ class HelixerExportController(object):
             sp_start_ends = {}  # {seqid: {'seqid': np.array([(0, 20k), (20k, 40k), ...]),
             #                              'seqid2': ...}}
             sp_ranges = self.species_seq_ranges[key][species]
-            sp_se_array = self.h5[key]['start_ends'][sp_ranges['start']:sp_ranges['end']]
+            sp_se_array = self.h5[key]['data/start_ends'][sp_ranges['start']:sp_ranges['end']]
             sp_start = sp_ranges['start']
             for seqid, ranges in sp_ranges['seqids'].items():
                 rel_start, rel_end = [i - sp_start for i in ranges]
-                length = rel_start - rel_end
+                length = rel_end - rel_start
                 tuple_array = np.zeros(shape=(length,), dtype=tuple)
                 for i, se in enumerate(sp_se_array[rel_start:rel_end]):
                     tuple_array[i] = tuple(se)
@@ -120,7 +120,7 @@ class HelixerExportController(object):
                 tuple_start_ends[i] = tuple(pair)
 
             _, idx_existing, idx_new = np.intersect1d(
-                self.current_sp_start_ends[seqid],
+                self.current_sp_start_ends[assigned_set][seqid],
                 tuple_start_ends,
                 return_indices=True,
                 assume_unique=True
@@ -157,7 +157,7 @@ class HelixerExportController(object):
             # due to potential filtering in existing we likely won't write the full n_chunks
             sp = [x.matrix for x in flat_data if x.key == 'species'][0][0]
             seqid = [x.matrix for x in flat_data if x.key == 'seqids'][0][0]
-            seq_coordinates = self.species_seq_ranges[sp]['seqids'][seqid]
+            seq_coordinates = self.species_seq_ranges[assigned_set][sp]['seqids'][seqid]
             n_chunks = seq_coordinates[1] - seq_coordinates[0]
 
         for mat_info in flat_data:
