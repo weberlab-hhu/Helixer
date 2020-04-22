@@ -112,6 +112,27 @@ class HelixerExportController(object):
 
         # sanity check sort order
         if self.match_existing:
+            # find out exactly where things align with existing
+            start_ends = [x.matrix for x in flat_data if x.key == "start_ends"][0]
+            seqid = [x.matrix for x in flat_data if x.key == "seqids"][0][0]
+            tuple_start_ends = np.zeros(shape=(start_ends.shape[0],), dtype=tuple)
+            for i, pair in enumerate(start_ends):
+                tuple_start_ends[i] = tuple(pair)
+
+            _, idx_existing, idx_new = np.intersect1d(
+                self.current_sp_start_ends[seqid],
+                tuple_start_ends,
+                return_indices=True,
+                assume_unique=True
+            )
+            start = min(idx_existing) + old_len
+            end = max(idx_existing) + old_len + 1
+
+            mask = sorted(idx_new)
+
+            for mat_info in flat_data:
+                mat_info.matrix = mat_info.matrix[mask]
+
             # take species, seqids, and start_ends and assert the match those under '/data/'
             for key in ['seqids', 'start_ends', 'species']:
                 expected = h5_file['/data/' + key][start:end]
@@ -132,6 +153,13 @@ class HelixerExportController(object):
 
         old_len = h5_file[h5_group + flat_data[0].key].shape[0]
         self.h5_coord_offset[assigned_set] = old_len
+        if self.match_existing:
+            # due to potential filtering in existing we likely won't write the full n_chunks
+            sp = [x.matrix for x in flat_data if x.key == 'species'][0][0]
+            seqid = [x.matrix for x in flat_data if x.key == 'seqids'][0][0]
+            seq_coordinates = self.species_seq_ranges[sp]['seqids'][seqid]
+            n_chunks = seq_coordinates[1] - seq_coordinates[0]
+
         for mat_info in flat_data:
             dset = h5_file[h5_group + mat_info.key]
             dset.resize(old_len + n_chunks, axis=0)
