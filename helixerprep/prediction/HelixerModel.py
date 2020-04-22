@@ -527,6 +527,8 @@ class HelixerModel(ABC):
                     zero_padding = np.zeros((predictions.shape[0], n_removed, predictions.shape[2]),
                                             dtype=predictions.dtype)
                     predictions = np.concatenate((predictions, zero_padding), axis=1)
+            else:
+                n_removed = 0  # just to avoid crashing with Unbound Local Error setting attrs for dCNN
 
             if self.overlap and predictions.shape[0] > 1:
                 predictions = self._overlap_predictions(i, test_sequence, predictions)
