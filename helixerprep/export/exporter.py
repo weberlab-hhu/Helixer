@@ -10,6 +10,7 @@ import geenuff
 import helixerprep
 from geenuff.applications.exporter import GeenuffExportController
 from .numerify import CoordNumerifier
+from ..core.helpers import get_sp_seq_ranges
 
 from collections import defaultdict
 
@@ -54,6 +55,27 @@ class HelixerExportController(object):
         self.h5_coord_offset = {HelixerExportController.TEST: 0,
                                 HelixerExportController.VAL: 0,
                                 HelixerExportController.TRAIN: 0}
+        self.species_seq_ranges = {}
+        self.current_sp_start_ends = {}
+        if self.match_existing:
+            for key in self.h5:
+                self.species_seq_ranges[key] = get_sp_seq_ranges(self.h5[key])
+
+    def _set_current_sp_start_ends(self, species):
+        for key in self.h5:
+            sp_start_ends = {}  # {seqid: {'seqid': np.array([(0, 20k), (20k, 40k), ...]),
+            #                              'seqid2': ...}}
+            sp_ranges = self.species_seq_ranges[key][species]
+            sp_se_array = self.h5[key]['start_ends'][sp_ranges['start']:sp_ranges['end']]
+            sp_start = sp_ranges['start']
+            for seqid, ranges in sp_ranges['seqids'].items():
+                rel_start, rel_end = [i - sp_start for i in ranges]
+                length = rel_start - rel_end
+                tuple_array = np.zeros(shape=(length,), dtype=tuple)
+                for i, se in enumerate(sp_se_array[rel_start:rel_end]):
+                    tuple_array[i] = tuple(se)
+                sp_start_ends[seqid] = tuple_array
+            self.current_sp_start_ends[key] = sp_start_ends
 
     @staticmethod
     def _split_sequences(flat_data, val_size):
@@ -194,6 +216,7 @@ class HelixerExportController(object):
 
     def _get_sp_seqids_from_h5(self, assigned_set, by=1000):
         """from flat h5 datasets to dict with {species: [seqid, seqid2, ...], ...}"""
+        # todo, is this fully redundant with get_sp_seq_ranges?
         h5 = self.h5[assigned_set]
         out = defaultdict(dict)
         for i in range(0, h5['data/y'].shape[0], by):
@@ -229,7 +252,6 @@ class HelixerExportController(object):
                     coord_tuple = ckey[sp][seqid]
                     gc[g_id].append(coord_tuple)
         return gc
-
 
     def _add_data_attrs(self, genomes, exclude, keep_errors):
         attrs = {
@@ -317,7 +339,15 @@ class HelixerExportController(object):
             train_coords, val_coords = self._split_coords_by_N90(genome_coords, val_size)
         n_coords_done = 1
         n_writing_chunks = 0
+        prev_genome_id = None
         for genome_id, coords in genome_coords.items():
+            if genome_id != prev_genome_id and self.match_existing:
+                # once per species, setup dicts with {seqid: [(start,end), ...], ...} for each h5
+                # this avoids excessive random disk reads
+                orm = geenuff.base.orm
+                genome = self.geenuff_exporter.session.query(orm.Genome).filter(orm.Genome.id == genome_id).first()
+                self._set_current_sp_start_ends(genome.species.encode('ASCII'))
+
             for (coord_id, coord_len) in coords:
                 # calculate how many chunks will be produced
                 n_chunks = coord_len // chunk_size
@@ -369,21 +399,3 @@ class HelixerExportController(object):
         self._close_files()
         return n_writing_chunks  # for testing only atm
 
-
-class CoordTracker:
-    def __init__(self, h5, i_h5_start, i_h5_end, start_ends, species, seqid):
-        self.h5 = h5
-        # convenience variables (so they don't have to be re-calculated)
-        self.i_h5_start = i_h5_start
-        self.i_h5_end = i_h5_end
-        self.start_ends = start_ends
-        self.species = species
-        self.seqid = seqid
-        # the following counts the difference between the unmasked chunks of the
-        # data to export and the potentially masked chunks of the existing h5
-        self.masked_so_far = 0
-
-    def mk_mask(self, flat_data, h5_coords):
-        fd_species = [x.matrix for x in flat_data if x.key == 'species'][0]
-        fd_seqids = [x.matrix for x in flat_data if x.key == 'seqids'][0]
-        fd_start_ends = [x.matrix for x in flat_data if x.key == 'start_ends'][0]

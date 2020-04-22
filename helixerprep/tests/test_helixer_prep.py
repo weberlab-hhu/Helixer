@@ -13,6 +13,7 @@ from geenuff.base.orm import SuperLocus, Genome, Coordinate
 from geenuff.base.helpers import reverse_complement
 from geenuff.base import types
 from ..core.controller import HelixerController
+from ..core import helpers
 from ..export import numerify
 from ..export.numerify import SequenceNumerifier, AnnotationNumerifier, Stepper, AMBIGUITY_DECODE
 from ..export.exporter import HelixerExportController
@@ -1009,3 +1010,14 @@ def test_super_chunking4write():
         controller.export(chunk_size=500, genomes='', exclude='', val_size=0.2, one_hot=True,
                           all_transcripts=True,
                           write_by=1001)  # write by should result in multiple super-chunks
+
+
+def test_rangefinder():
+    _, controller, _ = setup_dummyloci()
+    # dump the whole db in chunks into a .h5 file
+    n_writing_chunks = controller.export(chunk_size=500, genomes='', exclude='', val_size=0.2, one_hot=True,
+                                         all_transcripts=True,
+                                         write_by=10_000_000_000)
+    f = h5py.File(H5_OUT_FILE, 'r')
+    sp_seqid_ranges = helpers.get_sp_seq_ranges(f)
+    assert sp_seqid_ranges == {b'dummy': {'start': 0, 'seqids': {b'1': [0, 8], b'2': [8, 16]}, 'end': 16}}
