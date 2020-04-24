@@ -287,7 +287,10 @@ def plot_comparison(f1_before, f1_after, acc_before, acc_after, title, picture_n
     plt.xticks(ticks, [str(t * 200) for t in ticks])
     plt.xlabel('Basepair Offset in Sequence')
 
-    plt.legend(loc='lower left')
+    if 'Olucimarinus' in picture_name:
+        plt.legend(loc='upper right')
+    else:
+        plt.legend(loc='lower left')
     file_path = os.path.join(folder, picture_name)
     if tight:
         plt.savefig(file_path, bbox_inches='tight' )
