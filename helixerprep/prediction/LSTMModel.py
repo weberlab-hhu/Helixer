@@ -10,7 +10,7 @@ from keras_layer_normalization import LayerNormalization
 from keras.models import Sequential, Model
 from keras.layers import (Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
                           concatenate, Input)
-from HelixerModel import HelixerModel, HelixerSequence
+from helixerprep.prediction.HelixerModel import HelixerModel, HelixerSequence
 
 
 class LSTMSequence(HelixerSequence):
@@ -22,7 +22,7 @@ class LSTMSequence(HelixerSequence):
             assert not mode == 'test'
 
     def __getitem__(self, idx):
-        X, y, sw, error_rates, gene_lengths, transitions = self._get_batch_data(idx)
+        X, y, sw, error_rates, gene_lengths, transitions, coverage_scores = self._get_batch_data(idx)
         pool_size = self.model.pool_size
         assert pool_size > 1, 'pooling size of <= 1 oh oh..'
         assert y.shape[1] % pool_size == 0, 'pooling size has to evenly divide seq len'
@@ -84,15 +84,21 @@ class LSTMSequence(HelixerSequence):
                     pool_size,
                     transitions.shape[-1],
                 ))
-
-                sw_t = [np.any((transitions[:, :, :, col] == 1),axis=2) for col in range(6)]
-                sw_t = np.stack(sw_t, axis=2).astype(np.int8)
-                sw_t = np.multiply(sw_t, self.transition_weights)
-
-                sw_t = np.sum(sw_t, axis=2)
-                where_are_ones = np.where(sw_t == 0)
-                sw_t[where_are_ones[0], where_are_ones[1]] = 1
+                # more reshaping and summing  up transition weights for multiplying with sample weights
+                sw_t = self.compress_tw(transitions)
                 sw = np.multiply(sw_t, sw)
+
+            if self.coverage:
+                coverage_scores = coverage_scores.reshape((coverage_scores.shape[0], -1, pool_size))
+                zero_positions = np.where(coverage_scores == 0)
+                # scale coverage scores [0,1] by adding small numbers, default = 0.1
+                # fairly good positions don't lose importance 
+                coverage_scores = np.add(coverage_scores, self.coverage_scaling)    
+                coverage_scores[zero_positions[0], zero_positions[1], zero_positions[2]] = 0
+                coverage_scores = np.sum(coverage_scores, axis=2)
+                # average scores according to pool_size
+                coverage_scores = np.divide(coverage_scores, pool_size).astype(np.float32)
+                sw = np.multiply(coverage_scores, sw)
 
             if self.error_weights:
                 # finish by multiplying the sample_weights with the error rate
@@ -103,6 +109,42 @@ class LSTMSequence(HelixerSequence):
 
         return X, y, sw
 
+    def compress_tw(self, transitions):
+        return self._squish_tw_to_sw(transitions, self.transition_weights, self.stretch_transition_weights)
+
+    @staticmethod
+    def _squish_tw_to_sw(transitions, tw, stretch):
+        sw_t = [np.any((transitions[:, :, :, col] == 1),axis=2) for col in range(6)]
+        sw_t = np.stack(sw_t, axis=2).astype(np.int8)
+        sw_t = np.multiply(sw_t, tw)
+
+        sw_t = np.sum(sw_t, axis=2)
+        where_are_ones = np.where(sw_t == 0)
+        sw_t[where_are_ones[0], where_are_ones[1]] = 1
+        if stretch is not 0:
+            sw_t = LSTMSequence._expand_rf(sw_t, stretch)
+        return sw_t
+
+    @staticmethod    
+    def _expand_rf(reshaped_sw_t, rf):  
+
+        reshaped_sw_t = np.array(reshaped_sw_t)  
+        dilated_rf = np.ones(np.shape(reshaped_sw_t))  
+        
+        where = np.where(reshaped_sw_t > 1)
+        i = np.array(where[0]) # i unverändert
+        j = np.array(where[1]) # j +/- step
+    
+        #find dividers depending on the size of the dilated rf
+        dividers = []
+        for distance in range(1,rf+1):
+            dividers.append(2**distance)
+        
+        for z in range(rf,0,-1):
+            dilated_rf[i,np.maximum(np.subtract(j,z), 0)] = np.maximum(reshaped_sw_t[i,j]/dividers[z-1],1)
+            dilated_rf[i,np.minimum(np.add(j,z),len(dilated_rf[0])-1)] = np.maximum(reshaped_sw_t[i,j]/dividers[z-1],1)
+        dilated_rf[i,j] = np.maximum(reshaped_sw_t[i,j],1)
+        return dilated_rf
 
 class LSTMModel(HelixerModel):
 
