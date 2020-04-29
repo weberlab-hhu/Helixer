@@ -20,7 +20,7 @@ class CoverageCounter(object):
         self.arrays = tuple(self.arrays)
 
     def get_latest_arrays(self, i, h5_main, h5_preds, at_once=100):
-        for h5_key, key in CoverageCounter.ARRAYS:
+        for h5_key, key in self.arrays:
             if key == 'predictions':
                 h5 = h5_preds
             else:
@@ -63,10 +63,9 @@ class CoverageCounter(object):
         for key, array in self.latest.items():
             self.latest[key] = array[not_padded]
 
-    @staticmethod
-    def mask_filtered_set(input_dict, mask_fn):
+    def mask_filtered_set(self, input_dict, mask_fn):
         output = {}
-        for _, key in CoverageCounter.ARRAYS:
+        for _, key in self.arrays:
             mask = mask_fn(input_dict)
             output[key] = input_dict[key][mask]
         return output
