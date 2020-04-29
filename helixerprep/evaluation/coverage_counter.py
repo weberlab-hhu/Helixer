@@ -7,20 +7,24 @@ import csv
 class CoverageCounter(object):
 
     ARRAYS = (('data/X', 'X'),
-              ('data/y', 'y'),
-              ('predictions', 'predictions'),
               ('evaluation/coverage', 'coverage'),
               ('evaluation/spliced_coverage', 'spliced_coverage'))
 
-    def __init__(self, lab_dim=4, n_cov_bins=6, base_cov_bins=3):
+    def __init__(self, lab_dim=4, n_cov_bins=6, base_cov_bins=3, y='data/y', predictions='predictions'):
         self.lab_dim = lab_dim
         self.n_cov_bins = n_cov_bins
         self.coverage_bins = tuple(self.setup_coverage_bins(base_cov_bins, n_cov_bins))
         self.counts = self.setup_fully_binned_counts(lab_dim, n_cov_bins)
         self.latest = {}
+        self.arrays = list(CoverageCounter.ARRAYS) + [(y, 'y'), (predictions, 'predictions')]
+        self.arrays = tuple(self.arrays)
 
-    def get_latest_arrays(self, i, h5, at_once=100):
+    def get_latest_arrays(self, i, h5_main, h5_preds, at_once=100):
         for h5_key, key in CoverageCounter.ARRAYS:
+            if key == 'predictions':
+                h5 = h5_preds
+            else:
+                h5 = h5_main
             arr = h5[h5_key][i:(i + at_once)]
             oldshape = list(arr.shape)
             arr = arr.reshape([-1] + oldshape[2:])
@@ -110,12 +114,16 @@ class CoverageCounter(object):
         return out
 
 
-def main(h5_file, out_file):
+def main(h5_file, out_file, preds_file, predictions='predictions', y='data/y'):
     h5_data = h5py.File(h5_file, 'r')
-    cov_counter = CoverageCounter(lab_dim=4, n_cov_bins=6, base_cov_bins=3)
+    if preds_file is not None:
+        preds_data = h5py.File(preds_file, 'r')
+    else:
+        preds_data = h5_data
+    cov_counter = CoverageCounter(lab_dim=4, n_cov_bins=6, base_cov_bins=3, predictions=predictions, y=y)
     n = h5_data['data/X'].shape[0]
     for i in range(0, n, 100):
-        cov_counter.get_latest_arrays(i, h5_data, 100)
+        cov_counter.get_latest_arrays(i, h5_data, preds_data, 100)
         cov_counter.pre_filter_arrays()
         cov_counter.increment()
         if not i % 500:
@@ -128,9 +136,13 @@ def main(h5_file, out_file):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--h5_data', help='h5 data file (with data/{X, y, species, seqids, etc ...}'
+    parser.add_argument('-d', '--h5-data', help='h5 data file (with data/{X, y, species, seqids, etc ...}'
                                                 'and evaluation/{coverage, spliced_coverage}, as output by'
                                                 'the rnaseq.py script)', required=True)
-    parser.add_argument('-o', '--out', help='output csv file name')
+    parser.add_argument('-o', '--out', help='output csv file name', required=True)
+    parser.add_argument('-p', '--h5-predictions', help='set if the predictions data set is in a separate '
+                                                       '(but sort matching!) h5 file')
+    parser.add_argument('--ground-truth-dataset', default='data/y')
+    parser.add_argument('--predictions-dataset', default='predictions')
     args = parser.parse_args()
-    main(args.h5_data, args.out)
+    main(args.h5_data, args.out, args.h5_predictions, args.predictions_dataset, args.ground_truth_dataset)
