@@ -304,6 +304,7 @@ parser.add_argument('-before', '--before_main_folder', type=str, required=True)
 parser.add_argument('-after', '--after_main_folder', type=str, required=True)
 parser.add_argument('-o', '--output_folder', type=str, required=True)
 parser.add_argument('-d', '--dataset', type=str, default='plants')
+parser.add_argument('-oa', '--output-aggregate', action='store_true')
 args = parser.parse_args()
 
 assert args.dataset in ['plants', 'animals']
@@ -366,3 +367,12 @@ plot_comparison(f1s_avg['before'],
                 f'aggregate_comparison',
                 args.output_folder,
                 tight=True)
+
+if args.output_aggregate:
+    # write aggregate info to disk as csv
+    f = open(f'{args.output_folder}/{args.dataset.capitalize()}_aggregate.csv', 'w')
+    print('position,f1,f1_with_overlapping,acc,acc_with_overlapping', file=f)
+    for i in range(100):
+        print(','.join([str(e) for e in [i * 200, f1s_avg['before'][i], f1s_avg['after'][i],
+                          accs_avg['before'][i], accs_avg['after'][i]]]), file=f)
+
