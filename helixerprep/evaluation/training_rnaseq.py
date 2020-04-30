@@ -262,7 +262,7 @@ def main(species, bam, h5_data, d_utp, dont_score):
         cds_scorer = ScorerExon(column=2, median_cov=mec)
         intron_scorer = ScorerIntron(column=3, median_cov=mec)
         scorers = [ig_scorer, utr_scorer, cds_scorer, intron_scorer]
-        asif_ig_scorer = ScorerIntron(column=None, median_cov=mec)
+        asif_ig_scorer = ScorerIntergenic(column=None, median_cov=mec)
         asif_exon_scorer = ScorerExon(column=None, median_cov=mec)
         asif_intron_scorer = ScorerIntron(column=None, median_cov=mec)
         asif_scorers = [asif_ig_scorer, asif_exon_scorer, asif_intron_scorer]
