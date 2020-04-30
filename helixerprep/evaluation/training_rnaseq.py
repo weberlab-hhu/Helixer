@@ -29,9 +29,9 @@ def add_empty_score_datasets(h5):
     length = h5['data/X'].shape[0]
     chunk_size = h5['data/X'].shape[1]
     h5.create_group('scores')
-    shapes = [(length, chunk_size), (length, 4), (length, 4), (length, ), (length, )]
-    max_shapes = [(None, chunk_size), (None, 4), (None, 4), (None, ), (None, )]
-    for i, key in enumerate(['by_bp', 'four', 'four_centered', 'one', 'one_centered']):
+    shapes = [(length, chunk_size), (length, 4), (length, 4), (length, ), (length, ), (length, chunk_size, 3)]
+    max_shapes = [(None, chunk_size), (None, 4), (None, 4), (None, ), (None, ), (None, chunk_size, 3)]
+    for i, key in enumerate(['by_bp', 'four', 'four_centered', 'one', 'one_centered', 'ig_exon_intron_bp']):
         h5.create_dataset('scores/' + key,
                           shape=shapes[i],
                           maxshape=max_shapes[i],
@@ -89,7 +89,11 @@ class Scorer:
         return score * 2
 
     def score(self, datay, coverage, spliced_coverage):
-        mask = datay[:, self.column] == 1
+        if self.column is not None:
+            mask = datay[:, self.column].astype(bool)
+        else:
+            # this will effectively mask padding only
+            mask = np.sum(datay, axis=1).astype(bool)
         cov = coverage[mask]
         sc = spliced_coverage[mask]
         if cov.shape[0]:
@@ -258,6 +262,10 @@ def main(species, bam, h5_data, d_utp, dont_score):
         cds_scorer = ScorerExon(column=2, median_cov=mec)
         intron_scorer = ScorerIntron(column=3, median_cov=mec)
         scorers = [ig_scorer, utr_scorer, cds_scorer, intron_scorer]
+        asif_ig_scorer = ScorerIntron(column=None, median_cov=mec)
+        asif_exon_scorer = ScorerExon(column=None, median_cov=mec)
+        asif_intron_scorer = ScorerIntron(column=None, median_cov=mec)
+        asif_scorers = [asif_ig_scorer, asif_exon_scorer, asif_intron_scorer]
 
         # todo, this is really naive and probably terribly slow... fix
         counts = np.zeros(shape=(species_end - species_start, 4))
@@ -275,13 +283,21 @@ def main(species, bam, h5_data, d_utp, dont_score):
             coverage = h5['evaluation/coverage'][i:(i + by_out)].ravel()
             spliced_coverage = h5['evaluation/spliced_coverage'][i:(i + by_out)].ravel()
             by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size])
+            asifs_by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size, 3])  # 3 for [ig, exon, intron]
             for scorer in scorers:
                 raw_score, mask = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
                 if raw_score.size > 0:
                     by_bp[mask] = raw_score
+            for index_asif, asif_scorer in enumerate(asif_scorers):
+                raw_score, mask = asif_scorer.score(datay=datay, coverage=coverage,
+                                                    spliced_coverage=spliced_coverage)
+                if raw_score.size > 0:
+                    asifs_by_bp[mask, index_asif] = raw_score
             del coverage, spliced_coverage
             by_bp = by_bp.reshape([by_out, chunk_size])
+            asifs_by_bp = asifs_by_bp.reshape([by_out, chunk_size, 3])
             h5['scores/by_bp'][i:(i + by_out)] = by_bp
+            h5['scores/ig_exon_intron_bp'][i:(i + by_out)] = asifs_by_bp
 
             current_counts = np.sum(h5['data/y'][i:(i + by_out)], axis=1)
             scores_four = np.full(fill_value=-1., shape=[by_out, 4])
