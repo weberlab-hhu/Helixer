@@ -240,6 +240,11 @@ def main(species, bam, h5_data, d_utp, dont_score):
     except KeyError:
         h5['meta'].create_group('median_expected_coverage')
 
+    try:
+        h5['meta/max_normalized_cov_sc']
+    except KeyError:
+        h5['meta'].create_group('max_normalized_cov_sc')
+
     # identify regions in h5 corresponding to species
     species_start, species_end = species_range(h5, species)
     # save range to h5 meta
@@ -320,9 +325,11 @@ def main(species, bam, h5_data, d_utp, dont_score):
                     norm_cov_by_bp[mask, index_asif] = raw_score
             del coverage, spliced_coverage
             by_bp = by_bp.reshape([by_out, chunk_size])
-            norm_cov_by_bp = norm_cov_by_bp.reshape([by_out, chunk_size, 3])
+            norm_cov_by_bp = norm_cov_by_bp.reshape([by_out, chunk_size, 2])
             h5['scores/by_bp'][i:(i + by_out)] = by_bp
             h5['scores/norm_cov_by_bp'][i:(i + by_out)] = norm_cov_by_bp
+            max_norm_cov = max(max_norm_cov, np.max(norm_cov_by_bp[:, 0]))
+            max_norm_sc = max(max_norm_sc, np.max(norm_cov_by_bp[:, 1]))
 
             current_counts = np.sum(h5['data/y'][i:(i + by_out)], axis=1)
             scores_four = np.full(fill_value=-1., shape=[by_out, 4])
@@ -341,6 +348,8 @@ def main(species, bam, h5_data, d_utp, dont_score):
             if not i % 2000:
                 print('reached i={}'.format(i))
         print('fin, i={}'.format(i), file=sys.stderr)
+        # save maximums as attributes
+        h5['meta/max_normalized_cov_sc'].attrs.create(name=species, data=(max_norm_cov, max_norm_sc))
         # normalize coverage score by species and category
         raw_four = h5['scores/four'][species_start:species_end]
         centers = np.sum(raw_four * counts, axis=0) / np.sum(counts, axis=0)
