@@ -29,9 +29,9 @@ def add_empty_score_datasets(h5):
     length = h5['data/X'].shape[0]
     chunk_size = h5['data/X'].shape[1]
     h5.create_group('scores')
-    shapes = [(length, chunk_size), (length, 4), (length, 4), (length, ), (length, ), (length, chunk_size, 3)]
-    max_shapes = [(None, chunk_size), (None, 4), (None, 4), (None, ), (None, ), (None, chunk_size, 3)]
-    for i, key in enumerate(['by_bp', 'four', 'four_centered', 'one', 'one_centered', 'ig_exon_intron_bp']):
+    shapes = [(length, chunk_size), (length, 4), (length, 4), (length, ), (length, ), (length, chunk_size, 2)]
+    max_shapes = [(None, chunk_size), (None, 4), (None, 4), (None, ), (None, ), (None, chunk_size, 2)]
+    for i, key in enumerate(['by_bp', 'four', 'four_centered', 'one', 'one_centered', 'norm_cov_by_bp']):
         h5.create_dataset('scores/' + key,
                           shape=shapes[i],
                           maxshape=max_shapes[i],
@@ -72,11 +72,12 @@ def species_range(h5, species):
 
 
 class Scorer:
-    def __init__(self, median_cov, column):
+    def __init__(self, median_cov, column, sigmoid=True):
         self.scale_to = 2.6
         self.column = column
         self.median_cov = median_cov
         self.final_scale = self.scale_pos_half
+        self.run_sigmoid = sigmoid
 
     @staticmethod
     def scale_pos_half(score):
@@ -88,6 +89,10 @@ class Scorer:
         # starts (0, 0.5), target (0, 1)
         return score * 2
 
+    @staticmethod
+    def scale_nada(score):
+        return score
+
     def score(self, datay, coverage, spliced_coverage):
         if self.column is not None:
             mask = datay[:, self.column].astype(bool)
@@ -98,7 +103,10 @@ class Scorer:
         sc = spliced_coverage[mask]
         if cov.shape[0]:
             pre_score = self._pre_score(cov, sc)
-            score = self.sigmoid(pre_score)
+            if self.run_sigmoid:
+                score = self.sigmoid(pre_score)
+            else:
+                score = pre_score
             score = self.final_scale(score)
         else:
             score = np.array([])
@@ -146,6 +154,24 @@ class ScorerIntron(Scorer):
         effective_cov[effective_cov < 0] = 0
         x = np.log(effective_cov + 1)
         return x * self.scale_to / np.log(self.median_cov + 1)
+
+
+class NormScorer(Scorer):
+    def __init__(self, median_cov, column):
+        super().__init__(median_cov, column, sigmoid=False)
+        self.final_scale = self.scale_nada
+
+
+class NormScoreCoverage(NormScorer):
+    def _pre_score(self, cov, sc):
+        x = np.log10(cov + 1)
+        return x / np.log10(self.median_cov + 1)
+
+
+class NormScoreSplicedCoverage(NormScorer):
+    def _pre_score(self, cov, sc):
+        x = np.log10(sc + 1)
+        return x / np.log10(self.median_cov + 1)
 
 
 def get_median_expected_coverage(h5, max_expected=1000):
@@ -262,12 +288,11 @@ def main(species, bam, h5_data, d_utp, dont_score):
         cds_scorer = ScorerExon(column=2, median_cov=mec)
         intron_scorer = ScorerIntron(column=3, median_cov=mec)
         scorers = [ig_scorer, utr_scorer, cds_scorer, intron_scorer]
-        asif_ig_scorer = ScorerIntergenic(column=None, median_cov=mec)
-        asif_exon_scorer = ScorerExon(column=None, median_cov=mec)
-        asif_intron_scorer = ScorerIntron(column=None, median_cov=mec)
-        asif_scorers = [asif_ig_scorer, asif_exon_scorer, asif_intron_scorer]
-
-        # todo, this is really naive and probably terribly slow... fix
+        norm_cov_scorer = NormScoreCoverage(column=None, median_cov=mec)
+        norm_sc_scorer = NormScoreSplicedCoverage(column=None, median_cov=mec)
+        norm_scorers = [norm_cov_scorer, norm_sc_scorer]  # calculate normalized coverage more than "scoring" persay
+        max_norm_cov = 0
+        max_norm_sc = 0
         counts = np.zeros(shape=(species_end - species_start, 4))
         print("scoring {}-{}".format(species_start, species_end), file=sys.stderr)
         by = 500
@@ -283,21 +308,21 @@ def main(species, bam, h5_data, d_utp, dont_score):
             coverage = h5['evaluation/coverage'][i:(i + by_out)].ravel()
             spliced_coverage = h5['evaluation/spliced_coverage'][i:(i + by_out)].ravel()
             by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size])
-            asifs_by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size, 3])  # 3 for [ig, exon, intron]
+            norm_cov_by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size, 2])  # 2 for [cov, sc]
             for scorer in scorers:
                 raw_score, mask = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
                 if raw_score.size > 0:
                     by_bp[mask] = raw_score
-            for index_asif, asif_scorer in enumerate(asif_scorers):
-                raw_score, mask = asif_scorer.score(datay=datay, coverage=coverage,
+            for index_asif, norm_scorer in enumerate(norm_scorers):
+                raw_score, mask = norm_scorer.score(datay=datay, coverage=coverage,
                                                     spliced_coverage=spliced_coverage)
                 if raw_score.size > 0:
-                    asifs_by_bp[mask, index_asif] = raw_score
+                    norm_cov_by_bp[mask, index_asif] = raw_score
             del coverage, spliced_coverage
             by_bp = by_bp.reshape([by_out, chunk_size])
-            asifs_by_bp = asifs_by_bp.reshape([by_out, chunk_size, 3])
+            norm_cov_by_bp = norm_cov_by_bp.reshape([by_out, chunk_size, 3])
             h5['scores/by_bp'][i:(i + by_out)] = by_bp
-            h5['scores/ig_exon_intron_bp'][i:(i + by_out)] = asifs_by_bp
+            h5['scores/norm_cov_by_bp'][i:(i + by_out)] = norm_cov_by_bp
 
             current_counts = np.sum(h5['data/y'][i:(i + by_out)], axis=1)
             scores_four = np.full(fill_value=-1., shape=[by_out, 4])
