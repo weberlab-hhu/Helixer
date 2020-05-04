@@ -72,7 +72,7 @@ python3 LSTMModel.py --data-dir ../../example/train/ --save-model-path ../../exa
 ```
 
 ### Model evaluation
-We can now use this model to produce predictions for our test dataset: 
+We can now use this model to produce predictions for our test dataset. WARNING: Generating predictions can produce very large files as we save every individual softmax value in 32 bit floating point format. For this very small genome the predictions require 524MB of disk space. 
 ```
 python3 LSTMModel.py --load-model-path ../../example/best_helixer_model.h5 --test-data ../../example/test/test_data.h5 --prediction-output-path ../../example/mpusillaCCMP1545_predictions.h5
 ```
@@ -121,11 +121,9 @@ Total acc: 0.6909
 
 As you can see, the model only predicted intergenic and CDS bases. The main reason for this is likely that the data contains very little bases of the other two kinds. A more varied training dataset or uneven class weights could change that (this result is for the small model example).
 
-
-
-
-
-
-
-
+When we did write out the predictions to disk we can use an experimental visualization to display the predictions together with the reference:
+```
+cd ../visualization
+python3 visualize.py --predictions ../../example/mpusillaCCMP1545_predictions.h5 --test-data ../../example/test/test_data.h5
+```
 
