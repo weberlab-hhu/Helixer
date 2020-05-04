@@ -39,11 +39,11 @@ Our example database contains the genetic information (that is the information o
 # generating the training and validation dataset
 # the genome names are a bit different due to the naming used in Phytosome
 python3 export.py --db-path-in example/three_algae.sqlite3 --genomes Olucimarinus,MspRCC299 --out-dir example/train 
-
 ```
 
 ```
 # generating the test dataset
 python3 export.py --db-path-in example/three_algae.sqlite3 --genomes MpusillaCCMP1545 --out-dir example/test --only-test-set 
-
 ```
+
+
