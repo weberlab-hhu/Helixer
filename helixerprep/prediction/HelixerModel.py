@@ -104,10 +104,10 @@ class HelixerSequence(Sequence):
         else:
             self.usable_idx = list(range(self.x_dset.shape[0]))
 
-        print('Total chunks: {}\n'.format(len(self.usable_idx)))
+        print('Total chunks: {}'.format(len(self.usable_idx)))
         if filter_by_score:
             self._filter_usable_idx_by_score(quantile=filter_quantile)
-            print('Total filtered chunks: {}\n'.format(len(self.usable_idx)))
+            print('Total filtered chunks: {}'.format(len(self.usable_idx)))
 
         if shuffle:
             random.shuffle(self.usable_idx)
