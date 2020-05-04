@@ -46,4 +46,25 @@ python3 export.py --db-path-in example/three_algae.sqlite3 --genomes Olucimarinu
 python3 export.py --db-path-in example/three_algae.sqlite3 --genomes MpusillaCCMP1545 --out-dir example/test --only-test-set 
 ```
 
+We should now have the following files in `example/`. Note that the test data was not split into a training and validation set due to the `--only-test-set` option: 
+```
+example/
+├── test
+│   └── test_data.h5
+├── three_algae.sqlite3
+└── train
+    ├── training_data.h5
+    └── validation_data.h5
+```
+Now we use the datasets in `example/train/` to train a model with our LSTM architeture for 5 epochs and save the best iteration (according to the Genic F1 on the validation dataset) to `example/best_helixer_model.h5`.
+```
+python3 helixerprep/prediction/LSTMModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5
+```
+
+Right before the training starts we get two warnings about the data that are not important for this example. 
+
+
+
+
+
 
