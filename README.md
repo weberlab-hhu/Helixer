@@ -58,10 +58,16 @@ example/
 ```
 Now we use the datasets in `example/train/` to train a model with our LSTM architeture for 5 epochs and save the best iteration (according to the Genic F1 on the validation dataset) to `example/best_helixer_model.h5`.
 ```
-python3 helixerprep/prediction/LSTMModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5
+python3 helixerprep/prediction/LSTMModel.py --verbose --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 --units 64 --pool-size 10
 ```
 
-Right before the training starts we get two warnings about the data that are not important for this example. 
+Right before the training starts we may get one or two warnings about the data that are not relevant for this example. This trains a very small single layer BLSTM model with about 60.000 parameters that receives 10 basepairs for each time step. If we would like to train a model with exactly the architecture and weights that was used to train our actual plant models one would use the following command. 
+
+```
+python3 helixerprep/prediction/LSTMModel.py --verbose --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 --units 256 --pool-size 10 --batch-size 52 --layers 4 --layer-normalization --class-weights '[0.7, 1.6, 1.2, 1.2]'
+```
+
+We can now use this model to produce predictions for our test dataset.
 
 
 
