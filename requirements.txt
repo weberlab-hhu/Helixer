@@ -3,7 +3,7 @@ pytest
 git+https://github.com/janinamass/dustdas@master
 geenuff
 numpy
-tensorflow-gpu==1.14.0
+tensorflow-gpu==1.15.2
 nni
 seaborn
 keras-layer-normalization
