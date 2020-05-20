@@ -1,8 +1,10 @@
 sqlalchemy
 pytest
-dustdas
+git+https://github.com/janinamass/dustdas@master
 geenuff
 numpy
-tensorflow
+tensorflow-gpu==1.14.0
 nni
 seaborn
+keras-layer-normalization
+terminaltables
