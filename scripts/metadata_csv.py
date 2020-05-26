@@ -138,9 +138,11 @@ class BuscoAdder(Adder):
         with open(glob(self.main_path(genome_path))[0]) as f:
             for line in f:
                 parts = line.strip().split('\t')
-                if len(parts) > 1 and parts[1] in self.key_matches:
+                if len(parts) == 1 and parts[0].startswith('C:'):
+                    total_buscos = int(parts[0].split(':')[-1])
+                elif len(parts) > 1 and parts[1] in self.key_matches:
                     if self.scale:
-                        value = '{:.4f}'.format(int(parts[0]) / 430.0)
+                        value = '{:.4f}'.format(int(parts[0]) / total_buscos)
                     else:
                         value = parts[0]
                     columns[self.key_matches[parts[1]]].append(value)
