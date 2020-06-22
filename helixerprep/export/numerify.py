@@ -56,12 +56,9 @@ class Numerifier(ABC):
         self.coord = coord
         self.max_len = max_len
         self.dtype = dtype
-        self.matrix = None
-        self.error_mask = None
         # set paired steps
         partitioner = Stepper(end=self.coord.length, by=self.max_len)
         self.paired_steps = list(partitioner.step_to_end())
-
         super().__init__()
 
     @abstractmethod
@@ -69,52 +66,39 @@ class Numerifier(ABC):
         """Method to be called from outside. Numerifies both strands."""
         pass
 
-    def _slice_matrices(self, is_plus_strand, *argv):
+    def _slice_matrices(self, *argv):
         """Slices (potentially) multiple matrices in the same way according to self.paired_steps"""
         assert len(argv) > 0, 'Need a matrix to slice'
         all_slices = [[] for _ in range(len(argv))]
-        # reverse steps on minus strand
-        steps = self.paired_steps if is_plus_strand else self.paired_steps[::-1]
-        for prev, current in steps:
+        for prev, current in self.paired_steps:
             for matrix, slices in zip(argv, all_slices):
                 data_slice = matrix[prev:current]
-                if not is_plus_strand:
-                    # invert directions
-                    data_slice = np.flip(data_slice, axis=0)
                 slices.append(data_slice)
         return all_slices
 
-    def _zero_matrix(self):
-        length = len(self.coord.sequence)
-        self.matrix = np.zeros((length, self.n_cols,), self.dtype)
-        # 0 means error so this can be used directly as sample weight later on
-        self.error_mask = np.ones((length,), np.int8)
+    @abstractmethod
+    def _init_data_arrays(self):
+        """Initializes the data array that hold the numerified data"""
+        pass
 
 
 class SequenceNumerifier(Numerifier):
     def __init__(self, coord, max_len):
         super().__init__(n_cols=4, coord=coord, max_len=max_len, dtype=np.float16)
 
+    def _init_data_arrays(self):
+        length = len(self.coord.sequence)
+        self.matrix = np.zeros((length, self.n_cols,), self.dtype)
+        self.error_mask = np.ones((length,), np.int8)
+
     def coord_to_matrices(self):
         """Does not alter the error mask unlike in AnnotationNumerifier"""
         self._zero_matrix()
-        # plus strand, actual numerification of the sequence
+        # actual numerification of the sequence
         for i, bp in enumerate(self.coord.sequence):
             self.matrix[i] = AMBIGUITY_DECODE[bp]
-        # very important to copy here
-        data_plus, error_mask_plus = self._slice_matrices(True,
-                                                          np.copy(self.matrix),
-                                                          np.copy(self.error_mask))
-
-        # minus strand, just flip
-        self.matrix = np.flip(self.matrix, axis=1)  # invert base
-        data_minus, error_mask_minus = self._slice_matrices(False,
-                                                            self.matrix,
-                                                            self.error_mask)
-        # put everything together
-        data = data_plus + data_minus
-        error_masks = error_mask_plus + error_mask_minus
-        return data, error_masks
+        data, error_mask = self._slice_matrices(self.matrix, self.error_mask)
+        return data, error_mask
 
 
 class AnnotationNumerifier(Numerifier):
@@ -133,9 +117,13 @@ class AnnotationNumerifier(Numerifier):
         self.features = features
         self.one_hot = one_hot
         self.coord = coord
-        self._zero_gene_lengths()
+        self._init_data_arrays()
 
-    def _zero_gene_lengths(self):
+    def _init_data_arrays(self):
+        length = len(self.coord.sequence)
+        self.matrix = np.zeros((length, self.n_cols,), self.dtype)
+        # 0 means error so this can be used directly as sample weight later on
+        self.error_mask = np.ones((length,), np.int8)
         self.gene_lengths = np.zeros((len(self.coord.sequence),), dtype=np.uint32)
 
     def coord_to_matrices(self):
@@ -148,8 +136,7 @@ class AnnotationNumerifier(Numerifier):
         return combined_data
 
     def _encode_strand(self, is_plus_strand):
-        self._zero_matrix()
-        self._zero_gene_lengths()
+        self._init_data_arrays()
         self._update_matrix_and_error_mask(is_plus_strand=is_plus_strand)
 
         # encoding of transitions
@@ -157,11 +144,9 @@ class AnnotationNumerifier(Numerifier):
         # encoding of the actual labels and slicing; generation of error mask and gene length array
         if self.one_hot:
             label_matrix = self._encode_onehot4()
-
         else:
             label_matrix = self.matrix
-        matrices = self._slice_matrices(is_plus_strand,
-                                        label_matrix,
+        matrices = self._slice_matrices(label_matrix,
                                         self.error_mask,
                                         self.gene_lengths,
                                         binary_transition_matrix)
@@ -208,7 +193,7 @@ class AnnotationNumerifier(Numerifier):
 
         one_hot4_matrix = one_hot_matrix.astype(np.int8)
         return one_hot4_matrix
-    
+
     def _encode_transitions(self):
         add = np.array([[0, 0, 0]])
         shifted_feature_matrix = np.vstack((self.matrix[1:], add))
