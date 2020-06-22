@@ -85,6 +85,7 @@ class Numerifier(ABC):
 class SequenceNumerifier(Numerifier):
     def __init__(self, coord, max_len):
         super().__init__(n_cols=4, coord=coord, max_len=max_len, dtype=np.float16)
+        self._init_data_arrays()
 
     def _init_data_arrays(self):
         length = len(self.coord.sequence)
@@ -93,7 +94,6 @@ class SequenceNumerifier(Numerifier):
 
     def coord_to_matrices(self):
         """Does not alter the error mask unlike in AnnotationNumerifier"""
-        self._zero_matrix()
         # actual numerification of the sequence
         for i, bp in enumerate(self.coord.sequence):
             self.matrix[i] = AMBIGUITY_DECODE[bp]
