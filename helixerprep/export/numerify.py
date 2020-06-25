@@ -121,25 +121,16 @@ class AnnotationNumerifier(Numerifier):
 
     def _init_data_arrays(self):
         length = len(self.coord.sequence)
-        self.matrix = np.zeros((length, self.n_cols,), self.dtype)
+        self.matrix = np.zeros((2, length, self.n_cols,), self.dtype)
         # 0 means error so this can be used directly as sample weight later on
-        self.error_mask = np.ones((length,), np.int8)
-        self.gene_lengths = np.zeros((len(self.coord.sequence),), dtype=np.uint32)
+        self.error_mask = np.ones((2, length,), np.int8)
+        self.gene_lengths = np.zeros((2, len(self.coord.sequence),), dtype=np.uint32)
 
     def coord_to_matrices(self):
-        """Always numerifies both strands one after the other."""
-        plus_strand = self._encode_strand(True)
-        minus_strand = self._encode_strand(False)
-
-        # put everything together
-        combined_data = tuple(plus_strand[i] + minus_strand[i] for i in range(len(plus_strand)))
-        return combined_data
-
-    def _encode_strand(self, is_plus_strand):
         self._init_data_arrays()
-        self._update_matrix_and_error_mask(is_plus_strand=is_plus_strand)
+        self._fill_data_arrays()
 
-        # encoding of transitions
+        # encoding of transitions, has to be done after data arrays are fully completed
         binary_transition_matrix = self._encode_transitions()
         # encoding of the actual labels and slicing; generation of error mask and gene length array
         if self.one_hot:
@@ -152,7 +143,7 @@ class AnnotationNumerifier(Numerifier):
                                         binary_transition_matrix)
         return matrices
 
-    def _update_matrix_and_error_mask(self, is_plus_strand):
+    def _fill_data_arrays(self, is_plus_strand):
         for feature in self.features:
             # don't include features from the other strand
             if not feature.is_plus_strand == is_plus_strand:
