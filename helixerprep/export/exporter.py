@@ -97,11 +97,10 @@ class HelixerExportController(object):
 
         # append to or create datasets
         if '/data/X' in h5_file:
+            old_len = h5_file['/data/X'].shape[0]
             for dset_key in dsets.keys():
-                dset = h5_file['/data/' + dset_key]
-                old_len = dset.shape[0]
                 resize_axis = 1 if dset_key in key_double_strands else 0
-                dset.resize(old_len + n_seqs, axis=resize_axis)
+                h5_file['/data/' + dset_key].resize(old_len + n_seqs, axis=resize_axis)
         else:
             old_len = 0
             h5_file.create_dataset('/data/X',
