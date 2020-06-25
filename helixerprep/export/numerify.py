@@ -69,10 +69,15 @@ class Numerifier(ABC):
     def _slice_matrices(self, *argv):
         """Slices (potentially) multiple matrices in the same way according to self.paired_steps"""
         assert len(argv) > 0, 'Need a matrix to slice'
+        assert all([len(m.shape) < 4 for m in argv]), 'Need at most 3-dimentional data'
         all_slices = [[] for _ in range(len(argv))]
         for prev, current in self.paired_steps:
             for matrix, slices in zip(argv, all_slices):
-                data_slice = matrix[prev:current]
+                # check if data is single or double stranded
+                if len(matrix.shape) == 3:
+                    data_slice = matrix[:, prev:current]
+                else:
+                    data_slice = matrix[prev:current]
                 slices.append(data_slice)
         return all_slices
 
@@ -131,7 +136,9 @@ class AnnotationNumerifier(Numerifier):
         self._fill_data_arrays()
 
         # encoding of transitions, has to be done after data arrays are fully completed
-        binary_transition_matrix = self._encode_transitions()
+        # commented out as we are trying to make the double stranded prediction work
+        # binary_transition_matrix = self._encode_transitions()
+        binary_transition_matrix = np.zeros((2, self.matrix.shape[1], 6))
         # encoding of the actual labels and slicing; generation of error mask and gene length array
         if self.one_hot:
             label_matrix = self._encode_onehot4()
@@ -143,44 +150,44 @@ class AnnotationNumerifier(Numerifier):
                                         binary_transition_matrix)
         return matrices
 
-    def _fill_data_arrays(self, is_plus_strand):
+    def _fill_data_arrays(self):
         for feature in self.features:
-            # don't include features from the other strand
-            if not feature.is_plus_strand == is_plus_strand:
-                continue
-            start = feature.start
-            end = feature.end
-            if not is_plus_strand:
-                start, end = end + 1, start + 1
+            if feature.is_plus_strand:
+                strand = 0
+                start, end = feature.start, feature.end
+            else:
+                strand = 1
+                start, end = feature.end + 1, feature.start + 1
             if feature.type in AnnotationNumerifier.feature_to_col.keys():
                 col = AnnotationNumerifier.feature_to_col[feature.type]
-                self.matrix[start:end, col] = 1
+                self.matrix[strand, start:end, col] = 1
             elif feature.type.value in types.geenuff_error_type_values:
-                self.error_mask[start:end] = 0
+                self.error_mask[strand, start:end] = 0
             else:
                 raise ValueError('Unknown feature type found: {}'.format(feature.type.value))
             # also fill self.gene_lengths
             # give precedence for the longer transcript if present
             if feature.type.value == types.GEENUFF_TRANSCRIPT:
                 length_arr = np.full((end - start,), end - start)
-                self.gene_lengths[start:end] = np.maximum(self.gene_lengths[start:end], length_arr)
+                maximum_gene_lengths = np.maximum(self.gene_lengths[strand, start:end], length_arr)
+                self.gene_lengths[strand, start:end] = maximum_gene_lengths
 
     def _encode_onehot4(self):
         # Class order: Intergenic, UTR, CDS, (non-coding Intron), Intron
         # This could be done in a more efficient way, but this way we may catch bugs
         # where non-standard classes are output in the multiclass output
-        one_hot_matrix = np.zeros((self.matrix.shape[0], 4), dtype=bool)
-        col_0, col_1, col_2 = self.matrix[:, 0], self.matrix[:, 1], self.matrix[:, 2]
+        one_hot_matrix = np.zeros((2, self.matrix.shape[1], 4), dtype=bool)
+        col_0, col_1, col_2 = self.matrix[:, :, 0], self.matrix[:, :, 1], self.matrix[:, :, 2]
         # Intergenic
-        one_hot_matrix[:, 0] = np.logical_not(col_0)
+        one_hot_matrix[:, :, 0] = np.logical_not(col_0)
         # UTR
         genic_non_coding = np.logical_and(col_0, np.logical_not(col_1))
-        one_hot_matrix[:, 1] = np.logical_and(genic_non_coding, np.logical_not(col_2))
+        one_hot_matrix[:, :, 1] = np.logical_and(genic_non_coding, np.logical_not(col_2))
         # CDS
-        one_hot_matrix[:, 2] = np.logical_and(np.logical_and(col_0, col_1), np.logical_not(col_2))
+        one_hot_matrix[:, :, 2] = np.logical_and(np.logical_and(col_0, col_1), np.logical_not(col_2))
         # Introns
-        one_hot_matrix[:, 3] = np.logical_and(col_0, col_2)
-        assert np.all(np.count_nonzero(one_hot_matrix, axis=1) == 1)
+        one_hot_matrix[:, :, 3] = np.logical_and(col_0, col_2)
+        assert np.all(np.count_nonzero(one_hot_matrix, axis=2) == 1)
 
         one_hot4_matrix = one_hot_matrix.astype(np.int8)
         return one_hot4_matrix
@@ -216,12 +223,10 @@ class CoordNumerifier(object):
         seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len)
 
         # returns results for both strands, with the plus strand first in the list
-        inputs, input_masks = seq_numerifier.coord_to_matrices()
+        inputs, _ = seq_numerifier.coord_to_matrices()
+        import pudb; pudb.set_trace()
         labels, label_masks, gene_lengths, transitions = anno_numerifier.coord_to_matrices()
-
         start_ends = anno_numerifier.paired_steps
-        # flip the start ends back for - strand and append
-        start_ends += [(x[1], x[0]) for x in anno_numerifier.paired_steps[::-1]]
 
         # do not output the input_masks as it is not used for anything
         out = {
