@@ -55,55 +55,53 @@ class HelixerExportController(object):
                     val_arrays[key].append(flat_data[key][i])
         return train_arrays, val_arrays
 
-    def _save_data(self, h5_file, flat_data, chunk_size, n_y_cols):
-        import pudb; pudb.set_trace()
+    def _save_data(self, h5_file, flat_data, chunk_size):
         dset_keys = [
             'X', 'y', 'sample_weights', 'gene_lengths', 'transitions', 'err_samples',
-            'fully_intergenic_samples', 'start_ends', 'species', 'seqids'
+            'fully_intergenic_samples', 'species', 'seqids', 'start_ends'
         ]
         dsets = {key:None for key in dset_keys}
 
-        # keys of the arrays that need to be padded
+        # flat_data keys of the arrays that need to be padded
         numerify_keys = ['inputs', 'labels', 'label_masks', 'gene_lengths', 'transitions']
+        n_seqs = len(flat_data['inputs'])
         for i, num_key in enumerate(numerify_keys):
             # insert all the sequences so that 0-padding is added if needed
-            # the first 5 keys in dsets match the 5 numerify keys
-            # can be done since dicts keep their insert order since 3.6
             d = flat_data[num_key]
-            shape = (len(d), chunk_size)
-            if len(d[0].shape) == 2:
-                shape += (d[0].shape[1],)
+            # double stranded data introduces more case that have to be handled explicitely
+            if num_key == 'inputs':
+                shape = (n_seqs, chunk_size, d[0].shape[-1])
+            elif num_key in ['label_masks', 'gene_lengths']:
+                shape = (2, n_seqs, chunk_size)
+            else:
+                shape = (2, n_seqs, chunk_size, d[0].shape[-1])
             padded_d = np.zeros(shape, dtype=d[0].dtype)
-            for j in range(len(d)):
-                padded_d[j, :len(d[j])] = d[j]
+            for j in range(n_seqs):
+                if num_key == 'inputs':
+                    padded_d[j, :d[j].shape[0]] = d[j]
+                else:
+                    padded_d[:, j, :d[j].shape[1]] = d[j]
             dsets[dset_keys[i]] = padded_d
 
-        dsets['err_samples'] = np.any(dsets['sample_weights'] == 0, axis=1)
-        # just one entry per chunk
-        if n_y_cols > 3:
-            dsets['fully_intergenic_samples'] = np.all(dsets['y'][:, :, 0] == 1, axis=1)
-        else:
-            dsets['fully_intergenic_samples']= np.all(dsets['y'][:, :, 0] == 0, axis=1)
+        dsets['err_samples'] = np.any(dsets['sample_weights'] == 0, axis=2)
+        dsets['fully_intergenic_samples'] = np.all(dsets['y'][:, :, :, 0] == 1, axis=2)
         # additional arrays
         dsets['start_ends'] = np.array(flat_data['start_ends'], dtype=np.int64)
         dsets['species'] = np.array(flat_data['species'])
         dsets['seqids'] = np.array(flat_data['seqids'])
 
-        # check for correct amount of sequences as some are only for both strands
-        key_one_strand = ['X', 'species', 'seqids']
-        key_both_strands = set(dset_keys) - set(key_one_strand)
-        assert all([len(dsets['X']) * 2 == len(dsets[k]) for k in key_both_strands])
-        assert all([len(dsets['X']) == len(dsets[k]) for k in key_one_strand])
+        key_one_strand = ['X', 'species', 'seqids', 'start_ends']
+        key_double_strands = set(dset_keys) - set(key_one_strand)
+        assert all([dsets[k].shape[0] == 2 for k in key_double_strands])
+        assert all([dsets['X'].shape[0] == dsets[k].shape[0] for k in key_one_strand])
 
         # append to or create datasets
-        n_seqs = len(dsets['X'])
         if '/data/X' in h5_file:
             for dset_key in dsets.keys():
                 dset = h5_file['/data/' + dset_key]
                 old_len = dset.shape[0]
-                if dset_key in key_both_strands:
-                    n_seqs *= 2
-                dset.resize(old_len + n_seqs, axis=0)
+                resize_axis = 1 if dset_key in key_double_strands else 0
+                dset.resize(old_len + n_seqs, axis=resize_axis)
         else:
             old_len = 0
             h5_file.create_dataset('/data/X',
@@ -114,41 +112,41 @@ class HelixerExportController(object):
                                    compression='lzf',
                                    shuffle=True)  # only for the compression
             h5_file.create_dataset('/data/y',
-                                   shape=(n_seqs * 2, chunk_size, n_y_cols),
-                                   maxshape=(None, chunk_size, n_y_cols),
-                                   chunks=(1, chunk_size, n_y_cols),
+                                   shape=(2, n_seqs, chunk_size, 4),
+                                   maxshape=(2, None, chunk_size, 4),
+                                   chunks=(2, 1, chunk_size, 4),
                                    dtype='int8',
                                    compression='lzf',
                                    shuffle=True)
             h5_file.create_dataset('/data/sample_weights',
-                                   shape=(n_seqs * 2, chunk_size),
-                                   maxshape=(None, chunk_size),
-                                   chunks=(1, chunk_size),
+                                   shape=(2, n_seqs, chunk_size),
+                                   maxshape=(2, None, chunk_size),
+                                   chunks=(2, 1, chunk_size),
                                    dtype='int8',
                                    compression='lzf',
                                    shuffle=True)
             h5_file.create_dataset('/data/gene_lengths',
-                                   shape=(n_seqs * 2, chunk_size),
-                                   maxshape=(None, chunk_size),
-                                   chunks=(1, chunk_size),
+                                   shape=(2, n_seqs, chunk_size),
+                                   maxshape=(2, None, chunk_size),
+                                   chunks=(2, 1, chunk_size),
                                    dtype='uint32',
                                    compression='lzf',
                                    shuffle=True)
             h5_file.create_dataset('/data/transitions',
-                                   shape=(n_seqs * 2, chunk_size, 6),
-                                   maxshape=(None, chunk_size, 6),
-                                   chunks=(1, chunk_size, 6),
+                                   shape=(2, n_seqs, chunk_size, 6),
+                                   maxshape=(2, None, chunk_size, 6),
+                                   chunks=(2, 1, chunk_size, 6),
                                    dtype='int8',  # guess we'll stick to int8
                                    compression='lzf',
                                    shuffle=True)
             h5_file.create_dataset('/data/err_samples',
-                                   shape=(n_seqs * 2,),
-                                   maxshape=(None,),
+                                   shape=(2, n_seqs),
+                                   maxshape=(2, None,),
                                    dtype='bool',
                                    compression='lzf')
             h5_file.create_dataset('/data/fully_intergenic_samples',
-                                   shape=(n_seqs * 2,),
-                                   maxshape=(None,),
+                                   shape=(2, n_seqs),
+                                   maxshape=(2, None,),
                                    dtype='bool',
                                    compression='lzf')
             h5_file.create_dataset('/data/species',
@@ -162,7 +160,7 @@ class HelixerExportController(object):
                                    dtype='S50',
                                    compression='lzf')
             h5_file.create_dataset('/data/start_ends',
-                                   shape=(n_seqs * 2, 2),
+                                   shape=(n_seqs, 2),
                                    maxshape=(None, 2),
                                    dtype='int64',
                                    compression='lzf')
@@ -259,7 +257,6 @@ class HelixerExportController(object):
 
         train_coords, val_coords = self._split_coords_by_N90(genome_coords, val_size)
         n_coords_done = 1
-        n_y_cols = 4 if one_hot else 3
         for genome_id, coords in genome_coords.items():
             for (coord_id, coord_len) in coords:
                 coord = self.geenuff_exporter.get_coord_by_id(coord_id)
@@ -269,14 +266,14 @@ class HelixerExportController(object):
 
                 flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc = numerify_outputs
                 if self.only_test_set:
-                    self._save_data(self.h5_test, flat_data, chunk_size, n_y_cols)
+                    self._save_data(self.h5_test, flat_data, chunk_size)
                     assigned_set = 'test'
                 else:
                     if coord_id in train_coords:
-                        self._save_data(self.h5_train, flat_data, chunk_size, n_y_cols)
+                        self._save_data(self.h5_train, flat_data, chunk_size)
                         assigned_set = 'train'
                     else:
-                        self._save_data(self.h5_val, flat_data, chunk_size, n_y_cols)
+                        self._save_data(self.h5_val, flat_data, chunk_size)
                         assigned_set = 'val'
                 print((f'{n_coords_done}/{n_coords} Numerified {coord} of {coord.genome.species} '
                        f"with {len(coord.features)} features in {len(flat_data['inputs'])} chunks, "

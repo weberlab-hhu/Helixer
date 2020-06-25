@@ -69,12 +69,13 @@ class Numerifier(ABC):
     def _slice_matrices(self, *argv):
         """Slices (potentially) multiple matrices in the same way according to self.paired_steps"""
         assert len(argv) > 0, 'Need a matrix to slice'
-        assert all([len(m.shape) < 4 for m in argv]), 'Need at most 3-dimentional data'
+        assert all([len(m.shape) <= 3 for m in argv]), 'Need at most 3-dimentional data'
         all_slices = [[] for _ in range(len(argv))]
         for prev, current in self.paired_steps:
             for matrix, slices in zip(argv, all_slices):
                 # check if data is single or double stranded
-                if len(matrix.shape) == 3:
+                # this breaks if a chromosome is only 2 bp long, which should never arrive here
+                if matrix.shape[0] == 2:
                     data_slice = matrix[:, prev:current]
                 else:
                     data_slice = matrix[prev:current]
@@ -224,7 +225,6 @@ class CoordNumerifier(object):
 
         # returns results for both strands, with the plus strand first in the list
         inputs, _ = seq_numerifier.coord_to_matrices()
-        import pudb; pudb.set_trace()
         labels, label_masks, gene_lengths, transitions = anno_numerifier.coord_to_matrices()
         start_ends = anno_numerifier.paired_steps
 
