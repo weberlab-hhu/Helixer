@@ -157,22 +157,22 @@ class HelixerSequence(Sequence):
         else:
             X = self.x_dset[usable_idx_batch]
 
-        y = self.y_dset[usable_idx_batch]
-        sw = self.sw_dset[usable_idx_batch]
+        y = self.y_dset[:, usable_idx_batch]
+        sw = self.sw_dset[:, usable_idx_batch]
 
         # calculate base level error rate for each sequence
         error_rates = (np.count_nonzero(sw == 0, axis=1) / y.shape[1]).astype(np.float32)
 
         if self.mode == 'train' and self.transition_weights is not None:
-            transitions = self.transitions_dset[usable_idx_batch]
+            transitions = self.transitions_dset[:, usable_idx_batch]
         else:
             transitions = None
         if self. mode == 'train' and self.coverage:
-            coverage_scores = self.coverage_dset[usable_idx_batch]
+            coverage_scores = self.coverage_dset[:, usable_idx_batch]
         else:
             coverage_scores = None
         if self.mode == 'train' and self.gene_lengths:
-            gene_lengths = self.gene_lengths_dset[usable_idx_batch]
+            gene_lengths = self.gene_lengths_dset[:, usable_idx_batch]
         else:
             gene_lengths = None
 

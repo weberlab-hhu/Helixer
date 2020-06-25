@@ -25,7 +25,7 @@ class LSTMSequence(HelixerSequence):
         X, y, sw, error_rates, gene_lengths, transitions, coverage_scores = self._get_batch_data(idx)
         pool_size = self.model.pool_size
         assert pool_size > 1, 'pooling size of <= 1 oh oh..'
-        assert y.shape[1] % pool_size == 0, 'pooling size has to evenly divide seq len'
+        # assert y.shape[1] % pool_size == 0, 'pooling size has to evenly divide seq len'
 
         X = X.reshape((
             X.shape[0],
@@ -34,15 +34,16 @@ class LSTMSequence(HelixerSequence):
         ))
         # make labels 2d so we can use the standard softmax / loss functions
         y = y.reshape((
-            y.shape[0],
-            y.shape[1] // pool_size,
+            2,
+            y.shape[1],
+            y.shape[2] // pool_size,
             pool_size,
             y.shape[-1],
         ))
 
         # mark any multi-base timestep as error if any base has an error
-        sw = sw.reshape((sw.shape[0], -1, pool_size))
-        sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.float32)
+        sw = sw.reshape((2, sw.shape[1], -1, pool_size))
+        sw = np.logical_not(np.any(sw == 0, axis=-1)).astype(np.float32)
 
         # only change sample weights during training (not even validation) as we don't calculate
         # a validation loss at the moment
@@ -53,11 +54,11 @@ class LSTMSequence(HelixerSequence):
                 # giving even more weight to transition points
                 # class weights without pooling not supported yet
                 # cw = np.array([0.8, 1.4, 1.2, 1.2], dtype=np.float32)
-                cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
-                cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
+                cls_arrays = [np.any((y[:, :, :, :, col] == 1), axis=3) for col in range(4)]
+                cls_arrays = np.stack(cls_arrays, axis=3).astype(np.int8)
                 # add class weights to applicable timesteps
-                cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
-                cw = np.sum(cw_arrays, axis=2)
+                cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:3] + (1,)))
+                cw = np.sum(cw_arrays, axis=3)
                 # multiply with previous sample weights
                 sw = np.multiply(sw, cw)
 
@@ -92,8 +93,8 @@ class LSTMSequence(HelixerSequence):
                 coverage_scores = coverage_scores.reshape((coverage_scores.shape[0], -1, pool_size))
                 zero_positions = np.where(coverage_scores == 0)
                 # scale coverage scores [0,1] by adding small numbers, default = 0.1
-                # fairly good positions don't lose importance 
-                coverage_scores = np.add(coverage_scores, self.coverage_scaling)    
+                # fairly good positions don't lose importance
+                coverage_scores = np.add(coverage_scores, self.coverage_scaling)
                 coverage_scores[zero_positions[0], zero_positions[1], zero_positions[2]] = 0
                 coverage_scores = np.sum(coverage_scores, axis=2)
                 # average scores according to pool_size
@@ -107,7 +108,11 @@ class LSTMSequence(HelixerSequence):
                 error_weights = 1 - np.power(error_rates, 1/3)
                 sw *= np.expand_dims(error_weights, axis=1)
 
-        return X, y, sw
+            # split y and sw for the two outputs
+            y_split = np.split(y, 2, axis=0)
+            sw_split = np.split(sw, 2, axis=0)
+
+        return X, y_split[0], sw_split[0]
 
     def compress_tw(self, transitions):
         return self._squish_tw_to_sw(transitions, self.transition_weights, self.stretch_transition_weights)
@@ -125,21 +130,21 @@ class LSTMSequence(HelixerSequence):
             sw_t = LSTMSequence._expand_rf(sw_t, stretch)
         return sw_t
 
-    @staticmethod    
-    def _expand_rf(reshaped_sw_t, rf):  
+    @staticmethod
+    def _expand_rf(reshaped_sw_t, rf):
 
-        reshaped_sw_t = np.array(reshaped_sw_t)  
-        dilated_rf = np.ones(np.shape(reshaped_sw_t))  
-        
+        reshaped_sw_t = np.array(reshaped_sw_t)
+        dilated_rf = np.ones(np.shape(reshaped_sw_t))
+
         where = np.where(reshaped_sw_t > 1)
         i = np.array(where[0]) # i unverändert
         j = np.array(where[1]) # j +/- step
-    
+
         #find dividers depending on the size of the dilated rf
         dividers = []
         for distance in range(1,rf+1):
             dividers.append(2**distance)
-        
+
         for z in range(rf,0,-1):
             dilated_rf[i,np.maximum(np.subtract(j,z), 0)] = np.maximum(reshaped_sw_t[i,j]/dividers[z-1],1)
             dilated_rf[i,np.minimum(np.add(j,z),len(dilated_rf[0])-1)] = np.maximum(reshaped_sw_t[i,j]/dividers[z-1],1)
@@ -184,11 +189,19 @@ class LSTMModel(HelixerModel):
         if self.dropout > 0.0:
             x = Dropout(self.dropout)(x)
 
+        # x = Dense(self.pool_size * 4 * 2)(x)
+        # if self.pool_size > 1:
+            # x = Reshape((2, self.pool_size, 4))(x)
+        # x1, x2 = tf.split(x, 2, axis=0)
+        # x1 = Activation('softmax', name='y_forward')(x1)
+        # x2 = Activation('softmax', name='y_backwards')(x2)
+
         x = Dense(self.pool_size * 4)(x)
         if self.pool_size > 1:
-            x = Reshape((-1, self.pool_size, 4))(x)
-        x = Activation('softmax', name='main')(x)
+            x = Reshape((self.pool_size, 4))(x)
+        x = Activation('softmax', name='y_forward')(x)
 
+        # model = Model(inputs=main_input, outputs=[x1, x2])
         model = Model(inputs=main_input, outputs=x)
         return model
 
@@ -197,6 +210,7 @@ class LSTMModel(HelixerModel):
         run_metadata = tf.RunMetadata()
         model.compile(optimizer=self.optimizer,
                       loss='categorical_crossentropy',
+                      # loss_weights=[0.5, 0.5],
                       sample_weight_mode='temporal',
                       options=run_options,
                       run_metadata=run_metadata)
