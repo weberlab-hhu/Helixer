@@ -26,7 +26,11 @@ class LSTMSequence(HelixerSequence):
         X, y, sw, error_rates, gene_lengths, transitions, coverage_scores = self._get_batch_data(idx)
         pool_size = self.model.pool_size
         assert pool_size > 1, 'pooling size of <= 1 oh oh..'
-        # assert y.shape[1] % pool_size == 0, 'pooling size has to evenly divide seq len'
+        assert y.shape[2] % pool_size == 0, 'pooling size has to evenly divide seq len'
+
+        # augment first, before anything else and only during training
+        if self.augment and self.mode == 'train':
+            X, y, sw = self._augment(X, y, sw)
 
         X = X.reshape((
             X.shape[0],
