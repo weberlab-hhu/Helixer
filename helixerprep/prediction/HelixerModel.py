@@ -204,6 +204,16 @@ class HelixerSequence(Sequence):
         return int(n_seqs)
 
     def _augment(self, X, y, sw):
+        def flip_strands(arr):
+            assert arr.shape[0] == 2, 'Does not appear to be double stranded'
+            arr[:, flip] = np.flip(arr[:, flip], axis=2)  # reverse sequence order
+            arr[0, flip], arr[1, flip] = arr[0, flip], arr[1, flip].copy()  # exchange strands
+            return arr
+
+        flip = np.random.rand(y.shape[1]) < 0.5
+        X[flip] = np.flip(X[flip], axis=(1, 2))  # reverse complement
+        y[:, flip] = flip_strands(y[:, flip])
+        sw[:, flip] = flip_strands(sw[:, flip])
         return X, y, sw
 
     def __len__(self):
