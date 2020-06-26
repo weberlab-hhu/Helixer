@@ -203,8 +203,8 @@ class LSTMModel(HelixerModel):
         x1, x2 = Lambda(lambda x: tf.split(x, 2, axis=1))(x)
         x1 = Reshape((-1, self.pool_size, 4))(x1)
         x2 = Reshape((-1, self.pool_size, 4))(x2)
-        x1 = Activation('softmax', name='y_forward')(x1)
-        x2 = Activation('softmax', name='y_backwards')(x2)
+        x1 = Activation('softmax', name='y_plus')(x1)
+        x2 = Activation('softmax', name='y_minus')(x2)
 
         model = Model(inputs=main_input, outputs=[x1, x2])
         return model
