@@ -6,10 +6,11 @@ import random
 import numpy as np
 import tensorflow as tf
 
+import keras.backend as K
 from keras_layer_normalization import LayerNormalization
 from keras.models import Sequential, Model
 from keras.layers import (Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
-                          concatenate, Input)
+                          concatenate, Input, Lambda)
 from helixerprep.prediction.HelixerModel import HelixerModel, HelixerSequence
 
 
@@ -109,13 +110,19 @@ class LSTMSequence(HelixerSequence):
                 sw *= np.expand_dims(error_weights, axis=1)
 
             # split y and sw for the two outputs
-            y_split = np.split(y, 2, axis=0)
-            sw_split = np.split(sw, 2, axis=0)
+            y_split = self._split_and_squeeze(y)
+            sw_split = self._split_and_squeeze(sw)
 
-        return X, y_split[0], sw_split[0]
+        return X, y_split, sw_split
 
     def compress_tw(self, transitions):
         return self._squish_tw_to_sw(transitions, self.transition_weights, self.stretch_transition_weights)
+
+    @staticmethod
+    def _split_and_squeeze(arr):
+        arr = np.split(arr, 2, axis=0)
+        arr = [np.squeeze(sub_arr) for sub_arr in arr]
+        return arr
 
     @staticmethod
     def _squish_tw_to_sw(transitions, tw, stretch):
@@ -172,6 +179,13 @@ class LSTMModel(HelixerModel):
     def sequence_cls(self):
         return LSTMSequence
 
+    def _split_layer(self, x):
+       x1, x2 = tf.split(x, 2, axis=1)
+       return [x1, x2]
+
+    def _split_layer_output_shape(self, input_shapes):
+        return [(None, self.pool_size, 4)] * 2
+
     def model(self):
         main_input = Input(shape=(None, self.pool_size * 4), dtype=self.float_precision,
                            name='main_input')
@@ -189,20 +203,14 @@ class LSTMModel(HelixerModel):
         if self.dropout > 0.0:
             x = Dropout(self.dropout)(x)
 
-        # x = Dense(self.pool_size * 4 * 2)(x)
-        # if self.pool_size > 1:
-            # x = Reshape((2, self.pool_size, 4))(x)
-        # x1, x2 = tf.split(x, 2, axis=0)
-        # x1 = Activation('softmax', name='y_forward')(x1)
-        # x2 = Activation('softmax', name='y_backwards')(x2)
+        x = Dense(self.pool_size * 4 * 2)(x)
+        x1, x2 = Lambda(lambda x: tf.split(x, 2, axis=1))(x)
+        x1 = Reshape((-1, self.pool_size, 4))(x1)
+        x2 = Reshape((-1, self.pool_size, 4))(x2)
+        x1 = Activation('softmax', name='y_forward')(x1)
+        x2 = Activation('softmax', name='y_backwards')(x2)
 
-        x = Dense(self.pool_size * 4)(x)
-        if self.pool_size > 1:
-            x = Reshape((self.pool_size, 4))(x)
-        x = Activation('softmax', name='y_forward')(x)
-
-        # model = Model(inputs=main_input, outputs=[x1, x2])
-        model = Model(inputs=main_input, outputs=x)
+        model = Model(inputs=main_input, outputs=[x1, x2])
         return model
 
     def compile_model(self, model):
@@ -210,7 +218,7 @@ class LSTMModel(HelixerModel):
         run_metadata = tf.RunMetadata()
         model.compile(optimizer=self.optimizer,
                       loss='categorical_crossentropy',
-                      # loss_weights=[0.5, 0.5],
+                      loss_weights=[0.5, 0.5],
                       sample_weight_mode='temporal',
                       options=run_options,
                       run_metadata=run_metadata)
