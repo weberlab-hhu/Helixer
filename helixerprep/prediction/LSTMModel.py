@@ -179,13 +179,6 @@ class LSTMModel(HelixerModel):
     def sequence_cls(self):
         return LSTMSequence
 
-    def _split_layer(self, x):
-       x1, x2 = tf.split(x, 2, axis=1)
-       return [x1, x2]
-
-    def _split_layer_output_shape(self, input_shapes):
-        return [(None, self.pool_size, 4)] * 2
-
     def model(self):
         main_input = Input(shape=(None, self.pool_size * 4), dtype=self.float_precision,
                            name='main_input')
