@@ -114,8 +114,15 @@ class ConfusionMatrix():
                 y_true = inputs[1]
                 y_pred = model.predict_on_batch([X, sw])
             elif len(inputs) == 3:
-                X, y_true, sw = inputs
-                y_pred = model.predict_on_batch(X)
+                if type(inputs[1]) is list:
+                    # double stranded case
+                    X = inputs[0]
+                    y_true = np.stack(inputs[1], axis=0)
+                    sw = np.stack(inputs[2], axis=0)
+                    y_pred = np.stack(model.predict_on_batch(X), axis=0)
+                else:
+                    X, y_true, sw = inputs
+                    y_pred = model.predict_on_batch(X)
             else:
                 print('Unknown inputs from keras sequence')
                 exit()

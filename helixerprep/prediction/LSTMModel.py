@@ -109,10 +109,9 @@ class LSTMSequence(HelixerSequence):
                 error_weights = 1 - np.power(error_rates, 1/3)
                 sw *= np.expand_dims(error_weights, axis=1)
 
-            # split y and sw for the two outputs
-            y_split = self._split_and_squeeze(y)
-            sw_split = self._split_and_squeeze(sw)
-
+        # split y and sw for the two outputs
+        y_split = self._split_and_squeeze(y)
+        sw_split = self._split_and_squeeze(sw)
         return X, y_split, sw_split
 
     def compress_tw(self, transitions):
