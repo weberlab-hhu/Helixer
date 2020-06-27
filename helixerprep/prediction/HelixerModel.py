@@ -158,8 +158,8 @@ class HelixerSequence(Sequence):
         else:
             X = self.x_dset[usable_idx_batch]
 
-        y = self.y_dset[usable_idx_batch]
-        sw = self.sw_dset[usable_idx_batch]
+        y = self.y_dset[:, usable_idx_batch]
+        sw = self.sw_dset[:, usable_idx_batch]
 
         # calculate base level error rate for each sequence
         error_rates = (np.count_nonzero(sw == 0, axis=1) / y.shape[1]).astype(np.float32)

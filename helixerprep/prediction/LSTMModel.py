@@ -26,7 +26,7 @@ class LSTMSequence(HelixerSequence):
         X, y, sw, error_rates, gene_lengths, transitions, coverage_scores = self._get_batch_data(idx)
         pool_size = self.model.pool_size
         assert pool_size > 1, 'pooling size of <= 1 oh oh..'
-        assert y.shape[1] % pool_size == 0, 'pooling size has to evenly divide seq len'
+        assert y.shape[2] % pool_size == 0, 'pooling size has to evenly divide seq len'
 
         # augment first, before anything else and only during training
         if self.augment and self.mode == 'train':
@@ -38,31 +38,22 @@ class LSTMSequence(HelixerSequence):
             -1
         ))
         # make labels 2d so we can use the standard softmax / loss functions
-        # y = y.reshape((
-            # 2,
-            # y.shape[1],
-            # y.shape[2] // pool_size,
-            # pool_size,
-            # y.shape[-1],
-        # ))
-
         y = y.reshape((
-            y.shape[0],
-            y.shape[1] // pool_size,
+            2,
+            y.shape[1],
+            y.shape[2] // pool_size,
             pool_size,
             y.shape[-1],
         ))
 
         # mark any multi-base timestep as error if any base has an error
-        sw = sw.reshape((sw.shape[0], -1, pool_size))
+        sw = sw.reshape((2, sw.shape[1], -1, pool_size))
         sw = np.logical_not(np.any(sw == 0, axis=-1)).astype(np.float32)
 
         # split y and sw for the two outputs
-        # y_split = self._split_and_squeeze(y)
-        # sw_split = self._split_and_squeeze(sw)
-        # return X, y_split[0], sw_split[0]
-
-        return X, y, sw
+        y_split = self._split_and_squeeze(y)
+        sw_split = self._split_and_squeeze(sw)
+        return X, y_split, sw_split
 
     @staticmethod
     def _split_and_squeeze(arr):
@@ -109,24 +100,20 @@ class LSTMModel(HelixerModel):
         if self.dropout > 0.0:
             x = Dropout(self.dropout)(x)
 
-        # x = Dense(self.pool_size * 4 * 2)(x)
-        # x1, x2 = Lambda(lambda a: tf.split(a, 2, axis=2))(x)
-        # x1 = Reshape((-1, self.pool_size, 4))(x1)
-        # x2 = Reshape((-1, self.pool_size, 4))(x2)
-        # x1 = Activation('softmax', name='y_plus')(x1)
-        # x2 = Activation('softmax', name='y_minus')(x2)
+        x = Dense(self.pool_size * 4 * 2)(x)
+        x1, x2 = Lambda(lambda a: tf.split(a, 2, axis=2))(x)
+        x1 = Reshape((-1, self.pool_size, 4))(x1)
+        x2 = Reshape((-1, self.pool_size, 4))(x2)
+        x1 = Activation('softmax', name='y_plus')(x1)
+        x2 = Activation('softmax', name='y_minus')(x2)
 
-        x = Dense(self.pool_size * 4)(x)
-        x = Reshape((-1, self.pool_size, 4))(x)
-        x = Activation('softmax', name='y_plus')(x)
-
-        model = Model(inputs=main_input, outputs=x)
+        model = Model(inputs=main_input, outputs=[x1, x2])
         return model
 
     def compile_model(self, model):
         model.compile(optimizer=self.optimizer,
                       loss='categorical_crossentropy',
-                      # loss_weights=[0.5, 0.5],
+                      loss_weights=[0.5, 0.5],
                       sample_weight_mode='temporal')
 
 
