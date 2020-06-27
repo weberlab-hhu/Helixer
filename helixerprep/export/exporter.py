@@ -230,11 +230,12 @@ class HelixerExportController(object):
         # keep track of variables
         n_seqs = len(coord_data['labels'])
         n_masked_bases = sum([np.count_nonzero(m == 0) for m in coord_data['label_masks']])
-        n_ig_bases = sum([np.count_nonzero(l[:, 0] == 1) for l in coord_data['labels']])
-        # filter out sequences that are completely masked as error
+        n_ig_bases = sum([np.count_nonzero(l[:, :, 0] == 1) for l in coord_data['labels']])
+        # filter out sequences that are completely masked as error on at least one strand
         if not keep_errors:
-            valid_data = [s.any() for s in coord_data['label_masks']]
-            n_invalid_seqs = n_seqs - valid_data.count(True)
+            valid_strands = [[s[0].any(), s[1].any()] for s in coord_data['label_masks']]
+            valid_data = np.all(np.array(valid_strands), axis=-1)
+            n_invalid_seqs = np.count_nonzero(valid_data == False)
             if n_invalid_seqs > 0:
                 for key in coord_data.keys():
                     coord_data[key] = list(compress(coord_data[key], valid_data))
