@@ -200,7 +200,7 @@ class LSTMModel(HelixerModel):
             x = Dropout(self.dropout)(x)
 
         x = Dense(self.pool_size * 4 * 2)(x)
-        x1, x2 = Lambda(lambda x: tf.split(x, 2, axis=1))(x)
+        x1, x2 = Lambda(lambda a: tf.split(a, 2, axis=2))(x)
         x1 = Reshape((-1, self.pool_size, 4))(x1)
         x2 = Reshape((-1, self.pool_size, 4))(x2)
         x1 = Activation('softmax', name='y_forward')(x1)
