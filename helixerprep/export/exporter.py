@@ -165,7 +165,10 @@ class HelixerExportController(object):
                                    compression='lzf')
         # writing to the h5 file
         for dset_key, data in dsets.items():
-            h5_file['/data/' + dset_key][old_len:] = data
+            if dset_key in key_double_strands:
+                h5_file['/data/' + dset_key][:, old_len:] = data
+            else:
+                h5_file['/data/' + dset_key][old_len:] = data
         h5_file.flush()
 
     def _split_coords_by_N90(self, genome_coords, val_size):
