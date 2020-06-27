@@ -268,25 +268,26 @@ class HelixerExportController(object):
                                                         one_hot)
 
                 flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc = numerify_outputs
-                if self.only_test_set:
-                    self._save_data(self.h5_test, flat_data, chunk_size)
-                    assigned_set = 'test'
-                else:
-                    if coord_id in train_coords:
-                        self._save_data(self.h5_train, flat_data, chunk_size)
-                        assigned_set = 'train'
+                if len(flat_data['inputs']) > 0:
+                    if self.only_test_set:
+                        self._save_data(self.h5_test, flat_data, chunk_size)
+                        assigned_set = 'test'
                     else:
-                        self._save_data(self.h5_val, flat_data, chunk_size)
-                        assigned_set = 'val'
-                print((f'{n_coords_done}/{n_coords} Numerified {coord} of {coord.genome.species} '
-                       f"with {len(coord.features)} features in {len(flat_data['inputs'])} chunks, "
-                       f'err rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
-                       f'fully err seqs: {invalid_seqs_perc:.2f}% ({assigned_set})'))
-                n_coords_done += 1
-                # free all datasets so we don't keep two all the time
-                dset_keys = list(flat_data.keys())
-                for key in dset_keys:
-                    del flat_data[key]
+                        if coord_id in train_coords:
+                            self._save_data(self.h5_train, flat_data, chunk_size)
+                            assigned_set = 'train'
+                        else:
+                            self._save_data(self.h5_val, flat_data, chunk_size)
+                            assigned_set = 'val'
+                    print((f'{n_coords_done}/{n_coords} Numerified {coord} of {coord.genome.species} '
+                           f"with {len(coord.features)} features in {len(flat_data['inputs'])} chunks, "
+                           f'err rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
+                           f'fully err seqs: {invalid_seqs_perc:.2f}% ({assigned_set})'))
+                    n_coords_done += 1
+                    # free all datasets so we don't keep two all the time
+                    dset_keys = list(flat_data.keys())
+                    for key in dset_keys:
+                        del flat_data[key]
 
         self._add_data_attrs(genomes, exclude, keep_errors)
         self._close_files()
