@@ -3,9 +3,10 @@ pytest
 dustdas
 geenuff
 numpy
-tensorflow-gpu==1.14.0
+tensorflow-gpu==1.15.0
 nni
 seaborn
-keras-layer-normalization
+Keras==2.2.4
+keras-layer-normalization==0.13.0
 terminaltables
 HTSeq
