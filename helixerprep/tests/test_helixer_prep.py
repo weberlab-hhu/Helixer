@@ -33,8 +33,8 @@ EVAL_H5 = 'testdata/tmp.h5'
 ### preparation and breakdown ###
 @pytest.fixture(scope="session", autouse=True)
 def setup_dummy_db(request):
-    if not os.getcwd().endswith('HelixerPrep/helixerprep'):
-        pytest.exit('Tests need to be run from HelixerPrep/helixerprep directory')
+    if not os.getcwd().endswith('Helixer/helixerprep'):
+        pytest.exit('Tests need to be run from Helixer/helixerprep directory')
     if os.path.exists(DUMMYLOCI_DB):
         os.remove(DUMMYLOCI_DB)
 
