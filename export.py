@@ -73,6 +73,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     assert not (args.genomes and args.exclude_genomes), 'Can not include and exclude together'
+    print('Export config:')
     pprint(vars(args))
     print()
 
