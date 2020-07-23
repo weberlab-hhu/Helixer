@@ -1,9 +1,9 @@
 #! /usr/bin/env python3
 
-"""Extract the results from a single genome eval from either a run divided by nni
-(with nni ids inside a 'trials' folder)
-or a job on the cluster ('cluster_job') where every folder has the genome name and the eval was
-run without nni one eval per cluster job"""
+"""Extract the results from a single genome eval. Parses the file given by --log-file-name
+for the F1 summary table, extracts the main information and outputs a .csv that can then
+be imported elsewhere. Expects every eval to be in a seperate subfolder (like with
+the 'trials' folder of nni)."""
 
 import os
 import h5py
@@ -12,60 +12,34 @@ import argparse
 from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-l', '--location', type=str, default='clc')
-parser.add_argument('-job', '--job-id', type=str, required=True)
-parser.add_argument('-t', '--type', type=str, default='plants', help='Only used if --error-rates is set')
+parser.add_argument('-mf', '--main-folder', type=str, required=True)
 parser.add_argument('-lfn', '--log-file-name', type=str, default='eval.log')
 parser.add_argument('-i', '--ignore', action='append')
 parser.add_argument('-er', '--error-rates', action='store_true')
+parser.add_argument('-t', '--type', type=str, default='plants', help='Only used if --error-rates is set')
 args = parser.parse_args()
-
-assert args.location in ['clc', 'cluster', 'cluster_job', 'work', 'home', 'full_path']
-
-nni_eval = args.location in ['clc', 'cluster', 'work', 'home']
-if nni_eval:
-    assert len(args.job_id) == 8, 'not an nni id'
-
-if args.location == 'clc':
-    base_folder = '/mnt/data/experiments_backup/nni_clc_server/nni/experiments/'
-elif args.location == 'home':
-    base_folder = '/mnt/data/experiments_backup/nni_home_felix/nni/experiments/'
-elif args.location == 'work':
-    base_folder = '/home/felix/nni/experiments/'
-elif args.location == 'cluster':
-    base_folder = '/mnt/data/experiments_backup/nni_cluster/nni/experiments/'
-elif args.location == 'cluster_job':
-    base_folder = '/mnt/data/experiments_backup/cluster_jobs/jobs/'
-else:
-    base_folder = '' # args.job_id will be the full path
-
-trials_folder = os.path.join(base_folder, args.job_id)
-if nni_eval:
-    trials_folder = os.path.join(trials_folder, 'trials')
 
 header = ['genome', 'acc_overall', 'f1_ig', 'f1_utr', 'f1_exon', 'f1_intron', 'legacy_f1_cds',
           'sub_genic', 'f1_genic']
 if args.error_rates:
     header += ['base_level_error_rate', 'padded_bases_rate', 'sequence_error_rate']
-if nni_eval:
-    header += ['job_id']
+header += ['folder_name']
 print(','.join(header))
 
-for folder in os.listdir(trials_folder):
-    if not os.path.isdir(os.path.join(trials_folder, folder)):
+for sub_folder in os.listdir(args.main_folder):
+    sub_folder_path = os.path.join(args.main_folder, sub_folder)
+    if not os.path.isdir(sub_folder_path):
         continue
-    if args.ignore and folder in args.ignore:
+    if args.ignore and sub_folder in args.ignore:
         continue
-    log_file_path = os.path.join(trials_folder, folder, args.log_file_name)
+    log_file_path = os.path.join(sub_folder_path, args.log_file_name)
     if not os.path.exists(log_file_path) or not os.path.getsize(log_file_path) > 0:
         continue
+
     # get genome name
-    if nni_eval:
-        parameters = eval(open('{}/{}/parameter.cfg'.format(trials_folder, folder)).read())
-        path = parameters['parameters']['test_data']
-        genome = path.split('/')[7]
-    else:
-        genome = folder
+    parameters = eval(open(os.path.join(sub_folder_path, 'parameter.cfg')).read())
+    path = parameters['parameters']['test_data']
+    genome = path.split('/')[-2] # this may have to change depending on the folder structure
 
     if args.error_rates:
         # get sequence error rate
@@ -113,6 +87,5 @@ for folder in os.listdir(trials_folder):
     if args.error_rates:
         error_rates = [base_level_error_rate, padded_bases_rate, sequence_error_rate]
         str_rows += ['{:.4f}'.format(n) for n in error_rates]
-    if nni_eval:
-        str_rows += [folder]
+    str_rows += [sub_folder]
     print(','.join(str_rows))
