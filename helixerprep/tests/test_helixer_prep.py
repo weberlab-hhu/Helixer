@@ -7,7 +7,6 @@ import pytest
 import h5py
 from abc import ABC, abstractmethod
 
-
 import geenuff
 from geenuff.tests.test_geenuff import setup_data_handler, mk_memory_session
 from geenuff.applications.importer import ImportController
@@ -29,6 +28,7 @@ DUMMYLOCI_DB = 'testdata/dummyloci.sqlite3'
 H5_OUT_FOLDER = 'testdata/numerify_test_out/'
 H5_OUT_FILE = H5_OUT_FOLDER + 'test_data.h5'
 EVAL_H5 = 'testdata/tmp.h5'
+
 
 ### preparation and breakdown ###
 @pytest.fixture(scope="session", autouse=True)
@@ -65,16 +65,16 @@ def setup_dummy_db(request):
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_dummy_evaluation_h5(request):
-    start_ends = [[0, 20000],        # increasing 0
-                  [20000, 40000],    # increasing 0
-                  [60000, 80000],    # increasing 1
+    start_ends = [[0, 20000],  # increasing 0
+                  [20000, 40000],  # increasing 0
+                  [60000, 80000],  # increasing 1
                   [100000, 120000],  # increasing 2
                   [120000, 133333],  # increasing 3 (non contig, bc special edge handling)
                   [133333, 120000],  # decreasing 0 (")
                   [120000, 100000],  # decreasing 1
-                  [100000, 80000],   # decreasing 1
-                  [60000, 40000],    # decreasing 2
-                  [20000, 0]]        # decreasing 3
+                  [100000, 80000],  # decreasing 1
+                  [60000, 40000],  # decreasing 2
+                  [20000, 0]]  # decreasing 3
     seqids = [b'chr1'] * len(start_ends)
     h5path = EVAL_H5
 
@@ -257,11 +257,11 @@ def test_coherent_slicing():
     assert (len(seq_slices) == len(anno_slices) == len(gene_lengths) == len(transitions) ==
             len(anno_error_masks) == 19 * 2)
 
-    for s, a, ae in zip(seq_slices, anno_slices,  anno_error_masks):
+    for s, a, ae in zip(seq_slices, anno_slices, anno_error_masks):
         assert s.shape[0] == a.shape[0] == ae.shape[0]
 
     # testing sequence error masks
-    expect = np.ones((1801 * 2, ), dtype=np.int8)
+    expect = np.ones((1801 * 2,), dtype=np.int8)
 
     # annotation error mask of test case 1 should reflect faulty exon/CDS ranges
     expect[:110] = 0
@@ -347,7 +347,7 @@ def test_coord_numerifier_and_h5_gen_plus_strand():
     assert np.array_equal(y[1][:5], y_expect[400:])
 
     # prep anno mask
-    sample_weight_expect = np.ones((405, ), dtype=np.int8)
+    sample_weight_expect = np.ones((405,), dtype=np.int8)
     sample_weight_expect[:110] = 0
     sample_weight_expect[120:] = 0
     assert np.array_equal(sample_weights[0], sample_weight_expect[:400])
@@ -407,7 +407,7 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     assert np.array_equal(y[0], y_expect[:200])
     assert np.array_equal(y[1][:50], y_expect[200:250])
 
-    sample_weight_expect = np.ones((955, ), dtype=np.int8)
+    sample_weight_expect = np.ones((955,), dtype=np.int8)
     sample_weight_expect[925:] = 0
     sample_weight_expect[749:850] = 0
     sample_weight_expect = np.flip(sample_weight_expect)
@@ -901,53 +901,53 @@ def setup_feature_transitions():
     transcript = geenuff.orm.Transcript(super_locus=s1)
     piece = geenuff.orm.TranscriptPiece(transcript=transcript, position=0)
     transcript_feature_tr = geenuff.orm.Feature(start=41,
-                                             end = 671,
-                                             is_plus_strand=True,
-                                             type=geenuff.types.GEENUFF_TRANSCRIPT,
-                                             start_is_biological_start=True,
-                                             end_is_biological_end=True,
-                                             coordinate=coord)
+                                                end=671,
+                                                is_plus_strand=True,
+                                                type=geenuff.types.GEENUFF_TRANSCRIPT,
+                                                start_is_biological_start=True,
+                                                end_is_biological_end=True,
+                                                coordinate=coord)
     transcript_feature_cds = geenuff.orm.Feature(start=131,
-                                             end = 401,
-                                             is_plus_strand=True,
-                                             type=geenuff.types.GEENUFF_CDS,
-                                             start_is_biological_start=True,
-                                             end_is_biological_end=True,
-                                             coordinate=coord)
+                                                 end=401,
+                                                 is_plus_strand=True,
+                                                 type=geenuff.types.GEENUFF_CDS,
+                                                 start_is_biological_start=True,
+                                                 end_is_biological_end=True,
+                                                 coordinate=coord)
     transcript_feature_intron1 = geenuff.orm.Feature(start=221,
-                                             end = 311,
-                                             is_plus_strand=True,
-                                             type=geenuff.types.GEENUFF_INTRON,
-                                             start_is_biological_start=True,
-                                             end_is_biological_end=True,
-                                             coordinate=coord)
+                                                     end=311,
+                                                     is_plus_strand=True,
+                                                     type=geenuff.types.GEENUFF_INTRON,
+                                                     start_is_biological_start=True,
+                                                     end_is_biological_end=True,
+                                                     coordinate=coord)
     transcript_feature_intron2 = geenuff.orm.Feature(start=491,
-                                             end = 581,
-                                             is_plus_strand=True,
-                                             type=geenuff.types.GEENUFF_INTRON,
-                                             start_is_biological_start=True,
-                                             end_is_biological_end=True,
-                                             coordinate=coord)
+                                                     end=581,
+                                                     is_plus_strand=True,
+                                                     type=geenuff.types.GEENUFF_INTRON,
+                                                     start_is_biological_start=True,
+                                                     end_is_biological_end=True,
+                                                     coordinate=coord)
     transcript_feature_tr2 = geenuff.orm.Feature(start=705,
-                                                 end = 720,
+                                                 end=720,
                                                  is_plus_strand=True,
                                                  type=geenuff.types.GEENUFF_TRANSCRIPT,
                                                  start_is_biological_start=True,
                                                  end_is_biological_end=True,
                                                  coordinate=coord)
 
+    piece.features = [transcript_feature_tr, transcript_feature_cds, transcript_feature_intron1,
+                      transcript_feature_intron2, transcript_feature_tr2]
 
-
-    piece.features = [transcript_feature_tr, transcript_feature_cds, transcript_feature_intron1, transcript_feature_intron2, transcript_feature_tr2]
-
-    sess.add_all([genome, coord, s1, transcript, piece, transcript_feature_tr, transcript_feature_cds, transcript_feature_intron1, transcript_feature_intron2, transcript_feature_tr2])
+    sess.add_all([genome, coord, s1, transcript, piece, transcript_feature_tr, transcript_feature_cds,
+                  transcript_feature_intron1, transcript_feature_intron2, transcript_feature_tr2])
     sess.commit()
     return sess, coord
 
 
 def test_transition_encoding_and_weights():
-    '''Tests encoding of feature transitions, usage of transition weights and stretched weights'''
-    _, coord = setup_feature_transitions() 
+    """Tests encoding of feature transitions, usage of transition weights and stretched weights"""
+    _, coord = setup_feature_transitions()
     numerifier = AnnotationNumerifier(coord=coord,
                                       features=coord.features,
                                       max_len=1000,
@@ -955,65 +955,66 @@ def test_transition_encoding_and_weights():
     nums = numerifier.coord_to_matrices()[-1]
 
     # expected output of AnnotationNumerifier.coord_to_matrices()
-    expect_plusStrand_encoding = np.zeros((720,6)).astype(np.int8)
-    expect_plusStrand_encoding[40:42,0] = 1 # UTR 1 +
-    expect_plusStrand_encoding[670:672,3] = 1 # UTR 2 -
-    expect_plusStrand_encoding[130:132,1] = 1 # CDS +
-    expect_plusStrand_encoding[400:402,4] = 1 # CDS -
-    expect_plusStrand_encoding[220:222,2] = 1 # First Intron +
-    expect_plusStrand_encoding[310:312,5] = 1 # First Intron -
-    expect_plusStrand_encoding[490:492,2] = 1 # Second Intron +
-    expect_plusStrand_encoding[580:582,5] = 1 # Second Intron -
-    expect_plusStrand_encoding[704:706, 0] = 1 # Start of 2. 5prime UTR
+    expect_plus_strand_encoding = np.zeros((720, 6)).astype(np.int8)
+    expect_plus_strand_encoding[40:42, 0] = 1  # UTR 1 +
+    expect_plus_strand_encoding[670:672, 3] = 1  # UTR 2 -
+    expect_plus_strand_encoding[130:132, 1] = 1  # CDS +
+    expect_plus_strand_encoding[400:402, 4] = 1  # CDS -
+    expect_plus_strand_encoding[220:222, 2] = 1  # First Intron +
+    expect_plus_strand_encoding[310:312, 5] = 1  # First Intron -
+    expect_plus_strand_encoding[490:492, 2] = 1  # Second Intron +
+    expect_plus_strand_encoding[580:582, 5] = 1  # Second Intron -
+    expect_plus_strand_encoding[704:706, 0] = 1  # Start of 2. 5prime UTR
 
-    expect_minusStrand_encoding = np.zeros((720,6)).astype(np.int8)
+    expect_minus_strand_encoding = np.zeros((720, 6)).astype(np.int8)
 
-    assert np.array_equal(nums[0], expect_plusStrand_encoding)
-    assert np.array_equal(nums[1], expect_minusStrand_encoding)
+    assert np.array_equal(nums['plus'][0], expect_plus_strand_encoding)
+    assert np.array_equal(nums['minus'][0], expect_minus_strand_encoding)
 
     # initializing variables + reshape   
-    transitions_plusStrand = np.array(nums[0]).reshape((8,9,10,6))
-    transitions_minusStrand = np.array(nums[1]).reshape((8,9,10,6))
-    transition_weights = [10,20,30,40,50,60]
-    stretch = 0 # if stretch is not called the default value is 0
+    transitions_plus_strand = np.array(nums['plus']).reshape((8, 9, 10, 6))
+    transitions_minus_strand = np.array(nums['minus']).reshape((8, 9, 10, 6))
+    transition_weights = [10, 20, 30, 40, 50, 60]
+    stretch = 0  # if stretch is not called the default value is 0
 
     # tw = Transition weights; xS = xStretch
-    applied_tw_noS_plus = LSTMSequence._squish_tw_to_sw(transitions_plusStrand, transition_weights, stretch)
-    applied_tw_noS_minus = LSTMSequence._squish_tw_to_sw(transitions_minusStrand, transition_weights, stretch)
-    expect_tw_minus = np.ones((8,9))
-    assert np.array_equal(expect_tw_minus, applied_tw_noS_minus)
+    applied_tw_no_stretch_plus = LSTMSequence._squish_tw_to_sw(transitions_plus_strand, transition_weights, stretch)
+    applied_tw_no_stretch_minus = LSTMSequence._squish_tw_to_sw(transitions_minus_strand, transition_weights, stretch)
+    expect_tw_minus = np.ones((8, 9))
+    assert np.array_equal(expect_tw_minus, applied_tw_no_stretch_minus)
 
     expect_no_stretch = np.array([
-            [1,1,1,1,10,1,1,1,1],
-            [1,1,1,1,20,1,1,1,1],
-            [1,1,1,1,30,1,1,1,1],
-            [1,1,1,1,60,1,1,1,1],
-            [1,1,1,1,50,1,1,1,1],
-            [1,1,1,1,30,1,1,1,1],
-            [1,1,1,1,60,1,1,1,1],
-            [1,1,1,1,40,1,1,10,1]
+        [1, 1, 1, 1, 10, 1, 1, 1, 1],
+        [1, 1, 1, 1, 20, 1, 1, 1, 1],
+        [1, 1, 1, 1, 30, 1, 1, 1, 1],
+        [1, 1, 1, 1, 60, 1, 1, 1, 1],
+        [1, 1, 1, 1, 50, 1, 1, 1, 1],
+        [1, 1, 1, 1, 30, 1, 1, 1, 1],
+        [1, 1, 1, 1, 60, 1, 1, 1, 1],
+        [1, 1, 1, 1, 40, 1, 1, 10, 1]
     ])
-    assert np.array_equal(applied_tw_noS_plus, expect_no_stretch)
+    assert np.array_equal(applied_tw_no_stretch_plus, expect_no_stretch)
 
     # transition weights are spread over sample weights in each direction
     # amplifies area around the transition by: 
     # [ tw/2**3 [ tw/2**2 [ tw/2**1 [ tw ] tw/2**1 ] tw/2**2] .. 
     stretch = 3
     expect_3_stretch = np.array([
-            [1,1.25,2.5,5,10,5,2.5,1.25,1],
-            [1,2.5,5,10,20,10,5,2.5,1],
-            [1,3.75,7.5,15,30,15,7.5,3.75,1],
-            [1,7.5,15,30,60,30,15,7.5,1],
-            [1,6.25,12.5,25,50,25,12.5,6.25,1],
-            [1,3.75,7.5,15,30,15,7.5,3.75,1],
-            [1,7.5,15,30,60,30,15,7.5,1],
-            [1,5,10,20,40,20,5,10,5], # works as intended, 
-                                      # but should be [.., 40, 20, 10, 10, 5]
-                                      # should not be a problem for smaller s_tw values 
-                                      # due to feature transition frequency 
+        [1, 1.25, 2.5, 5, 10, 5, 2.5, 1.25, 1],
+        [1, 2.5, 5, 10, 20, 10, 5, 2.5, 1],
+        [1, 3.75, 7.5, 15, 30, 15, 7.5, 3.75, 1],
+        [1, 7.5, 15, 30, 60, 30, 15, 7.5, 1],
+        [1, 6.25, 12.5, 25, 50, 25, 12.5, 6.25, 1],
+        [1, 3.75, 7.5, 15, 30, 15, 7.5, 3.75, 1],
+        [1, 7.5, 15, 30, 60, 30, 15, 7.5, 1],
+        [1, 5, 10, 20, 40, 20, 5, 10, 5],  # works as intended,
+        # but should be [.., 40, 20, 10, 10, 5]
+        # should not be a problem for smaller s_tw values
+        # due to feature transition frequency
     ])
-    applied_tw_3S_plus = LSTMSequence._squish_tw_to_sw(transitions_plusStrand, transition_weights, stretch)
-    assert np.array_equal(applied_tw_3S_plus, expect_3_stretch)
+    applied_tw_3_stretch_plus = LSTMSequence._squish_tw_to_sw(transitions_plus_strand, transition_weights, stretch)
+    assert np.array_equal(applied_tw_3_stretch_plus, expect_3_stretch)
+
 
 ### RNAseq / coverage or scoring related (evaluation)
 def test_contiguous_bits():
@@ -1043,7 +1044,7 @@ def test_coverage_in_bits():
     # just needs to be divvied up to match the bits of sequence that exist in the h5 start_ends
     length = 133333
     coverage = np.arange(length)
-    rev_coverage = np.arange(10**6, 10**6 + length, 1)
+    rev_coverage = np.arange(10 ** 6, 10 ** 6 + length, 1)
     print(coverage, rev_coverage)
     h5 = h5py.File(EVAL_H5, 'a')
     start_ends = h5['data/start_ends'][:]
@@ -1078,15 +1079,15 @@ def test_coverage_in_bits():
                 # padding separates the end piece, from the next otherwise contiguous segment
                 assert cov_chunk[-1] == -1
                 assert cov_chunk[length % chunk_size] == -1
-                assert cov_chunk[length % chunk_size - 1] == pystart + 10**6
-                assert cov_chunk[0] == length - 1 + 10**6
+                assert cov_chunk[length % chunk_size - 1] == pystart + 10 ** 6
+                assert cov_chunk[0] == length - 1 + 10 ** 6
         # normal, +strand
         elif is_plus:
             assert cov_chunk[0] == pystart
             assert cov_chunk[-1] == pyend - 1
         # normal, -strand
         else:
-            assert cov_chunk[-1] == pystart + 10**6
+            assert cov_chunk[-1] == pystart + 10 ** 6
             assert cov_chunk[0] == pyend + 10 ** 6 - 1
     h5.close()
 
