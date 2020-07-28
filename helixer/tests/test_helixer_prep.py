@@ -19,8 +19,8 @@ from ..export import numerify
 from ..export.numerify import SequenceNumerifier, AnnotationNumerifier, Stepper, AMBIGUITY_DECODE
 from ..export.exporter import HelixerExportController
 from ..prediction.ConfusionMatrix import ConfusionMatrix
-from helixerprep.prediction.HelixerModel import HelixerModel, HelixerSequence
-from helixerprep.prediction.LSTMModel import LSTMSequence
+from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
+from helixer.prediction.LSTMModel import LSTMSequence
 from ..evaluation import rnaseq
 
 TMP_DB = 'testdata/tmp.db'
@@ -33,8 +33,8 @@ EVAL_H5 = 'testdata/tmp.h5'
 ### preparation and breakdown ###
 @pytest.fixture(scope="session", autouse=True)
 def setup_dummy_db(request):
-    if not os.getcwd().endswith('Helixer/helixerprep'):
-        pytest.exit('Tests need to be run from HelixerPrep/helixerprep directory')
+    if not os.getcwd().endswith('Helixer/helixer'):
+        pytest.exit('Tests need to be run from Helixer/helixer directory')
     if os.path.exists(DUMMYLOCI_DB):
         os.remove(DUMMYLOCI_DB)
 

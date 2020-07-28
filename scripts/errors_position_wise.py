@@ -22,7 +22,7 @@ import numpy as np
 import argparse
 import matplotlib.pyplot as plt
 from terminaltables import AsciiTable
-from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
+from helixer.prediction.ConfusionMatrix import ConfusionMatrix
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--data', type=str, required=True)

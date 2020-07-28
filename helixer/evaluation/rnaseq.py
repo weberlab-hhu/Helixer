@@ -7,7 +7,7 @@ import random
 import os
 import shutil
 import numpy as np
-from helixerprep.core.helpers import mk_keys
+from helixer.core.helpers import mk_keys
 
 
 def skippable(read):

@@ -6,7 +6,7 @@ always stays the same no matter the length of the sequences."""
 import h5py
 import argparse
 import numpy as np
-from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix as ConfusionMatrix
+from helixer.prediction.ConfusionMatrix import ConfusionMatrix as ConfusionMatrix
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--data', type=str, required=True)

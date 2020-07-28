@@ -1,7 +1,7 @@
 """check whether the coverage actually looks like RNAseq reads come from a stranded protocol"""
 import argparse
 import h5py
-from helixerprep.core.helpers import mk_keys
+from helixer.core.helpers import mk_keys
 
 
 def match_strands(h5):

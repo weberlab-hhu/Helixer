@@ -2,7 +2,7 @@
 import argparse
 from pprint import pprint
 
-from helixerprep.export.exporter import HelixerExportController
+from helixer.export.exporter import HelixerExportController
 
 
 def main(args):

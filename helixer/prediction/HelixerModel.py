@@ -26,7 +26,7 @@ from keras import backend as K
 from keras.models import load_model
 from keras.utils import multi_gpu_model, Sequence
 
-from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
+from helixer.prediction.ConfusionMatrix import ConfusionMatrix
 
 
 class SaveEveryEpoch(Callback):
@@ -570,7 +570,7 @@ class HelixerModel(ABC):
             branch = subprocess.check_output(cmd).strip().decode()
             cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
             commit = subprocess.check_output(cmd).strip().decode()
-            print(f'Current helixerprep branch: {branch} ({commit})')
+            print(f'Current helixer branch: {branch} ({commit})')
             if self.load_model_path:
                 cmd = ['md5sum', self.load_model_path]
                 self.loaded_model_hash = subprocess.check_output(cmd).strip().decode()

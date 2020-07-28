@@ -10,7 +10,7 @@ from keras_layer_normalization import LayerNormalization
 from keras.models import Sequential, Model
 from keras.layers import (Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
                           concatenate, Input)
-from helixerprep.prediction.HelixerModel import HelixerModel, HelixerSequence
+from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 
 
 class LSTMSequence(HelixerSequence):

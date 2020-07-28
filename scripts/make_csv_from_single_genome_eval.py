@@ -9,7 +9,7 @@ import os
 import h5py
 import numpy as np
 import argparse
-from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
+from helixer.prediction.ConfusionMatrix import ConfusionMatrix
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-mf', '--main-folder', type=str, required=True)

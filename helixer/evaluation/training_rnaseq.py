@@ -6,7 +6,7 @@ import numpy as np
 import random
 import os
 import shutil
-from helixerprep.evaluation import rnaseq
+from helixer.evaluation import rnaseq
 import copy
 import logging
 

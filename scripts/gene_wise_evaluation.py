@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 from intervaltree import IntervalTree
 from terminaltables import AsciiTable
-from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix
+from helixer.prediction.ConfusionMatrix import ConfusionMatrix
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--data', type=str, required=True,

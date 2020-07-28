@@ -2,9 +2,9 @@
 import h5py
 import numpy as np
 import argparse
-from helixerprep.prediction.ConfusionMatrix import ConfusionMatrix as ConfusionMatrix
+from helixer.prediction.ConfusionMatrix import ConfusionMatrix as ConfusionMatrix
 import sys
-from helixerprep.core.helpers import mk_keys, mk_seqonly_keys
+from helixer.core.helpers import mk_keys, mk_seqonly_keys
 import os
 import csv
 

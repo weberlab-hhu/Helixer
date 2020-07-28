@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 import geenuff
 from geenuff.base.helpers import full_db_path, reverse_complement
 from geenuff.base.orm import Coordinate, Genome
-from helixerprep.core.orm import Mer, MetaInformation
+from helixer.core.orm import Mer, MetaInformation
 
 
 class HelixerController(object):

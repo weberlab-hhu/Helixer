@@ -1,4 +1,4 @@
-# HelixerPrep
+# Helixer
 Gene calling with Deep Neural Networks.
 
 ## Disclaimer
@@ -23,10 +23,10 @@ Both can best be installed according to their own installation instructions
 pip install -r requirements.txt
 ```
 
-### HelixerPrep itself
+### Helixer itself
 
 ```
-# from the HelixerPrep directory
+# from the Helixer directory
 python setup.py develop  # or `install`, if someone who isn't working on this actually installs it
 ```
 
@@ -61,7 +61,7 @@ example/
 ### Model training
 Now we use the datasets in `example/train/` to train a model with our LSTM architeture for 5 epochs and save the best iteration (according to the Genic F1 on the validation dataset) to `example/best_helixer_model.h5`. But first we need to change the directory:
 ```
-cd helixerprep/prediction
+cd helixer/prediction
 python3 LSTMModel.py --data-dir ../../example/train/ --save-model-path ../../example/best_helixer_model.h5 --epochs 5 --units 64 --pool-size 10
 ```
 

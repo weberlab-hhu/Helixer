@@ -6,11 +6,11 @@ sliced_dummyloci.sqlite3
 sliced_dummyloci.h5
 *.prf
 *.lprof
-helixerprep/testdata/dummyloci.sequence.sliced.json
-helixerprep/testdata/dummyloci_annotations.sqlitedb
-helixerprep/testdata/dummyloci.sqlite3
-helixerprep/testdata/tmp.db
-helixerprep/testdata/numerify_test_out/*
+helixer/testdata/dummyloci.sequence.sliced.json
+helixer/testdata/dummyloci_annotations.sqlitedb
+helixer/testdata/dummyloci.sqlite3
+helixer/testdata/tmp.db
+helixer/testdata/numerify_test_out/*
 best_model.h5
 predictions.h5
 search_space*.json

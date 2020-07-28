@@ -7,7 +7,7 @@ import subprocess
 from sklearn.model_selection import train_test_split
 
 import geenuff
-import helixerprep
+import helixer
 from geenuff.applications.exporter import GeenuffExportController
 from .numerify import CoordNumerifier
 from ..core.helpers import get_sp_seq_ranges
@@ -289,7 +289,7 @@ class HelixerExportController(object):
             'keep_errors': str(keep_errors),
         }
         # get GeenuFF and Helixer commit hashes
-        for module in [geenuff, helixerprep]:
+        for module in [geenuff, helixer]:
             os.chdir(os.path.dirname(module.__file__))
             cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
             try:

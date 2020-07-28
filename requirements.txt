@@ -1,7 +1,5 @@
 sqlalchemy
 pytest
-dustdas
-geenuff
 numpy
 tensorflow-gpu==1.15.0
 nni
@@ -10,3 +8,9 @@ Keras==2.2.4
 keras-layer-normalization==0.13.0
 terminaltables
 HTSeq
+intervaltree
+sqlalchemy
+numpy
+git+https://github.com/janinamass/dustdas@master
+# for testing only
+pytest

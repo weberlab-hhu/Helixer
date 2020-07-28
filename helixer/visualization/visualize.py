@@ -10,7 +10,7 @@ import argparse
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
-from helixerprep.export.numerify import AMBIGUITY_DECODE
+from helixer.export.numerify import AMBIGUITY_DECODE
 
 class Visualization():
     def __init__(self, root, args):
