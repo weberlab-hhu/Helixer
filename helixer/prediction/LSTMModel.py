@@ -2,7 +2,7 @@
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-import random
+import os
 import numpy as np
 import tensorflow as tf
 
@@ -163,6 +163,19 @@ class LSTMModel(HelixerModel):
         else:
             self.layers = eval(self.layers)
             assert isinstance(self.layers, list)
+        self.save_model_path = self.append_pwd(self.save_model_path)
+
+    @staticmethod
+    def append_pwd(path):
+        print(path, 'path')
+        print(os.getcwd(), 'os.getcwd()')
+        print(os.getcwdb(), 'os.getcwdb()')
+        print(__file__, '__file__')
+        if path.startswith('/'):
+            return path
+        else:
+            pwd = os.getcwd()
+            return '{}/{}'.format(pwd, path)
 
     def sequence_cls(self):
         return LSTMSequence
