@@ -11,6 +11,7 @@ HTSeq
 intervaltree
 sqlalchemy
 numpy
+h5py
 git+https://github.com/janinamass/dustdas@master
 # for testing only
 pytest

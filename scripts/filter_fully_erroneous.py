@@ -1,4 +1,6 @@
-"""makes a copy of .h5 file with all fully erroneous sequences removed"""
+"""makes a copy of .h5 file with all fully erroneous and unannotated sequences removed"""
+# this is for compatibility with previous runs and also just might
+# increase total speed, and data reading can bottleneck training
 
 import argparse
 import h5py
@@ -29,7 +31,8 @@ def main(data, out, write_by):
     new_start = 0
     for old_start in range(0, end, write_by):
         old_end = min(old_start + write_by, end)
-        mask = old['data/err_samples'][old_start:old_end]
+        mask = np.logical_and(old['data/err_samples'][old_start:old_end],
+                              old['data/is_annotated'][old_start:old_end])
         length = np.sum(mask)
         new_end = new_start + length
         # filter and copy over
