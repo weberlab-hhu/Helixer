@@ -58,16 +58,20 @@ you can filter the data so the .h5 files contain only that which you will actual
 ```shell script
 mkdir example/train
 mkdir example/test
+# make filtered copy
 python3 scripts/filter_fully_erroneous.py -d example/unfiltered_train/training_data.h5 \
     -o example/train/training_data.h5
 python3 scripts/filter_fully_erroneous.py -d example/unfiltered_train/validation_data.h5 \
     -o example/train/validation_data.h5
 python3 scripts/filter_fully_erroneous.py -d example/unfiltered_test/test_data.h5 \
   -o example/test/test_data.h5
+# clean up originals
+rm -r example/unfiltered_*
 ```
 
-We should now have the following files (and more) in `example/`. 
-Note that the test data was not split into a training and validation set due to the `--only-test-set` option: 
+We should now have the following files in `example/`. 
+Note that the test data was not split into a training 
+and validation set due to the `--only-test-set` option: 
 ```
 example/
 ├── test
@@ -79,28 +83,41 @@ example/
 ```
 
 ### Model training
-Now we use the datasets in `example/train/` to train a model with our LSTM architeture for 5 epochs and save the best iteration (according to the Genic F1 on the validation dataset) to `example/best_helixer_model.h5`. But first we need to change the directory:
+Now we use the datasets in `example/train/` to train a model with our 
+LSTM architeture for 5 epochs and save the best iteration 
+(according to the Genic F1 on the validation dataset) to 
+`example/best_helixer_model.h5`. But first we need to change the directory:
+
 ```shell script
-cd helixer/prediction
-python3 LSTMModel.py --data-dir ../../example/train/ --save-model-path ../../example/best_helixer_model.h5 --epochs 5 --units 64 --pool-size 10
+python3 helixer/prediction/LSTMModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 --units 64 --pool-size 10
 ```
 
-Right before the training starts we may get one or two warnings about the data that are not relevant for this example. This trains a very small single layer BLSTM model with about 60.000 parameters that receives 10 basepairs for each time step. After each epoch, an evaluation of the last model iteration is performed and the results are printed to the console. If we would like to train a model with exactly the architecture and weights that was used to train our actual plant models one would use the following command: 
+Right before the training starts we may get one or two warnings about 
+the data that are not relevant for this example. This trains a very 
+small single layer BLSTM model with about 60.000 parameters that 
+receives 10 basepairs for each time step. After each epoch, 
+an evaluation of the last model iteration is performed and 
+the results are printed to the console. If we would like to train a model 
+with exactly the architecture and weights that was used to train our 
+actual plant models one would use the following command: 
 
 ```shell script
-python3 LSTMModel.py --data-dir ../../example/train/ --save-model-path ../../example/best_helixer_model.h5 --epochs 5 --units 256 --pool-size 10 --batch-size 52 --layers 4 --layer-normalization --class-weights '[0.7, 1.6, 1.2, 1.2]'
+python3 helixer/prediction/LSTMModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 --units 256 --pool-size 10 --batch-size 52 --layers 4 --layer-normalization --class-weights '[0.7, 1.6, 1.2, 1.2]'
 ```
 
 ### Model evaluation
-We can now use this model to produce predictions for our test dataset. WARNING: Generating predictions can produce very large files as we save every individual softmax value in 32 bit floating point format. For this very small genome the predictions require 524MB of disk space. 
+We can now use this model to produce predictions for our test dataset. 
+WARNING: Generating predictions can produce very large files as 
+we save every individual softmax value in 32 bit floating point format. 
+For this very small genome the predictions require 524MB of disk space. 
 ```shell script
-python3 LSTMModel.py --load-model-path ../../example/best_helixer_model.h5 --test-data ../../example/test/test_data.h5 --prediction-output-path ../../example/mpusillaCCMP1545_predictions.h5
+python3 helixer/prediction/LSTMModel.py --load-model-path example/best_helixer_model.h5 --test-data example/test/test_data.h5 --prediction-output-path example/mpusillaCCMP1545_predictions.h5
 ```
 
 Or we can directly evaluate the predictive performance of our model. It is necessary to generate a test data file per species to get results for just that species.
 
 ```shell script
-python3 LSTMModel.py --load-model-path ../../example/best_helixer_model.h5 --test-data ../../example/test/test_data.h5 --eval
+python3 helixer/prediction/LSTMModel.py --load-model-path example/best_helixer_model.h5 --test-data example/test/test_data.h5 --eval
 ```
 
 The last command can be sped up with a higher batch size and should give us the same break down that is performed during after a training epoch, but on the test data:
@@ -143,7 +160,7 @@ As you can see, the model only predicted intergenic and CDS bases. The main reas
 
 When we did write out the predictions to disk we can use an experimental visualization to display the predictions together with the reference:
 ```shell script
-cd ../visualization
-python3 visualize.py --predictions ../../example/mpusillaCCMP1545_predictions.h5 --test-data ../../example/test/test_data.h5
+#cd ../visualization
+python3 helixer/visualization/visualize.py --predictions example/mpusillaCCMP1545_predictions.h5 --test-data example/test/test_data.h5
 ```
 
