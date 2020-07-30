@@ -163,14 +163,12 @@ class LSTMModel(HelixerModel):
         else:
             self.layers = eval(self.layers)
             assert isinstance(self.layers, list)
-        self.save_model_path = self.append_pwd(self.save_model_path)
+        for key in ["save_model_path", "prediction_output_path", "test_data",
+                    "load_model_path", "data_dir"]:
+            self.__dict__[key] = self.append_pwd(self.__dict__[key])
 
     @staticmethod
     def append_pwd(path):
-        print(path, 'path')
-        print(os.getcwd(), 'os.getcwd()')
-        print(os.getcwdb(), 'os.getcwdb()')
-        print(__file__, '__file__')
         if path.startswith('/'):
             return path
         else:

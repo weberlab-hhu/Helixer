@@ -15,14 +15,14 @@ Preferably in a virtual environment:
 
 ### Most dependencies
 ```shell script
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 ```
 
 ### Helixer itself
 
 ```shell script
 # from the Helixer directory
-python3 setup.py develop  # or `install`, if someone who isn't working on this actually installs it
+python3 setup.py install  # or `develop`, if you will be changing the code
 ```
 
 ## Example
@@ -156,9 +156,14 @@ The last command can be sped up with a higher batch size and should give us the 
 Total acc: 0.6909
 ```
 
-As you can see, the model only predicted intergenic and CDS bases. The main reason for this is likely that the data contains very little bases of the other two kinds. A more varied training dataset or uneven class weights could change that (this result is for the small model example).
+In the demo run above (yours may vary) the model only predicted 
+intergenic and CDS bases. The main reason for this is likely that 
+the data contains very few bases of the other two kinds. 
+A more varied training dataset or uneven class weights 
+could change that (this result is for the small model example).
 
-When we did write out the predictions to disk we can use an experimental visualization to display the predictions together with the reference:
+When we did write out the predictions to disk we can use an experimental 
+visualization to display the predictions together with the reference:
 ```shell script
 #cd ../visualization
 python3 helixer/visualization/visualize.py --predictions example/mpusillaCCMP1545_predictions.h5 --test-data example/test/test_data.h5

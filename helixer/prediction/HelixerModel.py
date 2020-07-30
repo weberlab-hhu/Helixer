@@ -564,6 +564,7 @@ class HelixerModel(ABC):
         return model
 
     def _print_model_info(self, model):
+        pwd = os.getcwd()
         os.chdir(os.path.dirname(__file__))
         try:
             cmd = ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
@@ -571,6 +572,10 @@ class HelixerModel(ABC):
             cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
             commit = subprocess.check_output(cmd).strip().decode()
             print(f'Current helixer branch: {branch} ({commit})')
+        except subprocess.CalledProcessError:
+            print('An error occurred in a git-related subprocess')
+
+        try:
             if self.load_model_path:
                 cmd = ['md5sum', self.load_model_path]
                 self.loaded_model_hash = subprocess.check_output(cmd).strip().decode()
@@ -583,6 +588,7 @@ class HelixerModel(ABC):
             print(model.summary())
         else:
             print('Total params: {:,}'.format(model.count_params()))
+        os.chdir(pwd)  # return to previous directory
 
     def _trace(self, model, generator):
         run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
