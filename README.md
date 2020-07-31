@@ -11,9 +11,41 @@ which base pairs in a genome belong to the UTR/CDS/Intron of genes.
 Train one model for a wide variety of genomes.
 
 ## Install 
-Preferably in a virtual environment:
 
-### Most dependencies
+
+### System dependencies
+Ubuntu (& co.)
+```shell script
+sudo apt install python3-dev
+```
+Fedora (& co.)
+```shell script
+sudo dnf install python3-devel
+```
+
+And to run on a GPU (highly recommended for realisticly sized datasets),
+everything for tensorflow-gpu is required, 
+see: https://www.tensorflow.org/install/gpu#older_versions_of_tensorflow
+
+Tested with 
+
+python packages:
+* tensorflow-gpu==1.15.0
+
+system packages:
+* cuda-toolkit-10-0
+* libcudnn7
+* libcudnn7-dev
+* nvidia-driver-450
+
+A GPU with 11GB Memory (e.g. GTX 1080 Ti) can run the largest 
+configurations described below, for smaller GPUs you might
+have to reduce the network or batch size. 
+  
+### Most python dependencies
+Preferably in a virtual environment from here:
+https://docs.python-guide.org/dev/virtualenvs/
+
 ```shell script
 pip3 install -r requirements.txt
 ```

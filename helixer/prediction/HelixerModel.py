@@ -573,7 +573,7 @@ class HelixerModel(ABC):
             commit = subprocess.check_output(cmd).strip().decode()
             print(f'Current helixer branch: {branch} ({commit})')
         except subprocess.CalledProcessError:
-            print('An error occurred in a git-related subprocess')
+            print('Could not log git tag/commit and branch, this will be replaced with release version soon')
 
         try:
             if self.load_model_path:

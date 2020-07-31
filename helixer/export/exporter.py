@@ -296,6 +296,7 @@ class HelixerExportController(object):
                 attrs[module.__name__ + '_commit'] = subprocess.check_output(cmd).strip().decode()
             except subprocess.CalledProcessError:
                 attrs[module.__name__ + '_commit'] = 'error'
+                print('failed to log git tag/commit, this will be replaced with logging the installed version soon')
         # insert attrs into .h5 file
         for key, value in attrs.items():
             for assigned_set in self.h5:
@@ -425,5 +426,6 @@ class HelixerExportController(object):
                 n_coords_done += 1
         self._add_data_attrs(genomes, exclude, keep_errors)
         self._close_files()
+        print('Export from geenuff db to h5 file(s) with numeric matrices finished successfully.')
         return n_writing_chunks  # for testing only atm
 

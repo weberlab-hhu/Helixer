@@ -1,7 +1,7 @@
 sqlalchemy
 pytest
 numpy
-tensorflow-gpu==1.15.0
+tensorflow-gpu==1.15.2
 nni
 seaborn
 Keras==2.2.4
