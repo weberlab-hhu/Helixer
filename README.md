@@ -123,6 +123,10 @@ LSTM architeture for 5 epochs and save the best iteration
 ```shell script
 python3 helixer/prediction/LSTMModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 --units 64 --pool-size 10
 ```
+>Note: if you are running this on the CPU instead of GPU, 
+>or if you want to train
+>a model that can later be ran on the CPU, you will have
+>to set the parameter `--cpu-compatible`.
 
 Right before the training starts we may get one or two warnings about 
 the data that are not relevant for this example. This trains a very 

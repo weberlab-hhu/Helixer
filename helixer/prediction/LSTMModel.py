@@ -150,11 +150,15 @@ class LSTMModel(HelixerModel):
 
     def __init__(self):
         super().__init__()
-        self.parser.add_argument('-u', '--units', type=int, default=4)
-        self.parser.add_argument('-l', '--layers', type=str, default='1')
-        self.parser.add_argument('-ps', '--pool-size', type=int, default=10)
+        self.parser.add_argument('-u', '--units', type=int, default=4, help='how many units per LSTM layer')
+        self.parser.add_argument('-l', '--layers', type=str, default='1', help='how many LSTM layers')
+        self.parser.add_argument('-ps', '--pool-size', type=int, default=10, help='how many bp to predict at once')
         self.parser.add_argument('-dr', '--dropout', type=float, default=0.0)
         self.parser.add_argument('-ln', '--layer-normalization', action='store_true')
+        self.parser.add_argument('--cpu-compatible', action='store_true',
+                                 help='set this to use an LSTM instead of a CuDNNLSTM layer so that the model can run '
+                                      'on a CPU if desired. Potentially useful for a quick development test or '
+                                      'trouble shooting, but impractically slow for real data.')
         self.parse_args()
 
         if self.layers.isdigit():
@@ -181,7 +185,11 @@ class LSTMModel(HelixerModel):
     def model(self):
         main_input = Input(shape=(None, self.pool_size * 4), dtype=self.float_precision,
                            name='main_input')
-        x = Bidirectional(CuDNNLSTM(self.layers[0], return_sequences=True))(main_input)
+        if self.cpu_compatible:
+            LSTMToUse = LSTM
+        else:
+            LSTMToUse = CuDNNLSTM
+        x = Bidirectional(LSTMToUse(self.layers[0], return_sequences=True))(main_input)
 
         # potential next layers
         if len(self.layers) > 1:
@@ -190,7 +198,7 @@ class LSTMModel(HelixerModel):
                     x = Dropout(self.dropout)(x)
                 if self.layer_normalization:
                     x = LayerNormalization()(x)
-                x = Bidirectional(CuDNNLSTM(layer_units, return_sequences=True))(x)
+                x = Bidirectional(LSTMToUse(layer_units, return_sequences=True))(x)
 
         if self.dropout > 0.0:
             x = Dropout(self.dropout)(x)
