@@ -23,7 +23,8 @@ Fedora (& co.)
 sudo dnf install python3-devel
 ```
 
-And to run on a GPU (highly recommended for realisticly sized datasets),
+### GPU requirements
+And to run on a GPU (highly recommended for realistically sized datasets),
 everything for tensorflow-gpu is required, 
 see: https://www.tensorflow.org/install/gpu#older_versions_of_tensorflow
 
