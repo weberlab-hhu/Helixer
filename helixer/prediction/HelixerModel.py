@@ -10,17 +10,15 @@ import h5py
 import random
 import argparse
 import datetime
-import importlib
+import pkg_resources
 import subprocess
 import numpy as np
 import tensorflow as tf
 from pprint import pprint
-from functools import partial
-from sklearn.preprocessing import MinMaxScaler
 from tensorflow.python.client import timeline
 
 from keras_layer_normalization import LayerNormalization
-from keras.callbacks import EarlyStopping, ModelCheckpoint, History, CSVLogger, Callback
+from keras.callbacks import Callback
 from keras import optimizers
 from keras import backend as K
 from keras.models import load_model
@@ -38,6 +36,7 @@ class SaveEveryEpoch(Callback):
         path = os.path.join(self.output_dir, f'model{epoch}.h5')
         self.model.save(path)
         print(f'saved model at {path}')
+
 
 class ConfusionMatrixTrain(Callback):
     def __init__(self, save_model_path, val_generator, canary_generator=None, report_to_nni=False):
@@ -568,12 +567,13 @@ class HelixerModel(ABC):
         os.chdir(os.path.dirname(__file__))
         try:
             cmd = ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
-            branch = subprocess.check_output(cmd).strip().decode()
+            branch = subprocess.check_output(cmd, stderr=subprocess.STDOUT).strip().decode()
             cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
-            commit = subprocess.check_output(cmd).strip().decode()
-            print(f'Current helixer branch: {branch} ({commit})')
+            commit = subprocess.check_output(cmd, stderr=subprocess.STDOUT).strip().decode()
+            print(f'Current Helixer branch: {branch} ({commit})')
         except subprocess.CalledProcessError:
-            print('Could not log git tag/commit and branch, this will be replaced with release version soon')
+            version = pkg_resources.require('helixer')[0].version
+            print(f'Current Helixer version: {version}')
 
         try:
             if self.load_model_path:
@@ -647,6 +647,6 @@ class HelixerModel(ABC):
                 _ = HelixerModel.run_confusion_matrix(self.gen_test_data(), model)
             else:
                 if os.path.isfile(self.prediction_output_path):
-                    print(f'{self.prediction_output_path} already existing and will be overridden.')
+                    print(f'{self.prediction_output_path} already exists and will be overwritten.')
                 self._make_predictions(model)
             self.h5_test.close()

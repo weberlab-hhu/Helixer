@@ -4,6 +4,7 @@ import numpy as np
 import random
 import datetime
 import subprocess
+import pkg_resources
 from sklearn.model_selection import train_test_split
 
 import geenuff
@@ -289,14 +290,19 @@ class HelixerExportController(object):
             'keep_errors': str(keep_errors),
         }
         # get GeenuFF and Helixer commit hashes
+        pwd = os.getcwd()
         for module in [geenuff, helixer]:
             os.chdir(os.path.dirname(module.__file__))
             cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
             try:
-                attrs[module.__name__ + '_commit'] = subprocess.check_output(cmd).strip().decode()
+                attrs[module.__name__ + '_commit'] = subprocess.check_output(cmd, stderr=subprocess.STDOUT).\
+                    strip().decode()
             except subprocess.CalledProcessError:
-                attrs[module.__name__ + '_commit'] = 'error'
-                print('failed to log git tag/commit, this will be replaced with logging the installed version soon')
+                attrs[module.__name__ + '_commit'] = 'commit not found, version: {}'.format(
+                    pkg_resources.require(module.__name__)[0].version
+                )
+                print('logged installed version in place of git commit for {}'.format(module.__name__))
+        os.chdir(pwd)
         # insert attrs into .h5 file
         for key, value in attrs.items():
             for assigned_set in self.h5:
