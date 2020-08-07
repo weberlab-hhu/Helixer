@@ -12,6 +12,19 @@ Train one model for a wide variety of genomes.
 
 ## Install 
 
+### Get the code
+First, download and checkout the latest release
+```shell script
+# from a directory of your choice
+git clone https://github.com/weberlab-hhu/Helixer.git
+cd Helixer
+git checkout v0.1.0
+```
+
+### Virtualenv (optional)
+We recommend installing all the python packages in a
+virtual environment:
+https://docs.python-guide.org/dev/virtualenvs/
 
 ### System dependencies
 Ubuntu (& co.)
@@ -23,12 +36,13 @@ Fedora (& co.)
 sudo dnf install python3-devel
 ```
 
-### GPU requirements
+### GPU requirements (optional, but highly recommended for realistically sized datasets)
 And to run on a GPU (highly recommended for realistically sized datasets),
 everything for tensorflow-gpu is required, 
 see: https://www.tensorflow.org/install/gpu#older_versions_of_tensorflow
 
-Most recently tested with 
+Most recently tested with the following (but in theory any valid
+tensorflow-gpu setup >=1.14 and <2.0 should work).
 
 python packages:
 * tensorflow-gpu==1.15.2
@@ -44,8 +58,6 @@ configurations described below, for smaller GPUs you might
 have to reduce the network or batch size. 
   
 ### Most python dependencies
-Preferably in a virtual environment from here:
-https://docs.python-guide.org/dev/virtualenvs/
 
 ```shell script
 pip3 install -r requirements.txt
@@ -127,7 +139,7 @@ python3 helixer/prediction/LSTMModel.py --data-dir example/train/ --save-model-p
 >Note: if you are running this on the CPU instead of GPU, 
 >or if you want to train
 >a model that can later be ran on the CPU, you will have
->to set the parameter `--cpu-compatible`.
+>to set the parameter `--cpu-compatible`. This will make it very slow!
 
 Right before the training starts we may get one or two warnings about 
 the data that are not relevant for this example. This trains a very 
