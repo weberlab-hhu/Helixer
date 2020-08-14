@@ -13,16 +13,19 @@ import datetime
 import pkg_resources
 import subprocess
 import numpy as np
-import tensorflow as tf
+#import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
 from pprint import pprint
 from tensorflow.python.client import timeline
 
 from keras_layer_normalization import LayerNormalization
-from keras.callbacks import Callback
-from keras import optimizers
-from keras import backend as K
-from keras.models import load_model
-from keras.utils import multi_gpu_model, Sequence
+from tensorflow.keras.callbacks import Callback
+from tensorflow.keras import optimizers
+from tensorflow.keras import backend as K
+from tensorflow.keras.models import load_model
+from tensorflow.keras.utils import multi_gpu_model, Sequence
 
 from helixer.prediction.ConfusionMatrix import ConfusionMatrix
 
@@ -305,7 +308,7 @@ class HelixerModel(ABC):
         return callbacks
 
     def set_resources(self):
-        from keras.backend.tensorflow_backend import set_session
+        from tensorflow.python.keras.backend import set_session 
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True  # dynamically grow the memory used on the GPU
         sess = tf.Session(config=config)
@@ -373,7 +376,7 @@ class HelixerModel(ABC):
         pass
 
     def plot_model(self, model):
-        from keras.utils import plot_model
+        from tensorflow.keras.utils import plot_model
         plot_model(model, to_file='model.png')
         print('Plotted to model.png')
         sys.exit()
@@ -526,7 +529,8 @@ class HelixerModel(ABC):
                     zero_padding = np.zeros((predictions.shape[0], n_removed, predictions.shape[2]),
                                             dtype=predictions.dtype)
                     predictions = np.concatenate((predictions, zero_padding), axis=1)
-
+            else:
+                                n_removed = 0  # just to avoid crashing with Unbound Local Error setting attrs for dCNN
             if self.overlap and predictions.shape[0] > 1:
                 predictions = self._overlap_predictions(i, test_sequence, predictions)
 
@@ -582,6 +586,7 @@ class HelixerModel(ABC):
                 print(f'Md5sum of the loaded model: {self.loaded_model_hash}')
         except subprocess.CalledProcessError:
             print('An error occured while running a subprocess')
+            self.loaded_model_hash = 'error'
 
         print()
         if self.verbose:

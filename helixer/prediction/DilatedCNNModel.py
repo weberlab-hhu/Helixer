@@ -1,15 +1,19 @@
 #! /usr/bin/env python3
 import random
 import numpy as np
-import tensorflow as tf
-from keras import backend as K
-from keras.models import Sequential, Model
-from keras.layers import Conv1D, Dense, Flatten, Dropout, Input
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
+from tensorflow.keras import backend as K
+from tensorflow.keras.models import Sequential, Model, load_model
+from tensorflow.keras.layers import Conv1D, Dense, Flatten, Dropout, Input
+from keras_layer_normalization import LayerNormalization
+from keras.losses import categorical_crossentropy
 from HelixerModel import HelixerModel, HelixerSequence
 
 class DilatedCNNSequence(HelixerSequence):
     def __getitem__(self, idx):
-        X, y, sw, _, _, _, = self._get_batch_data(idx)
+        X, y, sw, _, _, _, _ = self._get_batch_data(idx)
 
         if self.class_weights is not None:
             cls_arrays = [y[:, :, col] == 1 for col in range(4)]  # whether a class is present
@@ -95,6 +99,21 @@ class DilatedCNNModel(HelixerModel):
                       loss=self.custom_loss(model.inputs[1]),
                       metrics=['accuracy'])
 
+
+    def _load_helixer_model(self):
+        if self.resume_training:
+            # todo, fix properly
+            print('ERROR: cannot currently use custom_loss to resume training...')
+            model = load_model(self.load_model_path, custom_objects = {
+            'LayerNormalization': LayerNormalization,
+            })
+        else:
+            model = load_model(self.load_model_path, custom_objects = {
+                'LayerNormalization': LayerNormalization,
+                'loss': categorical_crossentropy,  # todo, fix to use custom loss
+                # the above is OK for predictions / eval that doesn't use loss...
+            })
+        return model
 
 if __name__ == '__main__':
     model = DilatedCNNModel()

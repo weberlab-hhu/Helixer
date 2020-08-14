@@ -4,14 +4,15 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 import os
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 from keras_layer_normalization import LayerNormalization
-from keras.models import Sequential, Model
-from keras.layers import (Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
                           concatenate, Input)
-from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 
+from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 
 class LSTMSequence(HelixerSequence):
     def __init__(self, model, h5_file, mode, shuffle, filter_by_score=False, filter_quantile=0.05):
@@ -185,11 +186,7 @@ class LSTMModel(HelixerModel):
     def model(self):
         main_input = Input(shape=(None, self.pool_size * 4), dtype=self.float_precision,
                            name='main_input')
-        if self.cpu_compatible:
-            LSTMToUse = LSTM
-        else:
-            LSTMToUse = CuDNNLSTM
-        x = Bidirectional(LSTMToUse(self.layers[0], return_sequences=True))(main_input)
+        x = Bidirectional(LSTM(self.layers[0], return_sequences=True))(main_input)
 
         # potential next layers
         if len(self.layers) > 1:
@@ -198,7 +195,7 @@ class LSTMModel(HelixerModel):
                     x = Dropout(self.dropout)(x)
                 if self.layer_normalization:
                     x = LayerNormalization()(x)
-                x = Bidirectional(LSTMToUse(layer_units, return_sequences=True))(x)
+                x = Bidirectional(LSTM(layer_units, return_sequences=True))(x)
 
         if self.dropout > 0.0:
             x = Dropout(self.dropout)(x)
