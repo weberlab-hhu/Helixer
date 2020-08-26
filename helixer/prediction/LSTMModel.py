@@ -155,10 +155,6 @@ class LSTMModel(HelixerModel):
         self.parser.add_argument('-ps', '--pool-size', type=int, default=10, help='how many bp to predict at once')
         self.parser.add_argument('-dr', '--dropout', type=float, default=0.0)
         self.parser.add_argument('-ln', '--layer-normalization', action='store_true')
-        self.parser.add_argument('--cpu-compatible', action='store_true',
-                                 help='set this to use an LSTM instead of a CuDNNLSTM layer so that the model can run '
-                                      'on a CPU if desired. Potentially useful for a quick development test or '
-                                      'trouble shooting, but impractically slow for real data.')
         self.parse_args()
 
         if self.layers.isdigit():
@@ -208,13 +204,14 @@ class LSTMModel(HelixerModel):
         return model
 
     def compile_model(self, model):
+        # todo, port run_* to 2.3 instead of ignoring
         run_options = tf.compat.v1.RunOptions(report_tensor_allocations_upon_oom=True)
         run_metadata = tf.compat.v1.RunMetadata()
         model.compile(optimizer=self.optimizer,
                       loss='categorical_crossentropy',
-                      sample_weight_mode='temporal',
-                      options=run_options,
-                      run_metadata=run_metadata)
+                      sample_weight_mode='temporal')#,
+                      #options=run_options,
+                      #run_metadata=run_metadata)
 
 
 if __name__ == '__main__':
