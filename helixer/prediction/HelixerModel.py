@@ -13,9 +13,7 @@ import datetime
 import pkg_resources
 import subprocess
 import numpy as np
-#import tensorflow as tf
-import tensorflow.compat.v1 as tf
-tf.disable_v2_behavior()
+import tensorflow as tf
 
 from pprint import pprint
 from tensorflow.python.client import timeline
@@ -37,7 +35,7 @@ class SaveEveryEpoch(Callback):
 
     def on_epoch_end(self, epoch, _):
         path = os.path.join(self.output_dir, f'model{epoch}.h5')
-        self.model.save(path)
+        self.model.save(path, save_format='h5')
         print(f'saved model at {path}')
 
 
@@ -59,7 +57,7 @@ class ConfusionMatrixTrain(Callback):
             nni.report_intermediate_result(val_genic_f1)
         if val_genic_f1 > self.best_val_genic_f1:
             self.best_val_genic_f1 = val_genic_f1
-            self.model.save(self.save_model_path)
+            self.model.save(self.save_model_path, save_format='h5')
             print('saved new best model with genic f1 of {} at {}'.format(self.best_val_genic_f1,
                                                                           self.save_model_path))
             self.epochs_without_improvement = 0
@@ -217,7 +215,7 @@ class HelixerSequence(Sequence):
 
 class HelixerModel(ABC):
     def __init__(self):
-        tf.logging.set_verbosity(tf.logging.ERROR)
+        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         self.parser = argparse.ArgumentParser()
@@ -308,11 +306,11 @@ class HelixerModel(ABC):
         return callbacks
 
     def set_resources(self):
-        from tensorflow.python.keras.backend import set_session 
-        config = tf.ConfigProto()
+        #from keras.backend.tensorflow_backend import set_session
+        config = tf.compat.v1.ConfigProto()
         config.gpu_options.allow_growth = True  # dynamically grow the memory used on the GPU
-        sess = tf.Session(config=config)
-        set_session(sess)  # set this TensorFlow session as the default session for Keras
+        #sess = tf.compat.v1.Session(config=config)
+        #set_session(sess)  # set this TensorFlow session as the default session for Keras
 
         K.set_floatx(self.float_precision)
         if self.gpu_id > -1:
@@ -596,8 +594,8 @@ class HelixerModel(ABC):
         os.chdir(pwd)  # return to previous directory
 
     def _trace(self, model, generator):
-        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-        run_metadata = tf.RunMetadata()
+        run_options = tf.compat.v1.RunOptions(trace_level=tf.compat.v1.RunOptions.FULL_TRACE)
+        run_metadata = tf.compat.v1.RunMetadata()
         fn = K.function(model.inputs, model.outputs, options=run_options, run_metadata=run_metadata)
         for i in range(4):
             x = K.variable(generator[i][0], dtype='float32')

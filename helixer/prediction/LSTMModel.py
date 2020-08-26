@@ -4,8 +4,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 import os
 import numpy as np
-import tensorflow.compat.v1 as tf
-tf.disable_v2_behavior()
+import tensorflow as tf
 
 from keras_layer_normalization import LayerNormalization
 from tensorflow.keras.models import Sequential, Model
@@ -209,8 +208,8 @@ class LSTMModel(HelixerModel):
         return model
 
     def compile_model(self, model):
-        run_options = tf.RunOptions(report_tensor_allocations_upon_oom=True)
-        run_metadata = tf.RunMetadata()
+        run_options = tf.compat.v1.RunOptions(report_tensor_allocations_upon_oom=True)
+        run_metadata = tf.compat.v1.RunMetadata()
         model.compile(optimizer=self.optimizer,
                       loss='categorical_crossentropy',
                       sample_weight_mode='temporal',
