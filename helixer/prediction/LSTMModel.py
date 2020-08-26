@@ -212,8 +212,8 @@ class LSTMModel(HelixerModel):
         return model
 
     def compile_model(self, model):
-        run_options = tf.RunOptions(report_tensor_allocations_upon_oom=True)
-        run_metadata = tf.RunMetadata()
+        run_options = tf.compat.v1.RunOptions(report_tensor_allocations_upon_oom=True)
+        run_metadata = tf.compat.v1.RunMetadata()
         model.compile(optimizer=self.optimizer,
                       loss='categorical_crossentropy',
                       sample_weight_mode='temporal',

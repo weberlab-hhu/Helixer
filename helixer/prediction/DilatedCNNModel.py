@@ -48,11 +48,11 @@ class DilatedCNNModel(HelixerModel):
             # calculation based on
             # https://github.com/keras-team/keras/blob/fb7f49ef5b07f2ceee1d2d6c45f273df6672734c/keras/backend/tensorflow_backend.py#L3570
             axis = -1
-            y_pred /= tf.reduce_sum(y_pred, axis, True)
+            y_pred /= tf.reduce_sum(input_tensor=y_pred, axis=axis, keepdims=True)
             # manual computation of crossentropy
-            _epsilon = tf.convert_to_tensor(K.epsilon(), y_pred.dtype.base_dtype)
+            _epsilon = tf.convert_to_tensor(value=K.epsilon(), dtype=y_pred.dtype.base_dtype)
             y_pred = tf.clip_by_value(y_pred, _epsilon, 1. - _epsilon)
-            neg_log_likelihood = - tf.reduce_sum(y_true * tf.log(y_pred), axis)
+            neg_log_likelihood = - tf.reduce_sum(input_tensor=y_true * tf.math.log(y_pred), axis=axis)
             # mask by sample weights
             masked = tf.multiply(neg_log_likelihood, sample_weights)
             return masked
