@@ -16,7 +16,7 @@ class DanQSequence(HelixerSequence):
             assert not mode == 'test'  # only use class weights during training and validation
 
     def __getitem__(self, idx):
-        X, y, sw, transitions = self._get_batch_data(idx)
+        X, y, sw, _, transitions, _, _ = self._get_batch_data(idx)
         pool_size = self.model.pool_size
 
         if pool_size > 1:
@@ -26,7 +26,8 @@ class DanQSequence(HelixerSequence):
                 X = X[:, :-overhang]
                 y = y[:, :-overhang]
                 sw = sw[:, :-overhang]
-                transitions = transitions[:, :-overhang]
+                if self.transition_weights is not None:
+                    transitions = transitions[:, :-overhang]
 
             # make labels 2d so we can use the standard softmax / loss functions
             y = y.reshape((
@@ -35,14 +36,7 @@ class DanQSequence(HelixerSequence):
                 pool_size,
                 y.shape[-1],
             ))
-
-            transitions = transitions.reshape((
-                transitions.shape[0],
-                transitions.shape[1] // pool_size,
-                pool_size,
-                transitions.shape[-1],
-            ))
-
+ 
             sw = sw.reshape((sw.shape[0], -1, pool_size))
             sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
 
@@ -57,7 +51,16 @@ class DanQSequence(HelixerSequence):
                 cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
                 cw = np.sum(cw_arrays, axis=2)
                 sw = np.multiply(cw, sw)
-            if self.transitions is not None:
+
+            if self.transition_weights is not None:
+                transitions = transitions.reshape((
+                    transitions.shape[0],
+                    transitions.shape[1] // pool_size,
+                    pool_size,
+                    transitions.shape[-1],
+                ))
+                # todo, this looks very redundant with LSTMModel around _squish_tw_to_sw
+                #   could both go to HelixerModel?
                 sw_t= [np.any((transitions[:, :, :, col] == 1), axis=2) for col in range(6)]
                 sw_t = np.stack(sw_t, axis = 2).astype(np.int8)
                 sw_t = np.multiply(sw_t, self.transitions)
