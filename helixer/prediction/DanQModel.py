@@ -67,21 +67,7 @@ class DanQSequence(HelixerSequence):
                 sw_t[where_are_ones[0], where_are_ones[1]] = 1
                 sw = np.multiply(sw_t, sw)
 
-
-        # put together returned inputs/outputs
-        if self.meta_losses:
-            gc = np.stack(self.gc_contents[usable_idx_slice])
-            gc = np.repeat(gc[:, None], y.shape[1], axis=1)  # repeat for every time step
-            lengths = np.stack(self.coord_lengths[usable_idx_slice])
-            lengths = np.repeat(lengths[:, None], y.shape[1], axis=1)
-            meta = np.stack([gc, lengths], axis=2)
-            labels = [y, meta]
-            sample_weights = [sw, sw]
-        else:
-            labels = y
-            sample_weights = sw
-
-        return X, labels, sample_weights
+        return X, y, sw
 
 
 class DanQModel(HelixerModel):
@@ -127,25 +113,18 @@ class DanQModel(HelixerModel):
         x = Bidirectional(CuDNNLSTM(self.units, return_sequences=True))(x)
         x = Dropout(self.dropout2)(x)
 
-        if self.meta_losses:
-            meta_output = Dense(2, activation='sigmoid', name='meta')(x)
-
         x = Dense(self.pool_size * 4)(x)
         x = Reshape((-1, self.pool_size, 4))(x)
         x = Activation('softmax', name='main')(x)
 
-        outputs = [x, meta_output] if self.meta_losses else [x]
+        outputs = [x]
         model = Model(inputs=main_input, outputs=outputs)
         return model
 
     def compile_model(self, model):
-        if self.meta_losses:
-            meta_loss_weight = 2.0 if self.class_weights else 5.0  # adjust loss weight to class weights
-            losses = ['categorical_crossentropy', 'mean_squared_error']
-            loss_weights = [1.0, meta_loss_weight]
-        else:
-            losses = ['categorical_crossentropy']
-            loss_weights = [1.0]
+        
+        losses = ['categorical_crossentropy']
+        loss_weights = [1.0]
 
         model.compile(optimizer=self.optimizer,
                       loss=losses,
