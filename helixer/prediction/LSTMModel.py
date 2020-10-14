@@ -7,9 +7,9 @@ import numpy as np
 import tensorflow as tf
 
 from keras_layer_normalization import LayerNormalization
-from keras.models import Sequential, Model
-from keras.layers import (Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
-                          concatenate, Input)
+from keras.models import Model
+from keras.layers import (LSTM, CuDNNLSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
+                          Input)
 from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 
 
@@ -114,7 +114,7 @@ class LSTMSequence(HelixerSequence):
 
     @staticmethod
     def _squish_tw_to_sw(transitions, tw, stretch):
-        sw_t = [np.any((transitions[:, :, :, col] == 1),axis=2) for col in range(6)]
+        sw_t = [np.any((transitions[:, :, :, col] == 1), axis=2) for col in range(6)]
         sw_t = np.stack(sw_t, axis=2).astype(np.int8)
         sw_t = np.multiply(sw_t, tw)
 
@@ -122,29 +122,30 @@ class LSTMSequence(HelixerSequence):
         where_are_ones = np.where(sw_t == 0)
         sw_t[where_are_ones[0], where_are_ones[1]] = 1
         if stretch is not 0:
-            sw_t = LSTMSequence._expand_rf(sw_t, stretch)
+            sw_t = LSTMSequence._apply_stretch(sw_t, stretch)
         return sw_t
 
     @staticmethod    
-    def _expand_rf(reshaped_sw_t, rf):  
-
+    def _apply_stretch(reshaped_sw_t, stretch):
+        """modifies sample weight shaped transitions so they are a peak instead of a single point"""
         reshaped_sw_t = np.array(reshaped_sw_t)  
         dilated_rf = np.ones(np.shape(reshaped_sw_t))  
         
         where = np.where(reshaped_sw_t > 1)
-        i = np.array(where[0]) # i unverändert
-        j = np.array(where[1]) # j +/- step
+        i = np.array(where[0])  # i unchanged
+        j = np.array(where[1])  # j +/- step
     
-        #find dividers depending on the size of the dilated rf
+        # find dividers depending on the size of the dilated rf
         dividers = []
-        for distance in range(1,rf+1):
+        for distance in range(1, stretch + 1):
             dividers.append(2**distance)
         
-        for z in range(rf,0,-1):
-            dilated_rf[i,np.maximum(np.subtract(j,z), 0)] = np.maximum(reshaped_sw_t[i,j]/dividers[z-1],1)
-            dilated_rf[i,np.minimum(np.add(j,z),len(dilated_rf[0])-1)] = np.maximum(reshaped_sw_t[i,j]/dividers[z-1],1)
-        dilated_rf[i,j] = np.maximum(reshaped_sw_t[i,j],1)
+        for z in range(stretch, 0, -1):
+            dilated_rf[i, np.maximum(np.subtract(j, z), 0)] = np.maximum(reshaped_sw_t[i, j]/dividers[z-1], 1)
+            dilated_rf[i, np.minimum(np.add(j, z), len(dilated_rf[0])-1)] = np.maximum(reshaped_sw_t[i, j]/dividers[z-1], 1)
+        dilated_rf[i, j] = np.maximum(reshaped_sw_t[i, j], 1)
         return dilated_rf
+
 
 class LSTMModel(HelixerModel):
 

@@ -80,7 +80,8 @@ class HelixerSequence(Sequence):
         self.model = model
         self.h5_file = h5_file
         self.mode = mode
-        self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights','stretch_transition_weights','coverage','coverage_scaling',
+        self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
+                                 'stretch_transition_weights', 'coverage', 'coverage_scaling',
                                  'overlap', 'overlap_offset', 'core_length', 'min_seqs_for_overlapping',
                                  'debug', 'exclude_errors', 'error_weights', 'gene_lengths',
                                  'gene_lengths_average', 'gene_lengths_exponent', 'gene_lengths_cutoff'])
@@ -500,7 +501,7 @@ class HelixerModel(ABC):
         return all_predictions
 
     def _make_predictions(self, model):
-        # loop through batches and continously expand output dataset as everything might
+        # loop through batches and continuously expand output dataset as everything might
         # not fit in memory
         pred_out = h5py.File(self.prediction_output_path, 'w')
         test_sequence = self.gen_test_data()
@@ -557,7 +558,7 @@ class HelixerModel(ABC):
         h5_model.close()
 
     def _load_helixer_model(self):
-        model = load_model(self.load_model_path, custom_objects = {
+        model = load_model(self.load_model_path, custom_objects={
             'LayerNormalization': LayerNormalization,
         })
         return model
