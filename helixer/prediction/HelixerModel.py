@@ -230,8 +230,8 @@ class HelixerModel(ABC):
         self.parser.add_argument('-cw', '--class-weights', type=str, default='None')
         self.parser.add_argument('-tw', '--transition-weights', type=str, default='None')
         self.parser.add_argument('-s-tw', '--stretch-transition-weights', type=int, default=0)
-        self.parser.add_argument('-cov','--coverage',action='store_true')
-        self.parser.add_argument('-covs','--coverage-scaling', type=float, default=0.1)
+        self.parser.add_argument('-cov', '--coverage', action='store_true')
+        self.parser.add_argument('-covs', '--coverage-scaling', type=float, default=0.1)
         self.parser.add_argument('-can', '--canary-dataset', type=str, default='')
         self.parser.add_argument('-res', '--resume-training', action='store_true')
         self.parser.add_argument('-ee', '--exclude-errors', action='store_true')
@@ -242,6 +242,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-td', '--test-data', type=str, default='')
         self.parser.add_argument('-po', '--prediction-output-path', type=str, default='predictions.h5')
         self.parser.add_argument('-ev', '--eval', action='store_true')
+        self.parser.add_argument('--predict-intermediate', action='store_true', help='set this to ')
         # overlap options
         self.parser.add_argument('-overlap', '--overlap', action='store_true')
         self.parser.add_argument('-overlap-offset', '--overlap-offset', type=int, default=2500)
@@ -500,6 +501,9 @@ class HelixerModel(ABC):
         assert all_predictions.shape[0] == n_original_seqs
         return all_predictions
 
+    def _unboxing_predictions(self, model, output_path):
+        raise NotImplementedError("only LSTMModel subclass currently has this implemented")
+
     def _make_predictions(self, model):
         # loop through batches and continuously expand output dataset as everything might
         # not fit in memory
@@ -646,8 +650,12 @@ class HelixerModel(ABC):
 
             if self.eval:
                 _ = HelixerModel.run_confusion_matrix(self.gen_test_data(), model)
+
             else:
                 if os.path.isfile(self.prediction_output_path):
                     print(f'{self.prediction_output_path} already exists and will be overwritten.')
-                self._make_predictions(model)
+                if self.predict_intermediate:
+                    self._unboxing_predictions(model, self.prediction_output_path)
+                else:
+                    self._make_predictions(model)
             self.h5_test.close()

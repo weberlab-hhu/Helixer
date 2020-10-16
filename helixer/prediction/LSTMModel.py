@@ -1,7 +1,8 @@
 #! /usr/bin/env python3
-import warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
+# import warnings
+# warnings.simplefilter(action='ignore', category=FutureWarning)
 
+import h5py
 import os
 import numpy as np
 import tensorflow as tf
@@ -11,6 +12,7 @@ from keras.models import Model
 from keras.layers import (LSTM, CuDNNLSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
                           Input)
 from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
+from keras import backend as K
 
 
 class LSTMSequence(HelixerSequence):
@@ -220,6 +222,48 @@ class LSTMModel(HelixerModel):
                       sample_weight_mode='temporal',
                       options=run_options,
                       run_metadata=run_metadata)
+
+    def _unboxing_predictions(self, model, output_path):
+        """saves intermediate hidden layers as predictions to help de-black box how network works"""
+        # if this works and is useful, the call and logic should probably go to HelixerModel,
+        # leaving only the layer details here.
+        get_intermediate_functions = []
+        target_layers = model.layers[1:-3]
+
+        for layer in target_layers:
+            inputs = [model.get_input_at(0), K.learning_phase()]
+            new = K.function(inputs=inputs,
+                             outputs=[layer.output])
+            get_intermediate_functions.append(new)
+
+        pred_out = h5py.File(output_path, 'w')
+        pred_out.create_group('intermediates')
+        test_sequence = self.gen_test_data()
+
+        for idx_data in range(len(test_sequence)):
+            hmmm = model.predict_on_batch(test_sequence[idx_data][0])  # initialize values?
+            if self.verbose:
+                print(idx_data, '/', len(test_sequence), end='\r')
+            for j in range(len(target_layers)):
+                layer = target_layers[j]
+                pre_predictions = get_intermediate_functions[j]([test_sequence[idx_data][0]])
+                for i in range(len(pre_predictions)):
+                    predictions = pre_predictions[i]
+                    # prepare h5 dataset and save the predictions to disk
+                    key_out = 'intermediates/{}_{}'.format(layer.name, i)
+                    if idx_data == 0:
+                        old_len = 0
+                        pred_out.create_dataset(key_out,
+                                                data=predictions,
+                                                maxshape=(None,) + predictions.shape[1:],
+                                                chunks=(1,) + predictions.shape[1:],
+                                                dtype='float32',
+                                                compression='lzf',
+                                                shuffle=True)
+                    else:
+                        old_len = pred_out[key_out].shape[0]
+                        pred_out[key_out].resize(old_len + predictions.shape[0], axis=0)
+                    pred_out[key_out][old_len:] = predictions
 
 
 if __name__ == '__main__':
