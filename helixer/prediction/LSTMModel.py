@@ -151,11 +151,11 @@ class LSTMModel(HelixerModel):
 
     def __init__(self):
         super().__init__()
-        self.parser.add_argument('-u', '--units', type=int, default=4, help='how many units per LSTM layer')
-        self.parser.add_argument('-l', '--layers', type=str, default='1', help='how many LSTM layers')
-        self.parser.add_argument('-ps', '--pool-size', type=int, default=10, help='how many bp to predict at once')
-        self.parser.add_argument('-dr', '--dropout', type=float, default=0.0)
-        self.parser.add_argument('-ln', '--layer-normalization', action='store_true')
+        self.parser.add_argument('--units', type=int, default=4, help='how many units per LSTM layer')
+        self.parser.add_argument('--layers', type=str, default='1', help='how many LSTM layers')
+        self.parser.add_argument('--pool-size', type=int, default=10, help='how many bp to predict at once')
+        self.parser.add_argument('--dropout', type=float, default=0.0)
+        self.parser.add_argument('--layer-normalization', action='store_true')
         self.parser.add_argument('--cpu-compatible', action='store_true',
                                  help='set this to use an LSTM instead of a CuDNNLSTM layer so that the model can run '
                                       'on a CPU if desired. Potentially useful for a quick development test or '

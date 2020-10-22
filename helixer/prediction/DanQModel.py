@@ -1,11 +1,10 @@
 #! /usr/bin/env python3
-import random
 import numpy as np
 
 from keras_layer_normalization import LayerNormalization
-from keras.models import Sequential, Model
+from keras.models import Model
 from keras.layers import (Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
-                          Activation, concatenate, Input, BatchNormalization)
+                          Activation, Input, BatchNormalization)
 from HelixerModel import HelixerModel, HelixerSequence
 
 
@@ -61,11 +60,11 @@ class DanQSequence(HelixerSequence):
                 ))
                 # todo, this looks very redundant with LSTMModel around _squish_tw_to_sw
                 #   could both go to HelixerModel?
-                sw_t= [np.any((transitions[:, :, :, col] == 1), axis=2) for col in range(6)]
-                sw_t = np.stack(sw_t, axis = 2).astype(np.int8)
+                sw_t = [np.any((transitions[:, :, :, col] == 1), axis=2) for col in range(6)]
+                sw_t = np.stack(sw_t, axis=2).astype(np.int8)
                 sw_t = np.multiply(sw_t, self.transitions)
 
-                sw_t = np.sum(sw_t, axis = 2)
+                sw_t = np.sum(sw_t, axis=2)
                 where_are_ones = np.where(sw_t == 0)
                 sw_t[where_are_ones[0], where_are_ones[1]] = 1
                 sw = np.multiply(sw_t, sw)
@@ -76,17 +75,18 @@ class DanQSequence(HelixerSequence):
 class DanQModel(HelixerModel):
     def __init__(self):
         super().__init__()
-        self.parser.add_argument('-u', '--units', type=int, default=32)
-        self.parser.add_argument('-f', '--filter-depth', type=int, default=32)
-        self.parser.add_argument('-ks', '--kernel-size', type=int, default=26)
-        self.parser.add_argument('-cl', '--cnn-layers', type=int, default=1)
-        self.parser.add_argument('-ps', '--pool-size', type=int, default=10)
-        self.parser.add_argument('-dr1', '--dropout1', type=float, default=0.0)
-        self.parser.add_argument('-dr2', '--dropout2', type=float, default=0.0)
-        self.parser.add_argument('-ln', '--layer-normalization', action='store_true')
+        self.parser.add_argument('--units', type=int, default=32)
+        self.parser.add_argument('--filter-depth', type=int, default=32)
+        self.parser.add_argument('--kernel-size', type=int, default=26)
+        self.parser.add_argument('--cnn-layers', type=int, default=1)
+        self.parser.add_argument('--pool-size', type=int, default=10)
+        self.parser.add_argument('--dropout1', type=float, default=0.0)
+        self.parser.add_argument('--dropout2', type=float, default=0.0)
+        self.parser.add_argument('--layer-normalization', action='store_true')
         self.parse_args()
 
-    def sequence_cls(self):
+    @staticmethod
+    def sequence_cls():
         return DanQSequence
 
     def model(self):
