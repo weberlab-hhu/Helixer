@@ -7,6 +7,11 @@ storage with APIs existing to read and modify files
 in many languages (we use h5py). Below is some information on
 the data we are storing there-in and how.
 
+> Please note, this is a flexible format that
+> we have modified or added to repeatedly during
+> development. We will almost certainly continue
+> to do so in future versions of helixer. 
+
 ## Trained Model
 This is unmodified from the Keras standard.
 See, e.g. https://keras.io/guides/serialization_and_saving/#keras-h5-format
@@ -78,7 +83,7 @@ in one file (e.g. when training with 6+ species
 as was done for vertebrate and plant models).
 
 ##### seqids
-The ID of the sequence (chromosme, scafold, contig,
+The ID of the sequence (chromosome, scaffold, contig,
 etc...) that a chunk comes from.
 
 ##### start_ends
@@ -91,12 +96,17 @@ sequence and is reverse complented by [20000, 0].
 On the plus strand start is inclusive and end
 exclusive. 
 
-If start - end is less than the chunk size then
-there is padding 
+If |start - end| is less than the chunk size then
+there is padding.
 
 (todo, explain padding)
 
-#### err_samples
+#### Additional
+Various data matrices that were or are used in a
+more experimental or peripheral fashion. To check for biases,
+experiment with filtering, or more.
+ 
+##### err_samples
 One value per chunk, derived from sample_weights
  - 1 if the chunk contains any valid data
  - 0 if the chunk contains only invalid data
@@ -105,18 +115,87 @@ One value per chunk, derived from sample_weights
 any base pairs where GeenuFF masked an error)
 
 
-#### fully_intergenic_samples 
+##### fully_intergenic_samples 
 
 One value per chunk, useful for quickly filtering
 entirely intergenic regions
  - True if only intergenic base pairs present in reference annotation
  - False otherwise
  
-#### gene_lengths
+##### gene_lengths
 One value per base pair
 
 The length of the _longest_ pre-mRNA overlapping
 the base pair.
 
+##### transitions
+Last dimension has six possible categories for each base pair, and contains
+a binary encoding of the starts and ends of gene features.
+Specifically, the six categories are:
+```
+[transcription start site, 
+ start codon,
+ donor splice site,
+ transscription stop site,
+ stop codon,
+ acceptor splice site]
+```
 
- 
+So, as an example, a stop codon is encoded with 
+`[0, 0, 0, 0, 1, 0]`.
+Of course, the vast majority of sites are
+`[0, 0, 0, 0, 0, 0]` for no transition.
+Coordinates should match their usage in GeenuFF, except
+that here there are always 2bp marked (this is subject to change).
+
+### The 'evaluation' group (optional)
+These two evaluation datasets can be added by the script
+helixer/evaluation/training_rnaseq.py, which takes
+an indexed bam file and calculates the coverage, and spliced_coverage
+for each position on the genome. 
+
+Both data sets have the dimensions 'sequence chunks'
+by chunk_size in bp, so one value per bp of the genome. 
+
+```
+coverage                 Dataset {4018/Inf, 20000}
+spliced_coverage         Dataset {4018/Inf, 20000}
+```
+
+Coverage is the number of reads mapping at a given position (cigar =, M, or X).
+
+Spliced coverage is the number of reads mapping with a gap, that is a read deletion
+or spliced out section at a given position (cigar N or D).
+
+### The 'scores' group
+The scores in this group are a sort of RNAseq-based
+confidence score for the reference annotation. They are
+derived from the data in the evaluation group. 
+
+There are various aggregations and normalizations, but
+probably the most useful is 'by_bp', with one score
+per genomic bp. A value approaching 0 means poor RNAseq support
+for the reference annotation, a value approaching 1 means strong
+RNAseq support for the reference annotation. 
+
+For more details see helixer/evaluation/training_rnaseq.py.
+
+Interpret with caution as RNAseq too is far from perfect,
+particularly if the RNAseq data isn't of highest quality
+and from a variety of tissues & conditions. 
+
+Todo: more complete list
+
+### The 'meta' group
+Some meta-data on the different _species_ in any .h5 data file.
+Most related to RNAseq and provides values for potentially
+normalizing the raw RNAseq some. Yes, this is all very naive
+still.
+
+### the Alternative/* groups
+The script ___ can add alternative (non-reference, non-helixer)
+annotations to the .h5 file, exactly aligned with the other
+data. 
+
+Any of these that have been added will be in alternative/<your name here>
+and from there have the same format as the original 'data' group.
