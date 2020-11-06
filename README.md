@@ -18,7 +18,7 @@ First, download and checkout the latest release
 # from a directory of your choice
 git clone https://github.com/weberlab-hhu/Helixer.git
 cd Helixer
-git checkout v0.1.0
+git checkout v0.2.0
 ```
 
 ### Virtualenv (optional)
