@@ -2,7 +2,7 @@
 import os
 import argparse
 
-from helixerprep.core.controller import HelixerController
+from helixer.core.controller import HelixerController
 
 
 def main(args):

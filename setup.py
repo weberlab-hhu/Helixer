@@ -1,9 +1,12 @@
 from setuptools import setup
 
 setup(
-   name='helixerprep',
-   version='0.1',
+   name='helixer',
+   version='0.1.0',
    description='Deep Learning fun on gene structure data',
-   packages=['helixerprep', 'helixerprep/prediction'],  #same as name
+   packages=['helixer', 'helixer.prediction', 'helixer.evaluation', 'helixer.tests', 'helixer.export'],  #same as name
+   package_data={'helixer': ['testdata/*.fa', 'testdata/*.gff']},
+   install_requires=["geenuff"],
+   dependency_links=["https://github.com/weberlab-hhu/GeenuFF/archive/at-helixer-v0.1.0.tar.gz#egg=geenuff"],
    zip_safe=False,
 )
