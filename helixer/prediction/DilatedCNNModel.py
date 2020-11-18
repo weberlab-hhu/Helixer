@@ -7,7 +7,7 @@ from tensorflow.keras import backend as K
 from tensorflow.keras.models import Sequential, Model, load_model
 from tensorflow.keras.layers import Conv1D, Dense, Flatten, Dropout, Input
 from keras_layer_normalization import LayerNormalization
-from keras.losses import categorical_crossentropy
+from tensorflow.keras.losses import categorical_crossentropy
 from HelixerModel import HelixerModel, HelixerSequence
 
 class DilatedCNNSequence(HelixerSequence):
@@ -55,6 +55,7 @@ class DilatedCNNModel(HelixerModel):
             # manual computation of crossentropy
             _epsilon = tf.convert_to_tensor(value=K.epsilon(), dtype=y_pred.dtype.base_dtype)
             y_pred = tf.clip_by_value(y_pred, _epsilon, 1. - _epsilon)
+            y_true = tf.cast(y_true, dtype=tf.float32)
             neg_log_likelihood = - tf.reduce_sum(input_tensor=y_true * tf.math.log(y_pred), axis=axis)
             # mask by sample weights
             masked = tf.multiply(neg_log_likelihood, sample_weights)
