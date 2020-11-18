@@ -556,7 +556,7 @@ class HelixerModel(ABC):
             print(f'Current Helixer version: {version}')
 
         try:
-            if self.load_model_path:
+            if os.path.isfile(self.load_model_path):
                 cmd = ['md5sum', self.load_model_path]
                 self.loaded_model_hash = subprocess.check_output(cmd).strip().decode()
                 print(f'Md5sum of the loaded model: {self.loaded_model_hash}')
