@@ -108,7 +108,8 @@ class DanQModel(HelixerModel):
                        activation="relu")(x)
 
         if self.pool_size > 1:
-            x = MaxPooling1D(pool_size=self.pool_size, padding='same')(x)
+            x = Reshape((-1, self.pool_size * self.filter_depth))(x)
+            # x = MaxPooling1D(pool_size=self.pool_size, padding='same')(x)
 
         if self.layer_normalization:
             x = LayerNormalization()(x)
@@ -116,9 +117,9 @@ class DanQModel(HelixerModel):
 
         x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
         for _ in range(self.lstm_layers - 1):
-            x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
             if self.layer_normalization:
                 x = LayerNormalization()(x)
+            x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
         # do not use recurrent dropout, but dropout on the output of the LSTM stack
         x = Dropout(self.dropout2)(x)
 
