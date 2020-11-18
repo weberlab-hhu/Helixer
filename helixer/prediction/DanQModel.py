@@ -2,9 +2,9 @@
 import numpy as np
 
 from keras_layer_normalization import LayerNormalization
-from keras.models import Model
-from keras.layers import (Conv1D, LSTM, CuDNNLSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
-                          Activation, Input, BatchNormalization)
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
+                                     Activation, Input, BatchNormalization)
 from HelixerModel import HelixerModel, HelixerSequence
 
 
@@ -35,7 +35,7 @@ class DanQSequence(HelixerSequence):
                 pool_size,
                 y.shape[-1],
             ))
- 
+
             sw = sw.reshape((sw.shape[0], -1, pool_size))
             sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
 
@@ -113,7 +113,7 @@ class DanQModel(HelixerModel):
             x = LayerNormalization()(x)
         x = Dropout(self.dropout1)(x)
 
-        x = Bidirectional(CuDNNLSTM(self.units, return_sequences=True))(x)
+        x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
         x = Dropout(self.dropout2)(x)
 
         x = Dense(self.pool_size * 4)(x)
@@ -125,7 +125,7 @@ class DanQModel(HelixerModel):
         return model
 
     def compile_model(self, model):
-        
+
         losses = ['categorical_crossentropy']
         loss_weights = [1.0]
 

@@ -7,10 +7,6 @@ import numpy as np
 import tensorflow as tf
 
 from keras_layer_normalization import LayerNormalization
-#from keras.models import Model
-#from keras.layers import (LSTM, CuDNNLSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
-#                          Input)
-#from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
                           concatenate, Input)
