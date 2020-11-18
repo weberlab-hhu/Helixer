@@ -45,10 +45,10 @@ Most recently tested with the following (but in theory any valid
 tensorflow-gpu setup >=1.14 and <2.0 should work).
 
 python packages:
-* tensorflow-gpu==1.15.2
+* tensorflow-gpu==2.3.0
 
 system packages:
-* cuda-toolkit-10-0
+* cuda-toolkit-10-1
 * libcudnn7
 * libcudnn7-dev
 * nvidia-driver-450
@@ -136,10 +136,6 @@ LSTM architeture for 5 epochs and save the best iteration
 ```shell script
 python3 helixer/prediction/LSTMModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 --units 64 --pool-size 10
 ```
->Note: if you are running this on the CPU instead of GPU, 
->or if you want to train
->a model that can later be ran on the CPU, you will have
->to set the parameter `--cpu-compatible`. This will make it very slow!
 
 Right before the training starts we may get one or two warnings about 
 the data that are not relevant for this example. This trains a very 
@@ -218,6 +214,9 @@ python3 helixer/visualization/visualize.py --predictions example/mpusillaCCMP154
 ```
 
 ### Using trained models
+> WARNING: we have not yet tested, but would be pretty surprised if 
+> the LSTM models that were trained with tensorflow 1 just work with tensorflow 2
+
 We have uploaded pre-trained models under https://zenodo.org/record/3974409. 
 
 #### animals

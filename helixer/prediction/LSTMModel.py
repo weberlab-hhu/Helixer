@@ -7,11 +7,15 @@ import numpy as np
 import tensorflow as tf
 
 from keras_layer_normalization import LayerNormalization
-from keras.models import Model
-from keras.layers import (LSTM, CuDNNLSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
-                          Input)
-from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
+#from keras.models import Model
+#from keras.layers import (LSTM, CuDNNLSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
+#                          Input)
+#from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
+                          concatenate, Input)
 
+from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 
 class LSTMSequence(HelixerSequence):
     def __init__(self, model, h5_file, mode, shuffle):
@@ -156,10 +160,6 @@ class LSTMModel(HelixerModel):
         self.parser.add_argument('--pool-size', type=int, default=10, help='how many bp to predict at once')
         self.parser.add_argument('--dropout', type=float, default=0.0)
         self.parser.add_argument('--layer-normalization', action='store_true')
-        self.parser.add_argument('--cpu-compatible', action='store_true',
-                                 help='set this to use an LSTM instead of a CuDNNLSTM layer so that the model can run '
-                                      'on a CPU if desired. Potentially useful for a quick development test or '
-                                      'trouble shooting, but impractically slow for real data.')
         self.parse_args()
 
         if self.layers.isdigit():
@@ -186,11 +186,7 @@ class LSTMModel(HelixerModel):
     def model(self):
         main_input = Input(shape=(None, self.pool_size * 4), dtype=self.float_precision,
                            name='main_input')
-        if self.cpu_compatible:
-            LSTMToUse = LSTM
-        else:
-            LSTMToUse = CuDNNLSTM
-        x = Bidirectional(LSTMToUse(self.layers[0], return_sequences=True))(main_input)
+        x = Bidirectional(LSTM(self.layers[0], return_sequences=True))(main_input)
 
         # potential next layers
         if len(self.layers) > 1:
@@ -199,7 +195,7 @@ class LSTMModel(HelixerModel):
                     x = Dropout(self.dropout)(x)
                 if self.layer_normalization:
                     x = LayerNormalization()(x)
-                x = Bidirectional(LSTMToUse(layer_units, return_sequences=True))(x)
+                x = Bidirectional(LSTM(layer_units, return_sequences=True))(x)
 
         if self.dropout > 0.0:
             x = Dropout(self.dropout)(x)
@@ -213,13 +209,14 @@ class LSTMModel(HelixerModel):
         return model
 
     def compile_model(self, model):
-        run_options = tf.RunOptions(report_tensor_allocations_upon_oom=True)
-        run_metadata = tf.RunMetadata()
+        # todo, port run_* to 2.3 instead of ignoring
+        run_options = tf.compat.v1.RunOptions(report_tensor_allocations_upon_oom=True)
+        run_metadata = tf.compat.v1.RunMetadata()
         model.compile(optimizer=self.optimizer,
                       loss='categorical_crossentropy',
-                      sample_weight_mode='temporal',
-                      options=run_options,
-                      run_metadata=run_metadata)
+                      sample_weight_mode='temporal')#,
+                      #options=run_options,
+                      #run_metadata=run_metadata)
 
 
 if __name__ == '__main__':
