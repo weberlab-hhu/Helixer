@@ -18,7 +18,7 @@ First, download and checkout the latest release
 # from a directory of your choice
 git clone https://github.com/weberlab-hhu/Helixer.git
 cd Helixer
-git checkout v0.2.0
+git checkout dev # v0.2.0
 ```
 
 ### Virtualenv (optional)
@@ -42,7 +42,7 @@ everything for tensorflow-gpu is required,
 see: https://www.tensorflow.org/install/gpu#older_versions_of_tensorflow
 
 Most recently tested with the following (but in theory any valid
-tensorflow-gpu setup >=1.14 and <2.0 should work).
+tensorflow-gpu setup >2.0 should work).
 
 python packages:
 * tensorflow-gpu==2.3.0
@@ -131,7 +131,7 @@ example/
 Now we use the datasets in `example/train/` to train a model with our 
 LSTM architeture for 5 epochs and save the best iteration 
 (according to the Genic F1 on the validation dataset) to 
-`example/best_helixer_model.h5`. But first we need to change the directory:
+`example/best_helixer_model.h5`. 
 
 ```shell script
 python3 helixer/prediction/LSTMModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 --units 64 --pool-size 10
@@ -214,8 +214,9 @@ python3 helixer/visualization/visualize.py --predictions example/mpusillaCCMP154
 ```
 
 ### Using trained models
-> WARNING: we have not yet tested, but would be pretty surprised if 
-> the LSTM models that were trained with tensorflow 1 just work with tensorflow 2
+> WARNING: we have only tested it briefly, so while it does appear that
+> the LSTM models that were trained with tensorflow 1 work with tensorflow 2,
+> we make no promises.
 
 We have uploaded pre-trained models under https://zenodo.org/record/3974409. 
 
