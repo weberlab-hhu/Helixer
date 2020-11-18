@@ -96,8 +96,8 @@ class LSTMSequence(HelixerSequence):
                 coverage_scores = coverage_scores.reshape((coverage_scores.shape[0], -1, pool_size))
                 zero_positions = np.where(coverage_scores == 0)
                 # scale coverage scores [0,1] by adding small numbers, default = 0.1
-                # fairly good positions don't lose importance 
-                coverage_scores = np.add(coverage_scores, self.coverage_scaling)    
+                # fairly good positions don't lose importance
+                coverage_scores = np.add(coverage_scores, self.coverage_scaling)
                 coverage_scores[zero_positions[0], zero_positions[1], zero_positions[2]] = 0
                 coverage_scores = np.sum(coverage_scores, axis=2)
                 # average scores according to pool_size
@@ -125,25 +125,25 @@ class LSTMSequence(HelixerSequence):
         sw_t = np.sum(sw_t, axis=2)
         where_are_ones = np.where(sw_t == 0)
         sw_t[where_are_ones[0], where_are_ones[1]] = 1
-        if stretch is not 0:
+        if stretch != 0:
             sw_t = LSTMSequence._apply_stretch(sw_t, stretch)
         return sw_t
 
-    @staticmethod    
+    @staticmethod
     def _apply_stretch(reshaped_sw_t, stretch):
         """modifies sample weight shaped transitions so they are a peak instead of a single point"""
-        reshaped_sw_t = np.array(reshaped_sw_t)  
-        dilated_rf = np.ones(np.shape(reshaped_sw_t))  
-        
+        reshaped_sw_t = np.array(reshaped_sw_t)
+        dilated_rf = np.ones(np.shape(reshaped_sw_t))
+
         where = np.where(reshaped_sw_t > 1)
         i = np.array(where[0])  # i unchanged
         j = np.array(where[1])  # j +/- step
-    
+
         # find dividers depending on the size of the dilated rf
         dividers = []
         for distance in range(1, stretch + 1):
             dividers.append(2**distance)
-        
+
         for z in range(stretch, 0, -1):
             dilated_rf[i, np.maximum(np.subtract(j, z), 0)] = np.maximum(reshaped_sw_t[i, j]/dividers[z-1], 1)
             dilated_rf[i, np.minimum(np.add(j, z), len(dilated_rf[0])-1)] = np.maximum(reshaped_sw_t[i, j]/dividers[z-1], 1)

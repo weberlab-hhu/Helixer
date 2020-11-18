@@ -106,7 +106,6 @@ class InceptionModel(HelixerModel):
                 conv_in3 = Dropout(rate=inception_dropout)(conv_in3)
 
             current = Concatenate(axis=2)([conv_in1, conv_in2, conv_in3])
-        #import pudb; pudb.set_trace()
         # post-inception FCs
         flattened = Flatten()(current)
         dense = Dense(units=192, activation="relu")(flattened)
@@ -114,7 +113,6 @@ class InceptionModel(HelixerModel):
 
         flat_preds = Dense(units=7 * self.shape_train[1], activation="relu")(dense_drop)
         pred_logits = Reshape(target_shape=(self.shape_train[1], 7))(flat_preds)
-       # import pudb; pudb.set_trace()
         # add input & output to actual keras Model
         model = Model(inputs=input, outputs=pred_logits)
 
