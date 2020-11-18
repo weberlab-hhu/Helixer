@@ -113,15 +113,18 @@ class DanQModel(HelixerModel):
 
         if self.layer_normalization:
             x = LayerNormalization()(x)
-        x = Dropout(self.dropout1)(x)
+        if self.dropout1 > 0.0:
+            x = Dropout(self.dropout1)(x)
 
         x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
         for _ in range(self.lstm_layers - 1):
             if self.layer_normalization:
                 x = LayerNormalization()(x)
             x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
+
         # do not use recurrent dropout, but dropout on the output of the LSTM stack
-        x = Dropout(self.dropout2)(x)
+        if self.dropout2 > 0.0:
+            x = Dropout(self.dropout2)(x)
 
         x = Dense(self.pool_size * 4)(x)
         x = Reshape((-1, self.pool_size, 4))(x)
