@@ -241,6 +241,8 @@ class HelixerModel(ABC):
         self.parser.add_argument('--gpus', type=int, default=1)
         self.parser.add_argument('--cpus', type=int, default=8)
         self.parser.add_argument('--gpu-id', type=int, default=-1)
+        self.parser.add_argument('--workers', type=int, default=1,
+                                 help='Probaly should be the same a number of GPUs')
         # misc flags
         self.parser.add_argument('--save-every-epoch', action='store_true')
         self.parser.add_argument('--nni', action='store_true')
@@ -605,8 +607,8 @@ class HelixerModel(ABC):
 
             model.fit_generator(generator=self.gen_training_data(),
                                 epochs=self.epochs,
-                                workers=0,  # run in main thread
-                                # workers=1,
+                                # workers=0,  # run in main thread
+                                workers=self.workers,
                                 # validation_data=self.gen_validation_data(),
                                 callbacks=self.generate_callbacks(),
                                 verbose=True)
