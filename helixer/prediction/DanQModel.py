@@ -75,10 +75,11 @@ class DanQSequence(HelixerSequence):
 class DanQModel(HelixerModel):
     def __init__(self):
         super().__init__()
+        self.parser.add_argument('--cnn-layers', type=int, default=1)
+        self.parser.add_argument('--lstm-layers', type=int, default=1)
         self.parser.add_argument('--units', type=int, default=32)
         self.parser.add_argument('--filter-depth', type=int, default=32)
         self.parser.add_argument('--kernel-size', type=int, default=26)
-        self.parser.add_argument('--cnn-layers', type=int, default=1)
         self.parser.add_argument('--pool-size', type=int, default=10)
         self.parser.add_argument('--dropout1', type=float, default=0.0)
         self.parser.add_argument('--dropout2', type=float, default=0.0)
@@ -114,6 +115,11 @@ class DanQModel(HelixerModel):
         x = Dropout(self.dropout1)(x)
 
         x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
+        for _ in range(self.lstm_layers - 1):
+            x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
+            if self.layer_normalization:
+                x = LayerNormalization()(x)
+        # do not use recurrent dropout, but dropout on the output of the LSTM stack
         x = Dropout(self.dropout2)(x)
 
         x = Dense(self.pool_size * 4)(x)
