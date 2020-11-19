@@ -81,7 +81,7 @@ class HelixerSequence(Sequence):
         self.h5_file = h5_file
         self.mode = mode
         self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
-                                 'stretch_transition_weights', 'coverage', 'coverage_scaling',
+                                 'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
                                  'overlap', 'overlap_offset', 'core_length', 'min_seqs_for_overlapping',
                                  'debug', 'exclude_errors', 'error_weights', 'gene_lengths',
                                  'gene_lengths_average', 'gene_lengths_exponent', 'gene_lengths_cutoff'])
@@ -92,7 +92,7 @@ class HelixerSequence(Sequence):
         if self.mode == 'train':
             if self.transition_weights is not None:
                 self.transitions_dset = h5_file['/data/transitions']
-            if self.coverage:
+            if self.coverage_weights:
                 self.coverage_dset = h5_file['/scores/by_bp']
             if self.gene_lengths:
                 self.gene_lengths_dset = h5_file['/data/gene_lengths']
@@ -151,7 +151,7 @@ class HelixerSequence(Sequence):
             transitions = self.transitions_dset[usable_idx_batch]
         else:
             transitions = None
-        if self. mode == 'train' and self.coverage:
+        if self. mode == 'train' and self.coverage_weights:
             coverage_scores = self.coverage_dset[usable_idx_batch]
         else:
             coverage_scores = None
@@ -214,8 +214,8 @@ class HelixerModel(ABC):
         self.parser.add_argument('--class-weights', type=str, default='None')
         self.parser.add_argument('--transition-weights', type=str, default='None')
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
-        self.parser.add_argument('--coverage', action='store_true')
-        self.parser.add_argument('--coverage-scaling', type=float, default=0.1)
+        self.parser.add_argument('--coverage-weights', action='store_true')
+        self.parser.add_argument('--coverage-offset', type=float, default=0.1)
         self.parser.add_argument('--canary-dataset', type=str, default='')
         self.parser.add_argument('--resume-training', action='store_true')
         self.parser.add_argument('--exclude-errors', action='store_true')
@@ -297,7 +297,7 @@ class HelixerModel(ABC):
 
         K.set_floatx(self.float_precision)
         if self.gpu_id > -1:
-            os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID';
+            os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
             os.environ['CUDA_VISIBLE_DEVICES'] = str(self.gpu_id)
 
     def gen_training_data(self):
