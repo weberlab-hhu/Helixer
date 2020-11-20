@@ -215,7 +215,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--transition-weights', type=str, default='None')
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
         self.parser.add_argument('--coverage-weights', action='store_true')
-        self.parser.add_argument('--coverage-offset', type=float, default=0.1)
+        self.parser.add_argument('--coverage-offset', type=float, default=0.0)
         self.parser.add_argument('--canary-dataset', type=str, default='')
         self.parser.add_argument('--resume-training', action='store_true')
         self.parser.add_argument('--exclude-errors', action='store_true')
