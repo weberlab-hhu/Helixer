@@ -211,7 +211,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-b', '--batch-size', type=int, default=8)
         self.parser.add_argument('--loss', type=str, default='')
         self.parser.add_argument('--clip-norm', type=float, default=1.0)
-        self.parser.add_argument('--learning-rate', type=float, default=1e-3)
+        self.parser.add_argument('--learning-rate', type=float, default=3e-4)
         self.parser.add_argument('--class-weights', type=str, default='None')
         self.parser.add_argument('--transition-weights', type=str, default='None')
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0)

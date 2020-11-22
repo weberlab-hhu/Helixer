@@ -1,4 +1,5 @@
 # Project specific
+nni/*
 tmp/*
 sliced_demosmaller.sqlite3
 sliced_demosmaller.h5
