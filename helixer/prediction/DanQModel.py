@@ -75,16 +75,17 @@ class DanQSequence(HelixerSequence):
 class DanQModel(HelixerModel):
     def __init__(self):
         super().__init__()
-        self.parser.add_argument('--cnn-layers', type=int, default=1)
-        self.parser.add_argument('--lstm-layers', type=int, default=1)
-        self.parser.add_argument('--units', type=int, default=32)
-        self.parser.add_argument('--filter-depth', type=int, default=32)
-        self.parser.add_argument('--kernel-size', type=int, default=26)
+        self.parser.add_argument('--lstm-units', type=int, nargs='+', default=[32])
+        self.parser.add_argument('--filter-depths', type=int, nargs='+', default=[32])
+        self.parser.add_argument('--kernel-sizes', type=int,  nargs='+', default=[26])
         self.parser.add_argument('--pool-size', type=int, default=10)
         self.parser.add_argument('--dropout1', type=float, default=0.0)
         self.parser.add_argument('--dropout2', type=float, default=0.0)
         self.parser.add_argument('--layer-normalization', action='store_true')
         self.parse_args()
+        assert len(self.filter_depths) == len(self.kernel_sizes)
+        self.n_lstm_layers = len(self.lstm_units)
+        self.n_cnn_layers = len(self.filter_depths)
 
     @staticmethod
     def sequence_cls():
@@ -94,21 +95,21 @@ class DanQModel(HelixerModel):
         overhang = self.shape_train[1] % self.pool_size
         main_input = Input(shape=(None, 4), dtype=self.float_precision,
                            name='main_input')
-        x = Conv1D(filters=self.filter_depth,
-                   kernel_size=self.kernel_size,
+        x = Conv1D(filters=self.filter_depths[0],
+                   kernel_size=self.kernel_sizes[0],
                    padding="same",
                    activation="relu")(main_input)
 
         # if there are additional CNN layers
-        for _ in range(self.cnn_layers - 1):
+        for i in range(self.n_cnn_layers - 1):
             x = BatchNormalization()(x)
-            x = Conv1D(filters=self.filter_depth,
-                       kernel_size=self.kernel_size,
+            x = Conv1D(filters=self.filter_depths[i + 1],
+                       kernel_size=self.kernel_sizes[i + 1],
                        padding="same",
                        activation="relu")(x)
 
         if self.pool_size > 1:
-            x = Reshape((-1, self.pool_size * self.filter_depth))(x)
+            x = Reshape((-1, self.pool_size * self.filter_depths[-1]))(x)
             # x = MaxPooling1D(pool_size=self.pool_size, padding='same')(x)
 
         if self.layer_normalization:
@@ -116,11 +117,11 @@ class DanQModel(HelixerModel):
         if self.dropout1 > 0.0:
             x = Dropout(self.dropout1)(x)
 
-        x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
-        for _ in range(self.lstm_layers - 1):
+        x = Bidirectional(LSTM(self.lstm_units[0], return_sequences=True))(x)
+        for i in range(self.n_lstm_layers - 1):
             if self.layer_normalization:
                 x = LayerNormalization()(x)
-            x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
+            x = Bidirectional(LSTM(self.lstm_units[i + 1], return_sequences=True))(x)
 
         # do not use recurrent dropout, but dropout on the output of the LSTM stack
         if self.dropout2 > 0.0:
