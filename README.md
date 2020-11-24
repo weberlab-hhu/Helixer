@@ -88,30 +88,13 @@ We will train our model with the first two and then predict on the third.
 # generating the training and validation dataset
 # the genome names are a bit different due to the naming used in Phytosome
 python3 export.py --db-path-in example/three_algae.sqlite3 \
-  --genomes Olucimarinus,MspRCC299 --out-dir example/unfiltered_train
+  --genomes Olucimarinus,MspRCC299 --out-dir example/train
 ```
 
 ```shell script
 # generating the test dataset
 python3 export.py --db-path-in example/three_algae.sqlite3 --genomes MpusillaCCMP1545 \
-  --out-dir example/unfiltered_test --only-test-set 
-```
-
-For some efficiency improvements (and consistency with currently reported results)
-you can filter the data so the .h5 files contain only that which you will actually use.
-
-```shell script
-mkdir example/train
-mkdir example/test
-# make filtered copy
-python3 scripts/filter_fully_erroneous.py -d example/unfiltered_train/training_data.h5 \
-    -o example/train/training_data.h5
-python3 scripts/filter_fully_erroneous.py -d example/unfiltered_train/validation_data.h5 \
-    -o example/train/validation_data.h5
-python3 scripts/filter_fully_erroneous.py -d example/unfiltered_test/test_data.h5 \
-  -o example/test/test_data.h5
-# clean up originals
-rm -r example/unfiltered_*
+  --out-dir example/test --only-test-set 
 ```
 
 We should now have the following files in `example/`. 
