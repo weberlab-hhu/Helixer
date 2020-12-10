@@ -23,7 +23,7 @@ from tensorflow.keras.callbacks import Callback
 from tensorflow.keras import optimizers
 from tensorflow.keras import backend as K
 from tensorflow.keras.models import load_model
-from tensorflow.keras.utils import multi_gpu_model, Sequence
+from tensorflow.keras.utils import Sequence
 
 from helixer.prediction.ConfusionMatrix import ConfusionMatrix
 
@@ -48,7 +48,11 @@ class ConfusionMatrixTrain(Callback):
         self.best_val_genic_f1 = 0.0
         self.epochs_without_improvement = 0
 
+    def on_epoch_begin(self, epoch, logs=None):
+        self.epoch_start = time.time()
+
     def on_epoch_end(self, epoch, logs=None):
+        print(f'training took {(time.time() - self.epoch_start) / 60:.2f}m')
         val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, self.model)
         if self.canary_generator:
             print('canary cm:')
@@ -200,8 +204,8 @@ class HelixerSequence(Sequence):
 
 class HelixerModel(ABC):
     def __init__(self):
-        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+        # tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+        # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('-d', '--data-dir', type=str, default='')
@@ -249,6 +253,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--trace', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
         self.parser.add_argument('--debug', action='store_true')
+        self.parser.add_argument('--profile', action='store_true')
 
     def parse_args(self):
         args = vars(self.parser.parse_args())
@@ -289,6 +294,13 @@ class HelixerModel(ABC):
                                           canary_gen, report_to_nni=self.nni)]
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
+
+        if self.profile:
+            logs = "logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            tboard_callback = tf.keras.callbacks.TensorBoard(log_dir = logs,
+                                                             histogram_freq = 1,
+                                                             profile_batch = '500,520')
+            callbacks.append(tboard_callback)
         return callbacks
 
     def set_resources(self):
@@ -599,7 +611,10 @@ class HelixerModel(ABC):
                 self._trace(model, self.gen_training_data())
                 exit()
             if self.gpus >= 2:
-                model = multi_gpu_model(model, gpus=self.gpus)
+                strategy = tf.distribute.MirroredStrategy()
+                print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
+
+                # model = multi_gpu_model(model, gpus=self.gpus)
             self._print_model_info(model)
 
             self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
@@ -611,7 +626,7 @@ class HelixerModel(ABC):
                                 workers=self.workers,
                                 # validation_data=self.gen_validation_data(),
                                 callbacks=self.generate_callbacks(),
-                                verbose=True)
+                                verbose=0)
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
