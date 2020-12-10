@@ -254,6 +254,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-v', '--verbose', action='store_true')
         self.parser.add_argument('--debug', action='store_true')
         self.parser.add_argument('--profile', action='store_true')
+        self.parser.add_argument('--batch-output', action='store_true')
 
     def parse_args(self):
         args = vars(self.parser.parse_args())
@@ -296,10 +297,12 @@ class HelixerModel(ABC):
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
 
         if self.profile:
+            # may have to do this:
+            # https://github.com/tensorflow/tensorflow/issues/35860#issuecomment-585436324
             logs = "logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-            tboard_callback = tf.keras.callbacks.TensorBoard(log_dir = logs,
-                                                             histogram_freq = 1,
-                                                             profile_batch = '500,520')
+            tboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logs,
+                                                             histogram_freq=1,
+                                                             profile_batch='10,20')
             callbacks.append(tboard_callback)
         return callbacks
 
@@ -626,7 +629,7 @@ class HelixerModel(ABC):
                                 workers=self.workers,
                                 # validation_data=self.gen_validation_data(),
                                 callbacks=self.generate_callbacks(),
-                                verbose=0)
+                                verbose=self.batch_output)
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
