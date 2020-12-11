@@ -254,7 +254,8 @@ class HelixerModel(ABC):
         self.parser.add_argument('-v', '--verbose', action='store_true')
         self.parser.add_argument('--debug', action='store_true')
         self.parser.add_argument('--profile', action='store_true')
-        self.parser.add_argument('--batch-output', action='store_true')
+        self.parser.add_argument('--progbar', action='store_true')
+        self.parser.add_argument('--tf-errors', action='store_true')
 
     def parse_args(self):
         args = vars(self.parser.parse_args())
@@ -605,31 +606,32 @@ class HelixerModel(ABC):
         self.set_resources()
         self.open_data_files()
         # we either train or predict
+        if self.gpus >= 2:
+            strategy = tf.distribute.MirroredStrategy()
+            print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
+        else:  # use default strategy
+            strategy = tf.distribute.get_strategy()
         if not self.testing:
-            if self.resume_training:
-                model = self._load_helixer_model()
-            else:
-                model = self.model()
-            if self.trace:
-                self._trace(model, self.gen_training_data())
-                exit()
-            if self.gpus >= 2:
-                strategy = tf.distribute.MirroredStrategy()
-                print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
+            with strategy.scope():
+                if self.resume_training:
+                    model = self._load_helixer_model()
+                else:
+                    model = self.model()
+                if self.trace:
+                    self._trace(model, self.gen_training_data())
+                    exit()
+                self._print_model_info(model)
 
-                # model = multi_gpu_model(model, gpus=self.gpus)
-            self._print_model_info(model)
+                self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
+                self.compile_model(model)
 
-            self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
-            self.compile_model(model)
-
-            model.fit_generator(generator=self.gen_training_data(),
-                                epochs=self.epochs,
-                                # workers=0,  # run in main thread
-                                workers=self.workers,
-                                # validation_data=self.gen_validation_data(),
-                                callbacks=self.generate_callbacks(),
-                                verbose=self.batch_output)
+            model.fit(self.gen_training_data(),
+                      epochs=self.epochs,
+                      # workers=0,  # run in main thread
+                      workers=self.workers,
+                      # validation_data=self.gen_validation_data(),
+                      callbacks=self.generate_callbacks(),
+                      verbose=self.progbar)
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
@@ -641,7 +643,8 @@ class HelixerModel(ABC):
                 assert (self.batch_size / (self.shape_test[1] / self.overlap_offset)).is_integer()
                 assert ((self.shape_test[1] - self.core_length) / 2 / self.overlap_offset).is_integer()
 
-            model = self._load_helixer_model()
+            with strategy.scope():
+                model = self._load_helixer_model()
             self._print_model_info(model)
 
             if self.eval:
