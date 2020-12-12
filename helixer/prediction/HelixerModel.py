@@ -67,11 +67,10 @@ class ConfusionMatrixTrain(Callback):
             self.epochs_without_improvement = 0
         else:
             self.epochs_without_improvement += 1
-            # hard-coded patience of 2 for now
-            if self.epochs_without_improvement > 1:
+            if self.epochs_without_improvement >= self.model.patience:
                 self.model.stop_training = True
-        # hard-coded check of genic f1 of 0.5 at epoch 10
-        if epoch == 10 and val_genic_f1 < 0.5:
+        # hard-coded check of genic f1 of 0.6 at epoch 5
+        if epoch == 5 and val_genic_f1 < 0.6:
             self.model.stop_training = True
 
     def on_train_end(self, logs=None):
@@ -214,6 +213,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
         self.parser.add_argument('-b', '--batch-size', type=int, default=8)
         self.parser.add_argument('--loss', type=str, default='')
+        self.parser.add_argument('--patience', type=int, default=3)
         self.parser.add_argument('--clip-norm', type=float, default=1.0)
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
         self.parser.add_argument('--class-weights', type=str, default='None')
