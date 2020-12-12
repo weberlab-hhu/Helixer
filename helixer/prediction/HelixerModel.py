@@ -40,9 +40,11 @@ class SaveEveryEpoch(Callback):
 
 
 class ConfusionMatrixTrain(Callback):
-    def __init__(self, save_model_path, val_generator, canary_generator=None, report_to_nni=False):
+    def __init__(self, save_model_path, val_generator, patience, canary_generator=None,
+                 report_to_nni=False):
         self.save_model_path = save_model_path
         self.val_generator = val_generator
+        self.patience = patience
         self.canary_generator = canary_generator
         self.report_to_nni = report_to_nni
         self.best_val_genic_f1 = 0.0
@@ -67,7 +69,7 @@ class ConfusionMatrixTrain(Callback):
             self.epochs_without_improvement = 0
         else:
             self.epochs_without_improvement += 1
-            if self.epochs_without_improvement >= self.model.patience:
+            if self.epochs_without_improvement >= self.patience:
                 self.model.stop_training = True
         # hard-coded check of genic f1 of 0.6 at epoch 5
         if epoch == 5 and val_genic_f1 < 0.6:
@@ -293,7 +295,7 @@ class HelixerModel(ABC):
     def generate_callbacks(self):
         canary_gen = self.gen_canary_data() if self.canary_dataset else None
         callbacks = [ConfusionMatrixTrain(self.save_model_path, self.gen_validation_data(),
-                                          canary_gen, report_to_nni=self.nni)]
+                                          self.patience, canary_gen, report_to_nni=self.nni)]
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
 
