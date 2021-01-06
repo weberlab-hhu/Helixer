@@ -262,3 +262,7 @@ python3 helixer/prediction/LSTMModel.py --load-model-path example/plants_a_e10.h
 The same idea can be used for predictions and visualization. To achieve top performance
 for *predictions* you should also consider adding the parameter `--overlap` 
 and setting `--batch-size` higher (depending on GPU memory).
+
+#### Citation
+
+Felix Stiehler, Marvin Steinborn, Stephan Scholz, Daniela Dey, Andreas P M Weber, Alisandra K Denton, Helixer: Cross-species gene annotation of large eukaryotic genomes using deep learning, Bioinformatics, , btaa1044, https://doi.org/10.1093/bioinformatics/btaa1044
