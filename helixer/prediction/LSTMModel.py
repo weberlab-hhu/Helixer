@@ -13,6 +13,7 @@ from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, Dropout
 
 from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 
+
 class LSTMSequence(HelixerSequence):
     def __init__(self, model, h5_file, mode, shuffle):
         super().__init__(model, h5_file, mode, shuffle)
@@ -27,18 +28,8 @@ class LSTMSequence(HelixerSequence):
         assert pool_size > 1, 'pooling size of <= 1 oh oh..'
         assert y.shape[1] % pool_size == 0, 'pooling size has to evenly divide seq len'
 
-        X = X.reshape((
-            X.shape[0],
-            X.shape[1] // pool_size,
-            -1
-        ))
-        # make labels 2d so we can use the standard softmax / loss functions
-        y = y.reshape((
-            y.shape[0],
-            y.shape[1] // pool_size,
-            pool_size,
-            y.shape[-1],
-        ))
+        X = self._mk_timestep_pools(X)
+        y = self._mk_timestep_pools_class_last(y)
 
         # mark any multi-base timestep as error if any base has an error
         sw = sw.reshape((sw.shape[0], -1, pool_size))
@@ -78,12 +69,7 @@ class LSTMSequence(HelixerSequence):
                 sw = np.multiply(gene_weights, sw)
 
             if self.transition_weights is not None:
-                transitions = transitions.reshape((
-                    transitions.shape[0],
-                    transitions.shape[1] // pool_size,
-                    pool_size,
-                    transitions.shape[-1],
-                ))
+                transitions = self._mk_timestep_pools_class_last(transitions)
                 # more reshaping and summing  up transition weights for multiplying with sample weights
                 sw_t = self.compress_tw(transitions)
                 sw = np.multiply(sw_t, sw)
@@ -104,43 +90,6 @@ class LSTMSequence(HelixerSequence):
                 sw *= np.expand_dims(error_weights, axis=1)
 
         return X, y, sw
-
-    def compress_tw(self, transitions):
-        return self._squish_tw_to_sw(transitions, self.transition_weights, self.stretch_transition_weights)
-
-    @staticmethod
-    def _squish_tw_to_sw(transitions, tw, stretch):
-        sw_t = [np.any((transitions[:, :, :, col] == 1), axis=2) for col in range(6)]
-        sw_t = np.stack(sw_t, axis=2).astype(np.int8)
-        sw_t = np.multiply(sw_t, tw)
-
-        sw_t = np.sum(sw_t, axis=2)
-        where_are_ones = np.where(sw_t == 0)
-        sw_t[where_are_ones[0], where_are_ones[1]] = 1
-        if stretch != 0:
-            sw_t = LSTMSequence._apply_stretch(sw_t, stretch)
-        return sw_t
-
-    @staticmethod
-    def _apply_stretch(reshaped_sw_t, stretch):
-        """modifies sample weight shaped transitions so they are a peak instead of a single point"""
-        reshaped_sw_t = np.array(reshaped_sw_t)
-        dilated_rf = np.ones(np.shape(reshaped_sw_t))
-
-        where = np.where(reshaped_sw_t > 1)
-        i = np.array(where[0])  # i unchanged
-        j = np.array(where[1])  # j +/- step
-
-        # find dividers depending on the size of the dilated rf
-        dividers = []
-        for distance in range(1, stretch + 1):
-            dividers.append(2**distance)
-
-        for z in range(stretch, 0, -1):
-            dilated_rf[i, np.maximum(np.subtract(j, z), 0)] = np.maximum(reshaped_sw_t[i, j]/dividers[z-1], 1)
-            dilated_rf[i, np.minimum(np.add(j, z), len(dilated_rf[0])-1)] = np.maximum(reshaped_sw_t[i, j]/dividers[z-1], 1)
-        dilated_rf[i, j] = np.maximum(reshaped_sw_t[i, j], 1)
-        return dilated_rf
 
 
 class LSTMModel(HelixerModel):
