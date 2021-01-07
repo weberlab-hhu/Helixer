@@ -88,16 +88,12 @@ class LSTMSequence(HelixerSequence):
                 sw_t = self.compress_tw(transitions)
                 sw = np.multiply(sw_t, sw)
 
-            if self.coverage:
+            if self.coverage_weights:
                 coverage_scores = coverage_scores.reshape((coverage_scores.shape[0], -1, pool_size))
-                zero_positions = np.where(coverage_scores == 0)
-                # scale coverage scores [0,1] by adding small numbers, default = 0.1
-                # fairly good positions don't lose importance
-                coverage_scores = np.add(coverage_scores, self.coverage_scaling)
-                coverage_scores[zero_positions[0], zero_positions[1], zero_positions[2]] = 0
-                coverage_scores = np.sum(coverage_scores, axis=2)
-                # average scores according to pool_size
-                coverage_scores = np.divide(coverage_scores, pool_size).astype(np.float32)
+                # maybe offset coverage scores [0,1] by small number (bc RNAseq has issues too), default 0.0
+                if self.coverage_offset > 0.:
+                    coverage_scores = np.add(coverage_scores, self.coverage_offset)
+                coverage_scores = np.mean(coverage_scores, axis=2)
                 sw = np.multiply(coverage_scores, sw)
 
             if self.error_weights:
