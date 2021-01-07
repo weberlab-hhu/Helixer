@@ -182,7 +182,9 @@ class HelixerSequence(Sequence):
         # [1] = data's chunk_size     --> divide by pool size
         # [2:] = collapsable          --> -1, remaining, AKA np.prod(shape[2:]) * pool_size
         pool_size = self.model.pool_size
-        shape = matrix.shape
+        if matrix is None:
+            return None
+        shape = list(matrix.shape)
         shape[1] = shape[1] // pool_size
         shape[-1] = -1
         matrix = matrix.reshape((
@@ -192,6 +194,8 @@ class HelixerSequence(Sequence):
 
     def _mk_timestep_pools_class_last(self, matrix):
         """reshape matrix to have multiple bp per timestep, w/ classes as last dim for softmax"""
+        if matrix is None:
+            return None
         pool_size = self.model.pool_size
         assert len(matrix.shape) == 3
         # assumes input shape
