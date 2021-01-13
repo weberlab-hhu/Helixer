@@ -161,7 +161,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('--eval', action='store_true')
         # resources
         self.parser.add_argument('--float-precision', type=str, default='float32')
-        self.parser.add_argument('--gpus', type=int, default=1)
         self.parser.add_argument('--cpus', type=int, default=8)
         self.parser.add_argument('--gpu-id', type=int, default=-1)
         self.parser.add_argument('--workers', type=int, default=1,
@@ -430,21 +429,15 @@ class HelixerModel(ABC):
         self.set_resources()
         self.open_data_files()
         # we either train or predict
-        if self.gpus >= 2:
-            strategy = tf.distribute.MirroredStrategy()
-            print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
-        else:  # use default strategy
-            strategy = tf.distribute.get_strategy()
         if not self.testing:
-            with strategy.scope():
-                if self.resume_training:
-                    model = self._load_helixer_model()
-                else:
-                    model = self.model()
-                self._print_model_info(model)
+            if self.resume_training:
+                model = self._load_helixer_model()
+            else:
+                model = self.model()
+            self._print_model_info(model)
 
-                self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
-                self.compile_model(model)
+            self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
+            self.compile_model(model)
 
             model.fit(self.gen_training_data(),
                       epochs=self.epochs,
@@ -456,8 +449,7 @@ class HelixerModel(ABC):
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
 
-            with strategy.scope():
-                model = self._load_helixer_model()
+            model = self._load_helixer_model()
             self._print_model_info(model)
 
             if self.eval:
