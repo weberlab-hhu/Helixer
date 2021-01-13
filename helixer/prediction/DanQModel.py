@@ -15,7 +15,7 @@ class DanQSequence(HelixerSequence):
             assert not mode == 'test'  # only use class weights during training and validation
 
     def __getitem__(self, idx):
-        X, y, sw, _, transitions, _, _ = self._get_batch_data(idx)
+        X, y, sw, _, transitions, _ = self._get_batch_data(idx)
         pool_size = self.model.pool_size
 
         if pool_size > 1:

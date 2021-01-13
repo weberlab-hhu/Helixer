@@ -40,12 +40,10 @@ class SaveEveryEpoch(Callback):
 
 
 class ConfusionMatrixTrain(Callback):
-    def __init__(self, save_model_path, val_generator, patience, canary_generator=None,
-                 report_to_nni=False):
+    def __init__(self, save_model_path, val_generator, patience, report_to_nni=False):
         self.save_model_path = save_model_path
         self.val_generator = val_generator
         self.patience = patience
-        self.canary_generator = canary_generator
         self.report_to_nni = report_to_nni
         self.best_val_genic_f1 = 0.0
         self.epochs_without_improvement = 0
@@ -56,9 +54,6 @@ class ConfusionMatrixTrain(Callback):
     def on_epoch_end(self, epoch, logs=None):
         print(f'training took {(time.time() - self.epoch_start) / 60:.2f}m')
         val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, self.model)
-        if self.canary_generator:
-            print('canary cm:')
-            _ = HelixerModel.run_confusion_matrix(self.canary_generator, self.model)
         if self.report_to_nni:
             nni.report_intermediate_result(val_genic_f1)
         if val_genic_f1 > self.best_val_genic_f1:
@@ -89,8 +84,7 @@ class HelixerSequence(Sequence):
         self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
                                  'stretch_transition_weights', 'coverage', 'coverage_scaling',
                                  'overlap', 'overlap_offset', 'core_length', 'min_seqs_for_overlapping',
-                                 'debug', 'exclude_errors', 'error_weights', 'gene_lengths',
-                                 'gene_lengths_average', 'gene_lengths_exponent', 'gene_lengths_cutoff'])
+                                 'debug', 'exclude_errors', 'error_weights'])
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
@@ -100,8 +94,6 @@ class HelixerSequence(Sequence):
                 self.transitions_dset = h5_file['/data/transitions']
             if self.coverage:
                 self.coverage_dset = h5_file['/scores/by_bp']
-            if self.gene_lengths:
-                self.gene_lengths_dset = h5_file['/data/gene_lengths']
         self.chunk_size = self.y_dset.shape[1]
 
         # set array of usable indexes, always exclude all erroneous sequences during training
@@ -153,20 +145,14 @@ class HelixerSequence(Sequence):
         # calculate base level error rate for each sequence
         error_rates = (np.count_nonzero(sw == 0, axis=1) / y.shape[1]).astype(np.float32)
 
-        if self.mode == 'train' and self.transition_weights is not None:
-            transitions = self.transitions_dset[usable_idx_batch]
-        else:
-            transitions = None
-        if self. mode == 'train' and self.coverage:
-            coverage_scores = self.coverage_dset[usable_idx_batch]
-        else:
-            coverage_scores = None
-        if self.mode == 'train' and self.gene_lengths:
-            gene_lengths = self.gene_lengths_dset[usable_idx_batch]
-        else:
-            gene_lengths = None
+        transitions, coverage_scores = None, None
+        if self.mode == 'train':
+            if self.transition_weights is not None:
+                transitions = self.transitions_dset[usable_idx_batch]
+            if self.coverage:
+                coverage_scores = self.coverage_dset[usable_idx_batch]
 
-        return X, y, sw, error_rates, gene_lengths, transitions, coverage_scores
+        return X, y, sw, error_rates, transitions, coverage_scores
 
     def _get_seqid_borders(self, idx):
         seqids = self.seqids_dset[self._usable_idx_batch(idx)]
@@ -223,7 +209,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
         self.parser.add_argument('--coverage', action='store_true')
         self.parser.add_argument('--coverage-scaling', type=float, default=0.1)
-        self.parser.add_argument('--canary-dataset', type=str, default='')
         self.parser.add_argument('--resume-training', action='store_true')
         self.parser.add_argument('--exclude-errors', action='store_true')
         self.parser.add_argument('--error-weights', action='store_true')
@@ -252,7 +237,6 @@ class HelixerModel(ABC):
         # misc flags
         self.parser.add_argument('--save-every-epoch', action='store_true')
         self.parser.add_argument('--nni', action='store_true')
-        self.parser.add_argument('--trace', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
         self.parser.add_argument('--debug', action='store_true')
         self.parser.add_argument('--profile', action='store_true')
@@ -293,9 +277,8 @@ class HelixerModel(ABC):
             pprint(args)
 
     def generate_callbacks(self):
-        canary_gen = self.gen_canary_data() if self.canary_dataset else None
         callbacks = [ConfusionMatrixTrain(self.save_model_path, self.gen_validation_data(),
-                                          self.patience, canary_gen, report_to_nni=self.nni)]
+                                          self.patience, report_to_nni=self.nni)]
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
 
@@ -340,13 +323,6 @@ class HelixerModel(ABC):
         return SequenceCls(model=self,
                            h5_file=self.h5_test,
                            mode='test',
-                           shuffle=False)
-
-    def gen_canary_data(self):
-        SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self,
-                           h5_file=self.h5_canary,
-                           mode='val',
                            shuffle=False)
 
     @staticmethod
@@ -416,11 +392,6 @@ class HelixerModel(ABC):
             n_test_correct_seqs = get_n_correct_seqs(self.h5_test)
             n_test_seqs_with_intergenic = self.shape_test[0]
             n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_test)
-
-        if self.canary_dataset:
-            self.h5_canary = h5py.File(self.canary_dataset, 'r')
-            print('\nCanary data config: ')
-            print(dict(self.h5_canary.attrs))
 
         if self.verbose:
             print('\nData config: ')
@@ -591,19 +562,6 @@ class HelixerModel(ABC):
             print('Total params: {:,}'.format(model.count_params()))
         os.chdir(pwd)  # return to previous directory
 
-    def _trace(self, model, generator):
-        run_options = tf.compat.v1.RunOptions(trace_level=tf.compat.v1.RunOptions.FULL_TRACE)
-        run_metadata = tf.compat.v1.RunMetadata()
-        fn = K.function(model.inputs, model.outputs, options=run_options, run_metadata=run_metadata)
-        for i in range(4):
-            x = K.variable(generator[i][0], dtype='float32')
-            fn([x])
-            tl = timeline.Timeline(run_metadata.step_stats)
-            ctf = tl.generate_chrome_trace_format()
-            with open(f'timeline_{i}.json', 'w') as f:
-                f.write(ctf)
-                print(f'trace {i} printed')
-
     def run(self):
         self.set_resources()
         self.open_data_files()
@@ -619,9 +577,6 @@ class HelixerModel(ABC):
                     model = self._load_helixer_model()
                 else:
                     model = self.model()
-                if self.trace:
-                    self._trace(model, self.gen_training_data())
-                    exit()
                 self._print_model_info(model)
 
                 self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)

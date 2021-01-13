@@ -22,7 +22,7 @@ class LSTMSequence(HelixerSequence):
             assert not mode == 'test'
 
     def __getitem__(self, idx):
-        X, y, sw, error_rates, gene_lengths, transitions, coverage_scores = self._get_batch_data(idx)
+        X, y, sw, error_rates, transitions, coverage_scores = self._get_batch_data(idx)
         pool_size = self.model.pool_size
         assert pool_size > 1, 'pooling size of <= 1 oh oh..'
         assert y.shape[1] % pool_size == 0, 'pooling size has to evenly divide seq len'
@@ -60,22 +60,6 @@ class LSTMSequence(HelixerSequence):
                 cw = np.sum(cw_arrays, axis=2)
                 # multiply with previous sample weights
                 sw = np.multiply(sw, cw)
-
-            if self.gene_lengths:
-                gene_lengths = gene_lengths.reshape((gene_lengths.shape[0], -1, pool_size))
-                gene_lengths = np.max(gene_lengths, axis=-1)  # take the maximum per pool_size (block)
-                # scale gene_length to a sample weight that is 1 for the average
-                gene_idx = np.where(gene_lengths)
-                ig_idx = np.where(gene_lengths == 0)
-                gene_weights = gene_lengths.astype(np.float32)
-                scaled_gene_lengths = self.gene_lengths_average / gene_lengths[gene_idx]
-                # the exponent controls the steepness of the curve
-                scaled_gene_lengths = np.power(scaled_gene_lengths, self.gene_lengths_exponent)
-                scaled_gene_lengths = np.clip(scaled_gene_lengths, 0.1, self.gene_lengths_cutoff)
-                gene_weights[gene_idx] = scaled_gene_lengths.astype(np.float32)
-                # important to set all intergenic weight to 1
-                gene_weights[ig_idx] = 1.0
-                sw = np.multiply(gene_weights, sw)
 
             if self.transition_weights is not None:
                 transitions = transitions.reshape((
