@@ -116,9 +116,9 @@ class HelixerSequence(Sequence):
 
     def _get_batch_data(self, idx):
         usable_idx_batch = self._usable_idx_batch(idx)
-        X = self.x_dset[usable_idx_slice]
-        y = self.y_dset[usable_idx_slice]
-        sw = self.sw_dset[usable_idx_slice]
+        X = self.x_dset[usable_idx_batch]
+        y = self.y_dset[usable_idx_batch]
+        sw = self.sw_dset[usable_idx_batch]
 
         # calculate base level error rate for each sequence
         error_rates = (np.count_nonzero(sw == 0, axis=1) / y.shape[1]).astype(np.float32)
@@ -126,9 +126,9 @@ class HelixerSequence(Sequence):
         transitions, coverage_scores = None, None
         if self.mode == 'train':
             if self.transition_weights is not None:
-                transitions = self.transitions_dset[usable_idx_slice]
+                transitions = self.transitions_dset[usable_idx_batch]
             if self.coverage:
-                coverage_scores = self.coverage_dset[usable_idx_slice]
+                coverage_scores = self.coverage_dset[usable_idx_batch]
 
         return X, y, sw, error_rates, transitions, coverage_scores
 
