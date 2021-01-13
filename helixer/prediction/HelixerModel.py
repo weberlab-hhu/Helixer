@@ -74,6 +74,15 @@ class ConfusionMatrixTrain(Callback):
             nni.report_final_result(self.best_val_genic_f1)
 
 
+class ReshuffleCallback(Callback):
+    def __init__(self, train_generator):
+        self.train_generator = train_generator
+
+    def on_epoch_end(self, epoch, logs=None):
+        if train_generator.shuffle:
+            train_generator.shuffle_idx()
+
+
 class HelixerSequence(Sequence):
     def __init__(self, model, h5_file, mode, shuffle):
         assert mode in ['train', 'val', 'test']
@@ -101,10 +110,11 @@ class HelixerSequence(Sequence):
 
         self.usable_idx = np.arange(self.n_seqs).astype(np.uint32)
         if self.shuffle:
-            self._shuffle_idx()
+            self.shuffle_idx()
 
-    def _shuffle_idx(self):
+    def shuffle_idx(self):
         np.random.shuffle(self.usable_idx)
+        print(f'Reshuffled {self.mode} indices')
 
     def _cp_into_namespace(self, names):
         """Moves class properties from self.model into this class for brevity"""
@@ -220,9 +230,10 @@ class HelixerModel(ABC):
             print()
             pprint(args)
 
-    def generate_callbacks(self):
+    def generate_callbacks(self, train_generator):
         callbacks = [ConfusionMatrixTrain(self.save_model_path, self.gen_validation_data(),
                                           self.patience, report_to_nni=self.nni)]
+        callbacks.append(ReshuffleCallback(train_generator))
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
         return callbacks
@@ -443,10 +454,11 @@ class HelixerModel(ABC):
             self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
             self.compile_model(model)
 
-            model.fit(self.gen_training_data(),
+            train_generator = self.gen_training_data()
+            model.fit(train_generator,
                       epochs=self.epochs,
                       workers=self.workers,
-                      callbacks=self.generate_callbacks(),
+                      callbacks=self.generate_callbacks(train_generator),
                       verbose=self.progbar)
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
