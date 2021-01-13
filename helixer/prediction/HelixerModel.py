@@ -76,7 +76,7 @@ class ConfusionMatrixTrain(Callback):
 
 
 class HelixerSequence(Sequence):
-    def __init__(self, model, h5_file, mode):
+    def __init__(self, model, h5_file, mode, shuffle):
         assert mode in ['train', 'val', 'test']
         self.model = model
         self.h5_file = h5_file
@@ -95,19 +95,30 @@ class HelixerSequence(Sequence):
                 self.coverage_dset = h5_file['/scores/by_bp']
         self.n_seqs = self.y_dset.shape[0]
         self.chunk_size = self.y_dset.shape[1]
-        print(f'X shape: {self.x_dset.shape}')
+
+        print(f'\nX shape: {self.x_dset.shape}')
         print(f'y shape: {self.y_dset.shape}')
+
+        self.usable_idx = list(range(self.n_seqs))
+        if shuffle:
+            random.shuffle(self.usable_idx)
 
     def _cp_into_namespace(self, names):
         """Moves class properties from self.model into this class for brevity"""
         for name in names:
             self.__dict__[name] = self.model.__dict__[name]
 
+    def _usable_idx_batch(self, idx):
+        n_seqs = self.batch_size
+        usable_idx_slice = self.usable_idx[idx * n_seqs:(idx + 1) * n_seqs]
+        usable_idx_slice = sorted(list(usable_idx_slice))  # got to always provide a sorted list of idx
+        return usable_idx_slice
+
     def _get_batch_data(self, idx):
-        idx_slice = slice(idx * self.batch_size, (idx + 1) * self.batch_size)
-        X = self.x_dset[idx_slice]
-        y = self.y_dset[idx_slice]
-        sw = self.sw_dset[idx_slice]
+        usable_idx_batch = self._usable_idx_batch(idx)
+        X = self.x_dset[usable_idx_slice]
+        y = self.y_dset[usable_idx_slice]
+        sw = self.sw_dset[usable_idx_slice]
 
         # calculate base level error rate for each sequence
         error_rates = (np.count_nonzero(sw == 0, axis=1) / y.shape[1]).astype(np.float32)
@@ -115,9 +126,9 @@ class HelixerSequence(Sequence):
         transitions, coverage_scores = None, None
         if self.mode == 'train':
             if self.transition_weights is not None:
-                transitions = self.transitions_dset[idx_slice]
+                transitions = self.transitions_dset[usable_idx_slice]
             if self.coverage:
-                coverage_scores = self.coverage_dset[idx_slice]
+                coverage_scores = self.coverage_dset[usable_idx_slice]
 
         return X, y, sw, error_rates, transitions, coverage_scores
 
@@ -227,15 +238,15 @@ class HelixerModel(ABC):
 
     def gen_training_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_file=self.h5_train, mode='train')
+        return SequenceCls(model=self, h5_file=self.h5_train, mode='train', shuffle=True)
 
     def gen_validation_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_file=self.h5_val, mode='val')
+        return SequenceCls(model=self, h5_file=self.h5_val, mode='val', shuffle=False)
 
     def gen_test_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_file=self.h5_test, mode='test')
+        return SequenceCls(model=self, h5_file=self.h5_test, mode='test', shuffle=False)
 
     @staticmethod
     def run_confusion_matrix(generator, model):
@@ -432,7 +443,6 @@ class HelixerModel(ABC):
             model.fit(self.gen_training_data(),
                       epochs=self.epochs,
                       workers=self.workers,
-                      shuffle=True,
                       callbacks=self.generate_callbacks(),
                       verbose=self.progbar)
         else:

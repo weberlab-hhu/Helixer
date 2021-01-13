@@ -14,8 +14,8 @@ from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, Dropout
 from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 
 class LSTMSequence(HelixerSequence):
-    def __init__(self, model, h5_file, mode):
-        super().__init__(model, h5_file, mode)
+    def __init__(self, model, h5_file, mode, shuffle):
+        super().__init__(model, h5_file, mode, shuffle)
         if self.class_weights is not None:
             assert not mode == 'test'  # only use class weights during training and validation
         if self.error_weights:
