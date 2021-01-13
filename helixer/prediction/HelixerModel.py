@@ -170,7 +170,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('--nni', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
         self.parser.add_argument('--debug', action='store_true')
-        self.parser.add_argument('--profile', action='store_true')
         self.parser.add_argument('--progbar', action='store_true')
         self.parser.add_argument('--tf-errors', action='store_true')
 
@@ -212,15 +211,6 @@ class HelixerModel(ABC):
                                           self.patience, report_to_nni=self.nni)]
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
-
-        if self.profile:
-            # may have to do this:
-            # https://github.com/tensorflow/tensorflow/issues/35860#issuecomment-585436324
-            logs = "logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-            tboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logs,
-                                                             histogram_freq=1,
-                                                             profile_batch='10,20')
-            callbacks.append(tboard_callback)
         return callbacks
 
     def set_resources(self):
