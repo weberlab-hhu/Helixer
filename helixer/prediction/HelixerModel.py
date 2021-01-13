@@ -7,7 +7,6 @@ except ImportError:
     pass
 import time
 import h5py
-import random
 import argparse
 import datetime
 import pkg_resources
@@ -81,6 +80,7 @@ class HelixerSequence(Sequence):
         self.model = model
         self.h5_file = h5_file
         self.mode = mode
+        self.shuffle = shuffle
         self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
                                  'stretch_transition_weights', 'coverage', 'coverage_scaling',
                                  'debug', 'error_weights'])
@@ -99,9 +99,12 @@ class HelixerSequence(Sequence):
         print(f'\nX shape: {self.x_dset.shape}')
         print(f'y shape: {self.y_dset.shape}')
 
-        self.usable_idx = list(range(self.n_seqs))
-        if shuffle:
-            random.shuffle(self.usable_idx)
+        self.usable_idx = np.arange(self.n_seqs).astype(np.uint32)
+        if self.shuffle:
+            self._shuffle_idx()
+
+    def _shuffle_idx(self):
+        np.random.shuffle(self.usable_idx)
 
     def _cp_into_namespace(self, names):
         """Moves class properties from self.model into this class for brevity"""
@@ -145,8 +148,8 @@ class HelixerSequence(Sequence):
 
 class HelixerModel(ABC):
     def __init__(self):
-        # tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-        # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('-d', '--data-dir', type=str, default='')
