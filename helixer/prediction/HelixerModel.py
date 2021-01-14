@@ -103,15 +103,22 @@ class HelixerSequence(Sequence):
             if self.coverage:
                 self.coverage_dset = h5_file['/scores/by_bp']
         if self.load_data_in_mem:
+            print(f'\nStarting to load {self.mode} data into memory..')
+            start_time = time.time()
             self.x_dset, self.y_dset, self.sw_dset = self.x_dset[:], self.y_dset[:], self.sw_dset[:]
-            if hasattr(self, transitions_dset):
+            data_size = self.x_dset.nbytes + self.y_dset.nbytes + self.sw_dset.nbytes
+            if hasattr(self, 'transitions_dset'):
                 self.transitions_dset = self.transitions_dset[:]
-            if hasattr(self, coverage_dset):
+                data_size += self.transitions_dset.nbytes
+            if hasattr(self, 'coverage_dset'):
                 self.coverage_dset = self.coverage_dset[:]
+                data_size += self.coverage_dset.nbytes
+            print(f'Data loading into memory took {time.time() - start_time:.2f} sec')
+            print(f'Data size is at least {data_size / 2 ** 30:.2f} GB')
 
         self.n_seqs = self.y_dset.shape[0]
         self.chunk_size = self.y_dset.shape[1]
-        print(f'\nX shape: {self.x_dset.shape}')
+        print(f'X shape: {self.x_dset.shape}')
         print(f'y shape: {self.y_dset.shape}')
 
         self.sample_idx = np.arange(self.n_seqs).astype(np.uint32)
@@ -121,14 +128,15 @@ class HelixerSequence(Sequence):
         print(f'Reshuffled {self.mode} indices: {self.sample_idx[:10]}')
 
         if self.load_data_in_mem:
+            start_time = time.time()
             self.x_dset = self.x_dset[self.sample_idx]
             self.y_dset = self.y_dset[self.sample_idx]
             self.sw_dset = self.sw_dset[self.sample_idx]
-            if hasattr(self, transitions_dset):
+            if hasattr(self, 'transitions_dset'):
                 self.transitions_dset = self.transitions_dset[self.sample_idx]
-            if hasattr(self, coverage_dset):
+            if hasattr(self, 'coverage_dset'):
                 self.coverage_dset = self.coverage_dset[self.sample_idx]
-            print(f'Reshuffled {self.mode} data in memory')
+            print(f'Reshuffled {self.mode} data in memory in {time.time() - start_time:.2f} sec')
 
     def _cp_into_namespace(self, names):
         """Moves class properties from self.model into this class for brevity"""
