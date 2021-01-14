@@ -74,13 +74,13 @@ class ConfusionMatrixTrain(Callback):
             nni.report_final_result(self.best_val_genic_f1)
 
 
-class ReshuffleCallback(Callback):
+class PreshuffleCallback(Callback):
     def __init__(self, train_generator):
         self.train_generator = train_generator
 
-    def on_epoch_end(self, epoch, logs=None):
-        if train_generator.shuffle:
-            train_generator.shuffle_idx()
+    def on_epoch_begin(self, epoch, logs=None):
+        if self.train_generator.shuffle:
+            self.train_generator.shuffle_idx()
 
 
 class HelixerSequence(Sequence):
@@ -108,30 +108,32 @@ class HelixerSequence(Sequence):
         print(f'\nX shape: {self.x_dset.shape}')
         print(f'y shape: {self.y_dset.shape}')
 
-        self.usable_idx = np.arange(self.n_seqs).astype(np.uint32)
-        if self.shuffle:
-            self.shuffle_idx()
+        self.sample_idx = np.arange(self.n_seqs).astype(np.uint32)
 
     def shuffle_idx(self):
-        np.random.shuffle(self.usable_idx)
-        print(f'Reshuffled {self.mode} indices')
+        np.random.shuffle(self.sample_idx)
+        print(f'Reshuffled {self.mode} indices: {self.sample_idx[:10]}')
 
     def _cp_into_namespace(self, names):
         """Moves class properties from self.model into this class for brevity"""
         for name in names:
             self.__dict__[name] = self.model.__dict__[name]
 
-    def _usable_idx_batch(self, idx):
+    def _get_batch_idx(self, idx):
         n_seqs = self.batch_size
-        usable_idx_slice = self.usable_idx[idx * n_seqs:(idx + 1) * n_seqs]
-        usable_idx_slice = sorted(list(usable_idx_slice))  # got to always provide a sorted list of idx
-        return usable_idx_slice
+        if self.shuffle:
+            idx_slice = self.sample_idx[idx * n_seqs:(idx + 1) * n_seqs]
+            idx_slice = sorted(list(idx_slice))  # got to always provide a sorted list of idx
+        else:
+            # if we don't shuffle, we can just access a slice of continuous indices
+            idx_slice = slice(idx * n_seqs, (idx + 1) * n_seqs)
+        return idx_slice
 
     def _get_batch_data(self, idx):
-        usable_idx_batch = self._usable_idx_batch(idx)
-        X = self.x_dset[usable_idx_batch]
-        y = self.y_dset[usable_idx_batch]
-        sw = self.sw_dset[usable_idx_batch]
+        idx_batch = self._get_batch_idx(idx)
+        X = self.x_dset[idx_batch]
+        y = self.y_dset[idx_batch]
+        sw = self.sw_dset[idx_batch]
 
         # calculate base level error rate for each sequence
         error_rates = (np.count_nonzero(sw == 0, axis=1) / y.shape[1]).astype(np.float32)
@@ -139,9 +141,9 @@ class HelixerSequence(Sequence):
         transitions, coverage_scores = None, None
         if self.mode == 'train':
             if self.transition_weights is not None:
-                transitions = self.transitions_dset[usable_idx_batch]
+                transitions = self.transitions_dset[idx_batch]
             if self.coverage:
-                coverage_scores = self.coverage_dset[usable_idx_batch]
+                coverage_scores = self.coverage_dset[idx_batch]
 
         return X, y, sw, error_rates, transitions, coverage_scores
 
@@ -158,9 +160,6 @@ class HelixerSequence(Sequence):
 
 class HelixerModel(ABC):
     def __init__(self):
-        tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('-d', '--data-dir', type=str, default='')
         self.parser.add_argument('-s', '--save-model-path', type=str, default='./best_model.h5')
@@ -233,7 +232,7 @@ class HelixerModel(ABC):
     def generate_callbacks(self, train_generator):
         callbacks = [ConfusionMatrixTrain(self.save_model_path, self.gen_validation_data(),
                                           self.patience, report_to_nni=self.nni)]
-        callbacks.append(ReshuffleCallback(train_generator))
+        callbacks.append(PreshuffleCallback(train_generator))
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
         return callbacks
