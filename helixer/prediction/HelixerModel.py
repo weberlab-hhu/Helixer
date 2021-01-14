@@ -93,6 +93,8 @@ class HelixerSequence(Sequence):
         self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
                                  'stretch_transition_weights', 'coverage', 'coverage_scaling',
                                  'debug', 'error_weights', 'load_data_in_mem'])
+        if self.mode == 'val':
+            self.batch_size *= 2  # use twice the batch size during validation for better runtime
 
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
