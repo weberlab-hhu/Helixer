@@ -92,19 +92,25 @@ class HelixerSequence(Sequence):
         self.shuffle = shuffle
         self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
                                  'stretch_transition_weights', 'coverage', 'coverage_scaling',
-                                 'debug', 'error_weights'])
+                                 'debug', 'error_weights', 'load_data_in_mem'])
+
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
-        self.seqids_dset = h5_file['/data/seqids']
         if self.mode == 'train':
             if self.transition_weights is not None:
                 self.transitions_dset = h5_file['/data/transitions']
             if self.coverage:
                 self.coverage_dset = h5_file['/scores/by_bp']
+        if self.load_data_in_mem:
+            self.x_dset, self.y_dset, self.sw_dset = self.x_dset[:], self.y_dset[:], self.sw_dset[:]
+            if hasattr(self, transitions_dset):
+                self.transitions_dset = self.transitions_dset[:]
+            if hasattr(self, coverage_dset):
+                self.coverage_dset = self.coverage_dset[:]
+
         self.n_seqs = self.y_dset.shape[0]
         self.chunk_size = self.y_dset.shape[1]
-
         print(f'\nX shape: {self.x_dset.shape}')
         print(f'y shape: {self.y_dset.shape}')
 
@@ -114,6 +120,16 @@ class HelixerSequence(Sequence):
         np.random.shuffle(self.sample_idx)
         print(f'Reshuffled {self.mode} indices: {self.sample_idx[:10]}')
 
+        if self.load_data_in_mem:
+            self.x_dset = self.x_dset[self.sample_idx]
+            self.y_dset = self.y_dset[self.sample_idx]
+            self.sw_dset = self.sw_dset[self.sample_idx]
+            if hasattr(self, transitions_dset):
+                self.transitions_dset = self.transitions_dset[self.sample_idx]
+            if hasattr(self, coverage_dset):
+                self.coverage_dset = self.coverage_dset[self.sample_idx]
+            print(f'Reshuffled {self.mode} data in memory')
+
     def _cp_into_namespace(self, names):
         """Moves class properties from self.model into this class for brevity"""
         for name in names:
@@ -121,11 +137,11 @@ class HelixerSequence(Sequence):
 
     def _get_batch_idx(self, idx):
         n_seqs = self.batch_size
-        if self.shuffle:
+        if self.shuffle and not self.load_data_in_mem:
             idx_slice = self.sample_idx[idx * n_seqs:(idx + 1) * n_seqs]
             idx_slice = sorted(list(idx_slice))  # got to always provide a sorted list of idx
         else:
-            # if we don't shuffle, we can just access a slice of continuous indices
+            # here, we can just access a slice of continuous indices
             idx_slice = slice(idx * n_seqs, (idx + 1) * n_seqs)
         return idx_slice
 
@@ -177,6 +193,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--coverage-scaling', type=float, default=0.1)
         self.parser.add_argument('--resume-training', action='store_true')
         self.parser.add_argument('--error-weights', action='store_true')
+        self.parser.add_argument('--load-data-in-mem', action='store_true')
         # testing
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
         self.parser.add_argument('-t', '--test-data', type=str, default='')
