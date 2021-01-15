@@ -4,13 +4,14 @@ import csv
 from collections import defaultdict
 from terminaltables import AsciiTable
 from sklearn.metrics import confusion_matrix
+from scipy.sparse import coo_matrix
 
 
 class ConfusionMatrix():
     def __init__(self, generator):
         np.set_printoptions(suppress=True)  # do not use scientific notation for the print out
         self.generator = generator
-        self.cm = np.zeros((4, 4))
+        self.cm = np.zeros((4, 4), dtype=np.uint64)
         self.col_names = {0: 'ig', 1: 'utr', 2: 'exon', 3: 'intron'}
 
     @staticmethod
@@ -34,7 +35,12 @@ class ConfusionMatrix():
         if y_pred.size > 0:
             y_pred = ConfusionMatrix._reshape_data(y_pred)
             y_true = ConfusionMatrix._reshape_data(y_true)
-            self.cm += confusion_matrix(y_true, y_pred, labels=range(4))
+            # taken from here, without the boiler plate:
+            # https://github.com/scikit-learn/scikit-learn/blob/
+            # 42aff4e2edd8e8887478f6ff1628f27de97be6a3/sklearn/metrics/_classification.py#L342
+            cm_batch = coo_matrix((np.ones(y_true.shape[0], dtype=np.int8), (y_true, y_pred)),
+                                   shape=(4, 4), dtype=np.uint32).toarray()
+            self.cm += cm_batch
 
     def count_and_calculate_one_batch(self, y_true, y_pred, sw):
         self._add_to_cm(y_true, y_pred, sw)

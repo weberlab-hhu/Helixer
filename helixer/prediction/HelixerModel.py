@@ -84,18 +84,16 @@ class PreshuffleCallback(Callback):
 
 
 class HelixerSequence(Sequence):
-    def __init__(self, model, h5_file, mode, shuffle):
+    def __init__(self, model, h5_file, mode, batch_size, shuffle):
         assert mode in ['train', 'val', 'test']
         self.model = model
         self.h5_file = h5_file
         self.mode = mode
         self.shuffle = shuffle
-        self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
+        self.batch_size = batch_size
+        self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights',
                                  'stretch_transition_weights', 'coverage', 'coverage_scaling',
                                  'debug', 'error_weights', 'load_data_in_mem'])
-        if self.mode == 'val':
-            self.batch_size *= 2  # use twice the batch size during validation for better runtime
-
         self.x_dset = h5_file['/data/X']
         self.y_dset = h5_file['/data/y']
         self.sw_dset = h5_file['/data/sample_weights']
@@ -174,7 +172,8 @@ class HelixerSequence(Sequence):
         return X, y, sw, error_rates, transitions, coverage_scores
 
     def __len__(self):
-        if self.debug:
+        # if self.debug:
+        if self.debug and self.mode == 'train':
             return 1
         else:
             return int(np.ceil(self.n_seqs / self.batch_size))
@@ -192,6 +191,7 @@ class HelixerModel(ABC):
         # training params
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
         self.parser.add_argument('-b', '--batch-size', type=int, default=8)
+        self.parser.add_argument('--val-test-batch-size', type=int, default=8)
         self.parser.add_argument('--loss', type=str, default='')
         self.parser.add_argument('--patience', type=int, default=3)
         self.parser.add_argument('--clip-norm', type=float, default=1.0)
@@ -278,15 +278,18 @@ class HelixerModel(ABC):
 
     def gen_training_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_file=self.h5_train, mode='train', shuffle=True)
+        return SequenceCls(model=self, h5_file=self.h5_train, mode='train', batch_size=self.batch_size,
+                           shuffle=True)
 
     def gen_validation_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_file=self.h5_val, mode='val', shuffle=False)
+        return SequenceCls(model=self, h5_file=self.h5_val, mode='val', batch_size=self.val_test_batch_size,
+                           shuffle=False)
 
     def gen_test_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_file=self.h5_test, mode='test', shuffle=False)
+        return SequenceCls(model=self, h5_file=self.h5_test, mode='test', batch_size=self.val_test_batch_size,
+                           shuffle=False)
 
     @staticmethod
     def run_confusion_matrix(generator, model):

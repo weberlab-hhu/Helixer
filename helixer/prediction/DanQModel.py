@@ -9,8 +9,8 @@ from HelixerModel import HelixerModel, HelixerSequence
 
 
 class DanQSequence(HelixerSequence):
-    def __init__(self, model, h5_file, mode, shuffle):
-        super().__init__(model, h5_file, mode, shuffle)
+    def __init__(self, model, h5_file, mode, batch_size, shuffle):
+        super().__init__(model, h5_file, mode, batch_size, shuffle)
         if self.class_weights is not None:
             assert not mode == 'test'  # only use class weights during training and validation
 
