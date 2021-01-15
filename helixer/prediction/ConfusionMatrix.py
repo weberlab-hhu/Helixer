@@ -3,7 +3,6 @@ import os
 import csv
 from collections import defaultdict
 from terminaltables import AsciiTable
-from sklearn.metrics import confusion_matrix
 from scipy.sparse import coo_matrix
 
 
