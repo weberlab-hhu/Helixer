@@ -94,7 +94,6 @@ class HelixerSequence(Sequence):
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights',
                                  'stretch_transition_weights', 'coverage', 'coverage_scaling', 'debug'])
         x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
-        sw_dset = h5_file['data/sample_weights']
         self.n_seqs = y_dset.shape[0]
         self.chunk_size = y_dset.shape[1]
 
@@ -113,11 +112,11 @@ class HelixerSequence(Sequence):
 
         self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)  # use BITSHUFFLE
 
-        # load at most 100000 uncompressed samples at a time in memory
+        # load at most 10000 uncompressed samples at a time in memory
         for name, data_list in zip(self.data_list_names, self.data_lists):
             start_time_dset = time.time()
-            for offset in range(0, self.n_seqs, 100000):
-                data_slice = h5_file[name][offset:offset + 100000]
+            for offset in range(0, self.n_seqs, 10000):
+                data_slice = h5_file[name][offset:offset + 10000]
                 data_list.extend([self.compressor.encode(e) for e in data_slice])
             print(f'Data loading of {len(data_list)} samples of {name} into memory took '
                   f'{time.time() - start_time_dset:.2f} secs')
