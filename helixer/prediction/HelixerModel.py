@@ -7,15 +7,15 @@ except ImportError:
     pass
 import time
 import h5py
+import numcodecs
 import argparse
 import datetime
 import pkg_resources
 import subprocess
 import numpy as np
 import tensorflow as tf
-
+from sklearn.utils import shuffle
 from pprint import pprint
-from tensorflow.python.client import timeline
 
 from keras_layer_normalization import LayerNormalization
 from tensorflow.keras.callbacks import Callback
@@ -80,7 +80,7 @@ class PreshuffleCallback(Callback):
 
     def on_epoch_begin(self, epoch, logs=None):
         if self.train_generator.shuffle:
-            self.train_generator.shuffle_idx()
+            self.train_generator.shuffle_data()
 
 
 class HelixerSequence(Sequence):
@@ -92,84 +92,62 @@ class HelixerSequence(Sequence):
         self.shuffle = shuffle
         self.batch_size = batch_size
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights',
-                                 'stretch_transition_weights', 'coverage', 'coverage_scaling',
-                                 'debug', 'error_weights', 'load_data_in_mem'])
-        self.x_dset = h5_file['/data/X']
-        self.y_dset = h5_file['/data/y']
-        self.sw_dset = h5_file['/data/sample_weights']
+                                 'stretch_transition_weights', 'coverage', 'coverage_scaling', 'debug'])
+        x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
+        sw_dset = h5_file['data/sample_weights']
+        self.n_seqs = y_dset.shape[0]
+        self.chunk_size = y_dset.shape[1]
+
+        print(f'\nStarting to load {self.mode} data into memory..')
+        print(f'X shape: {x_dset.shape}')
+        print(f'y shape: {y_dset.shape}')
+
+        self.data_list_names = ['data/X', 'data/y', 'data/sample_weights']
         if self.mode == 'train':
             if self.transition_weights is not None:
-                self.transitions_dset = h5_file['/data/transitions']
+                self.data_list_names.append('data/transitions')
             if self.coverage:
-                self.coverage_dset = h5_file['/scores/by_bp']
-        if self.load_data_in_mem:
-            print(f'\nStarting to load {self.mode} data into memory..')
-            start_time = time.time()
-            self.x_dset, self.y_dset, self.sw_dset = self.x_dset[:], self.y_dset[:], self.sw_dset[:]
-            data_size = self.x_dset.nbytes + self.y_dset.nbytes + self.sw_dset.nbytes
-            if hasattr(self, 'transitions_dset'):
-                self.transitions_dset = self.transitions_dset[:]
-                data_size += self.transitions_dset.nbytes
-            if hasattr(self, 'coverage_dset'):
-                self.coverage_dset = self.coverage_dset[:]
-                data_size += self.coverage_dset.nbytes
-            print(f'Data loading into memory took {time.time() - start_time:.2f} sec')
-            print(f'Data size is at least {data_size / 2 ** 30:.2f} GB')
+                self.data_list_names.append('scores/by_bp')
+        self.data_lists = [[] for _ in range(len(self.data_list_names))]
+        self.data_dtypes = [h5_file[name].dtype for name in self.data_list_names]
 
-        self.n_seqs = self.y_dset.shape[0]
-        self.chunk_size = self.y_dset.shape[1]
-        print(f'X shape: {self.x_dset.shape}')
-        print(f'y shape: {self.y_dset.shape}')
+        self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)  # use BITSHUFFLE
 
-        self.sample_idx = np.arange(self.n_seqs).astype(np.uint32)
+        # load at most 100000 uncompressed samples at a time in memory
+        for name, data_list in zip(self.data_list_names, self.data_lists):
+            start_time_dset = time.time()
+            for offset in range(0, self.n_seqs, 100000):
+                data_slice = h5_file[name][offset:offset + 100000]
+                data_list.extend([self.compressor.encode(e) for e in data_slice])
+            print(f'Data loading of {len(data_list)} samples of {name} into memory took '
+                  f'{time.time() - start_time_dset:.2f} secs')
+            comp_data_size = sum([sys.getsizeof(e) for e in data_list])
+            print(f'Compressed data size of {name} is at least {comp_data_size / 2 ** 30:.4f} GB\n')
 
-    def shuffle_idx(self):
-        np.random.shuffle(self.sample_idx)
-        print(f'Reshuffled {self.mode} indices: {self.sample_idx[:10]}')
-
-        if self.load_data_in_mem:
-            start_time = time.time()
-            self.x_dset = self.x_dset[self.sample_idx]
-            self.y_dset = self.y_dset[self.sample_idx]
-            self.sw_dset = self.sw_dset[self.sample_idx]
-            if hasattr(self, 'transitions_dset'):
-                self.transitions_dset = self.transitions_dset[self.sample_idx]
-            if hasattr(self, 'coverage_dset'):
-                self.coverage_dset = self.coverage_dset[self.sample_idx]
-            print(f'Reshuffled {self.mode} data in memory in {time.time() - start_time:.2f} sec')
+    def shuffle_data(self):
+        start_time = time.time()
+        self.data_lists = shuffle(*self.data_lists)
+        print(f'Reshuffled {self.mode} data in {time.time() - start_time:.2f} secs')
 
     def _cp_into_namespace(self, names):
         """Moves class properties from self.model into this class for brevity"""
         for name in names:
             self.__dict__[name] = self.model.__dict__[name]
 
-    def _get_batch_idx(self, idx):
-        n_seqs = self.batch_size
-        if self.shuffle and not self.load_data_in_mem:
-            idx_slice = self.sample_idx[idx * n_seqs:(idx + 1) * n_seqs]
-            idx_slice = sorted(list(idx_slice))  # got to always provide a sorted list of idx
-        else:
-            # here, we can just access a slice of continuous indices
-            idx_slice = slice(idx * n_seqs, (idx + 1) * n_seqs)
-        return idx_slice
-
     def _get_batch_data(self, idx):
-        idx_batch = self._get_batch_idx(idx)
-        X = self.x_dset[idx_batch]
-        y = self.y_dset[idx_batch]
-        sw = self.sw_dset[idx_batch]
+        batch = []
+        for dtype, data_list in zip(self.data_dtypes, self.data_lists):
+            decoded_list = [np.frombuffer(self.compressor.decode(e), dtype=dtype)
+                            for e in data_list[idx * self.batch_size:(idx + 1) * self.batch_size]]
+            if len(decoded_list[0]) > self.chunk_size:
+                decoded_list = [e.reshape(self.chunk_size, -1) for e in decoded_list]
+            batch.append(np.stack(decoded_list, axis=0))
 
-        # calculate base level error rate for each sequence
-        error_rates = (np.count_nonzero(sw == 0, axis=1) / y.shape[1]).astype(np.float32)
+        # fill up datasets
+        if len(batch) < 5:
+            batch.extend([None] * (5 - len(batch)))
 
-        transitions, coverage_scores = None, None
-        if self.mode == 'train':
-            if self.transition_weights is not None:
-                transitions = self.transitions_dset[idx_batch]
-            if self.coverage:
-                coverage_scores = self.coverage_dset[idx_batch]
-
-        return X, y, sw, error_rates, transitions, coverage_scores
+        return tuple(batch)
 
     def __len__(self):
         # if self.debug:
@@ -202,8 +180,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('--coverage', action='store_true')
         self.parser.add_argument('--coverage-scaling', type=float, default=0.1)
         self.parser.add_argument('--resume-training', action='store_true')
-        self.parser.add_argument('--error-weights', action='store_true')
-        self.parser.add_argument('--load-data-in-mem', action='store_true')
         # testing
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
         self.parser.add_argument('-t', '--test-data', type=str, default='')
