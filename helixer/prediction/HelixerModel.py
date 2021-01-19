@@ -240,12 +240,8 @@ class HelixerModel(ABC):
         return callbacks
 
     def set_resources(self):
-        #from keras.backend.tensorflow_backend import set_session
         config = tf.compat.v1.ConfigProto()
         config.gpu_options.allow_growth = True  # dynamically grow the memory used on the GPU
-        #sess = tf.compat.v1.Session(config=config)
-        #set_session(sess)  # set this TensorFlow session as the default session for Keras
-
         K.set_floatx(self.float_precision)
         if self.gpu_id > -1:
             os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID';
