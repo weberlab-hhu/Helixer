@@ -94,8 +94,10 @@ class HelixerSequence(Sequence):
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset', 'debug'])
         x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
-        # self.n_seqs = y_dset.shape[0]
-        self.n_seqs = 10000
+        if self.debug:
+            self.n_seqs = 10000
+        else:
+            self.n_seqs = y_dset.shape[0]
         self.chunk_size = y_dset.shape[1]
 
         print(f'\nStarting to load {self.mode} data into memory..')
@@ -232,11 +234,7 @@ class HelixerSequence(Sequence):
         return dilated_rf
 
     def __len__(self):
-        # if self.debug:
-        if self.debug and self.mode == 'train':
-            return 1
-        else:
-            return int(np.ceil(self.n_seqs / self.batch_size))
+        return int(np.ceil(self.n_seqs / self.batch_size))
 
     @abstractmethod
     def __getitem__(self, idx):

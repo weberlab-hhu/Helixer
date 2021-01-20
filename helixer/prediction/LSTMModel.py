@@ -19,8 +19,6 @@ class LSTMSequence(HelixerSequence):
         super().__init__(model, h5_file, mode, batch_size, shuffle)
         if self.class_weights is not None:
             assert not mode == 'test'  # only use class weights during training and validation
-        if self.error_weights:
-            assert not mode == 'test'
 
     def __getitem__(self, idx):
         X, y, sw, transitions, coverage_scores = self._get_batch_data(idx)
