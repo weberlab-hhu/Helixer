@@ -53,7 +53,7 @@ class ConfusionMatrixTrain(Callback):
     def on_epoch_end(self, epoch, logs=None):
         print(f'training took {(time.time() - self.epoch_start) / 60:.2f}m')
         val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, self.model)
-       if self.report_to_nni:
+        if self.report_to_nni:
             nni.report_intermediate_result(val_genic_f1)
         if val_genic_f1 > self.best_val_genic_f1:
             self.best_val_genic_f1 = val_genic_f1
@@ -92,9 +92,10 @@ class HelixerSequence(Sequence):
         self.shuffle = shuffle
         self.batch_size = batch_size
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights',
-                                 'stretch_transition_weights', 'coverage', 'coverage_scaling', 'debug'])
+                                 'stretch_transition_weights', 'coverage_weights', 'coverage_offset', 'debug'])
         x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
-        self.n_seqs = y_dset.shape[0]
+        # self.n_seqs = y_dset.shape[0]
+        self.n_seqs = 10000
         self.chunk_size = y_dset.shape[1]
 
         print(f'\nStarting to load {self.mode} data into memory..')
@@ -105,7 +106,7 @@ class HelixerSequence(Sequence):
         if self.mode == 'train':
             if self.transition_weights is not None:
                 self.data_list_names.append('data/transitions')
-            if self.coverage:
+            if self.coverage_weights:
                 self.data_list_names.append('scores/by_bp')
         self.data_lists = [[] for _ in range(len(self.data_list_names))]
         self.data_dtypes = [h5_file[name].dtype for name in self.data_list_names]
