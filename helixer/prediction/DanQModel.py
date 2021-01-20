@@ -15,7 +15,7 @@ class DanQSequence(HelixerSequence):
             assert not mode == 'test'  # only use class weights during training and validation
 
     def __getitem__(self, idx):
-        X, y, sw, transitions, _ = self._get_batch_data(idx)
+        X, y, sw, _, transitions, coverage_scores = self._get_batch_data(idx)
         pool_size = self.model.pool_size
 
         if pool_size > 1:
@@ -28,13 +28,7 @@ class DanQSequence(HelixerSequence):
                 if self.transition_weights is not None:
                     transitions = transitions[:, :-overhang]
 
-            # make labels 2d so we can use the standard softmax / loss functions
-            y = y.reshape((
-                y.shape[0],
-                y.shape[1] // pool_size,
-                pool_size,
-                y.shape[-1],
-            ))
+            y = self._mk_timestep_pools_class_last(y)
 
             sw = sw.reshape((sw.shape[0], -1, pool_size))
             sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
@@ -51,23 +45,20 @@ class DanQSequence(HelixerSequence):
                 cw = np.sum(cw_arrays, axis=2)
                 sw = np.multiply(cw, sw)
 
+            # todo, while now compressed, the following is still 1:1 with LSTM model... --> HelixerModel
             if self.transition_weights is not None:
-                transitions = transitions.reshape((
-                    transitions.shape[0],
-                    transitions.shape[1] // pool_size,
-                    pool_size,
-                    transitions.shape[-1],
-                ))
-                # todo, this looks very redundant with LSTMModel around _squish_tw_to_sw
-                #   could both go to HelixerModel?
-                sw_t = [np.any((transitions[:, :, :, col] == 1), axis=2) for col in range(6)]
-                sw_t = np.stack(sw_t, axis=2).astype(np.int8)
-                sw_t = np.multiply(sw_t, self.transitions)
-
-                sw_t = np.sum(sw_t, axis=2)
-                where_are_ones = np.where(sw_t == 0)
-                sw_t[where_are_ones[0], where_are_ones[1]] = 1
+                transitions = self._mk_timestep_pools_class_last(transitions)
+                # more reshaping and summing  up transition weights for multiplying with sample weights
+                sw_t = self.compress_tw(transitions)
                 sw = np.multiply(sw_t, sw)
+
+            if self.coverage_weights:
+                coverage_scores = coverage_scores.reshape((coverage_scores.shape[0], -1, pool_size))
+                # maybe offset coverage scores [0,1] by small number (bc RNAseq has issues too), default 0.0
+                if self.coverage_offset > 0.:
+                    coverage_scores = np.add(coverage_scores, self.coverage_offset)
+                coverage_scores = np.mean(coverage_scores, axis=2)
+                sw = np.multiply(coverage_scores, sw)
 
         return X, y, sw
 
