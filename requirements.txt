@@ -13,5 +13,6 @@ sqlalchemy
 numpy
 h5py
 git+https://github.com/janinamass/dustdas@master
+numcodecs
 # for testing only
 pytest
