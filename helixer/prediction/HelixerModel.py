@@ -138,12 +138,19 @@ class HelixerSequence(Sequence):
 
     def _get_batch_data(self, idx):
         batch = []
-        for dtype, data_list in zip(self.data_dtypes, self.data_lists):
-            decoded_list = [np.frombuffer(self.compressor.decode(e), dtype=dtype)
-                            for e in data_list[idx * self.batch_size:(idx + 1) * self.batch_size]]
-            if len(decoded_list[0]) > self.chunk_size:
-                decoded_list = [e.reshape(self.chunk_size, -1) for e in decoded_list]
-            batch.append(np.stack(decoded_list, axis=0))
+        # batch must have one thing for everything unpacked by __getitem__ (and in order)
+        for name in ['data/X', 'data/y', 'data/sample_weights', 'data/transitions', 'scores/by_bp']:
+            if name not in self.data_list_names:
+                batch.append(None)
+            else:
+                i = self.data_list_names.index(name)
+                dtype = self.data_dtypes[i]
+                data_list = self.data_lists[i]
+                decoded_list = [np.frombuffer(self.compressor.decode(e), dtype=dtype)
+                                for e in data_list[idx * self.batch_size:(idx + 1) * self.batch_size]]
+                if len(decoded_list[0]) > self.chunk_size:
+                    decoded_list = [e.reshape(self.chunk_size, -1) for e in decoded_list]
+                batch.append(np.stack(decoded_list, axis=0))
 
         # fill up datasets
         if len(batch) < 5:
