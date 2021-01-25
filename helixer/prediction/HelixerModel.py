@@ -251,7 +251,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('-b', '--batch-size', type=int, default=8)
         self.parser.add_argument('--val-test-batch-size', type=int, default=8)
         self.parser.add_argument('--loss', type=str, default='')
-        self.parser.add_argument('--patience', type=int, default=4)
+        self.parser.add_argument('--patience', type=int, default=3)
         self.parser.add_argument('--optimizer', type=str, default='adam')
         self.parser.add_argument('--clip-norm', type=float, default=1.0)
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
@@ -538,7 +538,8 @@ class HelixerModel(ABC):
                 self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
             elif self.optimizer.lower() == 'adabelief':
                 from adabelief_tf import AdaBeliefOptimizer
-                self.optimizer = AdaBeliefOptimizer(learning_rate=1e-3, epsilon=1e-16, rectify=False)
+                self.optimizer = AdaBeliefOptimizer(learning_rate=1e-3, epsilon=1e-16, rectify=False,
+                                                    clipnorm=self.clip_norm)
 
             self.compile_model(model)
 
