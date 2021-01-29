@@ -12,7 +12,7 @@ from HelixerModel import HelixerModel, HelixerSequence
 
 class DilatedCNNSequence(HelixerSequence):
     def __getitem__(self, idx):
-        X, y, sw, _, _, _, _ = self._get_batch_data(idx)
+        X, y, sw, _, _, _ = self._get_batch_data(idx)
 
         if self.class_weights is not None:
             cls_arrays = [y[:, :, col] == 1 for col in range(4)]  # whether a class is present

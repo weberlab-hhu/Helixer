@@ -9,7 +9,6 @@ from HelixerModel import HelixerModel, HelixerSequence
 class CNNSequence(HelixerSequence):
 # things in here may not work anymore
     def __getitem__(self, idx):
-        assert self.exclude_errors  # no other way of dealing with errors in a CNN
         usable_idx_slice = self.usable_idx[idx * self.batch_size:(idx + 1) * self.batch_size]
         X = np.stack(self.x_dset[sorted(list(usable_idx_slice))])  # got to provide a sorted list of idx
         y = np.stack(self.y_dset[sorted(list(usable_idx_slice))])

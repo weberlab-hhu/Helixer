@@ -1,7 +1,7 @@
 sqlalchemy
 pytest
 numpy
-tensorflow==2.3.0
+tensorflow==2.4.0
 nni
 seaborn
 Keras==2.4.3
@@ -13,5 +13,6 @@ sqlalchemy
 numpy
 h5py
 git+https://github.com/janinamass/dustdas@master
+numcodecs
 # for testing only
 pytest

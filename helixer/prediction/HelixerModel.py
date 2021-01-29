@@ -7,16 +7,15 @@ except ImportError:
     pass
 import time
 import h5py
-import random
+import numcodecs
 import argparse
 import datetime
 import pkg_resources
 import subprocess
 import numpy as np
 import tensorflow as tf
-
+from sklearn.utils import shuffle
 from pprint import pprint
-from tensorflow.python.client import timeline
 
 from keras_layer_normalization import LayerNormalization
 from tensorflow.keras.callbacks import Callback
@@ -40,12 +39,10 @@ class SaveEveryEpoch(Callback):
 
 
 class ConfusionMatrixTrain(Callback):
-    def __init__(self, save_model_path, val_generator, patience, canary_generator=None,
-                 report_to_nni=False):
+    def __init__(self, save_model_path, val_generator, patience, report_to_nni=False):
         self.save_model_path = save_model_path
         self.val_generator = val_generator
         self.patience = patience
-        self.canary_generator = canary_generator
         self.report_to_nni = report_to_nni
         self.best_val_genic_f1 = 0.0
         self.epochs_without_improvement = 0
@@ -56,9 +53,6 @@ class ConfusionMatrixTrain(Callback):
     def on_epoch_end(self, epoch, logs=None):
         print(f'training took {(time.time() - self.epoch_start) / 60:.2f}m')
         val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, self.model)
-        if self.canary_generator:
-            print('canary cm:')
-            _ = HelixerModel.run_confusion_matrix(self.canary_generator, self.model)
         if self.report_to_nni:
             nni.report_intermediate_result(val_genic_f1)
         if val_genic_f1 > self.best_val_genic_f1:
@@ -80,94 +74,89 @@ class ConfusionMatrixTrain(Callback):
             nni.report_final_result(self.best_val_genic_f1)
 
 
+class PreshuffleCallback(Callback):
+    def __init__(self, train_generator):
+        self.train_generator = train_generator
+
+    def on_epoch_begin(self, epoch, logs=None):
+        if self.train_generator.shuffle:
+            self.train_generator.shuffle_data()
+
+
 class HelixerSequence(Sequence):
-    def __init__(self, model, h5_file, mode, shuffle):
+    def __init__(self, model, h5_file, mode, batch_size, shuffle):
         assert mode in ['train', 'val', 'test']
         self.model = model
         self.h5_file = h5_file
         self.mode = mode
-        self._cp_into_namespace(['batch_size', 'float_precision', 'class_weights', 'transition_weights',
-                                 'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
-                                 'overlap', 'overlap_offset', 'core_length', 'min_seqs_for_overlapping',
-                                 'debug', 'exclude_errors', 'error_weights', 'gene_lengths',
-                                 'gene_lengths_average', 'gene_lengths_exponent', 'gene_lengths_cutoff'])
-        self.x_dset = h5_file['/data/X']
-        self.y_dset = h5_file['/data/y']
-        self.sw_dset = h5_file['/data/sample_weights']
-        self.seqids_dset = h5_file['/data/seqids']
+        self.shuffle = shuffle
+        self.batch_size = batch_size
+        self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights',
+                                 'stretch_transition_weights', 'coverage_weights', 'coverage_offset', 'debug'])
+        x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
+        if self.debug:
+            self.n_seqs = 10000
+        else:
+            self.n_seqs = y_dset.shape[0]
+        self.chunk_size = y_dset.shape[1]
+
+        print(f'\nStarting to load {self.mode} data into memory..')
+        print(f'X shape: {x_dset.shape}')
+        print(f'y shape: {y_dset.shape}')
+
+        self.data_list_names = ['data/X', 'data/y', 'data/sample_weights']
         if self.mode == 'train':
             if self.transition_weights is not None:
-                self.transitions_dset = h5_file['/data/transitions']
+                self.data_list_names.append('data/transitions')
             if self.coverage_weights:
-                self.coverage_dset = h5_file['/scores/by_bp']
-            if self.gene_lengths:
-                self.gene_lengths_dset = h5_file['/data/gene_lengths']
-        self.chunk_size = self.y_dset.shape[1]
+                self.data_list_names.append('scores/by_bp')
+        self.data_lists = [[] for _ in range(len(self.data_list_names))]
+        self.data_dtypes = [h5_file[name].dtype for name in self.data_list_names]
 
-        # set array of usable indexes, always exclude all erroneous sequences during training
-        if self.exclude_errors:
-            self.usable_idx = np.flatnonzero(np.array(h5_file['/data/err_samples']) == False)
-        else:
-            self.usable_idx = list(range(self.x_dset.shape[0]))
+        self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)  # use BITSHUFFLE
 
-        print('Total chunks: {}'.format(len(self.usable_idx)))
-        if shuffle:
-            random.shuffle(self.usable_idx)
+        # load at most 10000 uncompressed samples at a time in memory
+        for name, data_list in zip(self.data_list_names, self.data_lists):
+            start_time_dset = time.time()
+            for offset in range(0, self.n_seqs, 10000):
+                data_slice = h5_file[name][offset:offset + 10000]
+                data_list.extend([self.compressor.encode(e) for e in data_slice])
+            print(f'Data loading of {len(data_list)} samples of {name} into memory took '
+                  f'{time.time() - start_time_dset:.2f} secs')
+            comp_data_size = sum([sys.getsizeof(e) for e in data_list])
+            print(f'Compressed data size of {name} is at least {comp_data_size / 2 ** 30:.4f} GB\n')
+
+    def shuffle_data(self):
+        start_time = time.time()
+        self.data_lists = shuffle(*self.data_lists)
+        print(f'Reshuffled {self.mode} data in {time.time() - start_time:.2f} secs')
 
     def _cp_into_namespace(self, names):
         """Moves class properties from self.model into this class for brevity"""
         for name in names:
             self.__dict__[name] = self.model.__dict__[name]
 
-    def _usable_idx_batch(self, idx):
-        n_seqs = self._seqs_per_batch()
-        usable_idx_slice = self.usable_idx[idx * n_seqs:(idx + 1) * n_seqs]
-        usable_idx_slice = sorted(list(usable_idx_slice))  # got to always provide a sorted list of idx
-        return usable_idx_slice
-
     def _get_batch_data(self, idx):
-        usable_idx_batch = self._usable_idx_batch(idx)
-        if self.overlap:
-            X = self.x_dset[usable_idx_batch]
-            seqid_borders = self._get_seqid_borders(idx)
-            # split data along these borders
-            X_by_seqid = np.array_split(X, seqid_borders)
-            overlapping_X = []
-            for seqid_x in X_by_seqid:
-                if len(seqid_x) >= self.min_seqs_for_overlapping:
-                    seq = np.concatenate(seqid_x, axis=0)
-                    # apply sliding window
-                    overlapping_X += [seq[i:i+self.chunk_size]
-                                      for i in range(0, len(seq) - self.chunk_size + 1,
-                                                     self.overlap_offset)]
-                else:
-                    # do not overlap short sequences
-                    overlapping_X += [seqid_x[i] for i in range(len(seqid_x))]
-            X = np.stack(overlapping_X)
-        else:
-            X = self.x_dset[usable_idx_batch]
+        batch = []
+        # batch must have one thing for everything unpacked by __getitem__ (and in order)
+        for name in ['data/X', 'data/y', 'data/sample_weights', 'data/transitions', 'scores/by_bp']:
+            if name not in self.data_list_names:
+                batch.append(None)
+            else:
+                i = self.data_list_names.index(name)
+                dtype = self.data_dtypes[i]
+                data_list = self.data_lists[i]
+                decoded_list = [np.frombuffer(self.compressor.decode(e), dtype=dtype)
+                                for e in data_list[idx * self.batch_size:(idx + 1) * self.batch_size]]
+                if len(decoded_list[0]) > self.chunk_size:
+                    decoded_list = [e.reshape(self.chunk_size, -1) for e in decoded_list]
+                batch.append(np.stack(decoded_list, axis=0))
 
-        y = self.y_dset[usable_idx_batch]
-        sw = self.sw_dset[usable_idx_batch]
+        # fill up datasets
+        if len(batch) < 5:
+            batch.extend([None] * (5 - len(batch)))
 
-        # calculate base level error rate for each sequence
-        error_rates = (np.count_nonzero(sw == 0, axis=1) / y.shape[1]).astype(np.float32)
-
-        if self.mode == 'train' and self.transition_weights is not None:
-            transitions = self.transitions_dset[usable_idx_batch]
-        else:
-            transitions = None
-        if self. mode == 'train' and self.coverage_weights:
-            coverage_scores = self.coverage_dset[usable_idx_batch]
-        else:
-            coverage_scores = None
-        if self.mode == 'train' and self.gene_lengths:
-            gene_lengths = self.gene_lengths_dset[usable_idx_batch]
-        else:
-            gene_lengths = None
-
-        return X, y, sw, error_rates, gene_lengths, transitions, coverage_scores
-
+        return tuple(batch)
 
     def _update_sw_with_transition_weights(self):
         pass
@@ -251,35 +240,8 @@ class HelixerSequence(Sequence):
         dilated_rf[i, j] = np.maximum(reshaped_sw_t[i, j], 1)
         return dilated_rf
 
-    def _get_seqid_borders(self, idx):
-        seqids = self.seqids_dset[self._usable_idx_batch(idx)]
-        idx_border = np.argwhere(seqids[:-1] != seqids[1:])[:, 0]
-        if len(idx_border) > 0:
-            # if there are changes in seqid
-            idx_border = np.add(idx_border, 1)  # add 1 for splitting with np.split()
-        return idx_border
-
-    def _get_seqids_for_batch(self, idx):
-        usable_idx_batch = self._usable_idx_batch(idx)
-        seqids = self.seqids_dset[usable_idx_batch]
-        return seqids
-
-    def _seqs_per_batch(self, batch_idx=None):
-        """Calculates how many original sequences are needed to fill a batch. Necessary
-        if --overlap is on"""
-        if self.overlap:
-            n_seqs = self.batch_size / (self.chunk_size / self.overlap_offset)
-        else:
-            n_seqs = self.batch_size
-        if batch_idx and batch_idx == len(self) - 1 and len(self.usable_idx) % n_seqs > 0:
-            n_seqs = len(self.usable_idx) % n_seqs  # calculate overhang when at the end
-        return int(n_seqs)
-
     def __len__(self):
-        if self.debug:
-            return 1
-        else:
-            return int(np.ceil(len(self.usable_idx) / self._seqs_per_batch()))
+        return int(np.ceil(self.n_seqs / self.batch_size))
 
     @abstractmethod
     def __getitem__(self, idx):
@@ -288,17 +250,16 @@ class HelixerSequence(Sequence):
 
 class HelixerModel(ABC):
     def __init__(self):
-        # tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-        # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('-d', '--data-dir', type=str, default='')
         self.parser.add_argument('-s', '--save-model-path', type=str, default='./best_model.h5')
         # training params
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
         self.parser.add_argument('-b', '--batch-size', type=int, default=8)
+        self.parser.add_argument('--val-test-batch-size', type=int, default=8)
         self.parser.add_argument('--loss', type=str, default='')
         self.parser.add_argument('--patience', type=int, default=3)
+        self.parser.add_argument('--optimizer', type=str, default='adam')
         self.parser.add_argument('--clip-norm', type=float, default=1.0)
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
         self.parser.add_argument('--class-weights', type=str, default='None')
@@ -306,28 +267,14 @@ class HelixerModel(ABC):
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
         self.parser.add_argument('--coverage-weights', action='store_true')
         self.parser.add_argument('--coverage-offset', type=float, default=0.0)
-        self.parser.add_argument('--canary-dataset', type=str, default='')
         self.parser.add_argument('--resume-training', action='store_true')
-        self.parser.add_argument('--exclude-errors', action='store_true')
-        self.parser.add_argument('--error-weights', action='store_true')
         # testing
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
         self.parser.add_argument('-t', '--test-data', type=str, default='')
         self.parser.add_argument('-p', '--prediction-output-path', type=str, default='predictions.h5')
         self.parser.add_argument('--eval', action='store_true')
-        # overlap options
-        self.parser.add_argument('--overlap', action='store_true')
-        self.parser.add_argument('--overlap-offset', type=int, default=2500)
-        self.parser.add_argument('--core-length', type=int, default=10000)
-        self.parser.add_argument('--min-seqs-for-overlapping', type=int, default=3)
-        # gene length adjustments
-        self.parser.add_argument('--gene-lengths', action='store_true')
-        self.parser.add_argument('--gene-lengths-average', type=int, default=3350)
-        self.parser.add_argument('--gene-lengths-exponent', type=float, default=1.0)
-        self.parser.add_argument('--gene-lengths-cutoff', type=float, default=5.0)
         # resources
         self.parser.add_argument('--float-precision', type=str, default='float32')
-        self.parser.add_argument('--gpus', type=int, default=1)
         self.parser.add_argument('--cpus', type=int, default=8)
         self.parser.add_argument('--gpu-id', type=int, default=-1)
         self.parser.add_argument('--workers', type=int, default=1,
@@ -335,10 +282,8 @@ class HelixerModel(ABC):
         # misc flags
         self.parser.add_argument('--save-every-epoch', action='store_true')
         self.parser.add_argument('--nni', action='store_true')
-        self.parser.add_argument('--trace', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
         self.parser.add_argument('--debug', action='store_true')
-        self.parser.add_argument('--profile', action='store_true')
         self.parser.add_argument('--progbar', action='store_true')
         self.parser.add_argument('--tf-errors', action='store_true')
 
@@ -375,29 +320,17 @@ class HelixerModel(ABC):
             print()
             pprint(args)
 
-    def generate_callbacks(self):
-        canary_gen = self.gen_canary_data() if self.canary_dataset else None
+    def generate_callbacks(self, train_generator):
         callbacks = [ConfusionMatrixTrain(self.save_model_path, self.gen_validation_data(),
-                                          self.patience, canary_gen, report_to_nni=self.nni)]
+                                          self.patience, report_to_nni=self.nni)]
+        callbacks.append(PreshuffleCallback(train_generator))
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
-
-        if self.profile:
-            # may have to do this:
-            # https://github.com/tensorflow/tensorflow/issues/35860#issuecomment-585436324
-            logs = "logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-            tboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logs,
-                                                             histogram_freq=1,
-                                                             profile_batch='10,20')
-            callbacks.append(tboard_callback)
         return callbacks
 
     def set_resources(self):
-        #from keras.backend.tensorflow_backend import set_session
         config = tf.compat.v1.ConfigProto()
         config.gpu_options.allow_growth = True  # dynamically grow the memory used on the GPU
-        #sess = tf.compat.v1.Session(config=config)
-        #set_session(sess)  # set this TensorFlow session as the default session for Keras
 
         K.set_floatx(self.float_precision)
         if self.gpu_id > -1:
@@ -406,30 +339,17 @@ class HelixerModel(ABC):
 
     def gen_training_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self,
-                           h5_file=self.h5_train,
-                           mode='train',
+        return SequenceCls(model=self, h5_file=self.h5_train, mode='train', batch_size=self.batch_size,
                            shuffle=True)
 
     def gen_validation_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self,
-                           h5_file=self.h5_val,
-                           mode='val',
+        return SequenceCls(model=self, h5_file=self.h5_val, mode='val', batch_size=self.val_test_batch_size,
                            shuffle=False)
 
     def gen_test_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self,
-                           h5_file=self.h5_test,
-                           mode='test',
-                           shuffle=False)
-
-    def gen_canary_data(self):
-        SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self,
-                           h5_file=self.h5_canary,
-                           mode='val',
+        return SequenceCls(model=self, h5_file=self.h5_test, mode='test', batch_size=self.val_test_batch_size,
                            shuffle=False)
 
     @staticmethod
@@ -484,10 +404,7 @@ class HelixerModel(ABC):
             n_train_correct_seqs = get_n_correct_seqs(self.h5_train)
             n_val_correct_seqs = get_n_correct_seqs(self.h5_val)
 
-            if self.exclude_errors:
-                n_train_seqs = n_train_correct_seqs
-            else:
-                n_train_seqs = self.shape_train[0]
+            n_train_seqs = self.shape_train[0]
             n_val_seqs = self.shape_val[0]  # always validate on all
 
             n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
@@ -499,11 +416,6 @@ class HelixerModel(ABC):
             n_test_correct_seqs = get_n_correct_seqs(self.h5_test)
             n_test_seqs_with_intergenic = self.shape_test[0]
             n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_test)
-
-        if self.canary_dataset:
-            self.h5_canary = h5py.File(self.canary_dataset, 'r')
-            print('\nCanary data config: ')
-            print(dict(self.h5_canary.attrs))
 
         if self.verbose:
             print('\nData config: ')
@@ -526,60 +438,6 @@ class HelixerModel(ABC):
                     n_intergenic_test_seqs / n_test_seqs_with_intergenic * 100))
                 print('Fully correct test seqs: {:.2f}%\n'.format(
                     n_test_correct_seqs / self.shape_test[0] * 100))
-
-    def _overlap_predictions(self, batch_idx, test_sequence, predictions):
-        # some shortcut variables
-        chunk_size = predictions.shape[1]
-        seq_overhang = int((chunk_size - self.core_length) / 2)
-        n_overhang_seqs = seq_overhang // self.overlap_offset
-        n_original_seqs = test_sequence._seqs_per_batch(batch_idx=batch_idx)
-        n_overlapping_seqs = self.core_length // self.overlap_offset
-
-        all_predictions = np.empty((0, ) + predictions.shape[1:])
-        seqid_borders = list(test_sequence._get_seqid_borders(batch_idx))
-        # get number of sequences for each seqid from border distance
-        seqid_sizes = np.diff(np.array([0] + seqid_borders + [n_original_seqs]))
-        print(batch_idx, seqid_sizes)
-        pred_offset = 0
-        for seqid_size in seqid_sizes:
-            if seqid_size > 2:
-                n_seqid_seqs = (seqid_size - 1) * chunk_size // self.overlap_offset + 1
-            else:
-                n_seqid_seqs = seqid_size
-            predictions_seqid = predictions[pred_offset:pred_offset + n_seqid_seqs]
-            pred_offset += n_seqid_seqs
-            if seqid_size >= self.min_seqs_for_overlapping:
-                # actual overlapping; save first and last sequence for special handling later
-                first, last = predictions_seqid[0], predictions_seqid[-1]
-                # cut to the core
-                predictions_seqid = [s[seq_overhang:-seq_overhang] for s in predictions_seqid]
-                # generate zero'd out filler sequences for the start and end
-                filler_seqs = [np.zeros((self.core_length, 4))] * n_overhang_seqs
-                predictions_seqid = filler_seqs + predictions_seqid + filler_seqs
-                # stack eveything
-                predictions_seqid = np.stack(predictions_seqid).astype(predictions.dtype)
-                # add overhang edge data from first/last seq that can not be overlapped
-                predictions_seqid[0, :seq_overhang] = first[:seq_overhang]
-                predictions_seqid[-1, -seq_overhang:] = last[-seq_overhang:]
-
-                # merge and stack efficiently so everything can be averaged
-                n_predicted_bases = seqid_size * chunk_size
-                stacked = np.zeros((n_overlapping_seqs, n_predicted_bases, 4), dtype=predictions.dtype)
-                for j in range(n_overlapping_seqs):
-                    # get idx of every n_overlapping_seqs'th seq starting at j
-                    idx = list(range(j, predictions_seqid.shape[0], n_overlapping_seqs))
-                    seq = np.concatenate(predictions_seqid[idx], axis=0)
-                    start_base = j * self.overlap_offset
-                    stacked[j, start_base:start_base+seq.shape[0]] = seq
-
-                # average individual softmax values
-                # does change pseudo-probability dist at the edge but not the argmax afterwards
-                # (causes values to be lower there)
-                averages = np.mean(stacked, axis=0)
-                predictions_seqid = np.stack(np.split(averages, seqid_size))
-            all_predictions = np.concatenate([all_predictions, predictions_seqid], axis=0)
-        assert all_predictions.shape[0] == n_original_seqs
-        return all_predictions
 
     def _make_predictions(self, model):
         # loop through batches and continuously expand output dataset as everything might
@@ -609,9 +467,7 @@ class HelixerModel(ABC):
                                             dtype=predictions.dtype)
                     predictions = np.concatenate((predictions, zero_padding), axis=1)
             else:
-                                n_removed = 0  # just to avoid crashing with Unbound Local Error setting attrs for dCNN
-            if self.overlap and predictions.shape[0] > 1:
-                predictions = self._overlap_predictions(i, test_sequence, predictions)
+                n_removed = 0  # just to avoid crashing with Unbound Local Error setting attrs for dCNN
 
             # prepare h5 dataset and save the predictions to disk
             if i == 0:
@@ -674,62 +530,37 @@ class HelixerModel(ABC):
             print('Total params: {:,}'.format(model.count_params()))
         os.chdir(pwd)  # return to previous directory
 
-    def _trace(self, model, generator):
-        run_options = tf.compat.v1.RunOptions(trace_level=tf.compat.v1.RunOptions.FULL_TRACE)
-        run_metadata = tf.compat.v1.RunMetadata()
-        fn = K.function(model.inputs, model.outputs, options=run_options, run_metadata=run_metadata)
-        for i in range(4):
-            x = K.variable(generator[i][0], dtype='float32')
-            fn([x])
-            tl = timeline.Timeline(run_metadata.step_stats)
-            ctf = tl.generate_chrome_trace_format()
-            with open(f'timeline_{i}.json', 'w') as f:
-                f.write(ctf)
-                print(f'trace {i} printed')
-
     def run(self):
         self.set_resources()
         self.open_data_files()
         # we either train or predict
-        if self.gpus >= 2:
-            strategy = tf.distribute.MirroredStrategy()
-            print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
-        else:  # use default strategy
-            strategy = tf.distribute.get_strategy()
         if not self.testing:
-            with strategy.scope():
-                if self.resume_training:
-                    model = self._load_helixer_model()
-                else:
-                    model = self.model()
-                if self.trace:
-                    self._trace(model, self.gen_training_data())
-                    exit()
-                self._print_model_info(model)
+            if self.resume_training:
+                model = self._load_helixer_model()
+            else:
+                model = self.model()
+            self._print_model_info(model)
 
+            if self.optimizer.lower() == 'adam':
                 self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
-                self.compile_model(model)
+            elif self.optimizer.lower() == 'adabelief':
+                from adabelief_tf import AdaBeliefOptimizer
+                self.optimizer = AdaBeliefOptimizer(learning_rate=1e-3, epsilon=1e-16, rectify=False,
+                                                    clipnorm=self.clip_norm)
 
-            model.fit(self.gen_training_data(),
+            self.compile_model(model)
+
+            train_generator = self.gen_training_data()
+            model.fit(train_generator,
                       epochs=self.epochs,
-                      # workers=0,  # run in main thread
                       workers=self.workers,
-                      # validation_data=self.gen_validation_data(),
-                      callbacks=self.generate_callbacks(),
+                      callbacks=self.generate_callbacks(train_generator),
                       verbose=self.progbar)
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
-            if self.overlap:
-                assert self.testing  # only use overlapping during test time
-                assert self.overlap_offset < self.core_length
-                # check if everything divides evenly to avoid further head aches
-                assert (self.shape_test[1] / self.overlap_offset).is_integer()
-                assert (self.batch_size / (self.shape_test[1] / self.overlap_offset)).is_integer()
-                assert ((self.shape_test[1] - self.core_length) / 2 / self.overlap_offset).is_integer()
 
-            with strategy.scope():
-                model = self._load_helixer_model()
+            model = self._load_helixer_model()
             self._print_model_info(model)
 
             if self.eval:

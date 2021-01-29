@@ -39,18 +39,18 @@ sudo dnf install python3-devel
 ### GPU requirements (optional, but highly recommended for realistically sized datasets)
 And to run on a GPU (highly recommended for realistically sized datasets),
 everything for tensorflow-gpu is required, 
-see: https://www.tensorflow.org/install/gpu#older_versions_of_tensorflow
+see: https://www.tensorflow.org/install/gpu
 
 Most recently tested with the following (but in theory any valid
 tensorflow-gpu setup >2.0 should work).
 
 python packages:
-* tensorflow-gpu==2.3.0
+* tensorflow-gpu==2.4.0
 
 system packages:
-* cuda-toolkit-10-1
-* libcudnn7
-* libcudnn7-dev
+* cuda-11-0
+* libcudnn8
+* libcudnn8-dev
 * nvidia-driver-450
 
 A GPU with 11GB Memory (e.g. GTX 1080 Ti) can run the largest 

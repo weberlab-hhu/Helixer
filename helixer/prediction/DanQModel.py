@@ -9,13 +9,13 @@ from HelixerModel import HelixerModel, HelixerSequence
 
 
 class DanQSequence(HelixerSequence):
-    def __init__(self, model, h5_file, mode, shuffle):
-        super().__init__(model, h5_file, mode, shuffle)
+    def __init__(self, model, h5_file, mode, batch_size, shuffle):
+        super().__init__(model, h5_file, mode, batch_size, shuffle)
         if self.class_weights is not None:
             assert not mode == 'test'  # only use class weights during training and validation
 
     def __getitem__(self, idx):
-        X, y, sw, _, _, transitions, coverage_scores = self._get_batch_data(idx)
+        X, y, sw, transitions, coverage_scores = self._get_batch_data(idx)
         pool_size = self.model.pool_size
 
         if pool_size > 1:
@@ -34,7 +34,7 @@ class DanQSequence(HelixerSequence):
             sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
 
             if self.mode == 'train':
-    
+
                 if self.class_weights is not None:
                     # class weights are additive for the individual timestep predictions
                     # giving even more weight to transition points
@@ -46,14 +46,14 @@ class DanQSequence(HelixerSequence):
                     cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
                     cw = np.sum(cw_arrays, axis=2)
                     sw = np.multiply(cw, sw)
-    
+
                 # todo, while now compressed, the following is still 1:1 with LSTM model... --> HelixerModel
                 if self.transition_weights is not None:
                     transitions = self._mk_timestep_pools_class_last(transitions)
                     # more reshaping and summing  up transition weights for multiplying with sample weights
                     sw_t = self.compress_tw(transitions)
                     sw = np.multiply(sw_t, sw)
-    
+
                 if self.coverage_weights:
                     coverage_scores = coverage_scores.reshape((coverage_scores.shape[0], -1, pool_size))
                     # maybe offset coverage scores [0,1] by small number (bc RNAseq has issues too), default 0.0

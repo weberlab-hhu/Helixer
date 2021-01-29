@@ -15,15 +15,13 @@ from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 
 
 class LSTMSequence(HelixerSequence):
-    def __init__(self, model, h5_file, mode, shuffle):
-        super().__init__(model, h5_file, mode, shuffle)
+    def __init__(self, model, h5_file, mode, batch_size, shuffle):
+        super().__init__(model, h5_file, mode, batch_size, shuffle)
         if self.class_weights is not None:
             assert not mode == 'test'  # only use class weights during training and validation
-        if self.error_weights:
-            assert not mode == 'test'
 
     def __getitem__(self, idx):
-        X, y, sw, error_rates, gene_lengths, transitions, coverage_scores = self._get_batch_data(idx)
+        X, y, sw, transitions, coverage_scores = self._get_batch_data(idx)
         pool_size = self.model.pool_size
         assert pool_size > 1, 'pooling size of <= 1 oh oh..'
         assert y.shape[1] % pool_size == 0, 'pooling size has to evenly divide seq len'
@@ -52,22 +50,6 @@ class LSTMSequence(HelixerSequence):
                 # multiply with previous sample weights
                 sw = np.multiply(sw, cw)
 
-            if self.gene_lengths:
-                gene_lengths = gene_lengths.reshape((gene_lengths.shape[0], -1, pool_size))
-                gene_lengths = np.max(gene_lengths, axis=-1)  # take the maximum per pool_size (block)
-                # scale gene_length to a sample weight that is 1 for the average
-                gene_idx = np.where(gene_lengths)
-                ig_idx = np.where(gene_lengths == 0)
-                gene_weights = gene_lengths.astype(np.float32)
-                scaled_gene_lengths = self.gene_lengths_average / gene_lengths[gene_idx]
-                # the exponent controls the steepness of the curve
-                scaled_gene_lengths = np.power(scaled_gene_lengths, self.gene_lengths_exponent)
-                scaled_gene_lengths = np.clip(scaled_gene_lengths, 0.1, self.gene_lengths_cutoff)
-                gene_weights[gene_idx] = scaled_gene_lengths.astype(np.float32)
-                # important to set all intergenic weight to 1
-                gene_weights[ig_idx] = 1.0
-                sw = np.multiply(gene_weights, sw)
-
             if self.transition_weights is not None:
                 transitions = self._mk_timestep_pools_class_last(transitions)
                 # more reshaping and summing  up transition weights for multiplying with sample weights
@@ -81,13 +63,6 @@ class LSTMSequence(HelixerSequence):
                     coverage_scores = np.add(coverage_scores, self.coverage_offset)
                 coverage_scores = np.mean(coverage_scores, axis=2)
                 sw = np.multiply(coverage_scores, sw)
-
-            if self.error_weights:
-                # finish by multiplying the sample_weights with the error rate
-                # 1 - error_rate^(1/3) seems to have the shape we need for the weights
-                # given the error rate
-                error_weights = 1 - np.power(error_rates, 1/3)
-                sw *= np.expand_dims(error_weights, axis=1)
 
         return X, y, sw
 
@@ -150,14 +125,9 @@ class LSTMModel(HelixerModel):
         return model
 
     def compile_model(self, model):
-        # todo, port run_* to 2.3 instead of ignoring
-        run_options = tf.compat.v1.RunOptions(report_tensor_allocations_upon_oom=True)
-        run_metadata = tf.compat.v1.RunMetadata()
         model.compile(optimizer=self.optimizer,
                       loss='categorical_crossentropy',
-                      sample_weight_mode='temporal')#,
-                      #options=run_options,
-                      #run_metadata=run_metadata)
+                      sample_weight_mode='temporal')
 
 
 if __name__ == '__main__':
