@@ -100,7 +100,10 @@ class LSTMModel(HelixerModel):
         return LSTMSequence
 
     def model(self):
-        main_input = Input(shape=(None, self.pool_size * 4), dtype=self.float_precision,
+        values_per_bp = 4
+        if self.input_coverage:
+            values_per_bp = 6
+        main_input = Input(shape=(None, self.pool_size * values_per_bp), dtype=self.float_precision,
                            name='main_input')
         x = Bidirectional(LSTM(self.layers[0], return_sequences=True))(main_input)
 

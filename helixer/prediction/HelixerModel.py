@@ -91,7 +91,7 @@ class HelixerSequence(Sequence):
         self.mode = mode
         self.shuffle = shuffle
         self.batch_size = batch_size
-        self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights',
+        self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset', 'debug'])
         x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
         if self.debug:
@@ -110,6 +110,10 @@ class HelixerSequence(Sequence):
                 self.data_list_names.append('data/transitions')
             if self.coverage_weights:
                 self.data_list_names.append('scores/by_bp')
+
+        if self.input_coverage:
+            self.data_list_names += ['evaluation/coverage', 'evaluation/spliced_coverage']
+
         self.data_lists = [[] for _ in range(len(self.data_list_names))]
         self.data_dtypes = [h5_file[name].dtype for name in self.data_list_names]
 
@@ -143,20 +147,29 @@ class HelixerSequence(Sequence):
             if name not in self.data_list_names:
                 batch.append(None)
             else:
-                i = self.data_list_names.index(name)
-                dtype = self.data_dtypes[i]
-                data_list = self.data_lists[i]
-                decoded_list = [np.frombuffer(self.compressor.decode(e), dtype=dtype)
-                                for e in data_list[idx * self.batch_size:(idx + 1) * self.batch_size]]
-                if len(decoded_list[0]) > self.chunk_size:
-                    decoded_list = [e.reshape(self.chunk_size, -1) for e in decoded_list]
+                decoded_list = self._decode_one(name, idx)
+                # append coverage to X directly, might be clearer elsewhere once working, but this needs little code...
+                if name == 'data/X' and self.input_coverage:
+                    decode_coverage = self._decode_one('evaluation/coverage', idx)
+                    decode_coverage = [np.log(x.reshape(-1, 1) + 1.1).astype(np.float16) for x in decode_coverage]
+                    decode_spliced = self._decode_one('evaluation/spliced_coverage', idx)
+                    decode_spliced = [np.log(x.reshape(-1, 1) + 1.1).astype(np.float16) for x in decode_spliced]
+                    decoded_list = [np.concatenate((x, y, z), axis=1) for x, y, z in
+                                    zip(decoded_list, decode_coverage, decode_spliced)]
                 batch.append(np.stack(decoded_list, axis=0))
 
-        # fill up datasets
-        if len(batch) < 5:
-            batch.extend([None] * (5 - len(batch)))
-
         return tuple(batch)
+
+    def _decode_one(self, name, idx):
+        """decode position {idx} from compressed data originally from dataset {name}"""
+        i = self.data_list_names.index(name)
+        dtype = self.data_dtypes[i]
+        data_list = self.data_lists[i]
+        decoded_list = [np.frombuffer(self.compressor.decode(e), dtype=dtype)
+                        for e in data_list[idx * self.batch_size:(idx + 1) * self.batch_size]]
+        if len(decoded_list[0]) > self.chunk_size:
+            decoded_list = [e.reshape(self.chunk_size, -1) for e in decoded_list]
+        return decoded_list
 
     def _update_sw_with_transition_weights(self):
         pass
@@ -263,6 +276,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--clip-norm', type=float, default=1.0)
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
         self.parser.add_argument('--class-weights', type=str, default='None')
+        self.parser.add_argument('--input-coverage', action='store_true')
         self.parser.add_argument('--transition-weights', type=str, default='None')
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
         self.parser.add_argument('--coverage-weights', action='store_true')
