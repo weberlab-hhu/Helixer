@@ -92,6 +92,7 @@ class HelixerSequence(Sequence):
         self.shuffle = shuffle
         self.batch_size = batch_size
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
+                                 'coverage_norm',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset', 'debug'])
         x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
         if self.debug:
@@ -151,9 +152,9 @@ class HelixerSequence(Sequence):
                 # append coverage to X directly, might be clearer elsewhere once working, but this needs little code...
                 if name == 'data/X' and self.input_coverage:
                     decode_coverage = self._decode_one('evaluation/coverage', idx)
-                    decode_coverage = [np.log(x.reshape(-1, 1) + 1.1).astype(np.float16) for x in decode_coverage]
+                    decode_coverage = [self._cov_norm(x.reshape(-1, 1)).astype(np.float16) for x in decode_coverage]
                     decode_spliced = self._decode_one('evaluation/spliced_coverage', idx)
-                    decode_spliced = [np.log(x.reshape(-1, 1) + 1.1).astype(np.float16) for x in decode_spliced]
+                    decode_spliced = [self._cov_norm(x.reshape(-1, 1)).astype(np.float16) for x in decode_spliced]
                     decoded_list = [np.concatenate((x, y, z), axis=1) for x, y, z in
                                     zip(decoded_list, decode_coverage, decode_spliced)]
                 batch.append(np.stack(decoded_list, axis=0))
@@ -170,6 +171,17 @@ class HelixerSequence(Sequence):
         if len(decoded_list[0]) > self.chunk_size:
             decoded_list = [e.reshape(self.chunk_size, -1) for e in decoded_list]
         return decoded_list
+
+    def _cov_norm(self, x):
+        method = self.coverage_normalization_method
+        if method is None:
+            return x
+        elif method == 'log':
+            return np.log(x + 1.1)
+        elif method == 'linear':
+            return x / 100
+        else:
+            raise ValueError(f'unrecognized method: {method} for normalizing coverage data')
 
     def _update_sw_with_transition_weights(self):
         pass
@@ -277,6 +289,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
         self.parser.add_argument('--class-weights', type=str, default='None')
         self.parser.add_argument('--input-coverage', action='store_true')
+        self.parser.add_argument('--coverage-norm', default=None)
         self.parser.add_argument('--transition-weights', type=str, default='None')
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
         self.parser.add_argument('--coverage-weights', action='store_true')
