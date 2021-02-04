@@ -173,7 +173,7 @@ class HelixerSequence(Sequence):
         return decoded_list
 
     def _cov_norm(self, x):
-        method = self.coverage_normalization_method
+        method = self.coverage_norm
         if method is None:
             return x
         elif method == 'log':
