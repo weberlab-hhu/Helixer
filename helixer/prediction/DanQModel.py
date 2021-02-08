@@ -85,7 +85,10 @@ class DanQModel(HelixerModel):
 
     def model(self):
         overhang = self.shape_train[1] % self.pool_size
-        main_input = Input(shape=(None, 4), dtype=self.float_precision,
+        values_per_bp = 4
+        if self.input_coverage:
+            values_per_bp = 6
+        main_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
                            name='main_input')
         x = Conv1D(filters=self.filter_depth,
                    kernel_size=self.kernel_size,
