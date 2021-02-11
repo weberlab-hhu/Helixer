@@ -174,14 +174,15 @@ class NormScoreSplicedCoverage(NormScorer):
         return x / np.log10(self.median_cov + 1)
 
 
-def get_median_expected_coverage(h5, max_expected=1000):
+def get_median_expected_coverage(h5, species, max_expected=1000):
     # this will fail unless max_expected is higher than the median
     # but since we're expecting a median around say 5-20... should be OK
+    start, end = h5['meta/start_end_i'].attrs[species]
     bins = list(range(max_expected)) + [np.inf]
     by = 1000
     histo = np.zeros(shape=[len(bins) - 1])
-    for i in range(1, h5['data/y'].shape[0], by):
-        counts, _ = histo_expected_coverage(h5, i, by, bins)
+    for i in range(start, end, by):
+        counts, _ = histo_expected_coverage(h5, start_i=i, end_i=min(i + by, end), bins=bins)
         histo += counts
 
     half_total_bp = np.sum(histo) / 2
@@ -204,9 +205,9 @@ def get_median_expected_coverage(h5, max_expected=1000):
     return median
 
 
-def histo_expected_coverage(h5, i, by, bins):
-    masked_cov = h5['evaluation/coverage'][i:(i + by)][
-        np.logical_or(h5['data/y'][i:(i + by), :, 1], h5['data/y'][i:(i + by), :, 2])
+def histo_expected_coverage(h5, start_i, end_i, bins):
+    masked_cov = h5['evaluation/coverage'][start_i:end_i][
+        np.logical_or(h5['data/y'][start_i:end_i, :, 1], h5['data/y'][start_i:end_i, :, 2])
     ]
     histo = np.histogram(masked_cov, bins=bins)
     return histo
@@ -281,7 +282,7 @@ def main(species, bam, h5_data, d_utp, dont_score):
             h5['meta/total_' + key].attrs.create(name=species, data=cov_counts[key])
 
         # add median coverage in regions annotated as UTR/CDS for slightly more robust scaling
-        median_coverage = get_median_expected_coverage(h5)
+        median_coverage = get_median_expected_coverage(h5, species)
         h5['meta/median_expected_coverage'].attrs.create(name=species, data=median_coverage)
 
     if not dont_score:
