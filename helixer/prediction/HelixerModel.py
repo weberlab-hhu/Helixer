@@ -543,10 +543,6 @@ class HelixerModel(ABC):
 
             if self.optimizer.lower() == 'adam':
                 self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
-            elif self.optimizer.lower() == 'adabelief':
-                from adabelief_tf import AdaBeliefOptimizer
-                self.optimizer = AdaBeliefOptimizer(learning_rate=1e-3, epsilon=1e-16, rectify=False,
-                                                    clipnorm=self.clip_norm)
 
             self.compile_model(model)
 
