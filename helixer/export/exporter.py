@@ -21,10 +21,10 @@ class HelixerExportController(object):
     VAL = 'val'
     TRAIN = 'train'
 
-    def __init__(self, db_path_in, data_dir, only_test_set=False, match_existing=False, h5_group='/data/'):
-        self.db_path_in = db_path_in
+    def __init__(self, main_db_path, data_dir, only_test_set=False, match_existing=False, h5_group='/data/'):
+        self.main_db_path = main_db_path
         self.only_test_set = only_test_set
-        self.geenuff_exporter = GeenuffExportController(self.db_path_in, longest=True)
+        self.geenuff_exporter = GeenuffExportController(self.main_db_path, longest=True)
 
         # h5 export details
         self.match_existing = match_existing
@@ -282,11 +282,10 @@ class HelixerExportController(object):
                     gc[g_id].append(coord_tuple)
         return gc
 
-    def _add_data_attrs(self, genomes, exclude, keep_errors):
+    def _add_data_attrs(self, genomes, keep_errors):
         attrs = {
             'timestamp': str(datetime.datetime.now()),
             'genomes': ','.join(genomes),
-            'exclude': ','.join(exclude),
             'keep_errors': str(keep_errors),
         }
         # get GeenuFF and Helixer commit hashes
@@ -354,13 +353,12 @@ class HelixerExportController(object):
             yield coord_data, coord, masked_bases_perc, ig_bases_perc, invalid_chunks_perc, featureless_chunks_perc, \
                   h5_coord
 
-    def export(self, chunk_size, genomes, exclude, val_size, one_hot=True,
+    def export(self, chunk_size, genomes, val_size, one_hot=True,
                all_transcripts=False, keep_featureless=False, write_by=10_000_000_000,
                modes=('X', 'y', 'anno_meta', 'transitions')):
         h5_group = self.h5_group
         keep_errors = True
-        genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude,
-                                                                   all_transcripts=all_transcripts)
+        genome_coord_features = self.geenuff_exporter.genome_query(genomes, all_transcripts=all_transcripts)
         # make version without features for shorter downstream code
         genome_coords = {g_id: list(values.keys()) for g_id, values in genome_coord_features.items()}
 
@@ -430,7 +428,7 @@ class HelixerExportController(object):
                 except UnboundLocalError as e:
                     print('please fix me so I do not throw e at featureless coordinates.... anyway, swallowing:', e)
                 n_coords_done += 1
-        self._add_data_attrs(genomes, exclude, keep_errors)
+        self._add_data_attrs(genomes, keep_errors)
         self._close_files()
         print('Export from geenuff db to h5 file(s) with numeric matrices finished successfully.')
         return n_writing_chunks  # for testing only atm

@@ -30,6 +30,7 @@ ensembled_predictions.h5
 *.csv
 */*/logs
 *.cprof
+data/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

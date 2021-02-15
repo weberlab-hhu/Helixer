@@ -9,8 +9,6 @@ def main(args):
 
     if args.genomes != '':
         args.genomes = args.genomes.split(',')
-    if args.exclude_genomes != '':
-        args.exclude_genomes = args.exclude_genomes.split(',')
 
     if args.modes == 'all':
         modes = ('X', 'y', 'anno_meta', 'transitions')  # todo, only X does anything atm
@@ -24,18 +22,17 @@ def main(args):
         match_existing = False
         h5_group = '/data/'
 
-    controller = HelixerExportController(args.db_path_in, args.out_dir, args.only_test_set,
+    controller = HelixerExportController(args.main_db_path, args.out_dir, args.only_test_set,
                                          match_existing=match_existing, h5_group=h5_group)
-    controller.export(chunk_size=args.chunk_size, genomes=args.genomes, exclude=args.exclude_genomes,
-                      val_size=args.val_size, keep_featureless=args.export_featureless, write_by=args.write_by,
-                      modes=modes)
+    controller.export(chunk_size=args.chunk_size, genomes=args.genomes, val_size=args.val_size,
+                      keep_featureless=args.export_featureless, write_by=args.write_by, modes=modes)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     io = parser.add_argument_group("Data input and output")
-    io.add_argument('--db-path-in', type=str, required=True,
-                    help='Path to the Helixer SQLite input database.')
+    io.add_argument('--main-db-path', type=str, required=True,
+                    help='Path to the directory with GeenuFF SQLite input databases (has to be one per genome).')
     io.add_argument('--out-dir', type=str, required=True, help='Output dir for encoded data files.')
     io.add_argument('--add-additional', type=str,
                     help='outputs the datasets under alternatives/{add-additional}/ (and checks sort order against '
@@ -43,13 +40,8 @@ if __name__ == '__main__':
 
     genomes = parser.add_argument_group("Genome selection")
     genomes.add_argument('--genomes', type=str, default='',
-                         help=('Comma seperated list of species names to be exported. '
-                               'If empty all genomes in the db are used except the ones specified '
-                               ' with --exclude-genomes. Can only be used when --exclude-genomes '
-                               ' is empty'))
-    genomes.add_argument('--exclude-genomes', type=str, default='',
-                         help=('Comma seperated list of species names to be excluded. '
-                               'Can only be used when --genomes is empty'))
+                         help=('Comma seperated list of species names to be exported. Each species must be in a '
+                               'seperate GeenuFF database inside --main-db-path, and have the name {genome_name}.sqlite.')
 
     data = parser.add_argument_group("Data generation parameters")
     data.add_argument('--chunk-size', type=int, default=20000,
