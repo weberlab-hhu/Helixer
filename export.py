@@ -23,7 +23,7 @@ def main(args):
 
     controller = HelixerExportController(args.main_db_path, args.out_dir, args.only_test_set,
                                          match_existing=match_existing, h5_group=h5_group)
-    controller.export(chunk_size=args.chunk_size, val_size=args.val_size,
+    controller.export(chunk_size=args.chunk_size, genomes=args.genomes, val_size=args.val_size,
                       keep_featureless=args.export_featureless, write_by=args.write_by, modes=modes)
 
 
@@ -38,9 +38,9 @@ if __name__ == '__main__':
                          'existing "data" datasets). Use to add e.g. additional annotations from Augustus.')
 
     genomes = parser.add_argument_group("Genome selection")
-    genomes.add_argument('--genomes', type=str, default='',
+    genomes.add_argument('--genomes', type=str, default='', required=True,
                          help=('Comma seperated list of species names to be exported. Each species must be in a '
-                               'seperate GeenuFF database inside --main-db-path, and have the name {genome_name}.sqlite.')
+                               'seperate GeenuFF database inside --main-db-path, and have the name {genome_name}.sqlite3.'))
 
     data = parser.add_argument_group("Data generation parameters")
     data.add_argument('--chunk-size', type=int, default=20000,
@@ -63,7 +63,6 @@ if __name__ == '__main__':
                            'must be divisible by chunk-size')
 
     args = parser.parse_args()
-    assert not (args.genomes and args.exclude_genomes), 'Can not include and exclude together'
     print('Export config:')
     pprint(vars(args))
     print()

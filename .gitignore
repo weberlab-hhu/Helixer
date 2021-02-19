@@ -31,6 +31,7 @@ ensembled_predictions.h5
 */*/logs
 *.cprof
 data/*
+dbs/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -4,16 +4,18 @@ import h5py
 import glob
 import numpy as np
 import random
+import sqlite3
 import datetime
 import subprocess
 import pkg_resources
+from multiprocessing.pool import ThreadPool
 from sklearn.model_selection import train_test_split
 
 import geenuff
 import helixer
 from geenuff.applications.exporter import GeenuffExportController
 from .numerify import CoordNumerifier
-from ..core.helpers import get_sp_seq_ranges
+from ..core.helpers import get_sp_seq_ranges, file_stem
 
 from collections import defaultdict
 
@@ -24,13 +26,25 @@ class HelixerExportController(object):
     TRAIN = 'train'
 
     def __init__(self, main_db_path, data_dir, only_test_set=False, match_existing=False, h5_group='/data/'):
+
+        def check_db(path):
+            genome_name_file = file_stem(path)
+            conn = sqlite3.connect(path)
+            c = conn.cursor()
+            c.execute('''SELECT species from genome;''')
+            genome_name_db = c.fetchall()
+            conn.close()
+            assert len(genome_name_db) == 1 and genome_name_file == genome_name_db[0][0], f'{path} is not a valid db'
+            print(f'{path} looks good')
+
         self.only_test_set = only_test_set
-        db_paths = {db.split('.')[0]:os.path.join(main_db_path, db)
-                    for db in glob.glob(os.path.join(main_db_path, '*.sqlite3')}
+        db_paths = {file_stem(db_path):db_path for db_path in glob.glob(os.path.join(main_db_path, '*.sqlite3'))}
         # open connections to all dbs in path
         start_time = time.time()
+        with ThreadPool(8) as p:
+            p.map(check_db, list(db_paths.values()))
         self.exporters = {genome:GeenuffExportController(path, longest=True) for genome, path in db_paths.items()}
-        print(f'Opened connections to {len(db_paths)} dbs in {time.time() - start_time:.2f} seconds')
+        print(f'Checked and opened connections to {len(db_paths)} dbs in {time.time() - start_time:.2f} seconds')
 
         # h5 export details
         self.match_existing = match_existing
@@ -355,8 +369,9 @@ class HelixerExportController(object):
                modes=('X', 'y', 'anno_meta', 'transitions')):
         h5_group = self.h5_group
         keep_errors = True
-        genome_coord_features = {genome_name:self.exporters[genome_name].genome_query(genome, all_transcripts=all_transcripts)
-                                 for genome in genomes}
+        genome_coord_features = {genome_name:self.exporters[genome_name] \
+                                     .genome_query(genome_name, all_transcripts=all_transcripts)
+                                 for genome_name in genomes}
         # make version without features for shorter downstream code
         genome_coords = {genome_name: list(values.keys()) for genome_name, values in genome_coord_features.items()}
 

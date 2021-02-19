@@ -47,3 +47,9 @@ def get_sp_seq_ranges(h5):
     out[prev_sp]["seqids"][prev_seqid].append(i + 1)
     return out
 
+
+def file_stem(path):
+    """Returns the file name without extension"""
+    import os
+    return os.path.basename(path).split('.')[0]
+
