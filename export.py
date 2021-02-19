@@ -6,7 +6,6 @@ from helixer.export.exporter import HelixerExportController
 
 
 def main(args):
-
     if args.genomes != '':
         args.genomes = args.genomes.split(',')
 
@@ -24,7 +23,7 @@ def main(args):
 
     controller = HelixerExportController(args.main_db_path, args.out_dir, args.only_test_set,
                                          match_existing=match_existing, h5_group=h5_group)
-    controller.export(chunk_size=args.chunk_size, genomes=args.genomes, val_size=args.val_size,
+    controller.export(chunk_size=args.chunk_size, val_size=args.val_size,
                       keep_featureless=args.export_featureless, write_by=args.write_by, modes=modes)
 
 
