@@ -324,10 +324,11 @@ class HelixerExportController(object):
         for key in self.h5:
             self.h5[key].close()
 
-    def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, keep_featureless, write_by, modes):
+    def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, keep_featureless,
+                        write_by, modes, multiprocess):
         """filtering and stats"""
-        coord_data_gen = CoordNumerifier.numerify(coord, coord_features, chunk_size,
-                                                  one_hot, write_by=write_by, mode=modes)
+        coord_data_gen = CoordNumerifier.numerify(coord, coord_features, chunk_size, one_hot,
+                                                  write_by=write_by, mode=modes, multiprocess=multiprocess)
 
         # the following will all be used to calculated a percentage, which is yielded but ignored until the end
         n_chunks = 0
@@ -368,7 +369,7 @@ class HelixerExportController(object):
 
     def export(self, chunk_size, genomes, val_size, one_hot=True,
                all_transcripts=False, keep_featureless=False, write_by=10_000_000_000,
-               modes=('X', 'y', 'anno_meta', 'transitions')):
+               modes=('X', 'y', 'anno_meta', 'transitions'), multiprocess=True):
         h5_group = self.h5_group
         keep_errors = True
         genome_coord_features = {genome_name:self.exporters[genome_name] \
@@ -405,7 +406,7 @@ class HelixerExportController(object):
                 coord_features = genome_coord_features[genome_name][(coord_id, coord_len)]
                 numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size,
                                                         one_hot, keep_featureless, write_by=write_by,
-                                                        modes=modes)
+                                                        modes=modes, multiprocess=multiprocess)
                 first_round_for_coordinate = True
                 for flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc, \
                     featureless_chunks_perc, h5_coord in numerify_outputs:

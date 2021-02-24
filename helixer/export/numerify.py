@@ -93,7 +93,8 @@ class Numerifier(ABC):
 
 
 class SequenceNumerifier(Numerifier):
-    def __init__(self, coord, max_len, start=0, end=None):
+    def __init__(self, coord, max_len, start=0, end=None, multiprocess=True):
+        self.multiprocess = multiprocess
         super().__init__(n_cols=4, coord=coord, max_len=max_len, dtype=np.float16, start=start, end=end)
 
     def coord_to_matrices(self):
@@ -107,7 +108,7 @@ class SequenceNumerifier(Numerifier):
         # plus strand, actual numerification of the sequence
         seq = self.coord.sequence[self.start:self.end]
         seq_len = len(seq)  # can be slow
-        if seq_len < int(1e6):
+        if seq_len < int(1e6) or not self.multiprocess:
             # numerify short sequences sequencially
             self._zero_matrix()
             for i, bp in enumerate(seq):
@@ -282,24 +283,26 @@ class CoordNumerifier(object):
 
     @staticmethod
     def numerify(coord, coord_features, max_len, one_hot=True, mode=('X', 'y', 'anno_meta', 'transitions'),
-                 write_by=5000000):
+                 write_by=5000000, multiprocess=True):
         assert isinstance(max_len, int) and max_len > 0, 'what is {} of type {}'.format(max_len, type(max_len))
         coord_features = sorted(coord_features, key=lambda f: min(f.start, f.end))  # sort by ~ +strand start
         split_finder = SplitFinder(features=coord_features, write_by=write_by, coord_length=coord.length,
                                    chunk_size=max_len)
         for f_set, bp_coord, h5_coord in split_finder.feature_n_coord_gen():
             for strand_res in CoordNumerifier._numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len,
-                                                                          one_hot, coord_features, mode):
+                                                                          one_hot, coord_features, mode, multiprocess):
                 yield strand_res
 
     @staticmethod
-    def _numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len, one_hot, coord_features, mode):
+    def _numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len, one_hot,
+                                    coord_features, mode, multiprocess):
         export_x = 'X' in mode
         start, end = bp_coord
 
         anno_numerifier = AnnotationNumerifier(coord=coord, features=f_set, max_len=max_len,
                                                one_hot=one_hot, start=start, end=end)
-        seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=start, end=end)
+        seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=start, end=end,
+                                            multiprocess=multiprocess)
 
         # everything with _b below is for "both strands" and is {"plus": +_np_array, "minus": -_np_array }
         # todo, make mode more elegant / extensible

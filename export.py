@@ -24,7 +24,8 @@ def main(args):
     controller = HelixerExportController(args.main_db_path, args.out_dir, args.only_test_set,
                                          match_existing=match_existing, h5_group=h5_group)
     controller.export(chunk_size=args.chunk_size, genomes=args.genomes, val_size=args.val_size,
-                      keep_featureless=args.export_featureless, write_by=args.write_by, modes=modes)
+                      keep_featureless=args.export_featureless, write_by=args.write_by, modes=modes,
+                      multiprocess=not args.no_multiprocess)
 
 
 if __name__ == '__main__':
@@ -61,6 +62,8 @@ if __name__ == '__main__':
     data.add_argument('--write-by', type=int, default=10_000_000_000,
                       help='write in super-chunks with this many bp, '
                            'must be divisible by chunk-size')
+    data.add_argument('--no-multiprocess', action='store_true',
+                      help='Whether to parallize numerification of large sequences. Uses 2x the memory.')
 
     args = parser.parse_args()
     print('Export config:')
