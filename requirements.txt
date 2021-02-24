@@ -12,6 +12,7 @@ intervaltree
 sqlalchemy
 numpy
 h5py
+multiprocess
 git+https://github.com/janinamass/dustdas@master
 # for testing only
 pytest

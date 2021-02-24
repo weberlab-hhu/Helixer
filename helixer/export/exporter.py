@@ -34,7 +34,9 @@ class HelixerExportController(object):
             c.execute('''SELECT species from genome;''')
             genome_name_db = c.fetchall()
             conn.close()
-            assert len(genome_name_db) == 1 and genome_name_file == genome_name_db[0][0], f'{path} is not a valid db'
+
+            same_names = (genome_name_file.lower() == genome_name_db[0][0].lower())
+            assert len(genome_name_db) == 1 and same_names, f'{path} is not a valid db'
             print(f'{path} looks good')
 
         self.only_test_set = only_test_set

@@ -104,18 +104,18 @@ class SequenceNumerifier(Numerifier):
                 matrix_part[i] = AMBIGUITY_DECODE[bp]
             return matrix_part
 
+        # plus strand, actual numerification of the sequence
         seq = self.coord.sequence[self.start:self.end]
         seq_len = len(seq)  # can be slow
-        if seq_len < 100000:
+        if seq_len < int(2e6):
             # numerify short sequences sequencially
             self._zero_matrix()
-            # plus strand, actual numerification of the sequence
             for i, bp in enumerate(seq):
                 self.matrix[i] = AMBIGUITY_DECODE[bp]
         else:
             # numerify longer sequences in parallel
-            # use as many cpus as possible, with minimum 15k chars per process
-            n_processes = min(multiprocess.cpu_count(), seq_len // 15000)
+            # use as many cpus as possible, with minimum 1M chars per process
+            n_processes = min(multiprocess.cpu_count(), seq_len // int(1e6))
             with multiprocess.Pool(n_processes) as p:
                 max_seq_part_len = int(np.ceil(seq_len / n_processes))
                 seq_parts = [seq[offset:offset + max_seq_part_len]
