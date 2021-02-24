@@ -2,6 +2,7 @@
 
 import numpy as np
 import logging
+import multiprocess
 from abc import ABC, abstractmethod
 
 from geenuff.base import types
@@ -97,18 +98,39 @@ class SequenceNumerifier(Numerifier):
 
     def coord_to_matrices(self):
         """Does not alter the error mask unlike in AnnotationNumerifier"""
-        self._zero_matrix()
-        # plus strand, actual numerification of the sequence
-        for i, bp in enumerate(self.coord.sequence[self.start:self.end]):
-            self.matrix[i] = AMBIGUITY_DECODE[bp]
+        def numerify(seq_part):
+            matrix_part= np.zeros((len(seq_part), self.n_cols,), self.dtype)
+            for i, bp in enumerate(seq_part):
+                matrix_part[i] = AMBIGUITY_DECODE[bp]
+            return matrix_part
+
+        seq = self.coord.sequence[self.start:self.end]
+        seq_len = len(seq)  # can be slow
+        if seq_len < 100000:
+            # numerify short sequences sequencially
+            self._zero_matrix()
+            # plus strand, actual numerification of the sequence
+            for i, bp in enumerate(seq):
+                self.matrix[i] = AMBIGUITY_DECODE[bp]
+        else:
+            # numerify longer sequences in parallel
+            # use as many cpus as possible, with minimum 15k chars per process
+            n_processes = min(multiprocess.cpu_count(), seq_len // 15000)
+            with multiprocess.Pool(n_processes) as p:
+                max_seq_part_len = int(np.ceil(seq_len / n_processes))
+                seq_parts = [seq[offset:offset + max_seq_part_len]
+                             for offset in range(0, seq_len, max_seq_part_len)]
+                numerified_parts = p.map(numerify, seq_parts)
+            assert seq_len == sum([len(p) for p in numerified_parts])
+            self.matrix = np.concatenate(numerified_parts)
+
         # very important to copy here
-        data_plus = self._slice_matrices(True,
-                                         np.copy(self.matrix))[0]
+        data_plus = self._slice_matrices(True, np.copy(self.matrix))[0]
 
         # minus strand
         self.matrix = np.flip(self.matrix, axis=1)  # complementary base
-        data_minus = self._slice_matrices(False,  # slice matrix will reverse direction
-                                          self.matrix)[0]
+        # slice matrix will reverse direction
+        data_minus = self._slice_matrices(False,  self.matrix)[0]
 
         # put everything together
         data = {'plus': data_plus, 'minus': data_minus}
@@ -130,7 +152,7 @@ class AnnotationNumerifier(Numerifier):
     #  maybe have first pass & second pass matrix gen functions, and loop through those that exist at each step??
     #  Second pass could also be written to h5 in a second round to reduce mem usage if need be. Or first pass is
     #  a generator that autodetects splittable intergenic regions every 10mb or so.
-    
+
     def __init__(self, coord, features, max_len, one_hot=True, start=0, end=None):
         super().__init__(n_cols=3, coord=coord, max_len=max_len, dtype=np.int8, start=start, end=end)
         self.features = features
@@ -160,7 +182,6 @@ class AnnotationNumerifier(Numerifier):
         # encoding of the actual labels and slicing; generation of error mask and gene length array
         if self.one_hot:
             label_matrix = self._encode_onehot4()
-
         else:
             label_matrix = self.matrix
         matrices = self._slice_matrices(is_plus_strand,
@@ -215,7 +236,7 @@ class AnnotationNumerifier(Numerifier):
 
         one_hot4_matrix = one_hot_matrix.astype(np.int8)
         return one_hot4_matrix
-    
+
     def _encode_transitions(self):
         add = np.array([[0, 0, 0]])
         shifted_feature_matrix = np.vstack((self.matrix[1:], add))
@@ -346,7 +367,7 @@ class SplitFinder:
         self.coord_length = coord_length
         self.chunk_size = chunk_size
         self.splits = tuple(self._find_splits())
-        print(len(self.splits), 'expected num of chunks to write in', self.write_by)
+        print(len(self.splits), 'expected num of chunks to write in', self.write_by, 'bases to hdf5')
         self.relative_h5_coords = tuple(self._get_rel_h5_coords_for_splits())
 
     @property
