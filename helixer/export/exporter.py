@@ -396,6 +396,7 @@ class HelixerExportController(object):
                 self._set_current_sp_start_ends(genome_name.encode('ASCII'))
 
             for (coord_id, coord_len) in coords:
+                start_time = time.time()
                 # calculate how many chunks will be produced
                 n_chunks = coord_len // chunk_size
                 if coord_len % chunk_size:
@@ -434,11 +435,12 @@ class HelixerExportController(object):
                     first_round_for_coordinate = False
                     n_writing_chunks += 1
                 try:
-                    print((f'{n_coords_done}/{n_coords} Numerified {coord} of {genome_name} '
-                           f"with {len(coord.features)} features in {flat_data[0].matrix.shape[0]} chunks, "
-                           f'masked rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
-                           f'filtered fully err chunks: {invalid_seqs_perc:.2f}% ({assigned_set}), '
-                           f'filtered chunks from featureless coordinates {featureless_chunks_perc:.2f}%'))
+                    print(f'{n_coords_done}/{n_coords} Numerified {coord} of {genome_name} '
+                          f"with {len(coord.features)} features in {flat_data[0].matrix.shape[0]} chunks, "
+                          f'masked rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
+                          f'filtered fully err chunks: {invalid_seqs_perc:.2f}% ({assigned_set}), '
+                          f'filtered chunks from featureless coordinates {featureless_chunks_perc:.2f}% '
+                          f'({time.time() - start_time:.2f} secs)', end='\n\n')
                 except UnboundLocalError as e:
                     print('please fix me so I do not throw e at featureless coordinates.... anyway, swallowing:', e)
                 n_coords_done += 1

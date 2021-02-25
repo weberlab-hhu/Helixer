@@ -1,5 +1,5 @@
 """convert cleaned-db schema to numeric values describing gene structure"""
-
+import time
 import numpy as np
 import logging
 import multiprocess
@@ -106,6 +106,7 @@ class SequenceNumerifier(Numerifier):
             return matrix_part
 
         # plus strand, actual numerification of the sequence
+        start_time = time.time()
         seq = self.coord.sequence[self.start:self.end]
         seq_len = len(seq)  # can be slow
         if seq_len < int(1e6) or not self.multiprocess:
@@ -115,8 +116,8 @@ class SequenceNumerifier(Numerifier):
                 self.matrix[i] = AMBIGUITY_DECODE[bp]
         else:
             # numerify longer sequences in parallel
-            # use as many cpus as possible, with minimum 500K chars per process
-            n_processes = min(multiprocess.cpu_count(), seq_len // int(5e5))
+            # use one less cpu than possible, with minimum 500K chars per process
+            n_processes = min(multiprocess.cpu_count(), seq_len // int(5e5)) - 1
             with multiprocess.Pool(n_processes) as p:
                 max_seq_part_len = int(np.ceil(seq_len / n_processes))
                 seq_parts = [seq[offset:offset + max_seq_part_len]
@@ -135,6 +136,7 @@ class SequenceNumerifier(Numerifier):
 
         # put everything together
         data = {'plus': data_plus, 'minus': data_minus}
+        print(f'Numerification of only the sequence of {self.coord.seqid} took {time.time() - start_time:.2f} secs')
         return data
 
 
