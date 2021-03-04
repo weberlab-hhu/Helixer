@@ -17,6 +17,7 @@ import numpy as np
 import tensorflow as tf
 from sklearn.utils import shuffle
 from pprint import pprint
+from terminaltables import AsciiTable
 
 from tensorflow.keras.callbacks import Callback
 from tensorflow.keras import optimizers
@@ -76,17 +77,23 @@ class ConfusionMatrixTrain(Callback):
 
         if os.path.isdir(self.large_eval_folder):
             results = {}
-            for eval_file_name in glob.glob(f'{self.large_eval_folder}/*.h5'):
+            for i, eval_file_name in enumerate(glob.glob(f'{self.large_eval_folder}/*.h5')):
                 # load best model
                 best_model = load_model(self.save_model_path)
                 h5_eval = h5py.File(eval_file_name, 'r')
                 # use exactly the data generator that is used during validation
-                GenCls = val_generator.__class__
-                gen = GenCls.sequence_cls(model=self.val_generator.model, h5_file=h5_eval, mode='val',
-                                          batch_size=self.val_generator.batch_size, shuffle=False)
-                perf_one_species = HelixerModel.run_confusion_matrix(gen, best_model, print_to_stdout=False)
+                GenCls = self.val_generator.__class__
+                gen = GenCls(model=self.val_generator.model, h5_file=h5_eval, mode='val',
+                             batch_size=self.val_generator.batch_size, shuffle=False)
+                perf_one_species = HelixerModel.run_confusion_matrix(gen, best_model)
                 species_name = os.path.basename(eval_file_name).split('.')[0]
                 results[species_name] = perf_one_species
+            # print results in an alphabetically sorted table
+            sorted_results = {name:results[name] for name in sorted(list(results.keys()))}
+            table = [['Name', 'Precision', 'Recall', 'F1-Score']]
+            for name, values in sorted_results.items():
+                table.append([name] + [f'{v:.4f}' for v in values])
+            print('\n', AsciiTable(table, 'Generalization Validation').table, sep='')
 
 
 class PreshuffleCallback(Callback):
@@ -107,7 +114,7 @@ class HelixerSequence(Sequence):
         self.shuffle = shuffle
         self.batch_size = batch_size
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
-                                 'coverage_norm', 'stretch_transition_weights', 'coverage_weights', 'coverage_offset', 
+                                 'coverage_norm', 'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
 				  'debug'])
         x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
         if self.debug:
@@ -369,7 +376,7 @@ class HelixerModel(ABC):
 
     def generate_callbacks(self, train_generator):
         callbacks = [ConfusionMatrixTrain(self.save_model_path, self.gen_validation_data(),
-                                          self.large_eval_data, self.patience, report_to_nni=self.nni)]
+                                          self.large_eval_folder, self.patience, report_to_nni=self.nni)]
         callbacks.append(PreshuffleCallback(train_generator))
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
