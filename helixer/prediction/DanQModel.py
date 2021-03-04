@@ -14,7 +14,7 @@ class DanQSequence(HelixerSequence):
             assert not mode == 'test'  # only use class weights during training and validation
 
     def __getitem__(self, idx):
-        X, y, sw, _, transitions, coverage_scores = self._get_batch_data(idx)
+        X, y, sw, transitions, coverage_scores = self._get_batch_data(idx)
         pool_size = self.model.pool_size
 
         if pool_size > 1:
@@ -32,32 +32,34 @@ class DanQSequence(HelixerSequence):
             sw = sw.reshape((sw.shape[0], -1, pool_size))
             sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
 
-            if self.class_weights is not None:
-                # class weights are additive for the individual timestep predictions
-                # giving even more weight to transition points
-                # class weights without pooling not supported yet
-                # cw = np.array([1.0, 1.2, 1.0, 0.8], dtype=np.float32)
-                cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
-                cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
-                # add class weights to applicable timesteps
-                cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
-                cw = np.sum(cw_arrays, axis=2)
-                sw = np.multiply(cw, sw)
+            if self.mode == 'train':
 
-            # todo, while now compressed, the following is still 1:1 with LSTM model... --> HelixerModel
-            if self.transition_weights is not None:
-                transitions = self._mk_timestep_pools_class_last(transitions)
-                # more reshaping and summing  up transition weights for multiplying with sample weights
-                sw_t = self.compress_tw(transitions)
-                sw = np.multiply(sw_t, sw)
+                if self.class_weights is not None:
+                    # class weights are additive for the individual timestep predictions
+                    # giving even more weight to transition points
+                    # class weights without pooling not supported yet
+                    # cw = np.array([1.0, 1.2, 1.0, 0.8], dtype=np.float32)
+                    cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
+                    cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
+                    # add class weights to applicable timesteps
+                    cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
+                    cw = np.sum(cw_arrays, axis=2)
+                    sw = np.multiply(cw, sw)
 
-            if self.coverage_weights:
-                coverage_scores = coverage_scores.reshape((coverage_scores.shape[0], -1, pool_size))
-                # maybe offset coverage scores [0,1] by small number (bc RNAseq has issues too), default 0.0
-                if self.coverage_offset > 0.:
-                    coverage_scores = np.add(coverage_scores, self.coverage_offset)
-                coverage_scores = np.mean(coverage_scores, axis=2)
-                sw = np.multiply(coverage_scores, sw)
+                # todo, while now compressed, the following is still 1:1 with LSTM model... --> HelixerModel
+                if self.transition_weights is not None:
+                    transitions = self._mk_timestep_pools_class_last(transitions)
+                    # more reshaping and summing  up transition weights for multiplying with sample weights
+                    sw_t = self.compress_tw(transitions)
+                    sw = np.multiply(sw_t, sw)
+
+                if self.coverage_weights:
+                    coverage_scores = coverage_scores.reshape((coverage_scores.shape[0], -1, pool_size))
+                    # maybe offset coverage scores [0,1] by small number (bc RNAseq has issues too), default 0.0
+                    if self.coverage_offset > 0.:
+                        coverage_scores = np.add(coverage_scores, self.coverage_offset)
+                    coverage_scores = np.mean(coverage_scores, axis=2)
+                    sw = np.multiply(coverage_scores, sw)
 
         return X, y, sw
 
@@ -81,7 +83,10 @@ class DanQModel(HelixerModel):
 
     def model(self):
         overhang = self.shape_train[1] % self.pool_size
-        main_input = Input(shape=(None, 4), dtype=self.float_precision,
+        values_per_bp = 4
+        if self.input_coverage:
+            values_per_bp = 6
+        main_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
                            name='main_input')
         x = Conv1D(filters=self.filter_depth,
                    kernel_size=self.kernel_size,

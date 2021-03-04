@@ -106,10 +106,14 @@ class HelixerSequence(Sequence):
         self.mode = mode
         self.shuffle = shuffle
         self.batch_size = batch_size
-        self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights',
-                                 'stretch_transition_weights', 'coverage', 'coverage_scaling', 'debug'])
+        self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
+                                 'coverage_norm', 'stretch_transition_weights', 'coverage_weights', 'coverage_offset', 
+				  'debug'])
         x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
-        self.n_seqs = y_dset.shape[0]
+        if self.debug:
+            self.n_seqs = 10000
+        else:
+            self.n_seqs = y_dset.shape[0]
         self.chunk_size = y_dset.shape[1]
 
         print(f'\nStarting to load {self.mode} data into memory..')
@@ -120,8 +124,12 @@ class HelixerSequence(Sequence):
         if self.mode == 'train':
             if self.transition_weights is not None:
                 self.data_list_names.append('data/transitions')
-            if self.coverage:
+            if self.coverage_weights:
                 self.data_list_names.append('scores/by_bp')
+
+        if self.input_coverage:
+            self.data_list_names += ['evaluation/coverage', 'evaluation/spliced_coverage']
+
         self.data_lists = [[] for _ in range(len(self.data_list_names))]
         self.data_dtypes = [h5_file[name].dtype for name in self.data_list_names]
 
@@ -150,18 +158,45 @@ class HelixerSequence(Sequence):
 
     def _get_batch_data(self, idx):
         batch = []
-        for dtype, data_list in zip(self.data_dtypes, self.data_lists):
-            decoded_list = [np.frombuffer(self.compressor.decode(e), dtype=dtype)
-                            for e in data_list[idx * self.batch_size:(idx + 1) * self.batch_size]]
-            if len(decoded_list[0]) > self.chunk_size:
-                decoded_list = [e.reshape(self.chunk_size, -1) for e in decoded_list]
-            batch.append(np.stack(decoded_list, axis=0))
-
-        # fill up datasets
-        if len(batch) < 5:
-            batch.extend([None] * (5 - len(batch)))
+        # batch must have one thing for everything unpacked by __getitem__ (and in order)
+        for name in ['data/X', 'data/y', 'data/sample_weights', 'data/transitions', 'scores/by_bp']:
+            if name not in self.data_list_names:
+                batch.append(None)
+            else:
+                decoded_list = self._decode_one(name, idx)
+                # append coverage to X directly, might be clearer elsewhere once working, but this needs little code...
+                if name == 'data/X' and self.input_coverage:
+                    decode_coverage = self._decode_one('evaluation/coverage', idx)
+                    decode_coverage = [self._cov_norm(x.reshape(-1, 1)).astype(np.float16) for x in decode_coverage]
+                    decode_spliced = self._decode_one('evaluation/spliced_coverage', idx)
+                    decode_spliced = [self._cov_norm(x.reshape(-1, 1)).astype(np.float16) for x in decode_spliced]
+                    decoded_list = [np.concatenate((x, y, z), axis=1) for x, y, z in
+                                    zip(decoded_list, decode_coverage, decode_spliced)]
+                batch.append(np.stack(decoded_list, axis=0))
 
         return tuple(batch)
+
+    def _decode_one(self, name, idx):
+        """decode position {idx} from compressed data originally from dataset {name}"""
+        i = self.data_list_names.index(name)
+        dtype = self.data_dtypes[i]
+        data_list = self.data_lists[i]
+        decoded_list = [np.frombuffer(self.compressor.decode(e), dtype=dtype)
+                        for e in data_list[idx * self.batch_size:(idx + 1) * self.batch_size]]
+        if len(decoded_list[0]) > self.chunk_size:
+            decoded_list = [e.reshape(self.chunk_size, -1) for e in decoded_list]
+        return decoded_list
+
+    def _cov_norm(self, x):
+        method = self.coverage_norm
+        if method is None:
+            return x
+        elif method == 'log':
+            return np.log(x + 1.1)
+        elif method == 'linear':
+            return x / 100
+        else:
+            raise ValueError(f'unrecognized method: {method} for normalizing coverage data')
 
     def _update_sw_with_transition_weights(self):
         pass
@@ -269,13 +304,14 @@ class HelixerModel(ABC):
         self.parser.add_argument('--val-test-batch-size', type=int, default=8)
         self.parser.add_argument('--loss', type=str, default='')
         self.parser.add_argument('--patience', type=int, default=3)
+        self.parser.add_argument('--optimizer', type=str, default='adam')
         self.parser.add_argument('--clip-norm', type=float, default=1.0)
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
         self.parser.add_argument('--class-weights', type=str, default='None')
+        self.parser.add_argument('--input-coverage', action='store_true')
+        self.parser.add_argument('--coverage-norm', default=None)
         self.parser.add_argument('--transition-weights', type=str, default='None')
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
-        self.parser.add_argument('--input-coverage', action='store_true')
-        self.parser.add_argument('--coverage-norm', type=str, default=None, choices=[None, 'log', 'linear'])
         self.parser.add_argument('--coverage-weights', action='store_true')
         self.parser.add_argument('--coverage-offset', type=float, default=0.0)
         self.parser.add_argument('--resume-training', action='store_true')
@@ -546,7 +582,9 @@ class HelixerModel(ABC):
                 model = self.model()
             self._print_model_info(model)
 
-            self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
+            if self.optimizer.lower() == 'adam':
+                self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
+
             self.compile_model(model)
 
             train_generator = self.gen_training_data()
