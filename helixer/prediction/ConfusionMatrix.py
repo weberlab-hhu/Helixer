@@ -144,12 +144,6 @@ class ConfusionMatrix():
         out = []
         names = ['ig', 'utr', 'exon', 'intron']
 
-        # confusion matrix
-        cm = [[''] + [x + '_pred' for x in names]]
-        for i, row in enumerate(self.cm.astype(int).tolist()):
-            cm.append([names[i] + '_ref'] + row)
-        out.append((cm, 'confusion_matrix'))
-
         # normalized
         normalized_cm = [cm[0]]
         for i, row in enumerate(self._get_normalized_cm().tolist()):

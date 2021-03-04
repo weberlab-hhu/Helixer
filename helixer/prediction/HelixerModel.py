@@ -39,9 +39,10 @@ class SaveEveryEpoch(Callback):
 
 
 class ConfusionMatrixTrain(Callback):
-    def __init__(self, save_model_path, val_generator, patience, report_to_nni=False):
+    def __init__(self, save_model_path, val_generator, large_eval_data, patience, report_to_nni=False):
         self.save_model_path = save_model_path
         self.val_generator = val_generator
+        self.large_eval_data = large_eval_data
         self.patience = patience
         self.report_to_nni = report_to_nni
         self.best_val_genic_f1 = 0.0
@@ -70,6 +71,8 @@ class ConfusionMatrixTrain(Callback):
             self.model.stop_training = True
 
     def on_train_end(self, logs=None):
+        if self.large_eval_data:
+
         if self.report_to_nni:
             nni.report_final_result(self.best_val_genic_f1)
 
@@ -247,6 +250,7 @@ class HelixerModel(ABC):
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('-d', '--data-dir', type=str, default='')
         self.parser.add_argument('-s', '--save-model-path', type=str, default='./best_model.h5')
+        self.parser.add_argument('--large-eval-data', type=str, default='')
         # training params
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
         self.parser.add_argument('-b', '--batch-size', type=int, default=8)
@@ -258,6 +262,8 @@ class HelixerModel(ABC):
         self.parser.add_argument('--class-weights', type=str, default='None')
         self.parser.add_argument('--transition-weights', type=str, default='None')
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
+        self.parser.add_argument('--input-coverage', action='store_true')
+        self.parser.add_argument('--coverage-norm', type=str, default=None, choices=[None, 'log', 'linear'])
         self.parser.add_argument('--coverage-weights', action='store_true')
         self.parser.add_argument('--coverage-offset', type=float, default=0.0)
         self.parser.add_argument('--resume-training', action='store_true')
@@ -315,7 +321,7 @@ class HelixerModel(ABC):
 
     def generate_callbacks(self, train_generator):
         callbacks = [ConfusionMatrixTrain(self.save_model_path, self.gen_validation_data(),
-                                          self.patience, report_to_nni=self.nni)]
+                                          self.large_eval_data, self.patience, report_to_nni=self.nni)]
         callbacks.append(PreshuffleCallback(train_generator))
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
