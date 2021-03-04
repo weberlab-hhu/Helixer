@@ -77,7 +77,7 @@ class ConfusionMatrixTrain(Callback):
 
         if os.path.isdir(self.large_eval_folder):
             results = {}
-            for i, eval_file_name in enumerate(glob.glob(f'{self.large_eval_folder}/*.h5')):
+            for eval_file_name in glob.glob(f'{self.large_eval_folder}/*.h5'):
                 # load best model
                 best_model = load_model(self.save_model_path)
                 h5_eval = h5py.File(eval_file_name, 'r')
