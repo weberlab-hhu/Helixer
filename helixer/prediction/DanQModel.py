@@ -1,7 +1,6 @@
 #! /usr/bin/env python3
 import numpy as np
 
-from keras_layer_normalization import LayerNormalization
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
                                      Activation, Input, BatchNormalization)
@@ -74,7 +73,6 @@ class DanQModel(HelixerModel):
         self.parser.add_argument('--pool-size', type=int, default=10)
         self.parser.add_argument('--dropout1', type=float, default=0.0)
         self.parser.add_argument('--dropout2', type=float, default=0.0)
-        self.parser.add_argument('--layer-normalization', action='store_true')
         self.parse_args()
 
     @staticmethod
@@ -102,15 +100,11 @@ class DanQModel(HelixerModel):
             x = Reshape((-1, self.pool_size * self.filter_depth))(x)
             # x = MaxPooling1D(pool_size=self.pool_size, padding='same')(x)
 
-        if self.layer_normalization:
-            x = LayerNormalization()(x)
         if self.dropout1 > 0.0:
             x = Dropout(self.dropout1)(x)
 
         x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
         for _ in range(self.lstm_layers - 1):
-            if self.layer_normalization:
-                x = LayerNormalization()(x)
             x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
 
         # do not use recurrent dropout, but dropout on the output of the LSTM stack

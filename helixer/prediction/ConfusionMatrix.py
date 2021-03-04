@@ -7,9 +7,10 @@ from scipy.sparse import coo_matrix
 
 
 class ConfusionMatrix():
-    def __init__(self, generator):
+    def __init__(self, generator, print_to_stdout=True):
         np.set_printoptions(suppress=True)  # do not use scientific notation for the print out
         self.generator = generator
+        self.print_to_stdout = print_to_stdout
         self.cm = np.zeros((4, 4), dtype=np.uint64)
         self.col_names = {0: 'ig', 1: 'utr', 2: 'exon', 3: 'intron'}
 
@@ -126,23 +127,29 @@ class ConfusionMatrix():
                 exit()
 
             self._add_to_cm(y_true, y_pred, sw)
-        return self._print_results()
 
-    def _print_results(self):
         scores = self._get_composite_scores()
-        for table, table_name in self.prep_tables():
+        if self.print_to_stdout:
+            self._print_results(scores)
+        return scores['genic']['precision'], scores['genic']['recall'], scores['genic']['f1']
+
+    def _print_results(self, scores):
+        for table, table_name in self.prep_tables(scores):
             print('\n', AsciiTable(table, table_name).table, sep='')
         print('Total acc: {:.4f}'.format(self._total_accuracy()))
-
-        # return genic f1 for model saving in custom callback or other uses
-        return scores['genic']['f1']
 
     def print_cm(self):
         self._print_results()
 
-    def prep_tables(self):
+    def prep_tables(self, scores):
         out = []
         names = ['ig', 'utr', 'exon', 'intron']
+
+        # confusion matrix
+        cm = [[''] + [x + '_pred' for x in names]]
+        for i, row in enumerate(self.cm.astype(int).tolist()):
+            cm.append([names[i] + '_ref'] + row)
+        out.append((cm, 'confusion_matrix'))
 
         # normalized
         normalized_cm = [cm[0]]
@@ -151,7 +158,6 @@ class ConfusionMatrix():
         out.append((normalized_cm, 'normalized_confusion_matrix'))
 
         # F1
-        scores = self._get_composite_scores()
         table = [['', 'Precision', 'Recall', 'F1-Score']]
         for i, (name, values) in enumerate(scores.items()):
             # 3: below to skip TP, FP, FN

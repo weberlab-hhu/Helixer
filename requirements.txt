@@ -5,7 +5,6 @@ tensorflow==2.4.0
 nni
 seaborn
 Keras==2.4.3
-keras-layer-normalization==0.14.0
 terminaltables
 HTSeq
 intervaltree

@@ -6,6 +6,7 @@ try:
 except ImportError:
     pass
 import time
+import glob
 import h5py
 import numcodecs
 import argparse
@@ -17,7 +18,6 @@ import tensorflow as tf
 from sklearn.utils import shuffle
 from pprint import pprint
 
-from keras_layer_normalization import LayerNormalization
 from tensorflow.keras.callbacks import Callback
 from tensorflow.keras import optimizers
 from tensorflow.keras import backend as K
@@ -39,10 +39,10 @@ class SaveEveryEpoch(Callback):
 
 
 class ConfusionMatrixTrain(Callback):
-    def __init__(self, save_model_path, val_generator, large_eval_data, patience, report_to_nni=False):
+    def __init__(self, save_model_path, val_generator, large_eval_folder, patience, report_to_nni=False):
         self.save_model_path = save_model_path
         self.val_generator = val_generator
-        self.large_eval_data = large_eval_data
+        self.large_eval_folder = large_eval_folder
         self.patience = patience
         self.report_to_nni = report_to_nni
         self.best_val_genic_f1 = 0.0
@@ -53,7 +53,7 @@ class ConfusionMatrixTrain(Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         print(f'training took {(time.time() - self.epoch_start) / 60:.2f}m')
-        val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, self.model)
+        _, _, val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, self.model)
         if self.report_to_nni:
             nni.report_intermediate_result(val_genic_f1)
         if val_genic_f1 > self.best_val_genic_f1:
@@ -71,10 +71,22 @@ class ConfusionMatrixTrain(Callback):
             self.model.stop_training = True
 
     def on_train_end(self, logs=None):
-        if self.large_eval_data:
-
         if self.report_to_nni:
             nni.report_final_result(self.best_val_genic_f1)
+
+        if os.path.isdir(self.large_eval_folder):
+            results = {}
+            for eval_file_name in glob.glob(f'{self.large_eval_folder}/*.h5'):
+                # load best model
+                best_model = load_model(self.save_model_path)
+                h5_eval = h5py.File(eval_file_name, 'r')
+                # use exactly the data generator that is used during validation
+                GenCls = val_generator.__class__
+                gen = GenCls.sequence_cls(model=self.val_generator.model, h5_file=h5_eval, mode='val',
+                                          batch_size=self.val_generator.batch_size, shuffle=False)
+                perf_one_species = HelixerModel.run_confusion_matrix(gen, best_model, print_to_stdout=False)
+                species_name = os.path.basename(eval_file_name).split('.')[0]
+                results[species_name] = perf_one_species
 
 
 class PreshuffleCallback(Callback):
@@ -234,8 +246,8 @@ class HelixerSequence(Sequence):
         return dilated_rf
 
     def __len__(self):
-        # if self.debug:
-        if self.debug and self.mode == 'train':
+        if self.debug:
+        # if self.debug and self.mode == 'train':
             return 1
         else:
             return int(np.ceil(self.n_seqs / self.batch_size))
@@ -250,7 +262,7 @@ class HelixerModel(ABC):
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('-d', '--data-dir', type=str, default='')
         self.parser.add_argument('-s', '--save-model-path', type=str, default='./best_model.h5')
-        self.parser.add_argument('--large-eval-data', type=str, default='')
+        self.parser.add_argument('--large-eval-folder', type=str, default='')
         # training params
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
         self.parser.add_argument('-b', '--batch-size', type=int, default=8)
@@ -352,14 +364,14 @@ class HelixerModel(ABC):
                            shuffle=False)
 
     @staticmethod
-    def run_confusion_matrix(generator, model):
+    def run_confusion_matrix(generator, model, print_to_stdout=True):
         start = time.time()
-        cm_calculator = ConfusionMatrix(generator)
-        genic_f1 = cm_calculator.calculate_cm(model)
+        cm_calculator = ConfusionMatrix(generator, print_to_stdout=print_to_stdout)
+        precision, recall, genic_f1 = cm_calculator.calculate_cm(model)
         if np.isnan(genic_f1):
             genic_f1 = 0.0
         print('\ncm calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
-        return genic_f1
+        return precision, recall, genic_f1
 
     @abstractmethod
     def sequence_cls(self):
@@ -494,12 +506,6 @@ class HelixerModel(ABC):
         pred_out.close()
         h5_model.close()
 
-    def _load_helixer_model(self):
-        model = load_model(self.load_model_path, custom_objects={
-            'LayerNormalization': LayerNormalization,
-        })
-        return model
-
     def _print_model_info(self, model):
         pwd = os.getcwd()
         os.chdir(os.path.dirname(__file__))
@@ -535,7 +541,7 @@ class HelixerModel(ABC):
         # we either train or predict
         if not self.testing:
             if self.resume_training:
-                model = self._load_helixer_model()
+                model = load_model(self.load_model_path)
             else:
                 model = self.model()
             self._print_model_info(model)
@@ -553,11 +559,11 @@ class HelixerModel(ABC):
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
 
-            model = self._load_helixer_model()
+            model = load_model(self.load_model_path)
             self._print_model_info(model)
 
             if self.eval:
-                _ = HelixerModel.run_confusion_matrix(self.gen_test_data(), model)
+                _, _, _ = HelixerModel.run_confusion_matrix(self.gen_test_data(), model)
             else:
                 if os.path.isfile(self.prediction_output_path):
                     print(f'{self.prediction_output_path} already exists and will be overwritten.')

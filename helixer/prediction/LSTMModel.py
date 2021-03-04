@@ -6,7 +6,6 @@ import os
 import numpy as np
 import tensorflow as tf
 
-from keras_layer_normalization import LayerNormalization
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
                           concatenate, Input)
@@ -77,7 +76,6 @@ class LSTMModel(HelixerModel):
         self.parser.add_argument('--layers', type=str, default='1', help='how many LSTM layers')
         self.parser.add_argument('--pool-size', type=int, default=10, help='how many bp to predict at once')
         self.parser.add_argument('--dropout', type=float, default=0.0)
-        self.parser.add_argument('--layer-normalization', action='store_true')
         self.parse_args()
 
         if self.layers.isdigit():
@@ -111,8 +109,6 @@ class LSTMModel(HelixerModel):
             for layer_units in self.layers[1:]:
                 if self.dropout > 0.0:
                     x = Dropout(self.dropout)(x)
-                if self.layer_normalization:
-                    x = LayerNormalization()(x)
                 x = Bidirectional(LSTM(layer_units, return_sequences=True))(x)
 
         if self.dropout > 0.0:
