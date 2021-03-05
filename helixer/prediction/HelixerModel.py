@@ -67,33 +67,41 @@ class ConfusionMatrixTrain(Callback):
             self.epochs_without_improvement += 1
             if self.epochs_without_improvement >= self.patience:
                 self.model.stop_training = True
-        # hard-coded check of genic f1 of 0.6 at epoch 5
-        if epoch == 5 and val_genic_f1 < 0.6:
-            self.model.stop_training = True
 
     def on_train_end(self, logs=None):
+        def print_table(results, table_name):
+            table = [['Name', 'Precision', 'Recall', 'F1-Score']]
+            for name, values in results:
+                table.append([name] + [f'{v:.4f}' for v in values])
+            print('\n', AsciiTable(table, table_name).table, sep='')
+
         if self.report_to_nni:
             nni.report_final_result(self.best_val_genic_f1)
 
         if os.path.isdir(self.large_eval_folder):
-            results = {}
+            # load best model
+            best_model = load_model(self.save_model_path)
+            # double check that we loaded the correct model, can be remove if confirmed this works
+            print('\nValidation set again:')
+            _, _, val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, self.model)
+            assert val_genic_f1 == self.best_val_genic_f1
+
+            results = []
             for eval_file_name in glob.glob(f'{self.large_eval_folder}/*.h5'):
-                # load best model
-                best_model = load_model(self.save_model_path)
                 h5_eval = h5py.File(eval_file_name, 'r')
+                species_name = os.path.basename(eval_file_name).split('.')[0]
+                print(f'\nEvaluating with a sample of {species_name}')
                 # use exactly the data generator that is used during validation
                 GenCls = self.val_generator.__class__
                 gen = GenCls(model=self.val_generator.model, h5_file=h5_eval, mode='val',
                              batch_size=self.val_generator.batch_size, shuffle=False)
                 perf_one_species = HelixerModel.run_confusion_matrix(gen, best_model)
-                species_name = os.path.basename(eval_file_name).split('.')[0]
-                results[species_name] = perf_one_species
-            # print results in an alphabetically sorted table
-            sorted_results = {name:results[name] for name in sorted(list(results.keys()))}
-            table = [['Name', 'Precision', 'Recall', 'F1-Score']]
-            for name, values in sorted_results.items():
-                table.append([name] + [f'{v:.4f}' for v in values])
-            print('\n', AsciiTable(table, 'Generalization Validation').table, sep='')
+                results.append([species_name, perf_one_species])
+            # print results in tables sorted alphabetically and by f1
+            results_by_name = sorted(results, key=lambda r: r[0])
+            results_by_f1 = sorted(results, key=lambda r: r[1][2], reverse=True)
+            print_table(results_by_name, 'Generalization Validation by Name')
+            print_table(results_by_f1, 'Generalization Validation by Genic F1')
 
 
 class PreshuffleCallback(Callback):
