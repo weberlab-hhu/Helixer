@@ -98,8 +98,6 @@ class ConfusionMatrixTrain(Callback):
                              batch_size=self.val_generator.batch_size, shuffle=False)
                 perf_one_species = HelixerModel.run_confusion_matrix(gen, best_model)
                 results.append([species_name, perf_one_species])
-                if species_name == 'Cclementina':
-                    break
             # print results in tables sorted alphabetically and by f1
             results_by_name = sorted(results, key=lambda r: r[0])
             results_by_f1 = sorted(results, key=lambda r: r[1][2], reverse=True)
@@ -109,9 +107,9 @@ class ConfusionMatrixTrain(Callback):
             # print one number summaries
             f1_scores = [r[1][2] for r in results]
             table = [['Metric', 'Score']]
+            table.append(['Median F1', f'{np.median(f1_scores):.4f}'])
             table.append(['Average F1', f'{np.mean(f1_scores):.4f}'])
             table.append(['Stddev F1', f'{np.std(f1_scores):.4f}'])
-            table.append(['Median F1', f'{np.median(f1_scores):.4f}'])
             print('\n', AsciiTable(table, 'Summary').table, sep='')
 
 
