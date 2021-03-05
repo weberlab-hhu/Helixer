@@ -98,6 +98,8 @@ class ConfusionMatrixTrain(Callback):
                              batch_size=self.val_generator.batch_size, shuffle=False)
                 perf_one_species = HelixerModel.run_confusion_matrix(gen, best_model)
                 results.append([species_name, perf_one_species])
+                if species_name == 'Cclementina':
+                    break
             # print results in tables sorted alphabetically and by f1
             results_by_name = sorted(results, key=lambda r: r[0])
             results_by_f1 = sorted(results, key=lambda r: r[1][2], reverse=True)
@@ -332,6 +334,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--clip-norm', type=float, default=1.0)
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
         self.parser.add_argument('--weight-decay', type=float, default=0.0)
+        self.parser.add_argument('--momentum', type=float, default=0.99, help='Only used with SGD')
         self.parser.add_argument('--class-weights', type=str, default='None')
         self.parser.add_argument('--input-coverage', action='store_true')
         self.parser.add_argument('--coverage-norm', default=None)
@@ -370,6 +373,10 @@ class HelixerModel(ABC):
         if self.nni:
             hyperopt_args = nni.get_next_parameter()
             assert all([key in args for key in hyperopt_args.keys()]), 'Unknown nni parameter'
+            # cast int params to int as we may get them as float
+            hyperopt_args = {name:(int(value) if isinstance(self.parser.get_default(name), int) else value)
+                             for name, value in hyperopt_args.items()}
+            # add args to class name space
             self.__dict__.update(hyperopt_args)
             nni_save_model_path = os.path.expandvars('$NNI_OUTPUT_DIR/best_model.h5')
             nni_pred_output_path = os.path.expandvars('$NNI_OUTPUT_DIR/predictions.h5')
@@ -608,12 +615,15 @@ class HelixerModel(ABC):
             self._print_model_info(model)
 
             if self.optimizer.lower() == 'adam':
-                self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
+                self.optimizer = optimizers.Adam(learning_rate=self.learning_rate, clipnorm=self.clip_norm)
+            elif self.optimizer.lower() == 'sgd':
+                self.optimizer = optimizers.SGD(learning_rate=self.learning_rate, clipnorm=self.clip_norm,
+                                                momentum=self.momentum)
             elif self.optimizer.lower() == 'adamw':
-                self.optimizer = AdamW(lr=self.learning_rate, clipnorm=self.clip_norm,
-                                       weight_decay_rate=self.weight_decay)
+                self.optimizer = AdamW(learning_rate=self.learning_rate, clipnorm=self.clip_norm,
+                                       weight_decay=self.weight_decay)
             elif self.optimizer.lower() == 'lamb':
-                self.optimizer = LAMB(lr=self.learning_rate, clipnorm=self.clip_norm,
+                self.optimizer = LAMB(learning_rate=self.learning_rate, clipnorm=self.clip_norm,
                                       weight_decay_rate=self.weight_decay)
 
             self.compile_model(model)
