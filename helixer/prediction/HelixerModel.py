@@ -24,6 +24,7 @@ from tensorflow.keras import optimizers
 from tensorflow.keras import backend as K
 from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import Sequence
+from tensorflow_addons.optimizers import LAMB, AdamW
 
 from helixer.prediction.ConfusionMatrix import ConfusionMatrix
 
@@ -97,11 +98,21 @@ class ConfusionMatrixTrain(Callback):
                              batch_size=self.val_generator.batch_size, shuffle=False)
                 perf_one_species = HelixerModel.run_confusion_matrix(gen, best_model)
                 results.append([species_name, perf_one_species])
+                if species_name == 'Cclementina':
+                    break
             # print results in tables sorted alphabetically and by f1
             results_by_name = sorted(results, key=lambda r: r[0])
             results_by_f1 = sorted(results, key=lambda r: r[1][2], reverse=True)
             print_table(results_by_name, 'Generalization Validation by Name')
             print_table(results_by_f1, 'Generalization Validation by Genic F1')
+
+            # print one number summaries
+            f1_scores = [r[1][2] for r in results]
+            table = [['Metric', 'Score']]
+            table.append(['Average F1', f'{np.mean(f1_scores):.4f}'])
+            table.append(['Stddev F1', f'{np.std(f1_scores):.4f}'])
+            table.append(['Median F1', f'{np.median(f1_scores):.4f}'])
+            print('\n', AsciiTable(table, 'Summary').table, sep='')
 
 
 class PreshuffleCallback(Callback):
@@ -322,6 +333,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--optimizer', type=str, default='adam')
         self.parser.add_argument('--clip-norm', type=float, default=1.0)
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
+        self.parser.add_argument('--weight-decay', type=float, default=0.0)
         self.parser.add_argument('--class-weights', type=str, default='None')
         self.parser.add_argument('--input-coverage', action='store_true')
         self.parser.add_argument('--coverage-norm', default=None)
@@ -599,6 +611,12 @@ class HelixerModel(ABC):
 
             if self.optimizer.lower() == 'adam':
                 self.optimizer = optimizers.Adam(lr=self.learning_rate, clipnorm=self.clip_norm)
+            elif self.optimizer.lower() == 'adamw':
+                self.optimizer = AdamW(lr=self.learning_rate, clipnorm=self.clip_norm,
+                                       weight_decay_rate=self.weight_decay)
+            elif self.optimizer.lower() == 'lamb':
+                self.optimizer = LAMB(lr=self.learning_rate, clipnorm=self.clip_norm,
+                                      weight_decay_rate=self.weight_decay)
 
             self.compile_model(model)
 

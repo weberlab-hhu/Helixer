@@ -2,6 +2,7 @@ sqlalchemy
 pytest
 numpy
 tensorflow==2.4.0
+tensorflow_addons
 nni
 seaborn
 Keras==2.4.3
