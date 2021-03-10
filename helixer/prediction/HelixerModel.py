@@ -24,7 +24,7 @@ from tensorflow.keras import optimizers
 from tensorflow.keras import backend as K
 from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import Sequence
-from tensorflow_addons.optimizers import LAMB, AdamW
+from tensorflow_addons.optimizers import AdamW
 
 from helixer.prediction.ConfusionMatrix import ConfusionMatrix
 
@@ -84,7 +84,7 @@ class ConfusionMatrixTrain(Callback):
             best_model = load_model(self.save_model_path)
             # double check that we loaded the correct model, can be remove if confirmed this works
             print('\nValidation set again:')
-            _, _, val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, self.model)
+            _, _, val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, best_model)
             assert val_genic_f1 == self.best_val_genic_f1
 
             results = []
@@ -98,8 +98,6 @@ class ConfusionMatrixTrain(Callback):
                              batch_size=self.val_generator.batch_size, shuffle=False)
                 perf_one_species = HelixerModel.run_confusion_matrix(gen, best_model)
                 results.append([species_name, perf_one_species])
-                if species_name == 'Cclementina':
-                    break
             # print results in tables sorted alphabetically and by f1
             results_by_name = sorted(results, key=lambda r: r[0])
             results_by_f1 = sorted(results, key=lambda r: r[1][2], reverse=True)
@@ -622,9 +620,6 @@ class HelixerModel(ABC):
             elif self.optimizer.lower() == 'adamw':
                 self.optimizer = AdamW(learning_rate=self.learning_rate, clipnorm=self.clip_norm,
                                        weight_decay=self.weight_decay)
-            elif self.optimizer.lower() == 'lamb':
-                self.optimizer = LAMB(learning_rate=self.learning_rate, clipnorm=self.clip_norm,
-                                      weight_decay_rate=self.weight_decay)
 
             self.compile_model(model)
 
