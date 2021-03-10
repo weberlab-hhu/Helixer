@@ -41,8 +41,9 @@ class SaveEveryEpoch(Callback):
 
 
 class ConfusionMatrixTrain(Callback):
-    def __init__(self, save_model_path, val_generator, large_eval_folder, patience, report_to_nni=False):
+    def __init__(self, save_model_path, train_generator, val_generator, large_eval_folder, patience, report_to_nni=False):
         self.save_model_path = save_model_path
+        self.train_generator = train_generator
         self.val_generator = val_generator
         self.large_eval_folder = large_eval_folder
         self.patience = patience
@@ -89,7 +90,7 @@ class ConfusionMatrixTrain(Callback):
             _, _, val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, best_model, print_to_stdout=False)
             assert val_genic_f1 == self.best_val_genic_f1
 
-            training_species = [s.lower() for s in self.val_generator.h5_file.attrs['genomes'].split(',')]
+            training_species = [s.lower() for s in self.train_generator.h5_file.attrs['genomes']]
             results = []
             for eval_file_name in glob.glob(f'{self.large_eval_folder}/*.h5'):
                 h5_eval = h5py.File(eval_file_name, 'r')
@@ -101,8 +102,6 @@ class ConfusionMatrixTrain(Callback):
                              batch_size=self.val_generator.batch_size, shuffle=False)
                 perf_one_species = HelixerModel.run_confusion_matrix(gen, best_model, print_to_stdout=False)
                 results.append([species_name, perf_one_species])
-                if species_name == 'Mtruncatula':
-                    break
             # print results in tables sorted alphabetically and by f1
             results_by_name = sorted(results, key=lambda r: r[0])
             results_by_f1 = sorted(results, key=lambda r: r[1][2], reverse=True)
@@ -405,7 +404,7 @@ class HelixerModel(ABC):
             pprint(args)
 
     def generate_callbacks(self, train_generator):
-        callbacks = [ConfusionMatrixTrain(self.save_model_path, self.gen_validation_data(),
+        callbacks = [ConfusionMatrixTrain(self.save_model_path, train_generator, self.gen_validation_data(),
                                           self.large_eval_folder, self.patience, report_to_nni=self.nni)]
         callbacks.append(PreshuffleCallback(train_generator))
         if self.save_every_epoch:
