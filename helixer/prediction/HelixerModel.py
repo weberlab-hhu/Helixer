@@ -70,9 +70,11 @@ class ConfusionMatrixTrain(Callback):
                 self.model.stop_training = True
 
     def on_train_end(self, logs=None):
-        def print_table(results, table_name):
+        def print_table(results, table_name, training_species):
             table = [['Name', 'Precision', 'Recall', 'F1-Score']]
             for name, values in results:
+                if name.lower() in training_species:
+                    name += ' (T)'
                 table.append([name] + [f'{v:.4f}' for v in values])
             print('\n', AsciiTable(table, table_name).table, sep='')
 
@@ -84,9 +86,10 @@ class ConfusionMatrixTrain(Callback):
             best_model = load_model(self.save_model_path)
             # double check that we loaded the correct model, can be remove if confirmed this works
             print('\nValidation set again:')
-            _, _, val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, best_model)
+            _, _, val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, best_model, print_to_stdout=False)
             assert val_genic_f1 == self.best_val_genic_f1
 
+            training_species = [s.lower() for s in self.val_generator.h5_file.attrs['genomes'].split(',')]
             results = []
             for eval_file_name in glob.glob(f'{self.large_eval_folder}/*.h5'):
                 h5_eval = h5py.File(eval_file_name, 'r')
@@ -96,20 +99,24 @@ class ConfusionMatrixTrain(Callback):
                 GenCls = self.val_generator.__class__
                 gen = GenCls(model=self.val_generator.model, h5_file=h5_eval, mode='val',
                              batch_size=self.val_generator.batch_size, shuffle=False)
-                perf_one_species = HelixerModel.run_confusion_matrix(gen, best_model)
+                perf_one_species = HelixerModel.run_confusion_matrix(gen, best_model, print_to_stdout=False)
                 results.append([species_name, perf_one_species])
+                if species_name == 'Mtruncatula':
+                    break
             # print results in tables sorted alphabetically and by f1
             results_by_name = sorted(results, key=lambda r: r[0])
             results_by_f1 = sorted(results, key=lambda r: r[1][2], reverse=True)
-            print_table(results_by_name, 'Generalization Validation by Name')
-            print_table(results_by_f1, 'Generalization Validation by Genic F1')
+            print_table(results_by_name, 'Generalization Validation by Name', training_species)
+            print_table(results_by_f1, 'Generalization Validation by Genic F1', training_species)
 
             # print one number summaries
-            f1_scores = [r[1][2] for r in results]
-            table = [['Metric', 'Score']]
-            table.append(['Median F1', f'{np.median(f1_scores):.4f}'])
-            table.append(['Average F1', f'{np.mean(f1_scores):.4f}'])
-            table.append(['Stddev F1', f'{np.std(f1_scores):.4f}'])
+            f1_scores = np.array([r[1][2] for r in results])
+            in_train = np.array([r[0].lower() in training_species for r in results], dtype=np.bool)
+            table = [['Metric', 'All', 'Training', 'Evaluation']]
+            for name, func in zip(['Median F1', 'Average F1', 'Stddev F1'], [np.median, np.mean, np.std]):
+                table.append([name, f'{func(f1_scores):.4f}',
+                                    f'{func(f1_scores[in_train]):.4f}',
+                                    f'{func(f1_scores[~in_train]):.4f}'])
             print('\n', AsciiTable(table, 'Summary').table, sep='')
 
 
@@ -135,7 +142,7 @@ class HelixerSequence(Sequence):
 				  'debug'])
         x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
         if self.debug:
-            self.n_seqs = 10000
+            self.n_seqs = 1000
         else:
             self.n_seqs = y_dset.shape[0]
         self.chunk_size = y_dset.shape[1]
