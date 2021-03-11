@@ -71,17 +71,6 @@ class ConfusionMatrixTrain(Callback):
                 self.model.stop_training = True
 
     def on_train_end(self, logs=None):
-        def print_table(results, table_name, training_species):
-            table = [['Name', 'Precision', 'Recall', 'F1-Score']]
-            for name, values in results:
-                if name.lower() in training_species:
-                    name += ' (T)'
-                table.append([name] + [f'{v:.4f}' for v in values])
-            print('\n', AsciiTable(table, table_name).table, sep='')
-
-        if self.report_to_nni:
-            nni.report_final_result(self.best_val_genic_f1)
-
         if os.path.isdir(self.large_eval_folder):
             # load best model
             best_model = load_model(self.save_model_path)
@@ -90,33 +79,11 @@ class ConfusionMatrixTrain(Callback):
             _, _, val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, best_model, print_to_stdout=False)
             assert val_genic_f1 == self.best_val_genic_f1
 
-            training_species = [s.lower() for s in self.train_generator.h5_file.attrs['genomes']]
-            results = []
-            for eval_file_name in glob.glob(f'{self.large_eval_folder}/*.h5'):
-                h5_eval = h5py.File(eval_file_name, 'r')
-                species_name = os.path.basename(eval_file_name).split('.')[0]
-                print(f'\nEvaluating with a sample of {species_name}')
-                # use exactly the data generator that is used during validation
-                GenCls = self.val_generator.__class__
-                gen = GenCls(model=self.val_generator.model, h5_file=h5_eval, mode='val',
-                             batch_size=self.val_generator.batch_size, shuffle=False)
-                perf_one_species = HelixerModel.run_confusion_matrix(gen, best_model, print_to_stdout=False)
-                results.append([species_name, perf_one_species])
-            # print results in tables sorted alphabetically and by f1
-            results_by_name = sorted(results, key=lambda r: r[0])
-            results_by_f1 = sorted(results, key=lambda r: r[1][2], reverse=True)
-            print_table(results_by_name, 'Generalization Validation by Name', training_species)
-            print_table(results_by_f1, 'Generalization Validation by Genic F1', training_species)
+            training_species = self.train_generator.h5_file.attrs['genomes']
+            median_f1 = HelixerModel.run_large_eval(self.large_eval_folder, best_model, self.val_generator, training_species)
 
-            # print one number summaries
-            f1_scores = np.array([r[1][2] for r in results])
-            in_train = np.array([r[0].lower() in training_species for r in results], dtype=np.bool)
-            table = [['Metric', 'All', 'Training', 'Evaluation']]
-            for name, func in zip(['Median F1', 'Average F1', 'Stddev F1'], [np.median, np.mean, np.std]):
-                table.append([name, f'{func(f1_scores):.4f}',
-                                    f'{func(f1_scores[in_train]):.4f}',
-                                    f'{func(f1_scores[~in_train]):.4f}'])
-            print('\n', AsciiTable(table, 'Summary').table, sep='')
+        if self.report_to_nni:
+            nni.report_final_result(median_f1)
 
 
 class PreshuffleCallback(Callback):
@@ -331,7 +298,7 @@ class HelixerModel(ABC):
         # training params
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
         self.parser.add_argument('-b', '--batch-size', type=int, default=8)
-        self.parser.add_argument('--val-test-batch-size', type=int, default=8)
+        self.parser.add_argument('--val-test-batch-size', type=int, default=32)
         self.parser.add_argument('--loss', type=str, default='')
         self.parser.add_argument('--patience', type=int, default=3)
         self.parser.add_argument('--optimizer', type=str, default='adam')
@@ -370,7 +337,6 @@ class HelixerModel(ABC):
         args = vars(self.parser.parse_args())
         self.__dict__.update(args)
         self.testing = bool(self.load_model_path and not self.resume_training)
-        assert not (self.testing and self.data_dir)
         assert not (not self.testing and self.test_data)
         assert not (self.resume_training and (not self.load_model_path or not self.data_dir))
 
@@ -444,6 +410,45 @@ class HelixerModel(ABC):
             genic_f1 = 0.0
         print('\ncm calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
         return precision, recall, genic_f1
+
+    @staticmethod
+    def run_large_eval(folder, model, generator, training_species, print_to_stdout=False):
+        def print_table(results, table_name, training_species):
+            table = [['Name', 'Precision', 'Recall', 'F1-Score']]
+            for name, values in results:
+                if name.lower() in training_species:
+                    name += ' (T)'
+                table.append([name] + [f'{v:.4f}' for v in values])
+            print('\n', AsciiTable(table, table_name).table, sep='')
+
+        results = []
+        training_species = [s.lower() for s in training_species]
+        for eval_file_name in glob.glob(f'{folder}/*.h5'):
+            h5_eval = h5py.File(eval_file_name, 'r')
+            species_name = os.path.basename(eval_file_name).split('.')[0]
+            print(f'\nEvaluating with a sample of {species_name}')
+            # use exactly the data generator that is used during validation
+            GenCls = generator.__class__
+            gen = GenCls(model=generator.model, h5_file=h5_eval, mode='val',
+                         batch_size=generator.batch_size, shuffle=False)
+            perf_one_species = HelixerModel.run_confusion_matrix(gen, model, print_to_stdout=print_to_stdout)
+            results.append([species_name, perf_one_species])
+        # print results in tables sorted alphabetically and by f1
+        results_by_name = sorted(results, key=lambda r: r[0])
+        results_by_f1 = sorted(results, key=lambda r: r[1][2], reverse=True)
+        print_table(results_by_name, 'Generalization Validation by Name', training_species)
+        print_table(results_by_f1, 'Generalization Validation by Genic F1', training_species)
+
+        # print one number summaries
+        f1_scores = np.array([r[1][2] for r in results])
+        in_train = np.array([r[0].lower() in training_species for r in results], dtype=np.bool)
+        table = [['Metric', 'All', 'Training', 'Evaluation']]
+        for name, func in zip(['Median F1', 'Average F1', 'Stddev F1'], [np.median, np.mean, np.std]):
+            table.append([name, f'{func(f1_scores):.4f}',
+                                f'{func(f1_scores[in_train]):.4f}',
+                                f'{func(f1_scores[~in_train]):.4f}'])
+        print('\n', AsciiTable(table, 'Summary').table, sep='')
+        return np.median(f1_scores[~in_train])
 
     @abstractmethod
     def sequence_cls(self):
@@ -643,7 +648,13 @@ class HelixerModel(ABC):
             self._print_model_info(model)
 
             if self.eval:
-                _, _, _ = HelixerModel.run_confusion_matrix(self.gen_test_data(), model)
+                test_generator = self.gen_test_data()
+                _, _, _ = HelixerModel.run_confusion_matrix(test_generator, model)
+                if self.large_eval_folder:
+                    assert self.data_dir != '', 'need training data of the model for training genome names'
+                    training_species = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r').attrs['genomes']
+                    _ = HelixerModel.run_large_eval(self.large_eval_folder, model, test_generator, training_species,
+                                                    print_to_stdout=True)
             else:
                 if os.path.isfile(self.prediction_output_path):
                     print(f'{self.prediction_output_path} already exists and will be overwritten.')
