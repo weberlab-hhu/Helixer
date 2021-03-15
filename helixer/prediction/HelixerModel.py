@@ -302,7 +302,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--loss', type=str, default='')
         self.parser.add_argument('--patience', type=int, default=3)
         self.parser.add_argument('--optimizer', type=str, default='adam')
-        self.parser.add_argument('--clip-norm', type=float, default=1.0)
+        self.parser.add_argument('--clip-norm', type=float, default=3.0)
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
         self.parser.add_argument('--weight-decay', type=float, default=0.0)
         self.parser.add_argument('--momentum', type=float, default=0.99, help='Only used with SGD')
