@@ -82,8 +82,11 @@ class ConfusionMatrixTrain(Callback):
             training_species = self.train_generator.h5_file.attrs['genomes']
             median_f1 = HelixerModel.run_large_eval(self.large_eval_folder, best_model, self.val_generator, training_species)
 
-        if self.report_to_nni:
-            nni.report_final_result(median_f1)
+            if self.report_to_nni:
+                nni.report_final_result(median_f1)
+
+        elif self.report_to_nni:
+            nni.report_final_result(self.best_val_genic_f1)
 
 
 class PreshuffleCallback(Callback):
