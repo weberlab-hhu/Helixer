@@ -426,10 +426,11 @@ class HelixerModel(ABC):
 
         results = []
         training_species = [s.lower() for s in training_species]
-        for eval_file_name in glob.glob(f'{folder}/*.h5'):
+        eval_file_names = glob.glob(f'{folder}/*.h5')
+        for i, eval_file_name in eval_file_names:
             h5_eval = h5py.File(eval_file_name, 'r')
             species_name = os.path.basename(eval_file_name).split('.')[0]
-            print(f'\nEvaluating with a sample of {species_name}')
+            print(f'\nEvaluating with a sample of {species_name} ({i + 1}/{len(eval_file_names)})')
 
             # possibly adjust batch size based on sample lenght, which could be flexible
             # assume the given batch size is for 20k length
