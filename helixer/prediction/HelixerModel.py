@@ -430,10 +430,17 @@ class HelixerModel(ABC):
             h5_eval = h5py.File(eval_file_name, 'r')
             species_name = os.path.basename(eval_file_name).split('.')[0]
             print(f'\nEvaluating with a sample of {species_name}')
+
+            # possibly adjust batch size based on sample lenght, which could be flexible
+            # assume the given batch size is for 20k length
+            sample_len = h5_eval['data/X'].shape[1]
+            adjusted_batch_size = int(generator.batch_size * (20000 / sample_len))
+            print(f'adjusted batch size is {adjusted_batch_size}')
+
             # use exactly the data generator that is used during validation
             GenCls = generator.__class__
             gen = GenCls(model=generator.model, h5_file=h5_eval, mode='val',
-                         batch_size=generator.batch_size, shuffle=False)
+                         batch_size=adjusted_batch_size, shuffle=False)
             perf_one_species = HelixerModel.run_confusion_matrix(gen, model, print_to_stdout=print_to_stdout)
             results.append([species_name, perf_one_species])
         # print results in tables sorted alphabetically and by f1
