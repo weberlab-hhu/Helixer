@@ -11,8 +11,11 @@ class ConfusionMatrix():
         np.set_printoptions(suppress=True)  # do not use scientific notation for the print out
         self.generator = generator
         self.print_to_stdout = print_to_stdout
-        self.cm = np.zeros((4, 4), dtype=np.uint64)
+
         self.col_names = {0: 'ig', 1: 'utr', 2: 'exon', 3: 'intron'}
+        self.n_classes = len(self.col_names)
+        self.cm = np.zeros((self.n_classes, self.n_classes), dtype=np.uint64)
+        self.uncertainties = {col_name:list() for col_name in self.col_names.values()}
 
     @staticmethod
     def _reshape_data(arr):
@@ -41,6 +44,16 @@ class ConfusionMatrix():
             cm_batch = coo_matrix((np.ones(y_true.shape[0], dtype=np.int8), (y_true, y_pred)),
                                    shape=(4, 4), dtype=np.uint32).toarray()
             self.cm += cm_batch
+
+    def _add_to_uncertainty(self, y_true, y_pred, sw):
+        y_pred, y_true = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
+        y_pred_log2 = np.log2(y_pred)
+        y_pred_H = -1 * np.sum(y_pred * y_pred_log2, axis=-1)
+        # average entropy for all the bases in one class according to the labels
+        y_true = np.argmax(y_true, axis=-1)
+        for i, name in self.col_names:
+            avg_entropy = np.mean(y_pred_H[y_true == i])
+            self.uncertainties[name].append(avg_entropy)
 
     def count_and_calculate_one_batch(self, y_true, y_pred, sw):
         self._add_to_cm(y_true, y_pred, sw)
@@ -78,11 +91,15 @@ class ConfusionMatrix():
         scores = defaultdict(dict)
         # single column metrics
         for col in range(4):
-            d = scores[self.col_names[col]]
+            name = self.col_names[col]
+            d = scores[name]
             not_col = np.arange(4) != col
             d['TP'] = self.cm[col, col]
             d['FP'] = np.sum(self.cm[not_col, col])
             d['FN'] = np.sum(self.cm[col, not_col])
+            # add average uncertanties
+            d['H'] = np.mean(self.uncertainties[name])
+
             add_to_scores(d)
 
         # legacy cds score that works the same as the cds_f1 with the 3 column multi class encoding
@@ -126,7 +143,8 @@ class ConfusionMatrix():
                 print('Unknown inputs from keras sequence')
                 exit()
 
-            self._add_to_cm(y_true, y_pred, sw)
+            self._add_to_cm(np.copy(y_true), np.copy(y_pred), sw)  # important to copy so the uncertainty works
+            self._add_to_uncertainty(y_true, y_pred, sw)
 
         scores = self._get_composite_scores()
         if self.print_to_stdout:
@@ -143,7 +161,7 @@ class ConfusionMatrix():
 
     def prep_tables(self, scores):
         out = []
-        names = ['ig', 'utr', 'exon', 'intron']
+        names = list(self.col_names.values())
 
         # confusion matrix
         cm = [[''] + [x + '_pred' for x in names]]
@@ -158,12 +176,15 @@ class ConfusionMatrix():
         out.append((normalized_cm, 'normalized_confusion_matrix'))
 
         # F1
-        table = [['', 'Precision', 'Recall', 'F1-Score']]
+        table = [['', 'H', 'Precision', 'Recall', 'F1-Score']]
         for i, (name, values) in enumerate(scores.items()):
-            # 3: below to skip TP, FP, FN
-            metrics = ['{:.4f}'.format(s) for s in list(values.values())[3:]]
+            # 4: below to skip TP, FP, FN
+            if i < len(names):
+                metrics = ['{:.4f}'.format(s) for s in list(values.values())[4:]]
+            else:
+                metrics = [''] + ['{:.4f}'.format(s) for s in list(values.values())[3:]]
             table.append([name] + metrics)
-            if i == 3:
+            if i == (len(names) - 1):
                 table.append([''] * 4)
         out.append((table, 'F1_summary'))
 

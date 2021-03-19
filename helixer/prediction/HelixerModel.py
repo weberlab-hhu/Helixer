@@ -283,7 +283,7 @@ class HelixerSequence(Sequence):
     def __len__(self):
         if self.debug:
         # if self.debug and self.mode == 'train':
-            return 1
+            return 3
         else:
             return int(np.ceil(self.n_seqs / self.batch_size))
 
