@@ -55,8 +55,8 @@ class ConfusionMatrix():
         # average entropy for all the bases in one class according to the labels
         for i, name in self.col_names.items():
             avg_entropy = np.mean(y_pred_H[y_true == i])
-            norm_entropy /= self.max_uncertainty  # normalize by maximum for comparability
-            self.uncertainties[name].append(norm_entropy)
+            avg_entropy /= self.max_uncertainty  # normalize by maximum for comparability
+            self.uncertainties[name].append(avg_entropy)
 
     def count_and_calculate_one_batch(self, y_true, y_pred, sw):
         self._add_to_cm(y_true, y_pred, sw)
