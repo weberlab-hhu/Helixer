@@ -16,28 +16,28 @@ class ConfusionMatrix():
         self.n_classes = len(self.col_names)
         self.cm = np.zeros((self.n_classes, self.n_classes), dtype=np.uint64)
         self.uncertainties = {col_name:list() for col_name in self.col_names.values()}
+        self.max_uncertainty = -sum([e * np.log2(e) for e in [1 / self.n_classes] * self.n_classes])
 
     @staticmethod
-    def _reshape_data(arr):
-        arr = np.argmax(arr, axis=-1).astype(np.int8)
-        arr = arr.reshape((arr.shape[0], -1)).ravel()
+    def _argmax_y(arr):
+        arr = np.argmax(arr, axis=-1).ravel().astype(np.int8)
         return arr
 
     @staticmethod
     def _remove_masked_bases(y_true, y_pred, sw):
         """Remove bases marked as errors, should also remove zero padding"""
         sw = sw.astype(np.bool)
-        y_pred = y_pred[sw]
         y_true = y_true[sw]
-        return y_pred, y_true
+        y_pred = y_pred[sw]
+        return y_true, y_pred
 
     def _add_to_cm(self, y_true, y_pred, sw):
         """Put in extra function to be testable"""
-        y_pred, y_true = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
+        y_true, y_pred = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
         # add to confusion matrix as long as _some_ bases were not masked
         if y_pred.size > 0:
-            y_pred = ConfusionMatrix._reshape_data(y_pred)
-            y_true = ConfusionMatrix._reshape_data(y_true)
+            y_pred = ConfusionMatrix._argmax_y(y_pred)
+            y_true = ConfusionMatrix._argmax_y(y_true)
             # taken from here, without the boiler plate:
             # https://github.com/scikit-learn/scikit-learn/blob/
             # 42aff4e2edd8e8887478f6ff1628f27de97be6a3/sklearn/metrics/_classification.py#L342
@@ -46,14 +46,17 @@ class ConfusionMatrix():
             self.cm += cm_batch
 
     def _add_to_uncertainty(self, y_true, y_pred, sw):
-        y_pred, y_true = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
+        y_true, y_pred = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
+        y_pred = y_pred.reshape((-1, y_pred.shape[-1]))
+        y_true = ConfusionMatrix._argmax_y(y_true)
+        # entropy calculation
         y_pred_log2 = np.log2(y_pred)
         y_pred_H = -1 * np.sum(y_pred * y_pred_log2, axis=-1)
         # average entropy for all the bases in one class according to the labels
-        y_true = np.argmax(y_true, axis=-1)
-        for i, name in self.col_names:
+        for i, name in self.col_names.items():
             avg_entropy = np.mean(y_pred_H[y_true == i])
-            self.uncertainties[name].append(avg_entropy)
+            norm_entropy /= self.max_uncertainty  # normalize by maximum for comparability
+            self.uncertainties[name].append(norm_entropy)
 
     def count_and_calculate_one_batch(self, y_true, y_pred, sw):
         self._add_to_cm(y_true, y_pred, sw)
@@ -176,13 +179,14 @@ class ConfusionMatrix():
         out.append((normalized_cm, 'normalized_confusion_matrix'))
 
         # F1
-        table = [['', 'H', 'Precision', 'Recall', 'F1-Score']]
+        table = [['', 'norm. H', 'Precision', 'Recall', 'F1-Score']]
         for i, (name, values) in enumerate(scores.items()):
-            # 4: below to skip TP, FP, FN
+            # check if there is an entropy value comming (only for single type classes)
             if i < len(names):
-                metrics = ['{:.4f}'.format(s) for s in list(values.values())[4:]]
+                metrics = []
             else:
-                metrics = [''] + ['{:.4f}'.format(s) for s in list(values.values())[3:]]
+                metrics = ['']
+            metrics += ['{:.4f}'.format(s) for s in list(values.values())[3:]]  # [3:] to skip TP, FP, FN
             table.append([name] + metrics)
             if i == (len(names) - 1):
                 table.append([''] * 4)
