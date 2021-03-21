@@ -31,9 +31,8 @@ class ConfusionMatrix():
         y_pred = y_pred[sw]
         return y_true, y_pred
 
-    def _add_to_cm(self, y_true, y_pred, sw):
+    def _add_to_cm(self, y_true, y_pred):
         """Put in extra function to be testable"""
-        y_true, y_pred = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
         # add to confusion matrix as long as _some_ bases were not masked
         if y_pred.size > 0:
             y_pred = ConfusionMatrix._argmax_y(y_pred)
@@ -45,8 +44,7 @@ class ConfusionMatrix():
                                    shape=(4, 4), dtype=np.uint32).toarray()
             self.cm += cm_batch
 
-    def _add_to_uncertainty(self, y_true, y_pred, sw):
-        y_true, y_pred = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
+    def _add_to_uncertainty(self, y_true, y_pred):
         y_pred = y_pred.reshape((-1, y_pred.shape[-1]))
         y_true = ConfusionMatrix._argmax_y(y_true)
         # entropy calculation
@@ -146,8 +144,10 @@ class ConfusionMatrix():
                 print('Unknown inputs from keras sequence')
                 exit()
 
-            self._add_to_cm(np.copy(y_true), np.copy(y_pred), sw)  # important to copy so the uncertainty works
-            self._add_to_uncertainty(y_true, y_pred, sw)
+            y_true, y_pred = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
+            # important to copy so _add_to_cm() works
+            self._add_to_uncertainty(np.copy(y_true), np.copy(y_pred))
+            self._add_to_cm(y_true, y_pred)
 
         scores = self._get_composite_scores()
         if self.print_to_stdout:
