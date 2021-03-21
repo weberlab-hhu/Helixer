@@ -24,7 +24,7 @@ class DanQSequence(HelixerSequence):
                 X = X[:, :-overhang]
                 y = y[:, :-overhang]
                 sw = sw[:, :-overhang]
-                if self.transition_weights is not None:
+                if self.mode == 'train' and self.transition_weights is not None:
                     transitions = transitions[:, :-overhang]
 
             y = self._mk_timestep_pools_class_last(y)
