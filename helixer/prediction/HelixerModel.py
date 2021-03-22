@@ -152,8 +152,8 @@ class HelixerSequence(Sequence):
     def _zero_out_utrs(y):
         # merge UTR and IG labels and zero out the UTR column
         # still keep 4 columns for simplicity of downstream code and (maybe) more transfer learning potential
-        y[:, :, 0] = np.logical_or(y[:, :, 0], y[:, :, 1])
-        y[:, :, 1] = 0
+        y[..., 0] = np.logical_or(y[..., 0], y[..., 1])
+        y[..., 1] = 0
 
     def shuffle_data(self):
         start_time = time.time()
