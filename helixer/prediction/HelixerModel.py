@@ -76,7 +76,7 @@ class ConfusionMatrixTrain(Callback):
             best_model = load_model(self.save_model_path)
             # double check that we loaded the correct model, can be remove if confirmed this works
             print('\nValidation set again:')
-            _, _, val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, best_model, print_to_stdout=False)
+            _, _, val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, best_model, print_to_stdout=True)
             assert val_genic_f1 == self.best_val_genic_f1
 
             training_species = self.train_generator.h5_file.attrs['genomes']
@@ -427,7 +427,7 @@ class HelixerModel(ABC):
         results = []
         training_species = [s.lower() for s in training_species]
         eval_file_names = glob.glob(f'{folder}/*.h5')
-        for i, eval_file_name in eval_file_names:
+        for i, eval_file_name in enumerate(eval_file_names):
             h5_eval = h5py.File(eval_file_name, 'r')
             species_name = os.path.basename(eval_file_name).split('.')[0]
             print(f'\nEvaluating with a sample of {species_name} ({i + 1}/{len(eval_file_names)})')
