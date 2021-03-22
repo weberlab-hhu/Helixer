@@ -108,7 +108,7 @@ class HelixerSequence(Sequence):
         self.batch_size = batch_size
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
                                  'coverage_norm', 'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
-				  'debug'])
+				 'no_utrs', 'debug'])
         x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
         if self.debug:
             self.n_seqs = 1000
@@ -140,11 +140,20 @@ class HelixerSequence(Sequence):
             start_time_dset = time.time()
             for offset in range(0, self.n_seqs, 10000):
                 data_slice = h5_file[name][offset:offset + 10000]
+                if self.no_utrs and name == 'data/y':
+                    HelixerSequence._zero_out_utrs(data_slice)
                 data_list.extend([self.compressor.encode(e) for e in data_slice])
             print(f'Data loading of {len(data_list)} samples of {name} into memory took '
                   f'{time.time() - start_time_dset:.2f} secs')
             comp_data_size = sum([sys.getsizeof(e) for e in data_list])
             print(f'Compressed data size of {name} is at least {comp_data_size / 2 ** 30:.4f} GB\n')
+
+    @staticmethod
+    def _zero_out_utrs(y):
+        # merge UTR and IG labels and zero out the UTR column
+        # still keep 4 columns for simplicity of downstream code and (maybe) more transfer learning potential
+        y[:, :, 0] = np.logical_or(y[:, :, 0], y[:, :, 1])
+        y[:, :, 1] = 0
 
     def shuffle_data(self):
         start_time = time.time()
@@ -316,6 +325,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
         self.parser.add_argument('--coverage-weights', action='store_true')
         self.parser.add_argument('--coverage-offset', type=float, default=0.0)
+        self.parser.add_argument('--no-utrs', action='store_true')
         self.parser.add_argument('--resume-training', action='store_true')
         # testing
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
