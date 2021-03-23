@@ -83,11 +83,8 @@ class DanQModel(HelixerModel):
 
     def model(self):
         overhang = self.shape_train[1] % self.pool_size
-        values_per_bp = 4
-        if self.input_coverage:
-            values_per_bp = 6
-        main_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
-                           name='main_input')
+
+        main_input = Input(shape=(None, 4), dtype=self.float_precision, name='main_input')
         x = Conv1D(filters=self.filter_depth,
                    kernel_size=self.kernel_size,
                    padding="same",
@@ -100,6 +97,20 @@ class DanQModel(HelixerModel):
                        kernel_size=self.kernel_size,
                        padding="same",
                        activation="relu")(x)
+
+        # seperate processing stream for coverage
+        if self.input_coverage:
+            cov_input = Input(shape=(None, 2), dtype=self.float_precision, name='cov_input')
+            x_cov = Conv1D(filters=64,
+                           kernel_size=self.kernel_size,
+                           padding="same",
+                           activation="relu")(cov_input)
+            x_cov = BatchNormalization()(x_cov)
+            x_cov = Conv1D(filters=64,
+                           kernel_size=self.kernel_size,
+                           padding="same",
+                           activation="relu")(x_cov)
+            x = tf.concat(x, x_conv, axis=-1)
 
         if self.pool_size > 1:
             x = Reshape((-1, self.pool_size * self.filter_depth))(x)
