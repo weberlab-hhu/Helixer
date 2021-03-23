@@ -61,6 +61,9 @@ class DanQSequence(HelixerSequence):
                     coverage_scores = np.mean(coverage_scores, axis=2)
                     sw = np.multiply(coverage_scores, sw)
 
+        # split coverage off X again. quick hack to test if this works, should not stay this way if it works
+        pass
+
         return X, y, sw
 
 
