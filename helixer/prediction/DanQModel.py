@@ -85,7 +85,7 @@ class DanQModel(HelixerModel):
     def model(self):
         overhang = self.shape_train[1] % self.pool_size
 
-        values_per_bp = 4 if self.input_coverage else 6
+        values_per_bp = 6 if self.input_coverage else 4
         main_input = Input(shape=(None, values_per_bp), dtype=self.float_precision, name='main_input')
 
         # seperate processing stream for coverage
@@ -116,7 +116,7 @@ class DanQModel(HelixerModel):
                        activation="relu")(x)
 
         if self.input_coverage:
-            x = tf.concat(x, x_conv, axis=-1)
+            x = tf.concat([x, x_cov], axis=-1)
 
         if self.pool_size > 1:
             x = Reshape((-1, self.pool_size * self.filter_depth))(x)
