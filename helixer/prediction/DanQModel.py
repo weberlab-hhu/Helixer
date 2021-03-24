@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 import numpy as np
 
+import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
                                      Activation, Input, BatchNormalization)
@@ -61,9 +62,6 @@ class DanQSequence(HelixerSequence):
                     coverage_scores = np.mean(coverage_scores, axis=2)
                     sw = np.multiply(coverage_scores, sw)
 
-        # split coverage off X again. quick hack to test if this works, should not stay this way if it works
-        pass
-
         return X, y, sw
 
 
@@ -87,12 +85,28 @@ class DanQModel(HelixerModel):
     def model(self):
         overhang = self.shape_train[1] % self.pool_size
 
-        main_input = Input(shape=(None, 4), dtype=self.float_precision, name='main_input')
+        values_per_bp = 4 if self.input_coverage else 6
+        main_input = Input(shape=(None, values_per_bp), dtype=self.float_precision, name='main_input')
+
+        # seperate processing stream for coverage
+        # quick hack to test if a seperate processing stream is worth it.
+        # if so the inputs should never be combined
+        if self.input_coverage:
+            x, x_cov = tf.split(main_input, [4, 2], -1)
+            x_cov = Conv1D(filters=64,
+                           kernel_size=self.kernel_size,
+                           padding="same",
+                           activation="relu")(x_cov)
+            x_cov = BatchNormalization()(x_cov)
+            x_cov = Conv1D(filters=64,
+                           kernel_size=self.kernel_size,
+                           padding="same",
+                           activation="relu")(x_cov)
+
         x = Conv1D(filters=self.filter_depth,
                    kernel_size=self.kernel_size,
                    padding="same",
-                   activation="relu")(main_input)
-
+                   activation="relu")(x)
         # if there are additional CNN layers
         for _ in range(self.cnn_layers - 1):
             x = BatchNormalization()(x)
@@ -101,18 +115,7 @@ class DanQModel(HelixerModel):
                        padding="same",
                        activation="relu")(x)
 
-        # seperate processing stream for coverage
         if self.input_coverage:
-            cov_input = Input(shape=(None, 2), dtype=self.float_precision, name='cov_input')
-            x_cov = Conv1D(filters=64,
-                           kernel_size=self.kernel_size,
-                           padding="same",
-                           activation="relu")(cov_input)
-            x_cov = BatchNormalization()(x_cov)
-            x_cov = Conv1D(filters=64,
-                           kernel_size=self.kernel_size,
-                           padding="same",
-                           activation="relu")(x_cov)
             x = tf.concat(x, x_conv, axis=-1)
 
         if self.pool_size > 1:
