@@ -13,6 +13,8 @@ from geenuff.applications.importer import ImportController
 from geenuff.base.orm import SuperLocus, Genome, Coordinate
 from geenuff.base.helpers import reverse_complement
 from geenuff.base import types
+
+import helixer.core.helpers
 from ..core.controller import HelixerController
 from ..core import helpers
 from ..export import numerify
@@ -1150,3 +1152,38 @@ def test_rangefinder():
     f = h5py.File(H5_OUT_FILE, 'r')
     sp_seqid_ranges = helpers.get_sp_seq_ranges(f)
     assert sp_seqid_ranges == {b'dummy': {'start': 0, 'seqids': {b'1': [0, 8], b'2': [8, 16]}, 'end': 16}}
+
+
+def test_confident_onecategory():
+    pred_chunk = np.full(fill_value=0., shape=(100, 4), dtype=np.float32)
+    # identify a sharp transition 0 -> 1
+    pred_chunk[:50, 0] = 1.
+    pred_chunk[50:, 1] = 1.
+    chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
+    assert chunks == [(0, 49), (50, 100)]
+    # identify a more "gradual" transition 0 -> 0.5 -> 1
+    pred_chunk[50, 0:2] = 0.5
+    chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
+    assert chunks == [(0, 49), (51, 100)]
+    # identify an actually gradual transition
+    pred_chunk[:, 0] = np.sin([x / 100 * np.pi / 2 for x in range(0, 100)])
+    pred_chunk[:, 1] = 1 - pred_chunk[:, 0]
+    chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
+    assert chunks == [(0, 16), (54, 100)]
+    # identify consistently held confidence
+    pred_chunk[:, 0] = 1
+    pred_chunk[:, 1] = 0
+    chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
+    assert chunks == [(0, 100)]
+    # identify a dip in confidence (not critical behaviour, but currently expected)
+    pred_chunk[50, 0:2] = 0.5
+    chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
+    assert chunks == [(0, 49), (51, 100)]
+    # identify confident region followed by consistent lack of confidence
+    pred_chunk[50:, :] = 0.25
+    chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
+    assert chunks == [(0, 49)]
+    # properly handle complete lack of confidence (aka return empty)
+    pred_chunk[:, :] = 0.25
+    chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
+    assert chunks == []
