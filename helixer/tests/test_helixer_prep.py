@@ -1187,3 +1187,27 @@ def test_confident_onecategory():
     pred_chunk[:, :] = 0.25
     chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
     assert chunks == []
+
+
+def test_predictions_realdata():
+    """test that _all_ predictions end up being the class from hints across real data as done in predictions2hints"""
+    # what this decidedly does not test is going all the way to and from gff coordinates!
+    data = h5py.File('testdata/mini_test_data.h5', 'r')
+    preds = h5py.File('testdata/mm_test_preds.h5', 'r')
+    get_contiguous_ranges = helixer.core.helpers.get_contiguous_ranges
+    read_in_chunks = helixer.core.helpers.read_in_chunks
+    find_confident_single_class_regions = helixer.core.helpers.find_confident_single_class_regions
+    divvy_by_confidence = helixer.core.helpers.divvy_by_confidence
+    hint_step_key = [(100, 10_000), (10, 500), (10, 500), (10, 500)]
+    for contiguous_bit in get_contiguous_ranges(h5=data):
+        for pred_chunk, start, end in read_in_chunks(preds, data, contiguous_bit['start_i'], contiguous_bit['end_i']):
+            # break into pieces anywhere where the confidence drops or the category switches
+            for start_conf, end_conf in find_confident_single_class_regions(pred_chunk):
+                one_class_chunk = pred_chunk[start_conf:end_conf]
+                # pad and break further, down to min size confidence is volatile or up to max if stable
+                # use average prediction confidence as score
+                for pre_hint in divvy_by_confidence(one_class_chunk, hint_step_key):
+                    hint_start = pre_hint['start']
+                    hint_end = pre_hint['end']
+                    inputpred = pred_chunk[start_conf + hint_start:start_conf + hint_end]
+                    assert np.all(np.argmax(inputpred, axis=1) == pre_hint['category'])

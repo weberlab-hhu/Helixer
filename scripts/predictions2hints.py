@@ -1,39 +1,11 @@
 """converts Helixer's output predictions into AUGUSTUS compatible hints"""
 import argparse
 import h5py
-import numpy as np
-from helixer.core.helpers import find_confident_single_class_regions, get_contiguous_ranges, read_in_chunks
+from helixer.core.helpers import find_confident_single_class_regions, get_contiguous_ranges, read_in_chunks, \
+    divvy_by_confidence
 
 
 HINTS = ['irpart', 'UTRpart', 'CDSpart', 'intronpart']
-
-
-def divvy_by_confidence(one_class_chunk, step_key, pad=5, stability_threshold=0.1):
-    """breaks down contiguous 1-class region to pre-hints with semi-consistent confidence"""
-    main_class = np.argmax(one_class_chunk[0])
-    min_step, max_size = step_key[main_class]
-    diffs = np.abs(one_class_chunk[:-1, main_class] - one_class_chunk[1:, main_class])
-    cumulative_diffs = np.cumsum(diffs)
-    # we start after padding (and end before), not necessarily at 0 nor sequence end
-    cdiff_at_last_yield = cumulative_diffs[pad]
-    end_of_last_yield = pad
-    padded_seq_end = one_class_chunk.shape[0] - pad
-    for i in range(pad, padded_seq_end, min_step):
-        end = min(i + min_step, padded_seq_end)
-        # if the total observed diffs since yield have passed the threshold, yield again
-        # thus where confidence is volatile one gets small chunks, and for continuous predictions
-        # one gets large (probably max_size) chunks (saves gff size & there's little gain in breaking down)
-        if cumulative_diffs[end] - cdiff_at_last_yield > stability_threshold or \
-                end - end_of_last_yield > max_size or \
-                end == padded_seq_end:
-            start = end_of_last_yield
-            yield {'category': main_class,
-                   'start': start,
-                   'end': end,
-                   'confidence': np.mean(one_class_chunk[start:end, main_class])}
-            # reset trackers
-            end_of_last_yield = end
-            cdiff_at_last_yield = cumulative_diffs[end]
 
 
 def start_end_strand(contiguous_bit, pred_chunk_start, one_category_start, pre_hint):
@@ -68,8 +40,8 @@ def main(arguments):
     hints_handle = open(arguments.hints_out, 'w')
 
     # setup parameterized step/size for easy parsing based on prediction argmax
-    ir_step_and_max = (arguments.step_irpart, arguments.step_irpart)
-    genic_step_and_max = (arguments.step_genicpart, arguments.step_genicpart)
+    ir_step_and_max = (arguments.step_irpart, arguments.max_irpart_size)
+    genic_step_and_max = (arguments.step_genicpart, arguments.max_genicpart_size)
     hint_step_key = (ir_step_and_max, genic_step_and_max, genic_step_and_max, genic_step_and_max)
 
     # step through
@@ -80,7 +52,8 @@ def main(arguments):
                 one_class_chunk = pred_chunk[start_conf:end_conf]
                 # pad and break further, down to min size confidence is volatile or up to max if stable
                 # use average prediction confidence as score
-                for pre_hint in divvy_by_confidence(one_class_chunk, hint_step_key, pad=arguments.pad):
+                for pre_hint in divvy_by_confidence(one_class_chunk, hint_step_key, pad=arguments.pad,
+                                                    stability_threshold=arguments.stability_threshold):
                     # convert to gff entry & write
                     # gff fields
                     sequence = contiguous_bit['seqid'].decode()

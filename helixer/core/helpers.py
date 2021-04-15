@@ -112,3 +112,31 @@ def find_confident_single_class_regions(pred_chunk, pad=5):
     # handle (& yield) end of chunk edge case if pred_chunk ends with a confident region
     if pred_chunk.shape[0] - lowconf_idx[-1] > pad * 2:
         yield lowconf_idx[-1] + 1, pred_chunk.shape[0]
+
+
+def divvy_by_confidence(one_class_chunk, step_key, pad=5, stability_threshold=0.1):
+    """breaks down contiguous 1-class region to pre-hints with semi-consistent confidence"""
+    main_class = np.argmax(one_class_chunk[0])
+    min_step, max_size = step_key[main_class]
+    diffs = np.abs(one_class_chunk[:-1, main_class] - one_class_chunk[1:, main_class])
+    cumulative_diffs = np.cumsum(diffs)
+    # we start after padding (and end before), not necessarily at 0 nor sequence end
+    cdiff_at_last_yield = cumulative_diffs[pad]
+    end_of_last_yield = pad
+    padded_seq_end = one_class_chunk.shape[0] - pad
+    for i in range(pad, padded_seq_end, min_step):
+        end = min(i + min_step, padded_seq_end)
+        # if the total observed diffs since yield have passed the threshold, yield again
+        # thus where confidence is volatile one gets small chunks, and for continuous predictions
+        # one gets large (probably max_size) chunks (saves gff size & there's little gain in breaking down)
+        if cumulative_diffs[end] - cdiff_at_last_yield > stability_threshold or \
+                end - end_of_last_yield > max_size or \
+                end == padded_seq_end:
+            start = end_of_last_yield
+            yield {'category': main_class,
+                   'start': start,
+                   'end': end,
+                   'confidence': np.mean(one_class_chunk[start:end, main_class])}
+            # reset trackers
+            end_of_last_yield = end
+            cdiff_at_last_yield = cumulative_diffs[end]
