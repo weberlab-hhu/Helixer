@@ -1193,7 +1193,7 @@ def test_predictions_realdata():
     """test that _all_ predictions end up being the class from hints across real data as done in predictions2hints"""
     # what this decidedly does not test is going all the way to and from gff coordinates!
     data = h5py.File('testdata/mini_test_data.h5', 'r')
-    preds = h5py.File('testdata/mm_test_preds.h5', 'r')
+    preds = h5py.File('testdata/mini_test_preds.h5', 'r')
     get_contiguous_ranges = helixer.core.helpers.get_contiguous_ranges
     read_in_chunks = helixer.core.helpers.read_in_chunks
     find_confident_single_class_regions = helixer.core.helpers.find_confident_single_class_regions
