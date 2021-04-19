@@ -60,9 +60,15 @@ def get_contiguous_ranges(h5):
     reindex = np.argsort(indexes)
     for i in reindex:
         seqid, species, is_plus_strand = items[:, i]
+        if is_plus_strand == b'True':
+            bool_strand = True
+        elif is_plus_strand == b'False':
+            bool_strand = False
+        else:
+            raise ValueError('is_plus_strand somehow not True/False, instead it is {}'.format(is_plus_strand))
         yield {"species": species,
                "seqid": seqid,
-               "is_plus_strand": is_plus_strand,
+               "is_plus_strand": bool_strand,
                "start_i": indexes[i],
                "end_i": indexes[i] + lengths[i]}
 

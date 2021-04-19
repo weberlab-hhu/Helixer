@@ -32,6 +32,14 @@ def start_end_strand(contiguous_bit, pred_chunk_start, one_category_start, pre_h
     return gff_start, gff_end, strand
 
 
+def write_to_gff(hints_handle, fw_and_reverse):
+    fw_and_reverse = sorted(fw_and_reverse, key=lambda x: x[3])  # sort by start (within seq)
+    for gff_fields in fw_and_reverse:
+        gff_fields = [str(x) for x in gff_fields]
+        gff_entry = '\t'.join(gff_fields)
+        hints_handle.write(gff_entry + '\n')
+
+
 def main(arguments):
     # read in big chunk of h5s
     data = h5py.File(arguments.h5_data, mode='r')
@@ -45,7 +53,15 @@ def main(arguments):
     hint_step_key = (ir_step_and_max, genic_step_and_max, genic_step_and_max, genic_step_and_max)
 
     # step through
+    fw_and_reverse = []
+    previous_seq = None
     for contiguous_bit in get_contiguous_ranges(h5=data):
+        # sort fw & rev hints on one sequence together and write to file
+        if contiguous_bit['seqid'] != previous_seq and previous_seq is not None:
+            write_to_gff(hints_handle, fw_and_reverse)
+            fw_and_reverse = []
+
+        previous_seq = contiguous_bit['seqid']
         for pred_chunk, start, end in read_in_chunks(preds, data, contiguous_bit['start_i'], contiguous_bit['end_i']):
             # break into pieces anywhere where the confidence drops or the category switches
             for start_conf, end_conf in find_confident_single_class_regions(pred_chunk, arguments.pad):
@@ -67,10 +83,10 @@ def main(arguments):
                     score = pre_hint['confidence']
                     phase = '.'   # Helixer has no phase info
                     attribute = 'source=H'   # just to say from Helixer, must be specified in extrinsic.cfg to match
-                    gff_fields = [sequence, source, feature, gff_start, gff_end, score, strand, phase, attribute]
-                    gff_fields = [str(x) for x in gff_fields]
-                    gff_entry = '\t'.join(gff_fields)
-                    hints_handle.write(gff_entry + '\n')
+                    gff_fields = (sequence, source, feature, gff_start, gff_end, score, strand, phase, attribute)
+                    fw_and_reverse.append(gff_fields)
+
+    write_to_gff(hints_handle, fw_and_reverse)  # write the very last sequence
 
     hints_handle.close()
     data.close()
