@@ -2,10 +2,116 @@
 
 """Does the overlapping, that was previously done in HelixerModel.py"""
 
-import os
 import h5py
 import numpy as np
-import argparse
+from .helpers import get_contiguous_ranges
+
+
+def _n_ori_chunks_from_batch_chunks(max_batch_size=32, overlap_depth=4):
+    """calculate max number of original (non overlapped) chunks that fit in overlapped batch_size (or remaining)"""
+    # batch_size_out = 1 + (n_chunks - 1) * overlap_depth
+    # max_batch_size > 1 + (n_chunks - 1) * overlap_depth
+    # (max_batch_size - 1) / overlap_depth  + 1 > n_chunks
+    max_n_chunks = (max_batch_size - 1) // overlap_depth + 1
+    return max_n_chunks
+
+
+def _n_batch_from_ori_chunks(n_chunks=8, overlap_depth=4):
+    """calculates resulting batch size from given number of contiguous original sequence chunks"""
+    # batch_size_out = 1 + (n_chunks - 1) * overlap_depth
+    return 1 + (n_chunks - 1) * overlap_depth
+
+
+class SubBatch:
+    def __init__(self, indices, edge_handle_start=False, edge_handle_end=False, is_plus_strand=True,
+                 overlap_depth=4):
+        self.indices = indices
+        # if not on a sequence edge start and end bits will be cropped
+        # also, start on negative strand would ideally have special handling for weird padding
+        self.edge_handle_start = edge_handle_start
+        self.edge_handle_end = edge_handle_end
+        self.is_plus_strand = is_plus_strand
+        self.overlap_depth = overlap_depth
+
+    def sub_batch_size(self):
+        return _n_batch_from_ori_chunks(len(self.indices))
+
+    def make_x(self):
+        pass
+
+    def overlap_preds(self, preds):
+        pass
+
+
+# places where overlap will affect core functionality of HelixerSequence
+class OverlapSeqHelper(object):
+    """manipulations of how data is fed in for predictions"""
+    def __init__(self, test_h5):
+        self.test_h5 = test_h5
+        self.sliding_batches = self._mk_sliding_batches()
+
+    def _mk_sliding_batches(self, max_batch_size=32, overlap_depth=4):
+        max_n_chunks = _n_ori_chunks_from_batch_chunks(max_batch_size, overlap_depth)
+        step = max_n_chunks - 2   # -2 bc ends will be cropped
+        # most of these will effectively be final batches, but short seqs/ends may be grouped together (for efficiency)
+        sub_batches = []
+        contiguous_ranges = get_contiguous_ranges(self.test_h5)
+        for crange in contiguous_ranges:
+            # step through sequence so that non-edges can have 1-chunk cropped off start/end
+            # and regenerate original sequence with a simple concatenation there after
+            for i in range(crange['start_i'], crange['end_i'] - 1, step):
+                sub_batch_start = max(i - 1, crange['start_i'])  # pad 1 left (except seq edge)
+                sub_batch_end = min(i + step + 1, crange['end_i'])   # pad 1 right (except seq edge)
+                indices = tuple(range(i, sub_batch_end))
+                sub_batches.append(
+                    SubBatch(indices, overlap_depth=overlap_depth, is_plus_strand=crange['is_plus_strand'],
+                             edge_handle_start=sub_batch_start == crange['start_i'],
+                             edge_handle_end=sub_batch_end == crange['end_i'])
+                )
+
+        # group into final batches, so as to keep total size <= max_batch_size
+        # i.e. achieve consistent (& user adjustable) memory usage on graphics card
+        sliding_batches = []
+        batch = []
+        batch_total_size = 0
+        for sb in sub_batches:
+            if batch_total_size + sb.sub_batch_size() <= max_batch_size:
+                batch.append(sb)
+                batch_total_size += sb.sub_batch_size()
+            else:
+                sliding_batches.append(batch)
+                batch = [sb]
+                batch_total_size = sb.sub_batch_size()
+        sliding_batches.append(batch)
+        return sliding_batches
+
+    def adjusted_epoch_length(self):
+        return len(self.sliding_batches)
+
+    def make_x(self, idx):
+        sub_batches = self.sliding_batches[idx]
+        x_as_list = [sb.make_x() for sb in sub_batches]
+        # todo, stack and return
+
+
+def _get_batch_data(self, idx):
+    usable_idx_batch = self._usable_idx_batch(idx)
+    if self.overlap:
+        X = self.x_dset[usable_idx_batch]
+        seqid_borders = self._get_seqid_borders(idx)
+        # split data along these borders
+        X_by_seqid = np.array_split(X, seqid_borders)
+        overlapping_X = []
+        for seqid_x in X_by_seqid:
+            if len(seqid_x) >= self.min_seqs_for_overlapping:
+                seq = np.concatenate(seqid_x, axis=0)
+                # apply sliding window
+                overlapping_X += [seq[i:i+self.chunk_size]
+                                  for i in range(0, len(seq) - self.chunk_size + 1,
+                                                 self.overlap_offset)]
+            else:
+                # do not overlap short sequences
+                overlapping_X += [seqid_x[i] for i in range(len(seqid_x))]
 
 
 def _overlap_predictions(predictions):

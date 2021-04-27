@@ -266,6 +266,7 @@ class HelixerSequence(Sequence):
         return dilated_rf
 
     def __len__(self):
+        """how many batches in epoch"""
         return int(np.ceil(self.n_seqs / self.batch_size))
 
     @abstractmethod
