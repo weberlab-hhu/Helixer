@@ -1,8 +1,7 @@
 #! /usr/bin/env python3
 
-"""Does the overlapping, that was previously done in HelixerModel.py"""
+"""handler code for sliding window predictions and re-overlapping things back to original sequences"""
 
-import h5py
 import numpy as np
 from .helpers import get_contiguous_ranges
 
@@ -23,31 +22,70 @@ def _n_batch_from_ori_chunks(n_chunks=8, overlap_depth=4):
 
 
 class SubBatch:
-    def __init__(self, indices, edge_handle_start=False, edge_handle_end=False, is_plus_strand=True,
-                 overlap_depth=4):
+    YDIM = 4
+
+    def __init__(self, indices, x_dset, edge_handle_start=False, edge_handle_end=False, is_plus_strand=True,
+                 overlap_depth=4, overlap_offset=5000, chunk_size=20000):
         self.indices = indices
+        self.x_dset = x_dset
         # if not on a sequence edge start and end bits will be cropped
         # also, start on negative strand would ideally have special handling for weird padding
         self.edge_handle_start = edge_handle_start
         self.edge_handle_end = edge_handle_end
         self.is_plus_strand = is_plus_strand
         self.overlap_depth = overlap_depth
+        self.overlap_offset = overlap_offset
+        self.chunk_size = chunk_size
 
+    @property
+    def seq_length(self):
+        return self.chunk_size * len(self.indices)
+
+    @property
     def sub_batch_size(self):
-        return _n_batch_from_ori_chunks(len(self.indices))
+        return _n_batch_from_ori_chunks(len(self.indices), self.overlap_depth)
+
+    def sliding_coordinates(self):
+        for i in range(0, self.seq_length - self.chunk_size + 1, self.overlap_offset):
+            yield i, i + self.chunk_size
 
     def make_x(self):
-        pass
+        """generate sliding window X, to feed into network for predicting"""
+        x = self.x_dset[self.indices]
+        seq = x.reshape((-1, self.YDIM))
+        # apply sliding window
+        overlapping_x = [seq[start:end] for start, end in self.sliding_coordinates()]
+        return overlapping_x
 
-    def overlap_preds(self, preds):
-        pass
+    def overlap_preds(self, preds, core_length=10000):
+        """take sliding-window predictions, and overlap (w/end clipping) to generate original coordinate predictions"""
+        trim_by = (self.chunk_size - core_length) / 2
+        preds_out = np.full(shape=(self.seq_length, self.YDIM), fill_value=0)
+        counts = np.full(shape=(self.seq_length,), fill_value=0)
+
+        len_preds = len(preds)
+        for i, chunk, start_end in zip(range(len_preds), preds, self.sliding_coordinates()):
+            start, end = start_end
+            # cut to core, (but not sequence ends)
+            if i > 0:  # all except first seq
+                start += trim_by
+            if i < len_preds - 1:  # all except last seq
+                end -= trim_by
+            sub_counts = counts[start:end]
+            # average weighted by number of predictions counted at position so far
+            preds_out[start:end] = (preds_out[start:end] * sub_counts + chunk) / (sub_counts + 1)
+            # increment counted so far
+            counts[start:end] += 1
+        preds_out = preds_out.reshape(shape=(len(self.indices), self.chunk_size, self.YDIM))
+        return preds_out
 
 
 # places where overlap will affect core functionality of HelixerSequence
 class OverlapSeqHelper(object):
     """manipulations of how data is fed in for predictions"""
-    def __init__(self, test_h5):
+    def __init__(self, test_h5, x_dset):
         self.test_h5 = test_h5
+        self.x_dset = x_dset
         self.sliding_batches = self._mk_sliding_batches()
 
     def _mk_sliding_batches(self, max_batch_size=32, overlap_depth=4):
@@ -65,7 +103,7 @@ class OverlapSeqHelper(object):
                 indices = tuple(range(i, sub_batch_end))
                 sub_batches.append(
                     SubBatch(indices, overlap_depth=overlap_depth, is_plus_strand=crange['is_plus_strand'],
-                             edge_handle_start=sub_batch_start == crange['start_i'],
+                             x_dset=self.x_dset, edge_handle_start=sub_batch_start == crange['start_i'],
                              edge_handle_end=sub_batch_end == crange['end_i'])
                 )
 
@@ -75,13 +113,13 @@ class OverlapSeqHelper(object):
         batch = []
         batch_total_size = 0
         for sb in sub_batches:
-            if batch_total_size + sb.sub_batch_size() <= max_batch_size:
+            if batch_total_size + sb.sub_batch_size <= max_batch_size:
                 batch.append(sb)
-                batch_total_size += sb.sub_batch_size()
+                batch_total_size += sb.sub_batch_size
             else:
                 sliding_batches.append(batch)
                 batch = [sb]
-                batch_total_size = sb.sub_batch_size()
+                batch_total_size = sb.sub_batch_size
         sliding_batches.append(batch)
         return sliding_batches
 
@@ -91,119 +129,17 @@ class OverlapSeqHelper(object):
     def make_x(self, idx):
         sub_batches = self.sliding_batches[idx]
         x_as_list = [sb.make_x() for sb in sub_batches]
-        # todo, stack and return
+        x = np.concatenate(x_as_list)
+        return x
+
+    def overlap_predictions(self, idx, predictions, core_length=10000):
+        sub_batches = self.sliding_batches[idx]
+        sub_batch_lengths = [sb.sub_batch_size for sb in sub_batches]
+        sub_batch_starts = np.cumsum(sub_batch_lengths) - sub_batch_lengths
+        out = []
+        for start, length, sb in zip(sub_batch_starts, sub_batch_lengths, sub_batches):
+            preds = predictions[start:(start + length)]
+            out.append(sb.overlap_preds(preds, core_length))
+        return np.concatenate(out)
 
 
-def _get_batch_data(self, idx):
-    usable_idx_batch = self._usable_idx_batch(idx)
-    if self.overlap:
-        X = self.x_dset[usable_idx_batch]
-        seqid_borders = self._get_seqid_borders(idx)
-        # split data along these borders
-        X_by_seqid = np.array_split(X, seqid_borders)
-        overlapping_X = []
-        for seqid_x in X_by_seqid:
-            if len(seqid_x) >= self.min_seqs_for_overlapping:
-                seq = np.concatenate(seqid_x, axis=0)
-                # apply sliding window
-                overlapping_X += [seq[i:i+self.chunk_size]
-                                  for i in range(0, len(seq) - self.chunk_size + 1,
-                                                 self.overlap_offset)]
-            else:
-                # do not overlap short sequences
-                overlapping_X += [seqid_x[i] for i in range(len(seqid_x))]
-
-
-def _overlap_predictions(predictions):
-    # some shortcut variables
-    seq_overhang = int((chunk_size - args.core_length) / 2)
-    n_overhang_seqs = seq_overhang // args.overlap_offset
-    n_original_seqs = test_sequence._seqs_per_batch(batch_idx=batch_idx)
-    n_overlapping_seqs = args.core_length // args.overlap_offset
-
-    all_predictions = np.empty((0, ) + predictions.shape[1:])
-    # get number of sequences for each seqid from border distance
-    seqid_sizes = np.diff(np.array([0] + seqid_borders + [n_original_seqs]))
-    print(seqid_sizes)
-    pred_offset = 0
-    for seqid_size in seqid_sizes:
-        if seqid_size > 2:
-            n_seqid_seqs = (seqid_size - 1) * chunk_size // args.overlap_offset + 1
-        else:
-            n_seqid_seqs = seqid_size
-        predictions_seqid = predictions[pred_offset:pred_offset + n_seqid_seqs]
-        pred_offset += n_seqid_seqs
-        if seqid_size >= args.min_seqs_for_overlapping:
-            # actual overlapping; save first and last sequence for special handling later
-            first, last = predictions_seqid[0], predictions_seqid[-1]
-            # cut to the core
-            predictions_seqid = [s[seq_overhang:-seq_overhang] for s in predictions_seqid]
-            # generate zero'd out filler sequences for the start and end
-            filler_seqs = [np.zeros((args.core_length, 4))] * n_overhang_seqs
-            predictions_seqid = filler_seqs + predictions_seqid + filler_seqs
-            # stack eveything
-            predictions_seqid = np.stack(predictions_seqid).astype(predictions.dtype)
-            # add overhang edge data from first/last seq that can not be overlapped
-            predictions_seqid[0, :seq_overhang] = first[:seq_overhang]
-            predictions_seqid[-1, -seq_overhang:] = last[-seq_overhang:]
-
-            # merge and stack efficiently so everything can be averaged
-            n_predicted_bases = seqid_size * chunk_size
-            stacked = np.zeros((n_overlapping_seqs, n_predicted_bases, 4), dtype=predictions.dtype)
-            for j in range(n_overlapping_seqs):
-                # get idx of every n_overlapping_seqs'th seq starting at j
-                idx = list(range(j, predictions_seqid.shape[0], n_overlapping_seqs))
-                seq = np.concatenate(predictions_seqid[idx], axis=0)
-                start_base = j * args.overlap_offset
-                stacked[j, start_base:start_base+seq.shape[0]] = seq
-
-            # average individual softmax values
-            # does change pseudo-probability dist at the edge but not the argmax afterwards
-            # (causes values to be lower there)
-            averages = np.mean(stacked, axis=0)
-            predictions_seqid = np.stack(np.split(averages, seqid_size))
-        all_predictions = np.concatenate([all_predictions, predictions_seqid], axis=0)
-    assert all_predictions.shape[0] == n_original_seqs
-    return all_predictions
-
-
-def overlap(args):
-    h5_data = h5py.File(args.data, 'r')
-    h5_input_preds = h5py.File(args.input_pred_file, 'r')
-    h5_output_preds = h5py.File(args.overlapped_output_file, 'w')
-    assert h5_data['/data/X'].shape == h5_input_preds['/predictions'].shape
-
-    input_preds = h5_input_preds['/predictions']
-    h5_output.create_dataset('/predictions',
-                             maxshape=(None,) + input_preds.shape[1:],
-                             chunks=(1,) + input_preds.shape[1:],
-                             dtype='float32',
-                             compression='lzf',
-                             shuffle=True)
-
-    chunk_size = input_preds.shape[1]
-    assert args.overlap_offset < args.core_length
-    # check if everything divides evenly to avoid further head aches
-    assert (chunk_size / args.overlap_offset).is_integer()
-    assert (args.batch_size / (chunk_size / args.overlap_offset)).is_integer()
-    assert ((chunk_size - args.core_length) / 2 / args.overlap_offset).is_integer()
-
-    # get seqid borders
-    seqids = h5_data['/data/seqids'][:]
-    seqid_borders = np.argwhere(seqids[:-1] != seqids[1:])[:, 0]
-    if len(seqid_borders) > 0:
-        # if there are changes in seqid
-        seqid_borders = np.add(seqid_borders, 1)  # add 1 for splitting with np.split()
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--data', type=str, required=True)
-    parser.add_argument('--input-pred-file', type=str, required=True)
-    parser.add_argument('--overlapped-output-file', type=str, required=True)
-    parser.add_argument('--overlap-offset', type=int, default=2500)
-    parser.add_argument('--core-length', type=int, default=10000)
-    parser.add_argument('--min-seqs-for-overlapping', type=int, default=3)
-    args = parser.parse_args()
-
-    overlap(args)
