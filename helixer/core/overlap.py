@@ -57,7 +57,7 @@ class SubBatch:
         overlapping_x = [seq[start:end] for start, end in self.sliding_coordinates()]
         return overlapping_x
 
-    def overlap_preds(self, preds, core_length=10000):
+    def _overlap_preds(self, preds, core_length=10000):
         """take sliding-window predictions, and overlap (w/end clipping) to generate original coordinate predictions"""
         trim_by = (self.chunk_size - core_length) / 2
         preds_out = np.full(shape=(self.seq_length, self.YDIM), fill_value=0)
@@ -78,6 +78,14 @@ class SubBatch:
             counts[start:end] += 1
         preds_out = preds_out.reshape(shape=(len(self.indices), self.chunk_size, self.YDIM))
         return preds_out
+
+    def overlap_and_edge_handle_preds(self, preds, core_length=10000):
+        clean_preds = self._overlap_preds(preds, core_length)
+        if not self.edge_handle_start:
+            clean_preds = clean_preds[1:]
+        if not self.edge_handle_end:
+            clean_preds = clean_preds[:-1]
+        return clean_preds
 
 
 # places where overlap will affect core functionality of HelixerSequence
@@ -139,7 +147,7 @@ class OverlapSeqHelper(object):
         out = []
         for start, length, sb in zip(sub_batch_starts, sub_batch_lengths, sub_batches):
             preds = predictions[start:(start + length)]
-            out.append(sb.overlap_preds(preds, core_length))
+            out.append(sb.overlap_and_edge_handle_preds(preds, core_length))
         return np.concatenate(out)
 
 
