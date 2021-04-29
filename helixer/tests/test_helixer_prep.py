@@ -1232,3 +1232,83 @@ def test_ol_length_in_matches_out_sub_batch():
                 assert len(indices) == overlapped.shape[0]
                 assert overlapped.shape[1:] == (20000, 4)
 
+
+def test_ol_identical_preds_return_ori():
+    x_dsets = [np.random.rand(16, 20000, 4) for _ in range(10)]
+    indices_to_test = [(0,), (1,), (4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
+                       (1, 2), (3, 4, 5), (6, 7, 8, 9, 10, 11), tuple(range(8))]
+    for x_dset in x_dsets:
+        for indices in indices_to_test:
+            for core_length in [5020, 8000, 10000, 12000, 18000, 20000]:
+                sb = overlap.SubBatch(indices=indices, x_dset=x_dset, overlap_offset=5000, chunk_size=20000)
+                raw_preds = sb.make_x()  # just checking identity, doesn't matter whether we actually have preds
+                expect = x_dset[np.array(indices)]
+                assert np.allclose(expect, sb._overlap_preds(raw_preds, core_length=core_length))
+    # concatenation of three with end handling
+    x_dset = x_dsets[0]
+    sbs = []
+    indices_realistic = [tuple(range(7)),
+                         tuple(range(5, 13)),
+                         tuple(range(11, 16))]
+    edge_handling = [(True, False), (False, False), (False, True)]
+    for indices, edges in zip(indices_realistic, edge_handling):
+        sbs.append(
+            overlap.SubBatch(indices=indices, x_dset=x_dset, overlap_offset=5000, chunk_size=20000,
+                             edge_handle_start=edges[0], edge_handle_end=edges[1])
+        )
+    preds = []
+    for sb in sbs:
+        raw_preds = sb.make_x()
+        ol_preds = sb.overlap_and_edge_handle_preds(raw_preds, core_length=10000)
+        preds.append(ol_preds)
+    fin_preds = np.concatenate(preds)
+    assert np.allclose(fin_preds, x_dset)
+
+
+def test_ol_pred_overlap_and_weighting():
+    x_dset = np.zeros(shape=(16, 20000, 4))
+    sb = overlap.SubBatch(indices=(0, 1),
+                          overlap_offset=5000, chunk_size=20000, x_dset=x_dset)
+    # this should produce length 5 X, some test predictions, with easy to calc output
+    # (each char is 5k, number is index with 1.)
+    # 0 0 0 0
+    #   1 1 1 1
+    #     2 2 2 2
+    #       3 3 3 3
+    #         0 0 0 0
+    preds = np.zeros(shape=(5, 20000, 4))
+    for i, argmax in zip(range(5), (0, 1, 2, 3, 0)):
+        preds[i, :, argmax] = 1
+    # with core_length 20000 (no trimming), this should overlap to array below divided by column sums
+    # 0: 1 1 1 1 1 1 1 1
+    # 1: 0 1 1 1 1 0 0 0
+    # 2: 0 0 1 1 1 1 0 0
+    # 3: 0 0 0 1 1 1 1 0
+    expect = np.zeros(shape=(40000, 4))
+    expect[:, 0] = 1.
+    expect[5000:25000, 1] = 1
+    expect[10000:30000, 2] = 1
+    expect[15000:35000, 3] = 1
+    expect = expect / np.sum(expect, axis=1).reshape((-1, 1))
+    expect = expect.reshape((2, 20000, 4))
+
+    overlapped = sb._overlap_preds(preds, core_length=20000)
+    assert np.allclose(expect, overlapped)
+
+    # with core_length 10000, this should overlap to array below divided by column sums
+    # were x = 0, but indicates what got trimmed
+    # 0: 1 1 1 x x 1 1 1
+    # 1: 0 x 1 1 x 0 0 0
+    # 2: 0 0 x 1 1 x 0 0
+    # 3: 0 0 0 x 1 1 x 0
+    expect = np.zeros(shape=(40000, 4))
+    expect[0:15000, 0] = 1.
+    expect[25000:40000, 0] = 1
+    expect[10000:20000, 1] = 1
+    expect[15000:25000, 2] = 1
+    expect[20000:30000, 3] = 1
+    expect = expect / np.sum(expect, axis=1).reshape((-1, 1))
+    expect = expect.reshape((2, 20000, 4))
+
+    overlapped = sb._overlap_preds(preds, core_length=10000)
+    assert np.allclose(expect, overlapped)

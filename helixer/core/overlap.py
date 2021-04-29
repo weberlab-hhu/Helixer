@@ -68,12 +68,16 @@ class SubBatch:
         for i, chunk, start_end in zip(range(len_preds), preds, self.sliding_coordinates()):
             start, end = start_end
             # cut to core, (but not sequence ends)
-            if i > 0:  # all except first seq
-                start += trim_by
-                chunk = chunk[trim_by:]
-            if i < len_preds - 1:  # all except last seq
-                end -= trim_by
-                chunk = chunk[:-trim_by]
+            if trim_by > 0:
+                if i > 0:  # all except first seq
+                    start += trim_by
+                    chunk = chunk[trim_by:]
+                if i < len_preds - 1:  # all except last seq
+                    end -= trim_by
+                    chunk = chunk[:-trim_by]
+            elif trim_by < 0:  # sanity check only
+                raise ValueError('invalid trim value: {}. Maybe core_length {} > chunk_size {}?'.format(
+                    trim_by, core_length, chunk.shape[0]))
             sub_counts = counts[start:end]
             # average weighted by number of predictions counted at position so far
             preds_out[start:end] = (preds_out[start:end] * sub_counts + chunk) / (sub_counts + 1)
