@@ -3,7 +3,6 @@
 """handler code for sliding window predictions and re-overlapping things back to original sequences"""
 
 import numpy as np
-from .helpers import get_contiguous_ranges
 import math
 
 
@@ -37,6 +36,16 @@ class SubBatch:
         self.overlap_depth = math.ceil(chunk_size / overlap_offset)  # todo, test user settings once, not here
         self.overlap_offset = overlap_offset
         self.chunk_size = chunk_size
+
+    def __repr__(self):
+        sstr, estr = '(', ')'
+
+        if self.edge_handle_end:
+            estr = ']'
+        if self.edge_handle_start:
+            sstr = '['
+
+        return 'SubBatch, {}edges{}, h5 indices: {}'.format(sstr, estr, self.indices)
 
     @property
     def seq_length(self):
@@ -87,6 +96,10 @@ class SubBatch:
         return preds_out
 
     def overlap_and_edge_handle_preds(self, preds, core_length=10000):
+        """crops first and second array from output unless at sequence edge"""
+        # the final sequences for what is cropped will come from previous/next batch instead
+        # i.e. this should produce identical output regardless of batch size
+        # as avoidable batch/sub-batch edge effects will be complete cropped here.
         clean_preds = self._overlap_preds(preds, core_length)
         if not self.edge_handle_start:
             clean_preds = clean_preds[1:]
@@ -97,29 +110,29 @@ class SubBatch:
 
 # places where overlap will affect core functionality of HelixerSequence
 class OverlapSeqHelper(object):
-    """manipulations of how data is fed in for predictions"""
-    def __init__(self, test_h5, x_dset):
-        self.test_h5 = test_h5
+    """handles seq edges, batching, and edge handling for both of the above"""
+    def __init__(self, x_dset, contiguous_ranges):
+        # contiguous ranges should be created by .helpers.get_contiguous_ranges
         self.x_dset = x_dset
-        self.sliding_batches = self._mk_sliding_batches()
+        self.sliding_batches = self._mk_sliding_batches(contiguous_ranges=contiguous_ranges)
 
-    def _mk_sliding_batches(self, max_batch_size=32, overlap_depth=4):
+    def _mk_sliding_batches(self, contiguous_ranges, max_batch_size=32, overlap_depth=4):
         max_n_chunks = _n_ori_chunks_from_batch_chunks(max_batch_size, overlap_depth)
         step = max_n_chunks - 2   # -2 bc ends will be cropped
         # most of these will effectively be final batches, but short seqs/ends may be grouped together (for efficiency)
         sub_batches = []
-        contiguous_ranges = get_contiguous_ranges(self.test_h5)
+
         for crange in contiguous_ranges:
             # step through sequence so that non-edges can have 1-chunk cropped off start/end
             # and regenerate original sequence with a simple concatenation there after
-            for i in range(crange['start_i'], crange['end_i'] - 1, step):
+            for i in range(crange['start_i'], crange['end_i'], step):
                 sub_batch_start = max(i - 1, crange['start_i'])  # pad 1 left (except seq edge)
                 sub_batch_end = min(i + step + 1, crange['end_i'])   # pad 1 right (except seq edge)
-                indices = tuple(range(i, sub_batch_end))
+                indices = tuple(range(sub_batch_start, sub_batch_end))
                 sub_batches.append(
-                    SubBatch(indices, overlap_depth=overlap_depth, is_plus_strand=crange['is_plus_strand'],
+                    SubBatch(indices, is_plus_strand=crange['is_plus_strand'],
                              x_dset=self.x_dset, edge_handle_start=sub_batch_start == crange['start_i'],
-                             edge_handle_end=sub_batch_end == crange['end_i'])
+                             edge_handle_end=i + step + 1 > crange['end_i'])
                 )
 
         # group into final batches, so as to keep total size <= max_batch_size
