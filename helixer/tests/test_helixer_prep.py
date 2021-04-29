@@ -5,23 +5,21 @@ from sklearn.metrics import accuracy_score
 import numpy as np
 import pytest
 import h5py
-from abc import ABC, abstractmethod
 
 import geenuff
-from geenuff.tests.test_geenuff import setup_data_handler, mk_memory_session
+from geenuff.tests.test_geenuff import mk_memory_session
 from geenuff.applications.importer import ImportController
 from geenuff.base.orm import SuperLocus, Genome, Coordinate
 from geenuff.base.helpers import reverse_complement
 from geenuff.base import types
 
-import helixer.core.helpers
 from ..core.controller import HelixerController
 from ..core import helpers
+from ..core import overlap
 from ..export import numerify
 from ..export.numerify import SequenceNumerifier, AnnotationNumerifier, Stepper, AMBIGUITY_DECODE
 from ..export.exporter import HelixerExportController
 from ..prediction.ConfusionMatrix import ConfusionMatrix
-from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 from helixer.prediction.LSTMModel import LSTMSequence
 from ..evaluation import rnaseq
 
@@ -1159,33 +1157,33 @@ def test_confident_onecategory():
     # identify a sharp transition 0 -> 1
     pred_chunk[:50, 0] = 1.
     pred_chunk[50:, 1] = 1.
-    chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
+    chunks = list(helpers.find_confident_single_class_regions(pred_chunk))
     assert chunks == [(0, 49), (50, 100)]
     # identify a more "gradual" transition 0 -> 0.5 -> 1
     pred_chunk[50, 0:2] = 0.5
-    chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
+    chunks = list(helpers.find_confident_single_class_regions(pred_chunk))
     assert chunks == [(0, 49), (51, 100)]
     # identify an actually gradual transition
     pred_chunk[:, 0] = np.sin([x / 100 * np.pi / 2 for x in range(0, 100)])
     pred_chunk[:, 1] = 1 - pred_chunk[:, 0]
-    chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
+    chunks = list(helpers.find_confident_single_class_regions(pred_chunk))
     assert chunks == [(0, 16), (54, 100)]
     # identify consistently held confidence
     pred_chunk[:, 0] = 1
     pred_chunk[:, 1] = 0
-    chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
+    chunks = list(helpers.find_confident_single_class_regions(pred_chunk))
     assert chunks == [(0, 100)]
     # identify a dip in confidence (not critical behaviour, but currently expected)
     pred_chunk[50, 0:2] = 0.5
-    chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
+    chunks = list(helpers.find_confident_single_class_regions(pred_chunk))
     assert chunks == [(0, 49), (51, 100)]
     # identify confident region followed by consistent lack of confidence
     pred_chunk[50:, :] = 0.25
-    chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
+    chunks = list(helpers.find_confident_single_class_regions(pred_chunk))
     assert chunks == [(0, 49)]
     # properly handle complete lack of confidence (aka return empty)
     pred_chunk[:, :] = 0.25
-    chunks = list(helixer.core.helpers.find_confident_single_class_regions(pred_chunk))
+    chunks = list(helpers.find_confident_single_class_regions(pred_chunk))
     assert chunks == []
 
 
@@ -1194,10 +1192,10 @@ def test_predictions_realdata():
     # what this decidedly does not test is going all the way to and from gff coordinates!
     data = h5py.File('testdata/mini_test_data.h5', 'r')
     preds = h5py.File('testdata/mini_test_preds.h5', 'r')
-    get_contiguous_ranges = helixer.core.helpers.get_contiguous_ranges
-    read_in_chunks = helixer.core.helpers.read_in_chunks
-    find_confident_single_class_regions = helixer.core.helpers.find_confident_single_class_regions
-    divvy_by_confidence = helixer.core.helpers.divvy_by_confidence
+    get_contiguous_ranges = helpers.get_contiguous_ranges
+    read_in_chunks = helpers.read_in_chunks
+    find_confident_single_class_regions = helpers.find_confident_single_class_regions
+    divvy_by_confidence = helpers.divvy_by_confidence
     hint_step_key = [(100, 10_000), (10, 500), (10, 500), (10, 500)]
     for contiguous_bit in get_contiguous_ranges(h5=data):
         for pred_chunk, start, end in read_in_chunks(preds, data, contiguous_bit['start_i'], contiguous_bit['end_i']):
@@ -1211,3 +1209,26 @@ def test_predictions_realdata():
                     hint_end = pre_hint['end']
                     inputpred = pred_chunk[start_conf + hint_start:start_conf + hint_end]
                     assert np.all(np.argmax(inputpred, axis=1) == pre_hint['category'])
+
+
+# overlapping
+def test_ol_length_in_matches_out_sub_batch():
+    """test that predictions length matches input length, after sliding window preds and overlapping, in sub batch"""
+    x_dset = np.zeros(shape=(16, 20000, 4))
+    indices_to_test = [(0,),
+                       (0, 1, 2, 3),
+                       (4, 5, 6, 7, 8, 9, 10, 11),
+                       tuple(range(16))
+                       ]
+    offsets = [5000, 4000, 2000, 20000 // 3]
+    for indices in indices_to_test:
+        for ends in [True, False]:
+            for offset in offsets:
+                sb = overlap.SubBatch(indices=indices,
+                                      edge_handle_end=ends, edge_handle_start=ends,
+                                      overlap_offset=offset, chunk_size=20000, x_dset=x_dset)
+                preds = sb.make_x()  # close enough, since we're ignoring content here, and only care about dimensions
+                overlapped = sb._overlap_preds(preds, core_length=10000)
+                assert len(indices) == overlapped.shape[0]
+                assert overlapped.shape[1:] == (20000, 4)
+

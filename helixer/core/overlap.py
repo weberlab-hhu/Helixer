@@ -4,6 +4,7 @@
 
 import numpy as np
 from .helpers import get_contiguous_ranges
+import math
 
 
 def _n_ori_chunks_from_batch_chunks(max_batch_size=32, overlap_depth=4):
@@ -25,7 +26,7 @@ class SubBatch:
     YDIM = 4
 
     def __init__(self, indices, x_dset, edge_handle_start=False, edge_handle_end=False, is_plus_strand=True,
-                 overlap_depth=4, overlap_offset=5000, chunk_size=20000):
+                 overlap_offset=5000, chunk_size=20000):
         self.indices = indices
         self.x_dset = x_dset
         # if not on a sequence edge start and end bits will be cropped
@@ -33,7 +34,7 @@ class SubBatch:
         self.edge_handle_start = edge_handle_start
         self.edge_handle_end = edge_handle_end
         self.is_plus_strand = is_plus_strand
-        self.overlap_depth = overlap_depth
+        self.overlap_depth = math.ceil(chunk_size / overlap_offset)  # todo, test user settings once, not here
         self.overlap_offset = overlap_offset
         self.chunk_size = chunk_size
 
@@ -51,7 +52,7 @@ class SubBatch:
 
     def make_x(self):
         """generate sliding window X, to feed into network for predicting"""
-        x = self.x_dset[self.indices]
+        x = self.x_dset[np.array(self.indices)]
         seq = x.reshape((-1, self.YDIM))
         # apply sliding window
         overlapping_x = [seq[start:end] for start, end in self.sliding_coordinates()]
@@ -59,9 +60,9 @@ class SubBatch:
 
     def _overlap_preds(self, preds, core_length=10000):
         """take sliding-window predictions, and overlap (w/end clipping) to generate original coordinate predictions"""
-        trim_by = (self.chunk_size - core_length) / 2
-        preds_out = np.full(shape=(self.seq_length, self.YDIM), fill_value=0)
-        counts = np.full(shape=(self.seq_length,), fill_value=0)
+        trim_by = (self.chunk_size - core_length) // 2
+        preds_out = np.zeros(shape=(self.seq_length, self.YDIM))
+        counts = np.zeros(shape=(self.seq_length, 1))
 
         len_preds = len(preds)
         for i, chunk, start_end in zip(range(len_preds), preds, self.sliding_coordinates()):
@@ -69,14 +70,16 @@ class SubBatch:
             # cut to core, (but not sequence ends)
             if i > 0:  # all except first seq
                 start += trim_by
+                chunk = chunk[trim_by:]
             if i < len_preds - 1:  # all except last seq
                 end -= trim_by
+                chunk = chunk[:-trim_by]
             sub_counts = counts[start:end]
             # average weighted by number of predictions counted at position so far
             preds_out[start:end] = (preds_out[start:end] * sub_counts + chunk) / (sub_counts + 1)
             # increment counted so far
             counts[start:end] += 1
-        preds_out = preds_out.reshape(shape=(len(self.indices), self.chunk_size, self.YDIM))
+        preds_out = preds_out.reshape((len(self.indices), self.chunk_size, self.YDIM))
         return preds_out
 
     def overlap_and_edge_handle_preds(self, preds, core_length=10000):
