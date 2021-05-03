@@ -68,12 +68,16 @@ class SubBatch:
     def _overlap_preds(self, preds, core_length=10000):
         """take sliding-window predictions, and overlap (w/end clipping) to generate original coordinate predictions"""
         trim_by = (self.chunk_size - core_length) // 2
-        preds_out = np.zeros(shape=(self.seq_length, self.YDIM))
+        ydim = preds.shape[-1]
+        if ydim == self.chunk_size:
+            ydim = 1
+        preds_out = np.zeros(shape=(self.seq_length, ydim))
         counts = np.zeros(shape=(self.seq_length, 1))
 
         len_preds = len(preds)
         for i, chunk, start_end in zip(range(len_preds), preds, self.sliding_coordinates()):
             start, end = start_end
+            #print('pre trim chunk shape is ', chunk.shape, )
             # cut to core, (but not sequence ends)
             if trim_by > 0:
                 if i > 0:  # all except first seq
@@ -87,10 +91,11 @@ class SubBatch:
                     trim_by, core_length, chunk.shape[0]))
             sub_counts = counts[start:end]
             # average weighted by number of predictions counted at position so far
+            #print(start, end, sub_counts.shape, chunk.shape, trim_by, f"counts shape is {counts.shape}")
             preds_out[start:end] = (preds_out[start:end] * sub_counts + chunk) / (sub_counts + 1)
             # increment counted so far
             counts[start:end] += 1
-        preds_out = preds_out.reshape((len(self.h5_indices), self.chunk_size, self.YDIM))
+        preds_out = preds_out.reshape((len(self.h5_indices), self.chunk_size, ydim))
         return preds_out
 
     def overlap_and_edge_handle_preds(self, preds, core_length=10000):
@@ -119,7 +124,7 @@ class OverlapSeqHelper(object):
         assert max_batch_size >= min_functional_bs, "batch_size is set too small to functionally overlap, " \
                                                     "set to at least {}, increase overlap_offset, or don't overlap" \
                                                     "".format(min_functional_bs)
-        assert core_length + 2 * overlap_offset >= chunk_size, "change settings to over-, not under-lap"
+        assert overlap_offset <= chunk_size - core_length, "change settings to over-, not under-lap"
         assert core_length > 0
         assert overlap_offset > 0
 

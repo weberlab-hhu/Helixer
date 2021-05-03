@@ -126,7 +126,20 @@ class ConfusionMatrix():
                 exit()
 
             if self.generator.overlap:
+                assert len(y_pred.shape) == 4, "this reshape assumes shape is " \
+                                               "(batch_size, chunk_size // pool, pool, label dim)" \
+                                               "and apparently it is time to fix that, shape is {}".format(y_pred.shape)
+                bs, cspool, pool, ydim = y_pred.shape
+                y_pred = y_pred.reshape([bs, cspool * pool, ydim])
                 y_pred = self.generator.ol_helper.overlap_predictions(batch_idx, y_pred)
+                y_pred = y_pred.reshape([-1, cspool, pool, ydim])
+                # yes this is awkward and inefficient. Do fix if you've a nicer solution. :-)
+                sw = np.stack([sw] * pool).reshape((bs, cspool * pool, 1))  # dummy filler to make shapes work
+                sw = self.generator.ol_helper.overlap_predictions(batch_idx, sw)
+                sw = sw.reshape([-1, cspool, pool])[:, :, 0]
+                y_true = y_true.reshape([bs, cspool * pool, ydim])
+                y_true = self.generator.ol_helper.overlap_predictions(batch_idx, y_true)
+                y_true = y_true.reshape([-1, cspool, pool, ydim])
 
             self._add_to_cm(y_true, y_pred, sw)
         return self._print_results()

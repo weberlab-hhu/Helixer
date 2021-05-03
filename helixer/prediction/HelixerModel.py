@@ -173,7 +173,7 @@ class HelixerSequence(Sequence):
                                     zip(decoded_list, decode_coverage, decode_spliced)]
 
                 decoded = np.stack(decoded_list, axis=0)
-                if overlap:
+                if self.overlap:
                     decoded = self.ol_helper.make_input(batch_idx, decoded)
 
                 batch.append(decoded)
@@ -186,7 +186,8 @@ class HelixerSequence(Sequence):
         if self.overlap:
             h5_indices = self.ol_helper.h5_indices_of_batch(batch_idx)
         else:
-            h5_indices = np.arange(batch_idx * self.batch_size, (batch_idx + 1) * self.batch_size)
+            end = min(self.h5_file['data/X'].shape[0], (batch_idx + 1) * self.batch_size)
+            h5_indices = np.arange(batch_idx * self.batch_size, end)
 
         return self._decode_one(name, h5_indices)
 
@@ -195,8 +196,8 @@ class HelixerSequence(Sequence):
         i = self.data_list_names.index(name)
         dtype = self.data_dtypes[i]
         data_list = self.data_lists[i]
-        decoded_list = [np.frombuffer(self.compressor.decode(data_list[i]), dtype=dtype)
-                        for i in h5_indices]
+        decoded_list = [np.frombuffer(self.compressor.decode(data_list[idx]), dtype=dtype)
+                        for idx in h5_indices]
         if len(decoded_list[0]) > self.chunk_size:
             decoded_list = [e.reshape(self.chunk_size, -1) for e in decoded_list]
         return decoded_list
