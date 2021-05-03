@@ -109,10 +109,10 @@ class ConfusionMatrix():
         return scores
 
     def calculate_cm(self, model):
-        for i in range(len(self.generator)):
-            print(i, '/', len(self.generator) - 1, end="\r")
+        for batch_idx in range(len(self.generator)):
+            print(batch_idx, '/', len(self.generator) - 1, end="\r")
 
-            inputs = self.generator[i]
+            inputs = self.generator[batch_idx]
             if len(inputs) == 2 and type(inputs[0]) is list:
                 # dilated conv input scheme
                 X, sw = inputs[0]
@@ -124,6 +124,9 @@ class ConfusionMatrix():
             else:
                 print('Unknown inputs from keras sequence')
                 exit()
+
+            if self.generator.overlap:
+                y_pred = self.generator.ol_helper.overlap_predictions(batch_idx, y_pred)
 
             self._add_to_cm(y_true, y_pred, sw)
         return self._print_results()

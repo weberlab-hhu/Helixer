@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 import os
 import sys
+
+import helixer.core.helpers
+
 try:
     import nni
 except ImportError:
@@ -25,6 +28,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import Sequence
 
 from helixer.prediction.ConfusionMatrix import ConfusionMatrix
+from helixer.core import overlap
 
 
 class SaveEveryEpoch(Callback):
@@ -92,7 +96,7 @@ class HelixerSequence(Sequence):
         self.shuffle = shuffle
         self.batch_size = batch_size
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
-                                 'coverage_norm',
+                                 'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset', 'debug'])
         x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
         if self.debug:
@@ -111,6 +115,15 @@ class HelixerSequence(Sequence):
                 self.data_list_names.append('data/transitions')
             if self.coverage_weights:
                 self.data_list_names.append('scores/by_bp')
+
+        if self.overlap:
+            assert self.mode == "test", "overlapping currently only works for test (predictions & eval)"
+            contiguous_ranges = helixer.core.helpers.get_contiguous_ranges(self.h5_file)
+            self.ol_helper = overlap.OverlapSeqHelper(contiguous_ranges=contiguous_ranges,
+                                                      chunk_size=self.chunk_size,
+                                                      max_batch_size=self.batch_size,
+                                                      overlap_offset=self.overlap_offset,
+                                                      core_length=self.core_length)
 
         if self.input_coverage:
             self.data_list_names += ['evaluation/coverage', 'evaluation/spliced_coverage']
@@ -141,33 +154,49 @@ class HelixerSequence(Sequence):
         for name in names:
             self.__dict__[name] = self.model.__dict__[name]
 
-    def _get_batch_data(self, idx):
+    def _get_batch_data(self, batch_idx):
         batch = []
         # batch must have one thing for everything unpacked by __getitem__ (and in order)
         for name in ['data/X', 'data/y', 'data/sample_weights', 'data/transitions', 'scores/by_bp']:
             if name not in self.data_list_names:
                 batch.append(None)
             else:
-                decoded_list = self._decode_one(name, idx)
+                decoded_list = self.get_batch_of_one_dataset(name, batch_idx)
+
                 # append coverage to X directly, might be clearer elsewhere once working, but this needs little code...
                 if name == 'data/X' and self.input_coverage:
-                    decode_coverage = self._decode_one('evaluation/coverage', idx)
+                    decode_coverage = self.get_batch_of_one_dataset('evaluation/coverage', batch_idx)
                     decode_coverage = [self._cov_norm(x.reshape(-1, 1)).astype(np.float16) for x in decode_coverage]
-                    decode_spliced = self._decode_one('evaluation/spliced_coverage', idx)
+                    decode_spliced = self.get_batch_of_one_dataset('evaluation/spliced_coverage', batch_idx)
                     decode_spliced = [self._cov_norm(x.reshape(-1, 1)).astype(np.float16) for x in decode_spliced]
                     decoded_list = [np.concatenate((x, y, z), axis=1) for x, y, z in
                                     zip(decoded_list, decode_coverage, decode_spliced)]
-                batch.append(np.stack(decoded_list, axis=0))
+
+                decoded = np.stack(decoded_list, axis=0)
+                if overlap:
+                    decoded = self.ol_helper.make_input(batch_idx, decoded)
+
+                batch.append(decoded)
 
         return tuple(batch)
 
-    def _decode_one(self, name, idx):
-        """decode position {idx} from compressed data originally from dataset {name}"""
+    def get_batch_of_one_dataset(self, name, batch_idx):
+        """returns single batch (the Nth where N=batch_idx) from dataset '{name}'"""
+        # setup indices based on overlapping or not
+        if self.overlap:
+            h5_indices = self.ol_helper.h5_indices_of_batch(batch_idx)
+        else:
+            h5_indices = np.arange(batch_idx * self.batch_size, (batch_idx + 1) * self.batch_size)
+
+        return self._decode_one(name, h5_indices)
+
+    def _decode_one(self, name, h5_indices):
+        """decode batch delineated by h5_indices from compressed data originally from dataset {name}"""
         i = self.data_list_names.index(name)
         dtype = self.data_dtypes[i]
         data_list = self.data_lists[i]
-        decoded_list = [np.frombuffer(self.compressor.decode(e), dtype=dtype)
-                        for e in data_list[idx * self.batch_size:(idx + 1) * self.batch_size]]
+        decoded_list = [np.frombuffer(self.compressor.decode(data_list[i]), dtype=dtype)
+                        for i in h5_indices]
         if len(decoded_list[0]) > self.chunk_size:
             decoded_list = [e.reshape(self.chunk_size, -1) for e in decoded_list]
         return decoded_list
@@ -296,11 +325,16 @@ class HelixerModel(ABC):
         self.parser.add_argument('--coverage-weights', action='store_true')
         self.parser.add_argument('--coverage-offset', type=float, default=0.0)
         self.parser.add_argument('--resume-training', action='store_true')
-        # testing
+        # testing / predicting
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
         self.parser.add_argument('-t', '--test-data', type=str, default='')
         self.parser.add_argument('-p', '--prediction-output-path', type=str, default='predictions.h5')
         self.parser.add_argument('--eval', action='store_true')
+        self.parser.add_argument('--overlap', action="store_true",
+                                 help="will improve prediction quality at 'chunk' ends by creating and overlapping "
+                                      "sliding-window predictions (with proportional increase in  time usage)")
+        self.parser.add_argument('--overlap-offset', type=int, default=2500)
+        self.parser.add_argument('--core-length', type=int, default=10000)
         # resources
         self.parser.add_argument('--float-precision', type=str, default='float32')
         self.parser.add_argument('--cpus', type=int, default=8)
@@ -473,10 +507,10 @@ class HelixerModel(ABC):
         pred_out = h5py.File(self.prediction_output_path, 'w')
         test_sequence = self.gen_test_data()
 
-        for i in range(len(test_sequence)):
+        for batch_index in range(len(test_sequence)):
             if self.verbose:
-                print(i, '/', len(test_sequence), end='\r')
-            predictions = model.predict_on_batch(test_sequence[i][0])
+                print(batch_index, '/', len(test_sequence), end='\r')
+            predictions = model.predict_on_batch(test_sequence[batch_index][0])
             # join last two dims when predicting one hot labels
             predictions = predictions.reshape(predictions.shape[:2] + (-1,))
             # reshape when predicting more than one point at a time
@@ -497,8 +531,11 @@ class HelixerModel(ABC):
             else:
                 n_removed = 0  # just to avoid crashing with Unbound Local Error setting attrs for dCNN
 
+            if self.overlap:
+                predictions = test_sequence.ol_helper.overlap_predictions(batch_index, predictions)
+
             # prepare h5 dataset and save the predictions to disk
-            if i == 0:
+            if batch_index == 0:
                 old_len = 0
                 pred_out.create_dataset('/predictions',
                                         data=predictions,

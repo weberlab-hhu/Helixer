@@ -1224,10 +1224,11 @@ def test_ol_length_in_matches_out_sub_batch():
     for indices in indices_to_test:
         for ends in [True, False]:
             for offset in offsets:
-                sb = overlap.SubBatch(indices=indices,
+                sb = overlap.SubBatch(h5_indices=indices,
                                       edge_handle_end=ends, edge_handle_start=ends,
-                                      overlap_offset=offset, chunk_size=20000, x_dset=x_dset)
-                preds = sb.make_x()  # close enough, since we're ignoring content here, and only care about dimensions
+                                      overlap_offset=offset, chunk_size=20000)
+                # below is close enough, since we're ignoring content here, and only care about dimensions
+                preds = sb.mk_sliding_overlaps_for_data_sub_batch(data_sub_batch=x_dset[np.array(sb.h5_indices)])
                 overlapped = sb._overlap_preds(preds, core_length=10000)
                 assert len(indices) == overlapped.shape[0]
                 assert overlapped.shape[1:] == (20000, 4)
@@ -1240,8 +1241,9 @@ def test_ol_identical_preds_return_ori():
     for x_dset in x_dsets:
         for indices in indices_to_test:
             for core_length in [5020, 8000, 10000, 12000, 18000, 20000]:
-                sb = overlap.SubBatch(indices=indices, x_dset=x_dset, overlap_offset=5000, chunk_size=20000)
-                raw_preds = sb.make_x()  # just checking identity, doesn't matter whether we actually have preds
+                sb = overlap.SubBatch(h5_indices=indices, overlap_offset=5000, chunk_size=20000)
+                # just checking identity, doesn't matter whether we actually have preds
+                raw_preds = sb.mk_sliding_overlaps_for_data_sub_batch(data_sub_batch=x_dset[np.array(sb.h5_indices)])
                 expect = x_dset[np.array(indices)]
                 assert np.allclose(expect, sb._overlap_preds(raw_preds, core_length=core_length))
     # concatenation of three with end handling
@@ -1253,12 +1255,12 @@ def test_ol_identical_preds_return_ori():
     edge_handling = [(True, False), (False, False), (False, True)]
     for indices, edges in zip(indices_realistic, edge_handling):
         sbs.append(
-            overlap.SubBatch(indices=indices, x_dset=x_dset, overlap_offset=5000, chunk_size=20000,
+            overlap.SubBatch(h5_indices=indices, overlap_offset=5000, chunk_size=20000,
                              edge_handle_start=edges[0], edge_handle_end=edges[1])
         )
     preds = []
     for sb in sbs:
-        raw_preds = sb.make_x()
+        raw_preds = sb.mk_sliding_overlaps_for_data_sub_batch(data_sub_batch=x_dset[np.array(sb.h5_indices)])
         ol_preds = sb.overlap_and_edge_handle_preds(raw_preds, core_length=10000)
         preds.append(ol_preds)
     fin_preds = np.concatenate(preds)
@@ -1266,9 +1268,8 @@ def test_ol_identical_preds_return_ori():
 
 
 def test_ol_pred_overlap_and_weighting():
-    x_dset = np.zeros(shape=(16, 20000, 4))
-    sb = overlap.SubBatch(indices=(0, 1),
-                          overlap_offset=5000, chunk_size=20000, x_dset=x_dset)
+    sb = overlap.SubBatch(h5_indices=(0, 1),
+                          overlap_offset=5000, chunk_size=20000)
     # this should produce length 5 X, some test predictions, with easy to calc output
     # (each char is 5k, number is index with 1.)
     # 0 0 0 0
@@ -1322,11 +1323,12 @@ def test_ol_overlap_seq_helper():
         return {"is_plus_strand": True, "start_i": start_i, "end_i": end_i}
 
     def cmp_one(dummy_xpred, contiguous_ranges):
-        ol_helper = overlap.OverlapSeqHelper(x_dset=dummy_xpred, contiguous_ranges=contiguous_ranges)
+        ol_helper = overlap.OverlapSeqHelper(contiguous_ranges=contiguous_ranges)
         preds_out = []
-        for idx in range(ol_helper.adjusted_epoch_length()):
-            raw_preds = ol_helper.make_x(idx)
-            ol_preds = ol_helper.overlap_predictions(idx, raw_preds)
+        for batch_idx in range(ol_helper.adjusted_epoch_length()):
+            raw_preds = ol_helper.make_input(batch_idx,
+                                             data_batch=dummy_xpred[ol_helper.h5_indices_of_batch(batch_idx)])
+            ol_preds = ol_helper.overlap_predictions(batch_idx, raw_preds)
             preds_out.append(ol_preds)
         fin_predictions = np.concatenate(preds_out)
         assert np.allclose(fin_predictions, dummy_xpred)
