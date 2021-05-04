@@ -1325,12 +1325,14 @@ def test_ol_overlap_seq_helper():
     def cmp_one(dummy_xpred, contiguous_ranges):
         ol_helper = overlap.OverlapSeqHelper(contiguous_ranges=contiguous_ranges)
         preds_out = []
+        print(ol_helper.adjusted_epoch_length())
         for batch_idx in range(ol_helper.adjusted_epoch_length()):
             raw_preds = ol_helper.make_input(batch_idx,
                                              data_batch=dummy_xpred[ol_helper.h5_indices_of_batch(batch_idx)])
             ol_preds = ol_helper.overlap_predictions(batch_idx, raw_preds)
             preds_out.append(ol_preds)
         fin_predictions = np.concatenate(preds_out)
+        print(fin_predictions.shape, dummy_xpred.shape)
         assert np.allclose(fin_predictions, dummy_xpred)
 
     for seq_len in range(1, 15):

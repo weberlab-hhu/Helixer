@@ -173,7 +173,7 @@ class HelixerSequence(Sequence):
                                     zip(decoded_list, decode_coverage, decode_spliced)]
 
                 decoded = np.stack(decoded_list, axis=0)
-                if self.overlap:
+                if self.overlap and name == 'data/X':
                     decoded = self.ol_helper.make_input(batch_idx, decoded)
 
                 batch.append(decoded)
@@ -297,7 +297,10 @@ class HelixerSequence(Sequence):
 
     def __len__(self):
         """how many batches in epoch"""
-        return int(np.ceil(self.n_seqs / self.batch_size))
+        if self.overlap:
+            return self.ol_helper.adjusted_epoch_length()
+        else:
+            return int(np.ceil(self.n_seqs / self.batch_size))
 
     @abstractmethod
     def __getitem__(self, idx):

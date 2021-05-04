@@ -133,14 +133,9 @@ class ConfusionMatrix():
                 y_pred = y_pred.reshape([bs, cspool * pool, ydim])
                 y_pred = self.generator.ol_helper.overlap_predictions(batch_idx, y_pred)
                 y_pred = y_pred.reshape([-1, cspool, pool, ydim])
-                # yes this is awkward and inefficient. Do fix if you've a nicer solution. :-)
-                sw = np.stack([sw] * pool).reshape((bs, cspool * pool, 1))  # dummy filler to make shapes work
-                sw = self.generator.ol_helper.overlap_predictions(batch_idx, sw)
-                sw = sw.reshape([-1, cspool, pool])[:, :, 0]
-                y_true = y_true.reshape([bs, cspool * pool, ydim])
-                y_true = self.generator.ol_helper.overlap_predictions(batch_idx, y_true)
-                y_true = y_true.reshape([-1, cspool, pool, ydim])
-
+                # edge handle sw & y_true (as done with y_pred and to restore 1:1 input output
+                sw = self.generator.ol_helper.subset_input(batch_idx, sw)
+                y_true = self.generator.ol_helper.subset_input(batch_idx, y_true)
             self._add_to_cm(y_true, y_pred, sw)
         return self._print_results()
 

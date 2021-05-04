@@ -22,11 +22,13 @@ def _n_batch_from_ori_chunks(n_chunks=8, overlap_depth=4):
 
 
 class SubBatch:
-    YDIM = 4
 
     def __init__(self, h5_indices, edge_handle_start=False, edge_handle_end=False, is_plus_strand=True,
-                 overlap_offset=5000, chunk_size=20000):
+                 overlap_offset=5000, chunk_size=20000, keep_start=None, keep_end=None):
         self.h5_indices = h5_indices
+        # the following parameters are primarily for debugging
+        self.keep_start = keep_start
+        self.keep_end = keep_end
         # if not on a sequence edge start and end bits will be cropped
         # also, start on negative strand would ideally have special handling for weird padding
         self.edge_handle_start = edge_handle_start
@@ -68,7 +70,7 @@ class SubBatch:
     def _overlap_preds(self, preds, core_length=10000):
         """take sliding-window predictions, and overlap (w/end clipping) to generate original coordinate predictions"""
         trim_by = (self.chunk_size - core_length) // 2
-        ydim = preds.shape[-1]
+        ydim = preds[0].shape[-1]
         if ydim == self.chunk_size:
             ydim = 1
         preds_out = np.zeros(shape=(self.seq_length, ydim))
@@ -99,16 +101,21 @@ class SubBatch:
         return preds_out
 
     def overlap_and_edge_handle_preds(self, preds, core_length=10000):
-        """crops first and second array from output unless at sequence edge"""
+        """overlaps sliding predictions, then crops as necessary on edges"""
         # the final sequences for what is cropped will come from previous/next batch instead
         # i.e. this should produce identical output regardless of batch size
         # as avoidable batch/sub-batch edge effects will be complete cropped here.
         clean_preds = self._overlap_preds(preds, core_length)
-        if not self.edge_handle_start:
-            clean_preds = clean_preds[1:]
-        if not self.edge_handle_end:
-            clean_preds = clean_preds[:-1]
+        clean_preds = self.edge_handle(clean_preds)
         return clean_preds
+
+    def edge_handle(self, dat):
+        """crops first and second array from output unless at sequence edge"""
+        if not self.edge_handle_start:
+            dat = dat[1:]
+        if not self.edge_handle_end:
+            dat = dat[:-1]
+        return dat
 
 
 # places where overlap will affect core functionality of HelixerSequence
@@ -142,12 +149,16 @@ class OverlapSeqHelper(object):
             # and regenerate original sequence with a simple concatenation there after
             for i in range(crange['start_i'], crange['end_i'], step):
                 sub_batch_start = max(i - 1, crange['start_i'])  # pad 1 left (except seq edge)
+                keep_start = max(i, crange['start_i'])
+                keep_end = min(i + step, crange['end_i'])
                 sub_batch_end = min(i + step + 1, crange['end_i'])   # pad 1 right (except seq edge)
                 h5_indices = tuple(range(sub_batch_start, sub_batch_end))
                 sub_batches.append(
                     SubBatch(h5_indices, is_plus_strand=crange['is_plus_strand'],
                              edge_handle_start=sub_batch_start == crange['start_i'],
-                             edge_handle_end=i + step + 1 > crange['end_i'])
+                             edge_handle_end=i + step + 1 > crange['end_i'],
+                             keep_start=keep_start,
+                             keep_end=keep_end)
                 )
 
         # group into final batches, so as to keep total size <= max_batch_size
@@ -198,6 +209,17 @@ class OverlapSeqHelper(object):
         for start, length, sb in zip(sub_batch_starts, sub_batch_lengths, sub_batches):
             preds = predictions[start:(start + length)]
             out.append(sb.overlap_and_edge_handle_preds(preds, self.core_length))
-        return np.concatenate(out)
+        out = np.concatenate(out)
+        n_expect = np.sum([sb.keep_end - sb.keep_start for sb in sub_batches])
+        assert out.shape[0] == n_expect
+        return out
 
-
+    def subset_input(self, batch_idx, y_true_or_sw):
+        """generate subset from data corresponding to _final_ predictions, i.e. to run y_true through during eval"""
+        sub_batches = self.sliding_batches[batch_idx]
+        sb_input_lengths = [len(sb.h5_indices) for sb in sub_batches]
+        sb_input_starts = np.cumsum(sb_input_lengths) - sb_input_lengths
+        dat_as_list = []
+        for start, length, sb in zip(sb_input_starts, sb_input_lengths, sub_batches):
+            dat_as_list.append(sb.edge_handle(y_true_or_sw[start:(start + length)]))
+        return np.concatenate(dat_as_list)
