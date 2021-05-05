@@ -1,7 +1,8 @@
 """convert cleaned-db schema to numeric values describing gene structure"""
-
+import time
 import numpy as np
 import logging
+import multiprocess
 from abc import ABC, abstractmethod
 
 from geenuff.base import types
@@ -92,26 +93,50 @@ class Numerifier(ABC):
 
 
 class SequenceNumerifier(Numerifier):
-    def __init__(self, coord, max_len, start=0, end=None):
+    def __init__(self, coord, max_len, start=0, end=None, multiprocess=True):
+        self.multiprocess = multiprocess
         super().__init__(n_cols=4, coord=coord, max_len=max_len, dtype=np.float16, start=start, end=end)
 
     def coord_to_matrices(self):
         """Does not alter the error mask unlike in AnnotationNumerifier"""
-        self._zero_matrix()
+        def numerify(seq_part):
+            matrix_part= np.zeros((len(seq_part), self.n_cols,), self.dtype)
+            for i, bp in enumerate(seq_part):
+                matrix_part[i] = AMBIGUITY_DECODE[bp]
+            return matrix_part
+
         # plus strand, actual numerification of the sequence
-        for i, bp in enumerate(self.coord.sequence[self.start:self.end]):
-            self.matrix[i] = AMBIGUITY_DECODE[bp]
+        start_time = time.time()
+        seq = self.coord.sequence[self.start:self.end]
+        seq_len = len(seq)  # can be slow
+        if seq_len < int(1e6) or not self.multiprocess:
+            # numerify short sequences sequencially
+            self._zero_matrix()
+            for i, bp in enumerate(seq):
+                self.matrix[i] = AMBIGUITY_DECODE[bp]
+        else:
+            # numerify longer sequences in parallel
+            # use one less cpu than possible, with minimum 500K chars per process
+            n_processes = min(multiprocess.cpu_count(), seq_len // int(5e5)) - 1
+            with multiprocess.Pool(n_processes) as p:
+                max_seq_part_len = int(np.ceil(seq_len / n_processes))
+                seq_parts = [seq[offset:offset + max_seq_part_len]
+                             for offset in range(0, seq_len, max_seq_part_len)]
+                numerified_parts = p.map(numerify, seq_parts)
+            assert seq_len == sum([len(p) for p in numerified_parts])
+            self.matrix = np.concatenate(numerified_parts)
+
         # very important to copy here
-        data_plus = self._slice_matrices(True,
-                                         np.copy(self.matrix))[0]
+        data_plus = self._slice_matrices(True, np.copy(self.matrix))[0]
 
         # minus strand
         self.matrix = np.flip(self.matrix, axis=1)  # complementary base
-        data_minus = self._slice_matrices(False,  # slice matrix will reverse direction
-                                          self.matrix)[0]
+        # slice matrix will reverse direction
+        data_minus = self._slice_matrices(False,  self.matrix)[0]
 
         # put everything together
         data = {'plus': data_plus, 'minus': data_minus}
+        print(f'Numerification of only the sequence of {self.coord.seqid} took {time.time() - start_time:.2f} secs')
         return data
 
 
@@ -130,7 +155,7 @@ class AnnotationNumerifier(Numerifier):
     #  maybe have first pass & second pass matrix gen functions, and loop through those that exist at each step??
     #  Second pass could also be written to h5 in a second round to reduce mem usage if need be. Or first pass is
     #  a generator that autodetects splittable intergenic regions every 10mb or so.
-    
+
     def __init__(self, coord, features, max_len, one_hot=True, start=0, end=None):
         super().__init__(n_cols=3, coord=coord, max_len=max_len, dtype=np.int8, start=start, end=end)
         self.features = features
@@ -160,7 +185,6 @@ class AnnotationNumerifier(Numerifier):
         # encoding of the actual labels and slicing; generation of error mask and gene length array
         if self.one_hot:
             label_matrix = self._encode_onehot4()
-
         else:
             label_matrix = self.matrix
         matrices = self._slice_matrices(is_plus_strand,
@@ -215,7 +239,7 @@ class AnnotationNumerifier(Numerifier):
 
         one_hot4_matrix = one_hot_matrix.astype(np.int8)
         return one_hot4_matrix
-    
+
     def _encode_transitions(self):
         add = np.array([[0, 0, 0]])
         shifted_feature_matrix = np.vstack((self.matrix[1:], add))
@@ -261,24 +285,26 @@ class CoordNumerifier(object):
 
     @staticmethod
     def numerify(coord, coord_features, max_len, one_hot=True, mode=('X', 'y', 'anno_meta', 'transitions'),
-                 write_by=5000000):
+                 write_by=5000000, multiprocess=True):
         assert isinstance(max_len, int) and max_len > 0, 'what is {} of type {}'.format(max_len, type(max_len))
         coord_features = sorted(coord_features, key=lambda f: min(f.start, f.end))  # sort by ~ +strand start
         split_finder = SplitFinder(features=coord_features, write_by=write_by, coord_length=coord.length,
                                    chunk_size=max_len)
         for f_set, bp_coord, h5_coord in split_finder.feature_n_coord_gen():
             for strand_res in CoordNumerifier._numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len,
-                                                                          one_hot, coord_features, mode):
+                                                                          one_hot, coord_features, mode, multiprocess):
                 yield strand_res
 
     @staticmethod
-    def _numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len, one_hot, coord_features, mode):
+    def _numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len, one_hot,
+                                    coord_features, mode, multiprocess):
         export_x = 'X' in mode
         start, end = bp_coord
 
         anno_numerifier = AnnotationNumerifier(coord=coord, features=f_set, max_len=max_len,
                                                one_hot=one_hot, start=start, end=end)
-        seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=start, end=end)
+        seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=start, end=end,
+                                            multiprocess=multiprocess)
 
         # everything with _b below is for "both strands" and is {"plus": +_np_array, "minus": -_np_array }
         # todo, make mode more elegant / extensible
@@ -346,7 +372,7 @@ class SplitFinder:
         self.coord_length = coord_length
         self.chunk_size = chunk_size
         self.splits = tuple(self._find_splits())
-        print(len(self.splits), 'expected num of chunks to write in', self.write_by)
+        print(len(self.splits), 'expected num of chunks to write in', self.write_by, 'bases to hdf5')
         self.relative_h5_coords = tuple(self._get_rel_h5_coords_for_splits())
 
     @property

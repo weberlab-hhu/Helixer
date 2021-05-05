@@ -23,8 +23,8 @@ from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 from helixer.prediction.LSTMModel import LSTMSequence
 from ..evaluation import rnaseq
 
-TMP_DB = 'testdata/tmp.db'
-DUMMYLOCI_DB = 'testdata/dummyloci.sqlite3'
+TMP_DB = 'testdata/tmp/dummy.sqlite3'
+DUMMYLOCI_DB = 'testdata/dummyloci/dummyloci.sqlite3'
 H5_OUT_FOLDER = 'testdata/numerify_test_out/'
 H5_OUT_FILE = H5_OUT_FOLDER + 'test_data.h5'
 EVAL_H5 = 'testdata/tmp.h5'
@@ -39,13 +39,16 @@ def setup_dummy_db(request):
     if os.path.exists(DUMMYLOCI_DB):
         os.remove(DUMMYLOCI_DB)
 
+    os.makedirs(os.path.dirname(TMP_DB), exist_ok=True)
+    os.makedirs(os.path.dirname(DUMMYLOCI_DB), exist_ok=True)
+
     # make sure we have the same test data that Geenuff has
     geenuff_test_folder = os.path.dirname(geenuff.__file__) + '/testdata/'
     files = ['dummyloci.fa', 'dummyloci.gff', 'basic_sequences.fa']
     for f in files:
         copy(geenuff_test_folder + f, 'testdata/')
 
-    # setup dummyloci
+    # setup dummyloci, import into a Geenuff database
     controller = ImportController(database_path='sqlite:///' + DUMMYLOCI_DB)
     controller.add_genome('testdata/dummyloci.fa', 'testdata/dummyloci.gff',
                           genome_args={"species": "dummy"})
@@ -58,7 +61,7 @@ def setup_dummy_db(request):
     yield None
 
     # clean up tmp files
-    for p in [TMP_DB] + [H5_OUT_FOLDER + f for f in os.listdir(H5_OUT_FOLDER)]:
+    for p in [TMP_DB, DUMMYLOCI_DB] + [H5_OUT_FOLDER + f for f in os.listdir(H5_OUT_FOLDER)]:
         if os.path.exists(p):
             os.remove(p)
     os.rmdir(H5_OUT_FOLDER)
@@ -100,7 +103,7 @@ def mk_controllers(source_db, helixer_db=TMP_DB, h5_out=H5_OUT_FOLDER, only_test
             os.remove(p)
 
     mer_controller = HelixerController(source_db, helixer_db, '', '')
-    export_controller = HelixerExportController(helixer_db, h5_out, only_test_set=only_test_set)
+    export_controller = HelixerExportController(os.path.dirname(helixer_db), h5_out, only_test_set=only_test_set)
     return mer_controller, export_controller
 
 
@@ -113,7 +116,7 @@ def memory_import_fasta(fasta_path):
 
 def setup_dummyloci(only_test_set=True):
     _, export_controller = mk_controllers(DUMMYLOCI_DB, only_test_set=only_test_set)
-    session = export_controller.geenuff_exporter.session
+    session = export_controller.exporters['dummy'].session
     coordinate = session.query(Coordinate).first()
     return session, export_controller, coordinate
 
@@ -142,7 +145,7 @@ def setup_simpler_numerifier():
 ### db import from GeenuFF ###
 def test_copy_n_import():
     _, controller = mk_controllers(source_db=DUMMYLOCI_DB)
-    session = controller.geenuff_exporter.session
+    session = controller.exporters['dummy'].session
     sl = session.query(SuperLocus).filter(SuperLocus.given_name == 'gene0').one()
     assert len(sl.transcripts) == 3
     assert len(sl.proteins) == 3
@@ -307,8 +310,7 @@ def test_minus_strand_numerify():
 def test_coord_numerifier_and_h5_gen_plus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=400, genomes='', exclude='', val_size=0.2, one_hot=False,
-                      all_transcripts=True)
+    controller.export(chunk_size=400, genomes=['dummy'], val_size=0.2, one_hot=False, all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     not_erroneous = f['/data/err_samples'][:]
@@ -359,8 +361,7 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     """Tests numerification of test case 8 on coordinate 2"""
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=200, genomes='', exclude='', val_size=0.2, one_hot=False,
-                      all_transcripts=True)
+    controller.export(chunk_size=200, genomes=['dummy'], val_size=0.2, one_hot=False, all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     not_erroneous = f['/data/err_samples'][:]
@@ -769,9 +770,9 @@ def test_confusion_matrix():
     assert np.allclose(cm_true_normalized, cm._get_normalized_cm())
 
     # argmax and filter y_true and y_pred
-    y_pred, y_true = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sample_weights)
-    y_pred = ConfusionMatrix._reshape_data(y_pred)
-    y_true = ConfusionMatrix._reshape_data(y_true)
+    y_true, y_pred = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sample_weights)
+    y_pred = ConfusionMatrix._argmax_y(y_pred)
+    y_true = ConfusionMatrix._argmax_y(y_true)
 
     # test other metrics
     precision_true, recall_true, f1_true, _ = f1_scores(y_true, y_pred)
@@ -826,7 +827,7 @@ def test_gene_lengths():
     """Tests the '/data/gene_lengths' array"""
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=5000, genomes='', exclude='', val_size=0.2, one_hot=True,
+    controller.export(chunk_size=5000, genomes=['dummy'], val_size=0.2, one_hot=True,
                       all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
@@ -870,7 +871,7 @@ def test_featureless_filter():
     """Tests the exclusion/inclusion of chunks from featureless coordinates"""
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=5000, genomes='', exclude='', val_size=0.2, one_hot=True,
+    controller.export(chunk_size=5000, genomes=['dummy'], val_size=0.2, one_hot=True,
                       all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
@@ -884,7 +885,7 @@ def test_featureless_filter():
     f.close()
     # dump the whole db in chunks into a .h5 file
     _, controller, _ = setup_dummyloci()
-    controller.export(chunk_size=5000, genomes='', exclude='', val_size=0.2, one_hot=True,
+    controller.export(chunk_size=5000, genomes=['dummy'], val_size=0.2, one_hot=True,
                       all_transcripts=True, keep_featureless=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
@@ -972,7 +973,7 @@ def test_transition_encoding_and_weights():
     assert np.array_equal(nums['plus'][0], expect_plus_strand_encoding)
     assert np.array_equal(nums['minus'][0], expect_minus_strand_encoding)
 
-    # initializing variables + reshape   
+    # initializing variables + reshape
     transitions_plus_strand = np.array(nums['plus']).reshape((8, 9, 10, 6))
     transitions_minus_strand = np.array(nums['minus']).reshape((8, 9, 10, 6))
     transition_weights = [10, 20, 30, 40, 50, 60]
@@ -997,8 +998,8 @@ def test_transition_encoding_and_weights():
     assert np.array_equal(applied_tw_no_stretch_plus, expect_no_stretch)
 
     # transition weights are spread over sample weights in each direction
-    # amplifies area around the transition by: 
-    # [ tw/2**3 [ tw/2**2 [ tw/2**1 [ tw ] tw/2**1 ] tw/2**2] .. 
+    # amplifies area around the transition by:
+    # [ tw/2**3 [ tw/2**2 [ tw/2**1 [ tw ] tw/2**1 ] tw/2**2] ..
     stretch = 3
     expect_3_stretch = np.array([
         [1, 1.25, 2.5, 5, 10, 5, 2.5, 1.25, 1],
@@ -1097,7 +1098,7 @@ def test_super_chunking4write():
     """Tests that the exact same h5 is produced, regardless of how many super-chunks it is written in"""
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    n_writing_chunks = controller.export(chunk_size=500, genomes='', exclude='', val_size=0.2, one_hot=True,
+    n_writing_chunks = controller.export(chunk_size=500, genomes=['dummy'], val_size=0.2, one_hot=True,
                                          all_transcripts=True,
                                          write_by=10_000_000_000)  # write by left large enough to yield just once
 
@@ -1112,7 +1113,7 @@ def test_super_chunking4write():
     assert n_writing_chunks == 4  # 2 per feature-containing coordinate
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    n_writing_chunks = controller.export(chunk_size=500, genomes='', exclude='', val_size=0.2, one_hot=True,
+    n_writing_chunks = controller.export(chunk_size=500, genomes=['dummy'], val_size=0.2, one_hot=True,
                                          all_transcripts=True,
                                          write_by=1000)  # write by should result in multiple super-chunks
 
@@ -1136,7 +1137,7 @@ def test_super_chunking4write():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     with pytest.raises(ValueError):
-        controller.export(chunk_size=500, genomes='', exclude='', val_size=0.2, one_hot=True,
+        controller.export(chunk_size=500, genomes=['dummy'], val_size=0.2, one_hot=True,
                           all_transcripts=True,
                           write_by=1001)  # write by should result in multiple super-chunks
 
@@ -1144,7 +1145,7 @@ def test_super_chunking4write():
 def test_rangefinder():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    n_writing_chunks = controller.export(chunk_size=500, genomes='', exclude='', val_size=0.2, one_hot=True,
+    n_writing_chunks = controller.export(chunk_size=500, genomes=['dummy'], val_size=0.2, one_hot=True,
                                          all_transcripts=True,
                                          write_by=10_000_000_000)
     f = h5py.File(H5_OUT_FILE, 'r')

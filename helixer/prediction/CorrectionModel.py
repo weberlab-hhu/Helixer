@@ -3,18 +3,19 @@ import numpy as np
 
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
-                                     Activation, Input, BatchNormalization)
+                                     Activation, Input, BatchNormalization, Concatenate)
 from HelixerModel import HelixerModel, HelixerSequence
 
 
-class DanQSequence(HelixerSequence):
+class CorrectionSequence(HelixerSequence):
     def __init__(self, model, h5_file, mode, batch_size, shuffle):
         super().__init__(model, h5_file, mode, batch_size, shuffle)
+        assert self.load_predictions, 'need --load-predictions for correction model'
         if self.class_weights is not None:
             assert not mode == 'test'  # only use class weights during training and validation
 
     def __getitem__(self, idx):
-        X, y, sw, transitions, _, coverage_scores = self._get_batch_data(idx)
+        X, y, sw, transitions, predictions, _ = self._get_batch_data(idx)
         pool_size = self.model.pool_size
 
         if pool_size > 1:
@@ -24,6 +25,7 @@ class DanQSequence(HelixerSequence):
                 X = X[:, :-overhang]
                 y = y[:, :-overhang]
                 sw = sw[:, :-overhang]
+                predictions = predictions[:, :-overhang]
                 if self.mode == 'train' and self.transition_weights is not None:
                     transitions = transitions[:, :-overhang]
 
@@ -53,60 +55,58 @@ class DanQSequence(HelixerSequence):
                     sw_t = self.compress_tw(transitions)
                     sw = np.multiply(sw_t, sw)
 
-                if self.coverage_weights:
-                    coverage_scores = coverage_scores.reshape((coverage_scores.shape[0], -1, pool_size))
-                    # maybe offset coverage scores [0,1] by small number (bc RNAseq has issues too), default 0.0
-                    if self.coverage_offset > 0.:
-                        coverage_scores = np.add(coverage_scores, self.coverage_offset)
-                    coverage_scores = np.mean(coverage_scores, axis=2)
-                    sw = np.multiply(coverage_scores, sw)
-
-        return X, y, sw
+        return [X, predictions], y, sw
 
 
-class DanQModel(HelixerModel):
+class CorrectionModel(HelixerModel):
     def __init__(self):
         super().__init__()
-        self.parser.add_argument('--cnn-layers', type=int, default=1)
+        self.parser.add_argument('--x-cnn-layers', type=int, default=1)
+        self.parser.add_argument('--x-filter-depth', type=int, default=32)
+        self.parser.add_argument('--x-kernel-size', type=int, default=26)
+        self.parser.add_argument('--pred-cnn-layers', type=int, default=1)
+        self.parser.add_argument('--pred-filter-depth', type=int, default=32)
+        self.parser.add_argument('--pred-kernel-size', type=int, default=26)
         self.parser.add_argument('--lstm-layers', type=int, default=1)
         self.parser.add_argument('--units', type=int, default=32)
-        self.parser.add_argument('--filter-depth', type=int, default=32)
-        self.parser.add_argument('--kernel-size', type=int, default=26)
         self.parser.add_argument('--pool-size', type=int, default=10)
-        self.parser.add_argument('--dropout1', type=float, default=0.0)
+        self.parser.add_argument('--x-dropout1', type=float, default=0.0)
+        self.parser.add_argument('--pred-dropout1', type=float, default=0.0)
         self.parser.add_argument('--dropout2', type=float, default=0.0)
         self.parse_args()
 
     @staticmethod
     def sequence_cls():
-        return DanQSequence
+        return CorrectionSequence
 
     def model(self):
-        overhang = self.shape_train[1] % self.pool_size
-        values_per_bp = 4
-        if self.input_coverage:
-            values_per_bp = 6
-        main_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
-                           name='main_input')
-        x = Conv1D(filters=self.filter_depth,
-                   kernel_size=self.kernel_size,
-                   padding="same",
-                   activation="relu")(main_input)
-
-        # if there are additional CNN layers
-        for _ in range(self.cnn_layers - 1):
-            x = BatchNormalization()(x)
-            x = Conv1D(filters=self.filter_depth,
-                       kernel_size=self.kernel_size,
+        def _cnn_stack(x, cnn_layers, filter_depth, kernel_size, dropout):
+            x = Conv1D(filters=filter_depth,
+                       kernel_size=kernel_size,
                        padding="same",
                        activation="relu")(x)
+            # if there are additional CNN layers
+            for _ in range(cnn_layers - 1):
+                x = BatchNormalization()(x)
+                x = Conv1D(filters=filter_depth,
+                           kernel_size=kernel_size,
+                           padding="same",
+                           activation="relu")(x)
+            if self.pool_size > 1:
+                x = Reshape((-1, self.pool_size * filter_depth))(x)
+            if dropout > 0.0:
+                x = Dropout(dropout)(x)
+            return x
 
-        if self.pool_size > 1:
-            x = Reshape((-1, self.pool_size * self.filter_depth))(x)
-            # x = MaxPooling1D(pool_size=self.pool_size, padding='same')(x)
+        overhang = self.shape_train[1] % self.pool_size
+        X_input = Input(shape=(None, 4), dtype=self.float_precision, name='X_input')
+        pred_input = Input(shape=(None, 4), dtype=self.float_precision, name='pred_input')
 
-        if self.dropout1 > 0.0:
-            x = Dropout(self.dropout1)(x)
+        x = _cnn_stack(X_input, self.x_cnn_layers, self.x_filter_depth, self.x_kernel_size, self.x_dropout1)
+        x_pred = _cnn_stack(pred_input, self.pred_cnn_layers, self.pred_filter_depth,
+                            self.pred_kernel_size, self.pred_dropout1)
+
+        x = Concatenate(axis=-1)([x, x_pred])
 
         x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
         for _ in range(self.lstm_layers - 1):
@@ -121,11 +121,10 @@ class DanQModel(HelixerModel):
         x = Activation('softmax', name='main')(x)
 
         outputs = [x]
-        model = Model(inputs=main_input, outputs=outputs)
+        model = Model(inputs=[X_input, pred_input], outputs=outputs)
         return model
 
     def compile_model(self, model):
-
         losses = ['categorical_crossentropy']
         loss_weights = [1.0]
 
@@ -136,5 +135,5 @@ class DanQModel(HelixerModel):
 
 
 if __name__ == '__main__':
-    model = DanQModel()
+    model = CorrectionModel()
     model.run()
