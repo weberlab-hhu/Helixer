@@ -24,7 +24,7 @@ def main(args):
     controller = HelixerExportController(args.main_db_path, args.out_dir, args.only_test_set,
                                          match_existing=match_existing, h5_group=h5_group)
     controller.export(chunk_size=args.chunk_size, genomes=args.genomes, val_size=args.val_size,
-                      keep_featureless=args.export_featureless, write_by=args.write_by, modes=modes,
+                      keep_featureless=not args.exclude_featureless, write_by=args.write_by, modes=modes,
                       multiprocess=not args.no_multiprocess)
 
 
@@ -50,10 +50,10 @@ if __name__ == '__main__':
                       help='The chance for a sequence or coordinate to end up in validation_data.h5' )
     data.add_argument('--only-test-set', action='store_true',
                       help='Whether to only output a single file named test_data.h5')
-    data.add_argument('--export-featureless', action='store_true',
-                      help='This overrides the default behavior of ignoring coordinates without a single feature (as '
-                           'these frequently were never actually annotated). Anyways generates a "data/is_annotated" '
-                           'which can mask chunks from featureless coordinates that would have been skipped')
+    data.add_argument('--exclude-featureless', action='store_true',
+                      help='This ignores coordinates without a single feature (as these frequently were never actually '
+                           'annotated). However, it is recommend to use the "data/is_annotated" to mask, not exclude'
+                           'chunks from featureless coordinates instead')
     data.add_argument('--modes', default='all',
                       help='either "all" (default), or a comma separated list with desired members of the following '
                            '{X, y, anno_meta, transitions} that should be exported. This can be useful, for '

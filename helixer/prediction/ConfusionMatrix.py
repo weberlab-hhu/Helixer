@@ -179,7 +179,8 @@ class ConfusionMatrix():
         print('Total acc: {:.4f}'.format(self._total_accuracy()))
 
     def print_cm(self):
-        self._print_results()
+        scores = self._get_composite_scores()
+        self._print_results(scores)
 
     def prep_tables(self, scores):
         out = []

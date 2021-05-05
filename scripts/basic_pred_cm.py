@@ -32,9 +32,10 @@ def main(h5_file,  preds_file=None, predictions_dataset='predictions', ground_tr
     cm = ConfusionMatrix(None)
     for i in range(n_seqs):
         print(i, '/', n_seqs, end='\r', file=sys.stderr)
-        cm._add_to_cm(y_true[i * chunk_size: (i + 1) * chunk_size],
-                      y_pred[i * chunk_size: (i + 1) * chunk_size],
-                      sw[i * chunk_size: (i + 1) * chunk_size])
+        cm.count_and_calculate_one_batch(y_true[i * chunk_size: (i + 1) * chunk_size],
+                                         y_pred[i * chunk_size: (i + 1) * chunk_size],
+                                         sw[i * chunk_size: (i + 1) * chunk_size])
+    scores = cm._get_composite_scores()
     cm.print_cm()
 
 
