@@ -2,16 +2,17 @@ sqlalchemy
 pytest
 numpy
 tensorflow==2.4.0
+tensorflow_addons
 nni
 seaborn
 Keras==2.4.3
-keras-layer-normalization==0.14.0
 terminaltables
 HTSeq
 intervaltree
 sqlalchemy
 numpy
 h5py
+multiprocess
 git+https://github.com/janinamass/dustdas@master
 numcodecs
 # for testing only

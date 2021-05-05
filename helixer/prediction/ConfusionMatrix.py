@@ -7,33 +7,36 @@ from scipy.sparse import coo_matrix
 
 
 class ConfusionMatrix():
-    def __init__(self, generator):
+    def __init__(self, generator, print_to_stdout=True):
         np.set_printoptions(suppress=True)  # do not use scientific notation for the print out
         self.generator = generator
-        self.cm = np.zeros((4, 4), dtype=np.uint64)
+        self.print_to_stdout = print_to_stdout
+
         self.col_names = {0: 'ig', 1: 'utr', 2: 'exon', 3: 'intron'}
+        self.n_classes = len(self.col_names)
+        self.cm = np.zeros((self.n_classes, self.n_classes), dtype=np.uint64)
+        self.uncertainties = {col_name:list() for col_name in self.col_names.values()}
+        self.max_uncertainty = -sum([e * np.log2(e) for e in [1 / self.n_classes] * self.n_classes])
 
     @staticmethod
-    def _reshape_data(arr):
-        arr = np.argmax(arr, axis=-1).astype(np.int8)
-        arr = arr.reshape((arr.shape[0], -1)).ravel()
+    def _argmax_y(arr):
+        arr = np.argmax(arr, axis=-1).ravel().astype(np.int8)
         return arr
 
     @staticmethod
     def _remove_masked_bases(y_true, y_pred, sw):
         """Remove bases marked as errors, should also remove zero padding"""
         sw = sw.astype(np.bool)
-        y_pred = y_pred[sw]
         y_true = y_true[sw]
-        return y_pred, y_true
+        y_pred = y_pred[sw]
+        return y_true, y_pred
 
-    def _add_to_cm(self, y_true, y_pred, sw):
+    def _add_to_cm(self, y_true, y_pred):
         """Put in extra function to be testable"""
-        y_pred, y_true = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
         # add to confusion matrix as long as _some_ bases were not masked
         if y_pred.size > 0:
-            y_pred = ConfusionMatrix._reshape_data(y_pred)
-            y_true = ConfusionMatrix._reshape_data(y_true)
+            y_pred = ConfusionMatrix._argmax_y(y_pred)
+            y_true = ConfusionMatrix._argmax_y(y_true)
             # taken from here, without the boiler plate:
             # https://github.com/scikit-learn/scikit-learn/blob/
             # 42aff4e2edd8e8887478f6ff1628f27de97be6a3/sklearn/metrics/_classification.py#L342
@@ -41,8 +44,25 @@ class ConfusionMatrix():
                                    shape=(4, 4), dtype=np.uint32).toarray()
             self.cm += cm_batch
 
+    def _add_to_uncertainty(self, y_true, y_pred):
+        y_pred = y_pred.reshape((-1, y_pred.shape[-1]))
+        y_true = ConfusionMatrix._argmax_y(y_true)
+        # entropy calculation
+        y_pred_log2 = np.log2(y_pred)
+        y_pred_H = -1 * np.sum(y_pred * y_pred_log2, axis=-1)
+        # average entropy for all the bases in one class according to the labels
+        for i, name in self.col_names.items():
+            class_mask = (y_true == i)
+            if np.any(class_mask):
+                avg_entropy = np.nanmean(y_pred_H[class_mask])
+                avg_entropy /= self.max_uncertainty  # normalize by maximum for comparability
+                self.uncertainties[name].append(avg_entropy)
+
     def count_and_calculate_one_batch(self, y_true, y_pred, sw):
-        self._add_to_cm(y_true, y_pred, sw)
+        y_true, y_pred = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
+        # important to copy so _add_to_cm() works
+        self._add_to_uncertainty(np.copy(y_true), np.copy(y_pred))
+        self._add_to_cm(y_true, y_pred)
 
     def _get_normalized_cm(self):
         """Put in extra function to be testable"""
@@ -77,11 +97,15 @@ class ConfusionMatrix():
         scores = defaultdict(dict)
         # single column metrics
         for col in range(4):
-            d = scores[self.col_names[col]]
+            name = self.col_names[col]
+            d = scores[name]
             not_col = np.arange(4) != col
             d['TP'] = self.cm[col, col]
             d['FP'] = np.sum(self.cm[not_col, col])
             d['FN'] = np.sum(self.cm[col, not_col])
+            # add average uncertanties
+            d['H'] = np.mean(self.uncertainties[name])
+
             add_to_scores(d)
 
         # legacy cds score that works the same as the cds_f1 with the 3 column multi class encoding
@@ -119,8 +143,14 @@ class ConfusionMatrix():
                 y_true = inputs[1]
                 y_pred = model.predict_on_batch([X, sw])
             elif len(inputs) == 3:
-                X, y_true, sw = inputs
-                y_pred = model.predict_on_batch(X)
+                if type(inputs[0]) is list:
+                    # correction model input scheme
+                    X, pred = inputs[0]
+                    y_true, sw = inputs[1:]
+                    y_pred = model.predict_on_batch([X, pred])
+                else:
+                    X, y_true, sw = inputs
+                    y_pred = model.predict_on_batch(X)
             else:
                 print('Unknown inputs from keras sequence')
                 exit()
@@ -136,24 +166,24 @@ class ConfusionMatrix():
                 # edge handle sw & y_true (as done with y_pred and to restore 1:1 input output
                 sw = self.generator.ol_helper.subset_input(batch_idx, sw)
                 y_true = self.generator.ol_helper.subset_input(batch_idx, y_true)
-            self._add_to_cm(y_true, y_pred, sw)
-        return self._print_results()
+            self.count_and_calculate_one_batch(y_true, y_pred, sw)
 
-    def _print_results(self):
         scores = self._get_composite_scores()
-        for table, table_name in self.prep_tables():
+        if self.print_to_stdout:
+            self._print_results(scores)
+        return scores['genic']['precision'], scores['genic']['recall'], scores['genic']['f1']
+
+    def _print_results(self, scores):
+        for table, table_name in self.prep_tables(scores):
             print('\n', AsciiTable(table, table_name).table, sep='')
         print('Total acc: {:.4f}'.format(self._total_accuracy()))
-
-        # return genic f1 for model saving in custom callback or other uses
-        return scores['genic']['f1']
 
     def print_cm(self):
         self._print_results()
 
-    def prep_tables(self):
+    def prep_tables(self, scores):
         out = []
-        names = ['ig', 'utr', 'exon', 'intron']
+        names = list(self.col_names.values())
 
         # confusion matrix
         cm = [[''] + [x + '_pred' for x in names]]
@@ -168,13 +198,16 @@ class ConfusionMatrix():
         out.append((normalized_cm, 'normalized_confusion_matrix'))
 
         # F1
-        scores = self._get_composite_scores()
-        table = [['', 'Precision', 'Recall', 'F1-Score']]
+        table = [['', 'norm. H', 'Precision', 'Recall', 'F1-Score']]
         for i, (name, values) in enumerate(scores.items()):
-            # 3: below to skip TP, FP, FN
-            metrics = ['{:.4f}'.format(s) for s in list(values.values())[3:]]
+            # check if there is an entropy value comming (only for single type classes)
+            if i < len(names):
+                metrics = []
+            else:
+                metrics = ['']
+            metrics += ['{:.4f}'.format(s) for s in list(values.values())[3:]]  # [3:] to skip TP, FP, FN
             table.append([name] + metrics)
-            if i == 3:
+            if i == (len(names) - 1):
                 table.append([''] * 4)
         out.append((table, 'F1_summary'))
 

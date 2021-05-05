@@ -1,17 +1,21 @@
 import os
+import time
 import h5py
+import glob
 import numpy as np
 import random
+import sqlite3
 import datetime
 import subprocess
 import pkg_resources
+from multiprocessing.pool import ThreadPool
 from sklearn.model_selection import train_test_split
 
 import geenuff
 import helixer
 from geenuff.applications.exporter import GeenuffExportController
 from .numerify import CoordNumerifier
-from ..core.helpers import get_sp_seq_ranges
+from ..core.helpers import get_sp_seq_ranges, file_stem
 
 from collections import defaultdict
 
@@ -21,10 +25,29 @@ class HelixerExportController(object):
     VAL = 'val'
     TRAIN = 'train'
 
-    def __init__(self, db_path_in, data_dir, only_test_set=False, match_existing=False, h5_group='/data/'):
-        self.db_path_in = db_path_in
+    def __init__(self, main_db_path, data_dir, only_test_set=False, match_existing=False, h5_group='/data/'):
+
+        def check_db(path):
+            genome_name_file = file_stem(path)
+            conn = sqlite3.connect(path)
+            c = conn.cursor()
+            c.execute('''SELECT species from genome;''')
+            genome_name_db = c.fetchall()
+            conn.close()
+
+            assert len(genome_name_db) == 1, f'{path} is not a valid db as it contains more than one genome'
+            msg = f'the name of {path} must match the species name inside:'
+            assert genome_name_file.lower() == genome_name_db[0][0].lower(), msg
+            print(f'{path} looks good')
+
         self.only_test_set = only_test_set
-        self.geenuff_exporter = GeenuffExportController(self.db_path_in, longest=True)
+        db_paths = {file_stem(db_path):db_path for db_path in glob.glob(os.path.join(main_db_path, '*.sqlite3'))}
+        # open connections to all dbs in path
+        start_time = time.time()
+        with ThreadPool(8) as p:
+            p.map(check_db, list(db_paths.values()))
+        self.exporters = {genome:GeenuffExportController(path, longest=True) for genome, path in db_paths.items()}
+        print(f'Checked and opened connections to {len(db_paths)} dbs in {time.time() - start_time:.2f} seconds')
 
         # h5 export details
         self.match_existing = match_existing
@@ -208,7 +231,7 @@ class HelixerExportController(object):
         if self.only_test_set:
             val_coord_ids = []
             test_in_h5 = self._get_sp_seqids_from_h5(HelixerExportController.TEST)
-            for g_id, coord_id, sp, seqid, _ in self._gen_sp_seqid(genome_coords):
+            for coord_id, sp, seqid, _ in self._gen_sp_seqid(genome_coords):
                 if seqid in test_in_h5[sp]:
                     val_coord_ids.append(coord_id)
                 else:
@@ -221,7 +244,7 @@ class HelixerExportController(object):
             train_in_h5 = self._get_sp_seqids_from_h5(HelixerExportController.TRAIN)
             val_in_h5 = self._get_sp_seqids_from_h5(HelixerExportController.VAL)
             # prep all coordinate IDs so that they'll match that from h5
-            for g_id, coord_id, sp, seqid, _ in self._gen_sp_seqid(genome_coords):
+            for coord_id, sp, seqid, _ in self._gen_sp_seqid(genome_coords):
                 if seqid in val_in_h5[sp]:
                     val_coord_ids.append(coord_id)
                 elif seqid in train_in_h5[sp]:
@@ -232,16 +255,14 @@ class HelixerExportController(object):
             return train_coord_ids, val_coord_ids
 
     def _gen_sp_seqid(self, genome_coords):
-        for g_id in genome_coords:
-            first4genome = True
-            for coord_id, coord_len in genome_coords[g_id]:
+        for genome_name in genome_coords:
+            for i, (coord_id, coord_len) in enumerate(genome_coords[genome_name]):
                 # get coord (to later access species name and sequence name)
-                coord = self.geenuff_exporter.get_coord_by_id(coord_id)
-                if first4genome:
-                    sp = coord.genome.species.encode('ASCII')
-                    first4genome = False
+                coord = self.exporters[genome_name].get_coord_by_id(coord_id)
+                if i == 0:
+                    sp = genome_name.encode('ASCII')
                 seqid = coord.seqid.encode('ASCII')
-                yield g_id, coord_id, sp, seqid, coord_len
+                yield coord_id, sp, seqid, coord_len
 
     def _get_sp_seqids_from_h5(self, assigned_set, by=1000):
         """from flat h5 datasets to dict with {species: [seqid, seqid2, ...], ...}"""
@@ -261,32 +282,24 @@ class HelixerExportController(object):
     def _resort_genome_coords_from_existing(self, genome_coords):
         # setup keys to go from the h5 naming to the db naming
         pre_decode = self._gen_sp_seqid(genome_coords)
-        gkey = {}
-        ckey = {}
-        for g_id, coord_id, sp, seqid, coord_len in pre_decode:
-            gkey[sp] = g_id
-            if sp not in ckey:
-                ckey[sp] = {}
+        ckey = defaultdict(dict)
+        for coord_id, sp, seqid, coord_len in pre_decode:
             ckey[sp][seqid] = (coord_id, coord_len)
 
         # pull ordering from h5s, but replace with ids from db
-        gc = {}
+        gc = defautdict(list)
         for assigned_set in self.h5:
             in_h5 = self._get_sp_seqids_from_h5(assigned_set)
             for sp in in_h5:
-                g_id = gkey[sp]
-                if g_id not in gc:
-                    gc[g_id] = []
                 for seqid in in_h5[sp]:
                     coord_tuple = ckey[sp][seqid]
-                    gc[g_id].append(coord_tuple)
+                    gc[sp].append(coord_tuple)
         return gc
 
-    def _add_data_attrs(self, genomes, exclude, keep_errors):
+    def _add_data_attrs(self, genomes, keep_errors):
         attrs = {
             'timestamp': str(datetime.datetime.now()),
             'genomes': ','.join(genomes),
-            'exclude': ','.join(exclude),
             'keep_errors': str(keep_errors),
         }
         # get GeenuFF and Helixer commit hashes
@@ -312,10 +325,11 @@ class HelixerExportController(object):
         for key in self.h5:
             self.h5[key].close()
 
-    def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, keep_featureless, write_by, modes):
+    def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, keep_featureless,
+                        write_by, modes, multiprocess):
         """filtering and stats"""
-        coord_data_gen = CoordNumerifier.numerify(coord, coord_features, chunk_size,
-                                                  one_hot, write_by=write_by, mode=modes)
+        coord_data_gen = CoordNumerifier.numerify(coord, coord_features, chunk_size, one_hot,
+                                                  write_by=write_by, mode=modes, multiprocess=multiprocess)
 
         # the following will all be used to calculated a percentage, which is yielded but ignored until the end
         n_chunks = 0
@@ -354,17 +368,17 @@ class HelixerExportController(object):
             yield coord_data, coord, masked_bases_perc, ig_bases_perc, invalid_chunks_perc, featureless_chunks_perc, \
                   h5_coord
 
-    def export(self, chunk_size, genomes, exclude, val_size, one_hot=True,
+    def export(self, chunk_size, genomes, val_size, one_hot=True,
                all_transcripts=False, keep_featureless=False, write_by=10_000_000_000,
-               modes=('X', 'y', 'anno_meta', 'transitions')):
+               modes=('X', 'y', 'anno_meta', 'transitions'), multiprocess=True):
         h5_group = self.h5_group
         keep_errors = True
-        genome_coord_features = self.geenuff_exporter.genome_query(genomes, exclude,
-                                                                   all_transcripts=all_transcripts)
+        genome_coord_features = {genome_name:self.exporters[genome_name].genome_query(all_transcripts=all_transcripts)
+                                 for genome_name in genomes}
         # make version without features for shorter downstream code
-        genome_coords = {g_id: list(values.keys()) for g_id, values in genome_coord_features.items()}
+        genome_coords = {genome_name: list(values.keys()) for genome_name, values in genome_coord_features.items()}
 
-        n_coords = sum([len(coords) for genome_id, coords in genome_coords.items()])
+        n_coords = sum([len(coords) for genome_name, coords in genome_coords.items()])
         print('\n{} coordinates chosen to numerify'.format(n_coords))
         if self.match_existing:
             train_coords, val_coords = self._split_coords_by_existing(genome_coords=genome_coords)
@@ -374,27 +388,26 @@ class HelixerExportController(object):
             train_coords, val_coords = self._split_coords_by_N90(genome_coords, val_size)
         n_coords_done = 1
         n_writing_chunks = 0
-        prev_genome_id = None
-        for genome_id, coords in genome_coords.items():
-            if genome_id != prev_genome_id and self.match_existing:
+        prev_genome_name = None
+        for genome_name, coords in genome_coords.items():
+            if genome_name != prev_genome_name and self.match_existing:
                 # once per species, setup dicts with {seqid: [(start,end), ...], ...} for each h5
                 # this avoids excessive random disk reads
-                orm = geenuff.base.orm
-                genome = self.geenuff_exporter.session.query(orm.Genome).filter(orm.Genome.id == genome_id).first()
-                self._set_current_sp_start_ends(genome.species.encode('ASCII'))
+                self._set_current_sp_start_ends(genome_name.encode('ASCII'))
 
             for (coord_id, coord_len) in coords:
+                start_time = time.time()
                 # calculate how many chunks will be produced
                 n_chunks = coord_len // chunk_size
                 if coord_len % chunk_size:
                     n_chunks += 1  # bc pad to size
                 n_chunks *= 2  # for + & - strand
 
-                coord = self.geenuff_exporter.get_coord_by_id(coord_id)
-                coord_features = genome_coord_features[genome_id][(coord_id, coord_len)]
+                coord = self.exporters[genome_name].get_coord_by_id(coord_id)
+                coord_features = genome_coord_features[genome_name][(coord_id, coord_len)]
                 numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size,
                                                         one_hot, keep_featureless, write_by=write_by,
-                                                        modes=modes)
+                                                        modes=modes, multiprocess=multiprocess)
                 first_round_for_coordinate = True
                 for flat_data, coord, masked_bases_perc, ig_bases_perc, invalid_seqs_perc, \
                     featureless_chunks_perc, h5_coord in numerify_outputs:
@@ -422,15 +435,17 @@ class HelixerExportController(object):
                     first_round_for_coordinate = False
                     n_writing_chunks += 1
                 try:
-                    print((f'{n_coords_done}/{n_coords} Numerified {coord} of {coord.genome.species} '
-                           f"with {len(coord.features)} features in {flat_data[0].matrix.shape[0]} chunks, "
-                           f'masked rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
-                           f'filtered fully err chunks: {invalid_seqs_perc:.2f}% ({assigned_set}), '
-                           f'filtered chunks from featureless coordinates {featureless_chunks_perc:.2f}%'))
+                    print(f'{n_coords_done}/{n_coords} Numerified {coord} of {genome_name} '
+                          f"with {len(coord.features)} features in {flat_data[0].matrix.shape[0]} chunks, "
+                          f'masked rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
+                          f'filtered fully err chunks: {invalid_seqs_perc:.2f}% ({assigned_set}), '
+                          f'filtered chunks from featureless coordinates {featureless_chunks_perc:.2f}% '
+                          f'({time.time() - start_time:.2f} secs)', end='\n\n')
                 except UnboundLocalError as e:
                     print('please fix me so I do not throw e at featureless coordinates.... anyway, swallowing:', e)
                 n_coords_done += 1
-        self._add_data_attrs(genomes, exclude, keep_errors)
+            prev_genome_name = genome_name
+        self._add_data_attrs(genomes, keep_errors)
         self._close_files()
         print('Export from geenuff db to h5 file(s) with numeric matrices finished successfully.')
         return n_writing_chunks  # for testing only atm

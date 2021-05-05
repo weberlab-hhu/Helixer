@@ -146,3 +146,8 @@ def divvy_by_confidence(one_class_chunk, step_key, pad=5, stability_threshold=0.
             # reset trackers
             end_of_last_yield = end
             cdiff_at_last_yield = cumulative_diffs[end]
+
+def file_stem(path):
+    """Returns the file name without extension"""
+    import os
+    return os.path.basename(path).split('.')[0]
