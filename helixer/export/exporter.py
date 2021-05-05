@@ -284,17 +284,19 @@ class HelixerExportController(object):
         pre_decode = self._gen_sp_seqid(genome_coords)
         ckey = defaultdict(dict)
         for coord_id, sp, seqid, coord_len in pre_decode:
+            sp = sp.decode()
             ckey[sp][seqid] = (coord_id, coord_len)
 
         # pull ordering from h5s, but replace with ids from db
-        gc = defautdict(list)
+        genome_coords = defaultdict(list)
         for assigned_set in self.h5:
             in_h5 = self._get_sp_seqids_from_h5(assigned_set)
             for sp in in_h5:
+                sp_str = sp.decode()
                 for seqid in in_h5[sp]:
-                    coord_tuple = ckey[sp][seqid]
-                    gc[sp].append(coord_tuple)
-        return gc
+                    coord_tuple = ckey[sp_str][seqid]
+                    genome_coords[sp_str].append(coord_tuple)
+        return genome_coords
 
     def _add_data_attrs(self, genomes, keep_errors):
         attrs = {
@@ -373,7 +375,7 @@ class HelixerExportController(object):
                modes=('X', 'y', 'anno_meta', 'transitions'), multiprocess=True):
         h5_group = self.h5_group
         keep_errors = True
-        genome_coord_features = {genome_name:self.exporters[genome_name].genome_query(all_transcripts=all_transcripts)
+        genome_coord_features = {genome_name: self.exporters[genome_name].genome_query(all_transcripts=all_transcripts)
                                  for genome_name in genomes}
         # make version without features for shorter downstream code
         genome_coords = {genome_name: list(values.keys()) for genome_name, values in genome_coord_features.items()}
