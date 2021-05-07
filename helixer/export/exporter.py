@@ -41,12 +41,16 @@ class HelixerExportController(object):
             print(f'{path} looks good')
 
         self.only_test_set = only_test_set
-        db_paths = {file_stem(db_path):db_path for db_path in glob.glob(os.path.join(main_db_path, '*.sqlite3'))}
+
+        db_paths = {file_stem(db_path): db_path for db_path in glob.glob(os.path.join(main_db_path, '*.sqlite3'))}
+        assert os.path.exists(main_db_path) and db_paths, "main_db_paths, must be a folder containing one or more " \
+                                                          "*.sqlite3 files, where the * matches the names from the " \
+                                                          "--genomes parameter"
         # open connections to all dbs in path
         start_time = time.time()
         with ThreadPool(8) as p:
             p.map(check_db, list(db_paths.values()))
-        self.exporters = {genome:GeenuffExportController(path, longest=True) for genome, path in db_paths.items()}
+        self.exporters = {genome: GeenuffExportController(path, longest=True) for genome, path in db_paths.items()}
         print(f'Checked and opened connections to {len(db_paths)} dbs in {time.time() - start_time:.2f} seconds')
 
         # h5 export details
@@ -375,6 +379,7 @@ class HelixerExportController(object):
                modes=('X', 'y', 'anno_meta', 'transitions'), multiprocess=True):
         h5_group = self.h5_group
         keep_errors = True
+        print(self.exporters)
         genome_coord_features = {genome_name: self.exporters[genome_name].genome_query(all_transcripts=all_transcripts)
                                  for genome_name in genomes}
         # make version without features for shorter downstream code
