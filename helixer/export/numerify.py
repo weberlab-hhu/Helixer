@@ -202,9 +202,9 @@ class AnnotationNumerifier(Numerifier):
             if not is_plus_strand:
                 start, end = end + 1, start + 1
             # save ori length and crop to size
+            gene_length = end - start
             start = max(start, 0)
             end = min(end, self.matrix.shape[0])
-            gene_length = end - start
             return start, end, gene_length
 
         for feature in self.features:
@@ -223,7 +223,7 @@ class AnnotationNumerifier(Numerifier):
             # also fill self.gene_lengths
             # give precedence for the longer transcript if present
             if feature.type.value == types.GEENUFF_TRANSCRIPT:
-                length_arr = np.full(gene_length, gene_length)
+                length_arr = np.full(end - start, gene_length)
                 self.gene_lengths[start:end] = np.maximum(self.gene_lengths[start:end], length_arr)
 
         # figure out phases of cds regions after everything has, ignoring the introns
