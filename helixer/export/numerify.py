@@ -60,6 +60,7 @@ class Numerifier(ABC):
         self.error_mask = None
         self.start = start
         self.end = end
+        self.length = self.end - self.start
         # set paired steps
         partitioner = Stepper(end=self.end - self.start, by=self.max_len)
         self.paired_steps = list(partitioner.step_to_end())
@@ -86,10 +87,9 @@ class Numerifier(ABC):
         return all_slices
 
     def _zero_matrix(self):
-        length = self.end - self.start
-        self.matrix = np.zeros((length, self.n_cols,), self.dtype)
+        self.matrix = np.zeros((self.length, self.n_cols,), self.dtype)
         # 0 means error so this can be used directly as sample weight later on
-        self.error_mask = np.ones((length,), np.int8)
+        self.error_mask = np.ones((self.length,), np.int8)
 
 
 class SequenceNumerifier(Numerifier):
@@ -161,10 +161,10 @@ class AnnotationNumerifier(Numerifier):
         self.features = features
         self.one_hot = one_hot
         self.coord = coord
-        self._zero_gene_lengths()
 
-    def _zero_gene_lengths(self):
-        self.gene_lengths = np.zeros((self.end - self.start,), dtype=np.uint32)
+    def _zero_additional_data(self):
+        self.gene_lengths = np.zeros(self.length, dtype=np.uint32)
+        self.phases = np.zeros((self.length, 4), dtype=np.int8)
 
     def coord_to_matrices(self):
         """Always numerifies both strands one after the other."""
@@ -177,7 +177,7 @@ class AnnotationNumerifier(Numerifier):
 
     def _encode_strand(self, is_plus_strand):
         self._zero_matrix()
-        self._zero_gene_lengths()
+        self._zero_additional_data()
         self._update_matrix_and_error_mask(is_plus_strand=is_plus_strand)
 
         # encoding of transitions
@@ -191,22 +191,28 @@ class AnnotationNumerifier(Numerifier):
                                         label_matrix,
                                         self.error_mask,
                                         self.gene_lengths,
+                                        self.phases,
                                         binary_transition_matrix)
         return matrices
 
     def _update_matrix_and_error_mask(self, is_plus_strand):
-        for feature in self.features:
-            # don't include features from the other strand
-            if not feature.is_plus_strand == is_plus_strand:
-                continue
+        def start_end_of_feature(feature):
             start = feature.start - self.start  # self.start used as offset for writing chunk
             end = feature.end - self.start
             if not is_plus_strand:
                 start, end = end + 1, start + 1
             # save ori length and crop to size
-            gene_length = end - start
             start = max(start, 0)
             end = min(end, self.matrix.shape[0])
+            gene_length = end - start
+            return start, end, gene_length
+
+        for feature in self.features:
+            # don't include features from the other strand
+            if not feature.is_plus_strand == is_plus_strand:
+                continue
+            start, end, gene_length = start_end_of_feature(feature)
+            # regular feature encoding with 3 columns
             if feature.type in AnnotationNumerifier.feature_to_col.keys():
                 col = AnnotationNumerifier.feature_to_col[feature.type]
                 self.matrix[start:end, col] = 1
@@ -217,8 +223,32 @@ class AnnotationNumerifier(Numerifier):
             # also fill self.gene_lengths
             # give precedence for the longer transcript if present
             if feature.type.value == types.GEENUFF_TRANSCRIPT:
-                length_arr = np.full(shape=(end - start,), fill_value=gene_length)
+                length_arr = np.full(gene_length, gene_length)
                 self.gene_lengths[start:end] = np.maximum(self.gene_lengths[start:end], length_arr)
+
+        # figure out phases of cds regions after everything has, ignoring the introns
+        # directly writes the one hot encoding for the 4 phase classes: -1, 0, 1, 2 (in that order)
+        cds_features = [f for f in self.features if f.type.value == types.GEENUFF_CDS]
+        for cds_feature in cds_features:
+            if not cds_feature.is_plus_strand == is_plus_strand:
+                continue
+            start, end, _ = start_end_of_feature(cds_feature)
+            # get the region where there is cds but no intron
+            cds_idx = np.logical_not(self.matrix[start:end, 2])
+            cds_len = np.count_nonzero(cds_idx)
+            # generate for full codons, truncate later if mismatched_ending_phase error
+            cds_phase = np.tile(np.array([1, 3, 2], dtype=np.int8), int(np.ceil(cds_len / 3)))
+            if not is_plus_strand:
+                cds_phase = cds_phase[::-1]
+            cds_phase_one_hot = np.squeeze(np.eye(4, dtype=np.int8)[cds_phase])
+            # need to potentially truncate from different side if phase error present (start with 0)
+            overhang = len(cds_phase) - cds_len
+            if overhang > 0:
+                if is_plus_strand:
+                    cds_phase_one_hot = cds_phase_one_hot[:-overhang]
+                else:
+                    cds_phase_one_hot = cds_phase_one_hot[overhang:]
+            self.phases[start:end][cds_idx] = cds_phase_one_hot
 
     def _encode_onehot4(self):
         # Class order: Intergenic, UTR, CDS, (non-coding Intron), Intron
@@ -310,14 +340,15 @@ class CoordNumerifier(object):
         # todo, make mode more elegant / extensible
         if export_x:
             xb = seq_numerifier.coord_to_matrices()
-        yb, sample_weightsb, gene_lengthsb, transitionsb = anno_numerifier.coord_to_matrices()
+        yb, sample_weightsb, gene_lengthsb, phasessb, transitionsb = anno_numerifier.coord_to_matrices()
         for strand in ['plus', 'minus']:
             if export_x:
                 x = CoordNumerifier.pad(xb[strand], max_len)
-            y, sample_weights, gene_lengths, transitions = \
+            y, sample_weights, gene_lengths, phases, transitions = \
                 (CoordNumerifier.pad(x, max_len) for x in [yb[strand],
                                                            sample_weightsb[strand],
                                                            gene_lengthsb[strand],
+                                                           phasessb[strand],
                                                            transitionsb[strand]])
             # todo, move to be part of anno numerifier??
             if strand == 'plus':
@@ -348,6 +379,7 @@ class CoordNumerifier(object):
             out = [MatAndInfo('y', y, 'int8'),  # y should always be first (bc currently we always want it)
                    MatAndInfo('sample_weights', sample_weights, 'int8'),
                    MatAndInfo('gene_lengths', gene_lengths, 'uint32'),
+                   MatAndInfo('phases', phases, 'int8'),
                    MatAndInfo('transitions', transitions, 'int8'),
                    MatAndInfo('err_samples', err_samples, 'bool'),
                    MatAndInfo('fully_intergenic_samples', fully_intergenic_samples,  'bool'),
