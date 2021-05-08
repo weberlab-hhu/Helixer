@@ -257,9 +257,9 @@ def test_coherent_slicing():
 
     anno_mats = anno_numerifier.coord_to_matrices()
     anno_mats = [x["plus"] + x['minus'] for x in anno_mats]
-    anno_slices, anno_error_masks, gene_lengths, transitions = anno_mats
+    anno_slices, anno_error_masks, gene_lengths, phases, transitions = anno_mats
     assert (len(seq_slices) == len(anno_slices) == len(gene_lengths) == len(transitions) ==
-            len(anno_error_masks) == 19 * 2)
+            len(phases) == len(anno_error_masks) == 19 * 2)
 
     for s, a, ae in zip(seq_slices, anno_slices, anno_error_masks):
         assert s.shape[0] == a.shape[0] == ae.shape[0]
@@ -426,9 +426,9 @@ def test_numerify_with_end_neg1():
                                           one_hot=False)
 
         if is_plus_strand:
-            nums, masks, _, _ = [x["plus"][0] for x in numerifier.coord_to_matrices()]
+            nums, masks, _, _, _ = [x["plus"][0] for x in numerifier.coord_to_matrices()]
         else:
-            nums, masks, _, _ = [x["minus"][0] for x in numerifier.coord_to_matrices()]
+            nums, masks, _, _, _ = [x["minus"][0] for x in numerifier.coord_to_matrices()]
 
         if not np.array_equal(nums, expect):
             print(nums)
