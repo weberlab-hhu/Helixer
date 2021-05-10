@@ -14,7 +14,7 @@ class DanQSequence(HelixerSequence):
             assert not mode == 'test'  # only use class weights during training and validation
 
     def __getitem__(self, idx):
-        X, y, sw, transitions, _, coverage_scores = self._get_batch_data(idx)
+        X, y, sw, transitions, phases, _, coverage_scores = self._get_batch_data(idx)
         pool_size = self.model.pool_size
 
         if pool_size > 1:
@@ -60,6 +60,10 @@ class DanQSequence(HelixerSequence):
                         coverage_scores = np.add(coverage_scores, self.coverage_offset)
                     coverage_scores = np.mean(coverage_scores, axis=2)
                     sw = np.multiply(coverage_scores, sw)
+
+            if self.predict_phase:
+                y_phase = self._mk_timestep_pools_class_last(phases)
+                y = [y, y_phase]
 
         return X, y, sw
 
@@ -116,18 +120,28 @@ class DanQModel(HelixerModel):
         if self.dropout2 > 0.0:
             x = Dropout(self.dropout2)(x)
 
-        x = Dense(self.pool_size * 4)(x)
-        x = Reshape((-1, self.pool_size, 4))(x)
-        x = Activation('softmax', name='main')(x)
+        if self.predict_phase:
+            x = Dense(self.pool_size * 4 * 2)(x)  # predict twice a many floats
+            x = Reshape((-1, 2, self.pool_size, 4))(x)
+            x_genic, x_phase = tf.split(x, 2, axis=-3)
+            x_genic = Activation('softmax', name='genic')(x_genic)
+            x_phase = Activation('softmax', name='phase')(x_phase)
+            outputs = [x_genic, x_phase]
+        else:
+            x = Dense(self.pool_size * 4)(x)
+            x = Reshape((-1, self.pool_size, 4))(x)
+            x = Activation('softmax', name='main')(x)
+            outputs = [x]
 
-        outputs = [x]
         model = Model(inputs=main_input, outputs=outputs)
         return model
 
     def compile_model(self, model):
-
         losses = ['categorical_crossentropy']
-        loss_weights = [1.0]
+        if self.predict_phase:
+            loss_weights = [0.8, 0.2]
+        else:
+            loss_weights = [1.0]
 
         model.compile(optimizer=self.optimizer,
                       loss=losses,

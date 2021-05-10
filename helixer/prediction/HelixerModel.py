@@ -113,7 +113,7 @@ class HelixerSequence(Sequence):
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
                                  'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
-                                 'no_utrs', 'load_predictions', 'debug'])
+                                 'no_utrs', 'predict_phase', 'load_predictions', 'debug'])
         x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
         if self.debug:
             self.n_seqs = 1000
@@ -131,6 +131,8 @@ class HelixerSequence(Sequence):
         if self.mode == 'train':
             if self.transition_weights is not None:
                 self.data_list_names.append('data/transitions')
+            if self.predict_phase:
+                self.data_list_names.append('data/phases')
             if self.coverage_weights:
                 self.data_list_names.append('scores/by_bp')
 
@@ -187,7 +189,8 @@ class HelixerSequence(Sequence):
     def _get_batch_data(self, batch_idx):
         batch = []
         # batch must have one thing for everything unpacked by __getitem__ (and in order)
-        for name in ['data/X', 'data/y', 'data/sample_weights', 'data/transitions', 'data/predictions', 'scores/by_bp']:
+        for name in ['data/X', 'data/y', 'data/sample_weights', 'data/transitions', 'data/phases',
+                     'data/predictions', 'scores/by_bp']:
             if name not in self.data_list_names:
                 batch.append(None)
             else:
@@ -365,6 +368,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--coverage-weights', action='store_true')
         self.parser.add_argument('--coverage-offset', type=float, default=0.0)
         self.parser.add_argument('--no-utrs', action='store_true')
+        self.parser.add_argument('--predict-phase', action='store_true')
         self.parser.add_argument('--load-predictions', action='store_true')
         self.parser.add_argument('--resume-training', action='store_true')
         # testing / predicting

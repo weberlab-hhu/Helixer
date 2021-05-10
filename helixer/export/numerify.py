@@ -162,9 +162,10 @@ class AnnotationNumerifier(Numerifier):
         self.one_hot = one_hot
         self.coord = coord
 
-    def _zero_additional_data(self):
+    def _init_additional_data(self):
         self.gene_lengths = np.zeros(self.length, dtype=np.uint32)
         self.phases = np.zeros((self.length, 4), dtype=np.int8)
+        self.phases[:, 0] = 1  # set no phase encoding as default
 
     def coord_to_matrices(self):
         """Always numerifies both strands one after the other."""
@@ -177,7 +178,7 @@ class AnnotationNumerifier(Numerifier):
 
     def _encode_strand(self, is_plus_strand):
         self._zero_matrix()
-        self._zero_additional_data()
+        self._init_additional_data()
         self._update_matrix_and_error_mask(is_plus_strand=is_plus_strand)
 
         # encoding of transitions
@@ -228,6 +229,8 @@ class AnnotationNumerifier(Numerifier):
 
         # figure out phases of cds regions after everything has, ignoring the introns
         # directly writes the one hot encoding for the 4 phase classes: -1, 0, 1, 2 (in that order)
+        # expects only one transcript per gene, this will not work for all_transcripts=True in
+        # HelixerExportController.export()
         cds_features = [f for f in self.features if f.type.value == types.GEENUFF_CDS]
         for cds_feature in cds_features:
             if not cds_feature.is_plus_strand == is_plus_strand:

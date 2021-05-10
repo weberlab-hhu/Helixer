@@ -894,6 +894,61 @@ def test_featureless_filter():
     f.close()
 
 
+def test_phases():
+    """Tests the output of phase, which should be encoded for every cds base"""
+    def check_phase_in_cds(phases, introns, is_plus):
+        assert np.all(phases[introns][:, 0] == 1)  # if there is no phase in introns
+        coding_phases = phases[~introns]
+        # a bit dumb but fool proof way to test phase encoding, different from phase generation
+        for i, phase_enc in enumerate(coding_phases):
+            if i % 3 == 0:
+                assert phase_enc[1] == 1
+            elif i % 3 == 1:
+                assert phase_enc[3] == 1
+            elif i % 3 == 2:
+                assert phase_enc[2] == 1
+
+    _, controller, _ = setup_dummyloci()
+    # dump the whole db in chunks into a .h5 file
+    controller.export(chunk_size=5000, genomes=['dummy'], val_size=0.2, one_hot=True,
+                      all_transcripts=False)
+
+    f = h5py.File(H5_OUT_FILE, 'r')
+    ph = f['/data/phases'][:]
+    y = f['/data/y'][:]
+    padding = ~np.any(y == 1, axis=2)
+
+    # check if phases is a valid one hot encoding
+    assert np.all(np.count_nonzero(ph[~padding], axis=1) == 1)
+
+    cds_regions_plus = [
+        (0, slice(10, 301)),  # first chunk, 10:301 bases for the longest cds region of case 1
+        (0, slice(1610, 1795)),
+        (2, slice(39, 182)),
+        (2, slice(524, 725)),
+    ]
+
+    # change coordinates on minus strand as we changed direction during numerification
+    chunk_3_len = np.count_nonzero(padding[3] == 0)
+    cds_regions_minus = [
+        (3, slice(chunk_3_len - 1350, chunk_3_len - 974)),
+        (3, slice(chunk_3_len - 1725, chunk_3_len - 1574)),
+    ]
+
+    for region in cds_regions_plus:
+        check_phase_in_cds(ph[region], y[region][..., 3].astype(np.bool), True)
+    for region in cds_regions_minus:
+        check_phase_in_cds(ph[region], y[region][..., 3].astype(np.bool), False)
+
+    # check if number of bases in phase encoding that are non-default matches number of cds bases
+    total_cds_len = 0
+    for region in cds_regions_plus + cds_regions_minus:
+        total_cds_len += len(y[region])
+    n_phase_bases = np.count_nonzero(ph[~padding][:, 0] == 0)
+    n_intron_bases = np.count_nonzero(y[~padding][:, 3] == 1)
+    assert total_cds_len - n_intron_bases == n_phase_bases
+
+
 # Setup dummy sequence with different feature transitions
 def setup_feature_transitions():
     sess = mk_memory_session()
@@ -1108,6 +1163,7 @@ def test_super_chunking4write():
     seqids0 = np.array(f['/data/seqids'][:])
     species0 = np.array(f['/data/species'][:])
     gl0 = np.array(f['/data/gene_lengths'][:])
+    phases0 = np.array(f['/data/phases'][:])
     x0 = np.array(f['/data/X'][:])
 
     assert n_writing_chunks == 4  # 2 per feature-containing coordinate
@@ -1123,6 +1179,7 @@ def test_super_chunking4write():
     seqids1 = np.array(f['/data/seqids'][:])
     species1 = np.array(f['/data/species'][:])
     gl1 = np.array(f['/data/gene_lengths'][:])
+    phases1 = np.array(f['/data/phases'][:])
     x1 = np.array(f['/data/X'][:])
     assert np.all(se0 == se1)
     assert np.all(seqids0 == seqids1)
@@ -1130,6 +1187,7 @@ def test_super_chunking4write():
     assert np.all(x0 == x1)
     assert np.all(y0 == y1)
     assert np.all(gl0 == gl1)
+    assert np.all(phases0 == phases1)
     # this makes sure it's being writen in multiple pieces at all
     assert n_writing_chunks == 8  # 4 per feature-containing coordinate (each is 1000 < 2000 in length)
 
