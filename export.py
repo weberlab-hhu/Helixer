@@ -21,7 +21,7 @@ def main(args):
         match_existing = False
         h5_group = '/data/'
 
-    controller = HelixerExportController(args.main_db_path, args.out_dir, args.only_test_set,
+    controller = HelixerExportController(args.main_db_path, args.out_dir, not args.split_into_train_val,
                                          match_existing=match_existing, h5_group=h5_group)
     controller.export(chunk_size=args.chunk_size, genomes=args.genomes, val_size=args.val_size,
                       keep_featureless=not args.exclude_featureless, write_by=args.write_by, modes=modes,
@@ -47,9 +47,10 @@ if __name__ == '__main__':
     data.add_argument('--chunk-size', type=int, default=20000,
                       help='Size of the chunks each genomic sequence gets cut into.')
     data.add_argument('--val-size', type=float, default=0.2,
-                      help='The chance for a sequence or coordinate to end up in validation_data.h5' )
-    data.add_argument('--only-test-set', action='store_true',
-                      help='Whether to only output a single file named test_data.h5')
+                      help=('The chance for a sequence or coordinate to end up in validation_data.h5. '
+                            'Only used if --split-into-train-val is set' )
+    data.add_argument('--split-into-train-val', action='store_true',
+                      help='Whether to split on chromosome level into training_data.h5 and validation_data.h5')
     data.add_argument('--exclude-featureless', action='store_true',
                       help='This ignores coordinates without a single feature (as these frequently were never actually '
                            'annotated). However, it is recommend to use the "data/is_annotated" to mask, not exclude'
