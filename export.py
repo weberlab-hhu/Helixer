@@ -48,7 +48,7 @@ if __name__ == '__main__':
                       help='Size of the chunks each genomic sequence gets cut into.')
     data.add_argument('--val-size', type=float, default=0.2,
                       help=('The chance for a sequence or coordinate to end up in validation_data.h5. '
-                            'Only used if --split-into-train-val is set' )
+                            'Only used if --split-into-train-val is set'))
     data.add_argument('--split-into-train-val', action='store_true',
                       help='Whether to split on chromosome level into training_data.h5 and validation_data.h5')
     data.add_argument('--exclude-featureless', action='store_true',
