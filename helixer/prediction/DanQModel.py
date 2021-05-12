@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 import numpy as np
+import tensorflow as tf
 
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
@@ -24,6 +25,7 @@ class DanQSequence(HelixerSequence):
                 X = X[:, :-overhang]
                 y = y[:, :-overhang]
                 sw = sw[:, :-overhang]
+                phases = phases[:, :-overhang]
                 if self.mode == 'train' and self.transition_weights is not None:
                     transitions = transitions[:, :-overhang]
 
@@ -122,10 +124,14 @@ class DanQModel(HelixerModel):
 
         if self.predict_phase:
             x = Dense(self.pool_size * 4 * 2)(x)  # predict twice a many floats
-            x = Reshape((-1, 2, self.pool_size, 4))(x)
-            x_genic, x_phase = tf.split(x, 2, axis=-3)
+            x_genic, x_phase = tf.split(x, 2, axis=-1)
+
+            x_genic = Reshape((-1, self.pool_size, 4))(x_genic)
             x_genic = Activation('softmax', name='genic')(x_genic)
+
+            x_phase = Reshape((-1, self.pool_size, 4))(x_phase)
             x_phase = Activation('softmax', name='phase')(x_phase)
+
             outputs = [x_genic, x_phase]
         else:
             x = Dense(self.pool_size * 4)(x)
@@ -137,10 +143,11 @@ class DanQModel(HelixerModel):
         return model
 
     def compile_model(self, model):
-        losses = ['categorical_crossentropy']
         if self.predict_phase:
+            losses = ['categorical_crossentropy', 'categorical_crossentropy']
             loss_weights = [0.8, 0.2]
         else:
+            losses = ['categorical_crossentropy']
             loss_weights = [1.0]
 
         model.compile(optimizer=self.optimizer,

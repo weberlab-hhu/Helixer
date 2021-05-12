@@ -139,15 +139,17 @@ class ConfusionMatrix():
             inputs = self.generator[batch_idx]
             if len(inputs) == 2 and type(inputs[0]) is list:
                 # dilated conv input scheme
-                X, sw = inputs[0]
-                y_true = inputs[1]
+                (X, sw), y_true = inputs
                 y_pred = model.predict_on_batch([X, sw])
             elif len(inputs) == 3:
                 if type(inputs[0]) is list:
                     # correction model input scheme
-                    X, pred = inputs[0]
-                    y_true, sw = inputs[1:]
+                    (X, pred), y_true, sw = inputs
                     y_pred = model.predict_on_batch([X, pred])
+                elif type(inputs[1]) is list:
+                    # phase prediction input scheme
+                    X, (y_true, y_true_phase), sw = inputs
+                    y_pred, _ = model.predict_on_batch(X)
                 else:
                     X, y_true, sw = inputs
                     y_pred = model.predict_on_batch(X)

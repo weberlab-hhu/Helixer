@@ -128,11 +128,11 @@ class HelixerSequence(Sequence):
         self.data_list_names = ['data/X', 'data/y', 'data/sample_weights']
         if self.load_predictions:
             self.data_list_names.append('data/predictions')
+        if self.predict_phase:
+            self.data_list_names.append('data/phases')
         if self.mode == 'train':
             if self.transition_weights is not None:
                 self.data_list_names.append('data/transitions')
-            if self.predict_phase:
-                self.data_list_names.append('data/phases')
             if self.coverage_weights:
                 self.data_list_names.append('scores/by_bp')
 
@@ -330,7 +330,6 @@ class HelixerSequence(Sequence):
 
     def __len__(self):
         """how many batches in epoch"""
-
         if self.debug:
             # if self.debug and self.mode == 'train':
             return 3
@@ -392,8 +391,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('--nni', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
         self.parser.add_argument('--debug', action='store_true')
-        self.parser.add_argument('--progbar', action='store_true')
-        self.parser.add_argument('--tf-errors', action='store_true')
 
     def parse_args(self):
         args = vars(self.parser.parse_args())
@@ -717,7 +714,7 @@ class HelixerModel(ABC):
                       epochs=self.epochs,
                       workers=self.workers,
                       callbacks=self.generate_callbacks(train_generator),
-                      verbose=self.progbar)
+                      verbose=True)
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
