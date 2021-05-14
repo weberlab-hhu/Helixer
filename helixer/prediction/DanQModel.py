@@ -25,7 +25,8 @@ class DanQSequence(HelixerSequence):
                 X = X[:, :-overhang]
                 y = y[:, :-overhang]
                 sw = sw[:, :-overhang]
-                phases = phases[:, :-overhang]
+                if self.predict_phase:
+                    phases = phases[:, :-overhang]
                 if self.mode == 'train' and self.transition_weights is not None:
                     transitions = transitions[:, :-overhang]
 

@@ -377,7 +377,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--eval', action='store_true')
         self.parser.add_argument('--overlap', action="store_true",
                                  help="will improve prediction quality at 'chunk' ends by creating and overlapping "
-                                      "sliding-window predictions (with proportional increase in  time usage)")
+                                      "sliding-window predictions (with proportional increase in time usage)")
         self.parser.add_argument('--overlap-offset', type=int, default=2500)
         self.parser.add_argument('--core-length', type=int, default=10000)
         # resources
@@ -612,43 +612,52 @@ class HelixerModel(ABC):
             if self.verbose:
                 print(batch_index, '/', len(test_sequence), end='\r')
             predictions = model.predict_on_batch(test_sequence[batch_index][0])
-            # join last two dims when predicting one hot labels
-            predictions = predictions.reshape(predictions.shape[:2] + (-1,))
-            # reshape when predicting more than one point at a time
-            label_dim = 4
-            if predictions.shape[2] != label_dim:
-                n_points = predictions.shape[2] // label_dim
-                predictions = predictions.reshape(
-                    predictions.shape[0],
-                    predictions.shape[1] * n_points,
-                    label_dim,
-                )
-                # add 0-padding if needed
-                n_removed = self.shape_test[1] - predictions.shape[1]
-                if n_removed > 0:
-                    zero_padding = np.zeros((predictions.shape[0], n_removed, predictions.shape[2]),
-                                            dtype=predictions.dtype)
-                    predictions = np.concatenate((predictions, zero_padding), axis=1)
+            if isinstance(predictions, list):
+                # when we have two outputs, one is for phase
+                output_names = ['predictions', 'predictions_phase']
             else:
-                n_removed = 0  # just to avoid crashing with Unbound Local Error setting attrs for dCNN
+                # if we just had one output
+                predictions = (predictions,)
+                output_names = ['predictions']
 
-            if self.overlap:
-                predictions = test_sequence.ol_helper.overlap_predictions(batch_index, predictions)
+            for dset_name, pred_dset in zip(output_names, predictions):
+                # join last two dims when predicting one hot labels
+                pred_dset = pred_dset.reshape(pred_dset.shape[:2] + (-1,))
+                # reshape when predicting more than one point at a time
+                label_dim = 4
+                if pred_dset.shape[2] != label_dim:
+                    n_points = pred_dset.shape[2] // label_dim
+                    pred_dset = pred_dset.reshape(
+                        pred_dset.shape[0],
+                        pred_dset.shape[1] * n_points,
+                        label_dim,
+                    )
+                    # add 0-padding if needed
+                    n_removed = self.shape_test[1] - pred_dset.shape[1]
+                    if n_removed > 0:
+                        zero_padding = np.zeros((pred_dset.shape[0], n_removed, pred_dset.shape[2]),
+                                                dtype=pred_dset.dtype)
+                        pred_dset = np.concatenate((pred_dset, zero_padding), axis=1)
+                else:
+                    n_removed = 0  # just to avoid crashing with Unbound Local Error setting attrs for dCNN
 
-            # prepare h5 dataset and save the predictions to disk
-            if batch_index == 0:
-                old_len = 0
-                pred_out.create_dataset('/predictions',
-                                        data=predictions,
-                                        maxshape=(None,) + predictions.shape[1:],
-                                        chunks=(1,) + predictions.shape[1:],
-                                        dtype='float16',
-                                        compression='lzf',
-                                        shuffle=True)
-            else:
-                old_len = pred_out['/predictions'].shape[0]
-                pred_out['/predictions'].resize(old_len + predictions.shape[0], axis=0)
-            pred_out['/predictions'][old_len:] = predictions
+                if self.overlap:
+                    pred_dset = test_sequence.ol_helper.overlap_predictions(batch_index, pred_dset)
+
+                # prepare h5 dataset and save the predictions to disk
+                if batch_index == 0:
+                    old_len = 0
+                    pred_out.create_dataset(dset_name,
+                                            data=pred_dset,
+                                            maxshape=(None,) + pred_dset.shape[1:],
+                                            chunks=(1,) + pred_dset.shape[1:],
+                                            dtype='float16',
+                                            compression='lzf',
+                                            shuffle=True)
+                else:
+                    old_len = pred_out[dset_name].shape[0]
+                    pred_out[dset_name].resize(old_len + pred_dset.shape[0], axis=0)
+                pred_out[dset_name][old_len:] = pred_dset
 
         # add model config and other attributes to predictions
         h5_model = h5py.File(self.load_model_path, 'r')
