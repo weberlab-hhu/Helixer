@@ -7,12 +7,9 @@ from scipy.sparse import coo_matrix
 
 
 class ConfusionMatrix():
-    def __init__(self, generator, print_to_stdout=True):
-        np.set_printoptions(suppress=True)  # do not use scientific notation for the print out
-        self.generator = generator
-        self.print_to_stdout = print_to_stdout
 
-        self.col_names = {0: 'ig', 1: 'utr', 2: 'exon', 3: 'intron'}
+    def __init__(self, col_names=['ig', 'utr', 'exon', 'intron']):
+        self.col_names = {i:name for i, name in enumerate(col_names)}
         self.n_classes = len(self.col_names)
         self.cm = np.zeros((self.n_classes, self.n_classes), dtype=np.uint64)
         self.uncertainties = {col_name:list() for col_name in self.col_names.values()}
@@ -31,12 +28,12 @@ class ConfusionMatrix():
         y_pred = y_pred[sw]
         return y_true, y_pred
 
-    def _add_to_cm(self, y_true, y_pred):
+    def _add_to_cm(self., y_true, y_pred):
         """Put in extra function to be testable"""
         # add to confusion matrix as long as _some_ bases were not masked
         if y_pred.size > 0:
-            y_pred = ConfusionMatrix._argmax_y(y_pred)
-            y_true = ConfusionMatrix._argmax_y(y_true)
+            y_pred = Metrics._argmax_y(y_pred)
+            y_true = Metrics._argmax_y(y_true)
             # taken from here, without the boiler plate:
             # https://github.com/scikit-learn/scikit-learn/blob/
             # 42aff4e2edd8e8887478f6ff1628f27de97be6a3/sklearn/metrics/_classification.py#L342
@@ -46,7 +43,7 @@ class ConfusionMatrix():
 
     def _add_to_uncertainty(self, y_true, y_pred):
         y_pred = y_pred.reshape((-1, y_pred.shape[-1]))
-        y_true = ConfusionMatrix._argmax_y(y_true)
+        y_true = Metrics._argmax_y(y_true)
         # entropy calculation
         y_pred_log2 = np.log2(y_pred)
         y_pred_H = -1 * np.sum(y_pred * y_pred_log2, axis=-1)
@@ -59,12 +56,12 @@ class ConfusionMatrix():
                 self.uncertainties[name].append(avg_entropy)
 
     def count_and_calculate_one_batch(self, y_true, y_pred, sw):
-        y_true, y_pred = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
+        y_true, y_pred = Metrics._remove_masked_bases(y_true, y_pred, sw)
         # important to copy so _add_to_cm() works
         self._add_to_uncertainty(np.copy(y_true), np.copy(y_pred))
         self._add_to_cm(y_true, y_pred)
 
-    def _get_normalized_cm(self):
+    def _get_normalized_cm(self.):
         """Put in extra function to be testable"""
         class_sums = np.sum(self.cm, axis=1)
         normalized_cm = self.cm / class_sums[:, None]  # expand by one dim so broadcast work properly
@@ -86,14 +83,15 @@ class ConfusionMatrix():
             f1 = 0.0
         return precision, recall, f1
 
-    def _total_accuracy(self):
+    def _total_accuracy(self.):
         return np.trace(self.cm) / np.sum(self.cm)
 
-    def _get_composite_scores(self):
-        def add_to_scores(d):
-            metrics = ConfusionMatrix._precision_recall_f1(d['TP'], d['FP'], d['FN'])
-            d['precision'], d['recall'], d['f1'] = metrics
+    @staticmethod
+    def _add_to_scores(d):
+        metrics = Metrics._precision_recall_f1(d['TP'], d['FP'], d['FN'])
+        d['precision'], d['recall'], d['f1'] = metrics
 
+    def _get_scores(self):
         scores = defaultdict(dict)
         # single column metrics
         for col in range(4):
@@ -106,82 +104,17 @@ class ConfusionMatrix():
             # add average uncertanties
             d['H'] = np.mean(self.uncertainties[name])
 
-            add_to_scores(d)
-
-        # legacy cds score that works the same as the cds_f1 with the 3 column multi class encoding
-        # essentiall merging the predictions as if error between exon and intron did not matter
-        d = scores['legacy_cds']
-        d['TP'] = self.cm[2, 2] + self.cm[3, 3] + self.cm[2, 3] + self.cm[3, 2]
-        d['FP'] = self.cm[0, 2] + self.cm[0, 3] + self.cm[1, 2] + self.cm[1, 3]
-        d['FN'] = self.cm[2, 0] + self.cm[3, 0] + self.cm[2, 1] + self.cm[3, 1]
-        add_to_scores(d)
-
-        # subgenic metric is essentially the same as the genic one
-        # pretty redundant code to below, but done for minimizing the risk to mess up (for now)
-        d = scores['sub_genic']
-        for base_metric in ['TP', 'FP', 'FN']:
-            d[base_metric] = sum([scores[m][base_metric] for m in ['exon', 'intron']])
-        add_to_scores(d)
-
-        # genic metrics are calculated by summing up TP, FP, FN, essentially calculating a weighted
-        # sum for the individual metrics. TP of the intergenic class are not taken into account
-        d = scores['genic']
-        for base_metric in ['TP', 'FP', 'FN']:
-            d[base_metric] = sum([scores[m][base_metric] for m in ['utr', 'exon', 'intron']])
-        add_to_scores(d)
+            ConfusionMatrix.add_to_scores(d)
 
         return scores
-
-    def calculate_cm(self, model):
-        for batch_idx in range(len(self.generator)):
-            print(batch_idx, '/', len(self.generator) - 1, end="\r")
-
-            inputs = self.generator[batch_idx]
-            if len(inputs) == 2 and type(inputs[0]) is list:
-                # dilated conv input scheme
-                (X, sw), y_true = inputs
-                y_pred = model.predict_on_batch([X, sw])
-            elif len(inputs) == 3:
-                if type(inputs[0]) is list:
-                    # correction model input scheme
-                    (X, pred), y_true, sw = inputs
-                    y_pred = model.predict_on_batch([X, pred])
-                elif type(inputs[1]) is list:
-                    # phase prediction input scheme
-                    X, (y_true, y_true_phase), sw = inputs
-                    y_pred, _ = model.predict_on_batch(X)
-                else:
-                    X, y_true, sw = inputs
-                    y_pred = model.predict_on_batch(X)
-            else:
-                print('Unknown inputs from keras sequence')
-                exit()
-
-            if self.generator.overlap:
-                assert len(y_pred.shape) == 4, "this reshape assumes shape is " \
-                                               "(batch_size, chunk_size // pool, pool, label dim)" \
-                                               "and apparently it is time to fix that, shape is {}".format(y_pred.shape)
-                bs, cspool, pool, ydim = y_pred.shape
-                y_pred = y_pred.reshape([bs, cspool * pool, ydim])
-                y_pred = self.generator.ol_helper.overlap_predictions(batch_idx, y_pred)
-                y_pred = y_pred.reshape([-1, cspool, pool, ydim])
-                # edge handle sw & y_true (as done with y_pred and to restore 1:1 input output
-                sw = self.generator.ol_helper.subset_input(batch_idx, sw)
-                y_true = self.generator.ol_helper.subset_input(batch_idx, y_true)
-            self.count_and_calculate_one_batch(y_true, y_pred, sw)
-
-        scores = self._get_composite_scores()
-        if self.print_to_stdout:
-            self._print_results(scores)
-        return scores['genic']['precision'], scores['genic']['recall'], scores['genic']['f1']
 
     def _print_results(self, scores):
         for table, table_name in self.prep_tables(scores):
             print('\n', AsciiTable(table, table_name).table, sep='')
-        print('Total acc: {:.4f}'.format(self._total_accuracy()))
+        print('Total acc: {:.4f}'.format(Metrics._total_accuracy()))
 
     def print_cm(self):
-        scores = self._get_composite_scores()
+        scores = self._get_scores()
         self._print_results(scores)
 
     def prep_tables(self, scores):
@@ -226,3 +159,97 @@ class ConfusionMatrix():
                     writer = csv.writer(f)
                     for row in table:
                         writer.writerow(row)
+
+
+class ConfusionMatrixGenic(ConfusionMatrix):
+    """Extension of ConfusionMatrix that just adds the calculation of the composite scores"""
+
+    def _get_scores(self):
+        super()._get_scores()
+
+        # legacy cds score that works the same as the cds_f1 with the 3 column multi class encoding
+        # essentiall merging the predictions as if error between exon and intron did not matter
+        d = scores['legacy_cds']
+        cm = self.cm_genic
+        d['TP'] = cm[2, 2] + cm[3, 3] + cm[2, 3] + cm[3, 2]
+        d['FP'] = cm[0, 2] + cm[0, 3] + cm[1, 2] + cm[1, 3]
+        d['FN'] = cm[2, 0] + cm[3, 0] + cm[2, 1] + cm[3, 1]
+        ConfusionMatrix.add_to_scores(d)
+
+        # subgenic metric is essentially the same as the genic one
+        # pretty redundant code to below, but done for minimizing the risk to mess up (for now)
+        d = scores['sub_genic']
+        for base_metric in ['TP', 'FP', 'FN']:
+            d[base_metric] = sum([scores[m][base_metric] for m in ['exon', 'intron']])
+        ConfusionMatrix.add_to_scores(d)
+
+        # genic metrics are calculated by summing up TP, FP, FN, essentially calculating a weighted
+        # sum for the individual metrics. TP of the intergenic class are not taken into account
+        d = scores['genic']
+        for base_metric in ['TP', 'FP', 'FN']:
+            d[base_metric] = sum([scores[m][base_metric] for m in ['utr', 'exon', 'intron']])
+        ConfusionMatrix.add_to_scores(d)
+
+        return scores
+
+
+class Metrics():
+
+    def __init__(self, generator, print_to_stdout=True):
+        np.set_printoptions(suppress=True)  # do not use scientific notation for the print out
+        self.generator = generator
+        self.print_to_stdout = print_to_stdout
+        self.cm_genic = ConfusionMatrixGenic()
+        self.cm_phase = ConfusionMatrix(['no phase', 'phase 0', 'phase 1', 'phase 2'])
+
+    def calculate_metrics(self, model):
+        for batch_idx in range(len(self.generator)):
+            print(batch_idx, '/', len(self.generator) - 1, end="\r")
+
+            y_pred_phase = None
+            inputs = self.generator[batch_idx]
+            if len(inputs) == 2 and type(inputs[0]) is list:
+                # dilated conv input scheme
+                (X, sw), y_true = inputs
+                y_pred = model.predict_on_batch([X, sw])
+            elif len(inputs) == 3:
+                if type(inputs[0]) is list:
+                    # correction model input scheme
+                    (X, pred), y_true, sw = inputs
+                    y_pred = model.predict_on_batch([X, pred])
+                elif type(inputs[1]) is list:
+                    # phase prediction input scheme
+                    X, (y_true, y_true_phase), sw = inputs
+                    y_pred, y_pred_phase = model.predict_on_batch(X)
+                else:
+                    X, y_true, sw = inputs
+                    y_pred = model.predict_on_batch(X)
+            else:
+                print('Unknown inputs from keras sequence')
+                exit()
+
+            data = [self.cm_genic, (y_true, y_pred)]
+            if y_pred_phase:
+                data.append([self.cm_phase, (y_true_phase, y_pred_phase)])
+
+            all_scores = []
+            for cm, (y_true, y_pred) in data:
+                if self.generator.overlap:
+                    assert len(y_pred.shape) == 4, "this reshape assumes shape is " \
+                                                   "(batch_size, chunk_size // pool, pool, label dim)" \
+                                                   "and apparently it is time to fix that, shape is {}".format(y_pred.shape)
+                    bs, cspool, pool, ydim = y_pred.shape
+                    y_pred = y_pred.reshape([bs, cspool * pool, ydim])
+                    y_pred = self.generator.ol_helper.overlap_predictions(batch_idx, y_pred)
+                    y_pred = y_pred.reshape([-1, cspool, pool, ydim])
+                    # edge handle sw & y_true (as done with y_pred and to restore 1:1 input output
+                    sw = self.generator.ol_helper.subset_input(batch_idx, sw)
+                    y_true = self.generator.ol_helper.subset_input(batch_idx, y_true)
+                cm.count_and_calculate_one_batch(y_true, y_pred, sw)
+
+                scores = cm._get_scores()
+                if cm.print_to_stdout:
+                    cm._print_results(scores)
+                all_scores.append(scores)
+        return all_scores[0]['genic']['precision'], all_scores[0]['genic']['recall'], all_scores[0]['genic']['f1']
+
