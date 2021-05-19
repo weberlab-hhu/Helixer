@@ -28,12 +28,12 @@ class ConfusionMatrix():
         y_pred = y_pred[sw]
         return y_true, y_pred
 
-    def _add_to_cm(self., y_true, y_pred):
+    def _add_to_cm(self, y_true, y_pred):
         """Put in extra function to be testable"""
         # add to confusion matrix as long as _some_ bases were not masked
         if y_pred.size > 0:
-            y_pred = Metrics._argmax_y(y_pred)
-            y_true = Metrics._argmax_y(y_true)
+            y_pred = ConfusionMatrix._argmax_y(y_pred)
+            y_true = ConfusionMatrix._argmax_y(y_true)
             # taken from here, without the boiler plate:
             # https://github.com/scikit-learn/scikit-learn/blob/
             # 42aff4e2edd8e8887478f6ff1628f27de97be6a3/sklearn/metrics/_classification.py#L342
@@ -43,7 +43,7 @@ class ConfusionMatrix():
 
     def _add_to_uncertainty(self, y_true, y_pred):
         y_pred = y_pred.reshape((-1, y_pred.shape[-1]))
-        y_true = Metrics._argmax_y(y_true)
+        y_true = ConfusionMatrix._argmax_y(y_true)
         # entropy calculation
         y_pred_log2 = np.log2(y_pred)
         y_pred_H = -1 * np.sum(y_pred * y_pred_log2, axis=-1)
@@ -56,12 +56,12 @@ class ConfusionMatrix():
                 self.uncertainties[name].append(avg_entropy)
 
     def count_and_calculate_one_batch(self, y_true, y_pred, sw):
-        y_true, y_pred = Metrics._remove_masked_bases(y_true, y_pred, sw)
+        y_true, y_pred = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
         # important to copy so _add_to_cm() works
         self._add_to_uncertainty(np.copy(y_true), np.copy(y_pred))
         self._add_to_cm(y_true, y_pred)
 
-    def _get_normalized_cm(self.):
+    def _get_normalized_cm(self):
         """Put in extra function to be testable"""
         class_sums = np.sum(self.cm, axis=1)
         normalized_cm = self.cm / class_sums[:, None]  # expand by one dim so broadcast work properly
@@ -83,12 +83,12 @@ class ConfusionMatrix():
             f1 = 0.0
         return precision, recall, f1
 
-    def _total_accuracy(self.):
+    def _total_accuracy(self):
         return np.trace(self.cm) / np.sum(self.cm)
 
     @staticmethod
     def _add_to_scores(d):
-        metrics = Metrics._precision_recall_f1(d['TP'], d['FP'], d['FN'])
+        metrics = ConfusionMatrix._precision_recall_f1(d['TP'], d['FP'], d['FN'])
         d['precision'], d['recall'], d['f1'] = metrics
 
     def _get_scores(self):
@@ -104,14 +104,13 @@ class ConfusionMatrix():
             # add average uncertanties
             d['H'] = np.mean(self.uncertainties[name])
 
-            ConfusionMatrix.add_to_scores(d)
-
+            ConfusionMatrix._add_to_scores(d)
         return scores
 
     def _print_results(self, scores):
         for table, table_name in self.prep_tables(scores):
             print('\n', AsciiTable(table, table_name).table, sep='')
-        print('Total acc: {:.4f}'.format(Metrics._total_accuracy()))
+        print('Total acc: {:.4f}'.format(ConfusionMatrix._total_accuracy()))
 
     def print_cm(self):
         scores = self._get_scores()
@@ -143,7 +142,7 @@ class ConfusionMatrix():
                 metrics = ['']
             metrics += ['{:.4f}'.format(s) for s in list(values.values())[3:]]  # [3:] to skip TP, FP, FN
             table.append([name] + metrics)
-            if i == (len(names) - 1):
+            if i == (len(names) - 1) and len(scores > len(names)):
                 table.append([''] * 4)
         out.append((table, 'F1_summary'))
 
@@ -165,30 +164,30 @@ class ConfusionMatrixGenic(ConfusionMatrix):
     """Extension of ConfusionMatrix that just adds the calculation of the composite scores"""
 
     def _get_scores(self):
-        super()._get_scores()
+        scores = super()._get_scores()
 
         # legacy cds score that works the same as the cds_f1 with the 3 column multi class encoding
         # essentiall merging the predictions as if error between exon and intron did not matter
         d = scores['legacy_cds']
-        cm = self.cm_genic
+        cm = self.cm
         d['TP'] = cm[2, 2] + cm[3, 3] + cm[2, 3] + cm[3, 2]
         d['FP'] = cm[0, 2] + cm[0, 3] + cm[1, 2] + cm[1, 3]
         d['FN'] = cm[2, 0] + cm[3, 0] + cm[2, 1] + cm[3, 1]
-        ConfusionMatrix.add_to_scores(d)
+        ConfusionMatrix._add_to_scores(d)
 
         # subgenic metric is essentially the same as the genic one
         # pretty redundant code to below, but done for minimizing the risk to mess up (for now)
         d = scores['sub_genic']
         for base_metric in ['TP', 'FP', 'FN']:
             d[base_metric] = sum([scores[m][base_metric] for m in ['exon', 'intron']])
-        ConfusionMatrix.add_to_scores(d)
+        ConfusionMatrix._add_to_scores(d)
 
         # genic metrics are calculated by summing up TP, FP, FN, essentially calculating a weighted
         # sum for the individual metrics. TP of the intergenic class are not taken into account
         d = scores['genic']
         for base_metric in ['TP', 'FP', 'FN']:
             d[base_metric] = sum([scores[m][base_metric] for m in ['utr', 'exon', 'intron']])
-        ConfusionMatrix.add_to_scores(d)
+        ConfusionMatrix._add_to_scores(d)
 
         return scores
 
@@ -228,12 +227,12 @@ class Metrics():
                 print('Unknown inputs from keras sequence')
                 exit()
 
-            data = [self.cm_genic, (y_true, y_pred)]
+            data = {'genic_base_wise': [self.cm_genic, (y_true, y_pred)]}
             if y_pred_phase:
-                data.append([self.cm_phase, (y_true_phase, y_pred_phase)])
+                data['phase_base_wise'] = [self.cm_phase, (y_true_phase, y_pred_phase)]
 
-            all_scores = []
-            for cm, (y_true, y_pred) in data:
+            all_scores = {}
+            for metric_name, (cm, (y_true, y_pred)) in data.items():
                 if self.generator.overlap:
                     assert len(y_pred.shape) == 4, "this reshape assumes shape is " \
                                                    "(batch_size, chunk_size // pool, pool, label dim)" \
@@ -250,6 +249,6 @@ class Metrics():
                 scores = cm._get_scores()
                 if cm.print_to_stdout:
                     cm._print_results(scores)
-                all_scores.append(scores)
-        return all_scores[0]['genic']['precision'], all_scores[0]['genic']['recall'], all_scores[0]['genic']['f1']
+                all_scores[metric_name] = scores
+        return all_scores
 

@@ -29,7 +29,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import Sequence
 from tensorflow_addons.optimizers import AdamW
 
-from helixer.prediction.ConfusionMatrix import ConfusionMatrix
+from helixer.prediction.Metrics import ConfusionMatrix
 from helixer.core import overlap
 
 
@@ -463,12 +463,13 @@ class HelixerModel(ABC):
     @staticmethod
     def run_confusion_matrix(generator, model, print_to_stdout=True):
         start = time.time()
-        cm_calculator = ConfusionMatrix(generator, print_to_stdout=print_to_stdout)
-        precision, recall, genic_f1 = cm_calculator.calculate_cm(model)
-        if np.isnan(genic_f1):
-            genic_f1 = 0.0
+        metrics_calculator = Metrics(generator, print_to_stdout=print_to_stdout)
+        metrics = metrics_calculator.calculate_metrics(model)
+        genic_metrics = metrics['genic_base_wise']['genic']
+        if np.isnan(genic_metrics['f1']):
+            genic_metrics['f1'] = 0.0
         print('\ncm calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
-        return precision, recall, genic_f1
+        return genic_metrics['precision'], genic_metrics['recall'], genic_metrics['f1']
 
     @staticmethod
     def run_large_eval(folder, model, generator, training_species, print_to_stdout=False):

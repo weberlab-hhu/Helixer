@@ -19,7 +19,7 @@ from ..core import overlap
 from ..export import numerify
 from ..export.numerify import SequenceNumerifier, AnnotationNumerifier, Stepper, AMBIGUITY_DECODE
 from ..export.exporter import HelixerExportController
-from ..prediction.ConfusionMatrix import ConfusionMatrix
+from ..prediction.Metrics import ConfusionMatrix, ConfusionMatrixGenic
 from helixer.prediction.LSTMModel import LSTMSequence
 from ..evaluation import rnaseq
 
@@ -752,7 +752,7 @@ def test_confusion_matrix():
         [0, 0, 1, 1]
     ])
 
-    cm = ConfusionMatrix(None)
+    cm = ConfusionMatrixGenic()
     # add data in two parts
     cm.count_and_calculate_one_batch(y_true[:15], y_pred[:15], sample_weights[:15])
     cm.count_and_calculate_one_batch(y_true[15:], y_pred[15:], sample_weights[15:])
@@ -776,7 +776,7 @@ def test_confusion_matrix():
 
     # test other metrics
     precision_true, recall_true, f1_true, _ = f1_scores(y_true, y_pred)
-    scores = cm._get_composite_scores()
+    scores = cm._get_scores()
 
     one_col_values = list(scores.values())[:4]  # excluding composite metrics
     assert np.allclose(precision_true, np.array([s['precision'] for s in one_col_values]))
