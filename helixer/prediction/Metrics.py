@@ -207,7 +207,7 @@ class Metrics():
         self.cm_phase = ConfusionMatrix(['no_phase', 'phase_0', 'phase_1', 'phase_2'],
                                         skip_uncertainty=self.skip_uncertainty)
 
-    def _overlap_all_data(batch_idx, y_true, y_pred, sw):
+    def _overlap_all_data(self, batch_idx, y_true, y_pred, sw):
         assert len(y_pred.shape) == 4, "this reshape assumes shape is " \
                                        "(batch_size, chunk_size // pool, pool, label dim)" \
                                        "and apparently it is time to fix that, shape is {}".format(y_pred.shape)
