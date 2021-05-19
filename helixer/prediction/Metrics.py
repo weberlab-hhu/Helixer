@@ -8,12 +8,14 @@ from scipy.sparse import coo_matrix
 
 class ConfusionMatrix():
 
-    def __init__(self, col_names=['ig', 'utr', 'exon', 'intron']):
+    def __init__(self, col_names=['ig', 'utr', 'exon', 'intron'], skip_uncertainty=True):
         self.col_names = {i:name for i, name in enumerate(col_names)}
+        self.skip_uncertainty = skip_uncertainty
         self.n_classes = len(self.col_names)
         self.cm = np.zeros((self.n_classes, self.n_classes), dtype=np.uint64)
-        self.uncertainties = {col_name:list() for col_name in self.col_names.values()}
-        self.max_uncertainty = -sum([e * np.log2(e) for e in [1 / self.n_classes] * self.n_classes])
+        if not self.skip_uncertainty:
+            self.uncertainties = {col_name:list() for col_name in self.col_names.values()}
+            self.max_uncertainty = -sum([e * np.log2(e) for e in [1 / self.n_classes] * self.n_classes])
 
     @staticmethod
     def _argmax_y(arr):
@@ -57,8 +59,9 @@ class ConfusionMatrix():
 
     def count_and_calculate_one_batch(self, y_true, y_pred, sw):
         y_true, y_pred = ConfusionMatrix._remove_masked_bases(y_true, y_pred, sw)
-        # important to copy so _add_to_cm() works
-        self._add_to_uncertainty(np.copy(y_true), np.copy(y_pred))
+        if not self.skip_uncertainty:
+            # important to copy so _add_to_cm() works
+            self._add_to_uncertainty(np.copy(y_true), np.copy(y_pred))
         self._add_to_cm(y_true, y_pred)
 
     def _get_normalized_cm(self):
@@ -102,7 +105,8 @@ class ConfusionMatrix():
             d['FP'] = np.sum(self.cm[not_col, col])
             d['FN'] = np.sum(self.cm[col, not_col])
             # add average uncertanties
-            d['H'] = np.mean(self.uncertainties[name])
+            if not self.skip_uncertainty:
+                d['H'] = np.mean(self.uncertainties[name])
 
             ConfusionMatrix._add_to_scores(d)
         return scores
@@ -110,7 +114,7 @@ class ConfusionMatrix():
     def _print_results(self, scores):
         for table, table_name in self.prep_tables(scores):
             print('\n', AsciiTable(table, table_name).table, sep='')
-        print('Total acc: {:.4f}'.format(ConfusionMatrix._total_accuracy()))
+        print('Total acc: {:.4f}'.format(self._total_accuracy()))
 
     def print_cm(self):
         scores = self._get_scores()
@@ -136,13 +140,13 @@ class ConfusionMatrix():
         table = [['', 'norm. H', 'Precision', 'Recall', 'F1-Score']]
         for i, (name, values) in enumerate(scores.items()):
             # check if there is an entropy value comming (only for single type classes)
-            if i < len(names):
+            if not self.skip_uncertainty and i < len(names):
                 metrics = []
             else:
                 metrics = ['']
             metrics += ['{:.4f}'.format(s) for s in list(values.values())[3:]]  # [3:] to skip TP, FP, FN
             table.append([name] + metrics)
-            if i == (len(names) - 1) and len(scores > len(names)):
+            if i == (len(names) - 1) and len(scores) > len(names):
                 table.append([''] * 4)
         out.append((table, 'F1_summary'))
 
@@ -194,33 +198,48 @@ class ConfusionMatrixGenic(ConfusionMatrix):
 
 class Metrics():
 
-    def __init__(self, generator, print_to_stdout=True):
+    def __init__(self, generator, print_to_stdout=True, skip_uncertainty=True):
         np.set_printoptions(suppress=True)  # do not use scientific notation for the print out
         self.generator = generator
         self.print_to_stdout = print_to_stdout
-        self.cm_genic = ConfusionMatrixGenic()
-        self.cm_phase = ConfusionMatrix(['no phase', 'phase 0', 'phase 1', 'phase 2'])
+        self.skip_uncertainty = skip_uncertainty
+        self.cm_genic = ConfusionMatrixGenic(skip_uncertainty=self.skip_uncertainty)
+        self.cm_phase = ConfusionMatrix(['no_phase', 'phase_0', 'phase_1', 'phase_2'],
+                                        skip_uncertainty=self.skip_uncertainty)
+
+    def _overlap_all_data(batch_idx, y_true, y_pred, sw):
+        assert len(y_pred.shape) == 4, "this reshape assumes shape is " \
+                                       "(batch_size, chunk_size // pool, pool, label dim)" \
+                                       "and apparently it is time to fix that, shape is {}".format(y_pred.shape)
+        bs, cspool, pool, ydim = y_pred.shape
+        y_pred = y_pred.reshape([bs, cspool * pool, ydim])
+        y_pred = self.generator.ol_helper.overlap_predictions(batch_idx, y_pred)
+        y_pred = y_pred.reshape([-1, cspool, pool, ydim])
+        # edge handle sw & y_true (as done with y_pred and to restore 1:1 input output
+        sw = self.generator.ol_helper.subset_input(batch_idx, sw)
+        y_true = self.generator.ol_helper.subset_input(batch_idx, y_true)
+        return y_true, y_pred, sw
 
     def calculate_metrics(self, model):
         for batch_idx in range(len(self.generator)):
             print(batch_idx, '/', len(self.generator) - 1, end="\r")
 
-            y_pred_phase = None
             inputs = self.generator[batch_idx]
             if len(inputs) == 2 and type(inputs[0]) is list:
-                # dilated conv input scheme
+                mode = 'dialated_conv'
                 (X, sw), y_true = inputs
                 y_pred = model.predict_on_batch([X, sw])
             elif len(inputs) == 3:
                 if type(inputs[0]) is list:
-                    # correction model input scheme
+                    mode = 'correction'
                     (X, pred), y_true, sw = inputs
                     y_pred = model.predict_on_batch([X, pred])
                 elif type(inputs[1]) is list:
-                    # phase prediction input scheme
+                    mode = 'phase'
                     X, (y_true, y_true_phase), sw = inputs
                     y_pred, y_pred_phase = model.predict_on_batch(X)
                 else:
+                    mode = 'regular'
                     X, y_true, sw = inputs
                     y_pred = model.predict_on_batch(X)
             else:
@@ -228,27 +247,19 @@ class Metrics():
                 exit()
 
             data = {'genic_base_wise': [self.cm_genic, (y_true, y_pred)]}
-            if y_pred_phase:
+            if mode == 'phase':
                 data['phase_base_wise'] = [self.cm_phase, (y_true_phase, y_pred_phase)]
 
             all_scores = {}
-            for metric_name, (cm, (y_true, y_pred)) in data.items():
+            for _, (cm, (y_true, y_pred)) in data.items():
                 if self.generator.overlap:
-                    assert len(y_pred.shape) == 4, "this reshape assumes shape is " \
-                                                   "(batch_size, chunk_size // pool, pool, label dim)" \
-                                                   "and apparently it is time to fix that, shape is {}".format(y_pred.shape)
-                    bs, cspool, pool, ydim = y_pred.shape
-                    y_pred = y_pred.reshape([bs, cspool * pool, ydim])
-                    y_pred = self.generator.ol_helper.overlap_predictions(batch_idx, y_pred)
-                    y_pred = y_pred.reshape([-1, cspool, pool, ydim])
-                    # edge handle sw & y_true (as done with y_pred and to restore 1:1 input output
-                    sw = self.generator.ol_helper.subset_input(batch_idx, sw)
-                    y_true = self.generator.ol_helper.subset_input(batch_idx, y_true)
+                    y_true, y_pred, sw = self._overlap_all_data(batch_idx, y_true, y_pred, sw)
                 cm.count_and_calculate_one_batch(y_true, y_pred, sw)
 
-                scores = cm._get_scores()
-                if cm.print_to_stdout:
-                    cm._print_results(scores)
-                all_scores[metric_name] = scores
+        # data contains cms + metric
+        for metric_name, (cm, (_, _)) in data.items():
+            scores = cm._get_scores()
+            if self.print_to_stdout:
+                cm._print_results(scores)
+            all_scores[metric_name] = scores
         return all_scores
-

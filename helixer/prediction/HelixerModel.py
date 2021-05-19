@@ -29,7 +29,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import Sequence
 from tensorflow_addons.optimizers import AdamW
 
-from helixer.prediction.Metrics import ConfusionMatrix
+from helixer.prediction.Metrics import Metrics
 from helixer.core import overlap
 
 
@@ -45,12 +45,14 @@ class SaveEveryEpoch(Callback):
 
 
 class ConfusionMatrixTrain(Callback):
-    def __init__(self, save_model_path, train_generator, val_generator, large_eval_folder, patience, report_to_nni=False):
+    def __init__(self, save_model_path, train_generator, val_generator, large_eval_folder, patience, calc_H=False,
+                 report_to_nni=False):
         self.save_model_path = save_model_path
         self.train_generator = train_generator
         self.val_generator = val_generator
         self.large_eval_folder = large_eval_folder
         self.patience = patience
+        self.calc_H = calc_H
         self.report_to_nni = report_to_nni
         self.best_val_genic_f1 = 0.0
         self.epochs_without_improvement = 0
@@ -60,7 +62,7 @@ class ConfusionMatrixTrain(Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         print(f'training took {(time.time() - self.epoch_start) / 60:.2f}m')
-        _, _, val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, self.model)
+        _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, self.model, calc_H=calc_H)
         if self.report_to_nni:
             nni.report_intermediate_result(val_genic_f1)
         if val_genic_f1 > self.best_val_genic_f1:
@@ -80,7 +82,7 @@ class ConfusionMatrixTrain(Callback):
             best_model = load_model(self.save_model_path)
             # double check that we loaded the correct model, can be remove if confirmed this works
             print('\nValidation set again:')
-            _, _, val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, best_model, print_to_stdout=True)
+            _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, best_model, print_to_stdout=True, calc_H=calc_H)
             assert val_genic_f1 == self.best_val_genic_f1
 
             training_species = self.train_generator.h5_file.attrs['genomes']
@@ -366,6 +368,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
         self.parser.add_argument('--coverage-weights', action='store_true')
         self.parser.add_argument('--coverage-offset', type=float, default=0.0)
+        self.parser.add_argument('--calculate-uncertainty', action='store_true')
         self.parser.add_argument('--no-utrs', action='store_true')
         self.parser.add_argument('--predict-phase', action='store_true')
         self.parser.add_argument('--load-predictions', action='store_true')
@@ -430,7 +433,8 @@ class HelixerModel(ABC):
 
     def generate_callbacks(self, train_generator):
         callbacks = [ConfusionMatrixTrain(self.save_model_path, train_generator, self.gen_validation_data(),
-                                          self.large_eval_folder, self.patience, report_to_nni=self.nni)]
+                                          self.large_eval_folder, self.patience, calc_H=self.calculate_uncertainty,
+                                          report_to_nni=self.nni)]
         callbacks.append(PreshuffleCallback(train_generator))
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
@@ -461,18 +465,19 @@ class HelixerModel(ABC):
                            shuffle=False)
 
     @staticmethod
-    def run_confusion_matrix(generator, model, print_to_stdout=True):
+    def run_metrics(generator, model, print_to_stdout=True, calc_H=False):
         start = time.time()
-        metrics_calculator = Metrics(generator, print_to_stdout=print_to_stdout)
+        metrics_calculator = Metrics(generator, print_to_stdout=print_to_stdout,
+                                     skip_uncertainty=not calc_H)
         metrics = metrics_calculator.calculate_metrics(model)
         genic_metrics = metrics['genic_base_wise']['genic']
         if np.isnan(genic_metrics['f1']):
             genic_metrics['f1'] = 0.0
-        print('\ncm calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
+        print('\nmetrics calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
         return genic_metrics['precision'], genic_metrics['recall'], genic_metrics['f1']
 
     @staticmethod
-    def run_large_eval(folder, model, generator, training_species, print_to_stdout=False):
+    def run_large_eval(folder, model, generator, training_species, print_to_stdout=False, calc_H=False):
         def print_table(results, table_name, training_species):
             table = [['Name', 'Precision', 'Recall', 'F1-Score']]
             for name, values in results:
@@ -499,7 +504,7 @@ class HelixerModel(ABC):
             GenCls = generator.__class__
             gen = GenCls(model=generator.model, h5_file=h5_eval, mode='val',
                          batch_size=adjusted_batch_size, shuffle=False)
-            perf_one_species = HelixerModel.run_confusion_matrix(gen, model, print_to_stdout=print_to_stdout)
+            perf_one_species = HelixerModel.run_metrics(gen, model, print_to_stdout=print_to_stdout, calc_H=calc_H)
             results.append([species_name, perf_one_species])
         # print results in tables sorted alphabetically and by f1
         results_by_name = sorted(results, key=lambda r: r[0])
@@ -734,12 +739,12 @@ class HelixerModel(ABC):
 
             if self.eval:
                 test_generator = self.gen_test_data()
-                _, _, _ = HelixerModel.run_confusion_matrix(test_generator, model)
+                _, _, _ = HelixerModel.run_metrics(test_generator, model, calc_H=self.calculate_uncertainty)
                 if self.large_eval_folder:
                     assert self.data_dir != '', 'need training data of the model for training genome names'
                     training_species = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r').attrs['genomes']
                     _ = HelixerModel.run_large_eval(self.large_eval_folder, model, test_generator, training_species,
-                                                    print_to_stdout=True)
+                                                    print_to_stdout=True, calc_H=self.calculate_uncertainty)
             else:
                 if os.path.isfile(self.prediction_output_path):
                     print(f'{self.prediction_output_path} already exists and will be overwritten.')
