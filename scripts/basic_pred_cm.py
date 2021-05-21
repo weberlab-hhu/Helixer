@@ -6,10 +6,10 @@ import h5py
 import argparse
 import numpy as np
 import sys
-from helixer.prediction.ConfusionMatrix import ConfusionMatrix as ConfusionMatrix
+from helixer.prediction.Metrics import ConfusionMatrixGenic
 
 
-def main(h5_file,  preds_file=None, predictions_dataset='predictions', ground_truth_dataset='data/y'):
+def main(h5_file, preds_file=None, predictions_dataset='predictions', ground_truth_dataset='data/y'):
     h5_data = h5py.File(h5_file, 'r')
     if preds_file is not None:
         h5_pred = h5py.File(preds_file, 'r')
@@ -29,13 +29,13 @@ def main(h5_file,  preds_file=None, predictions_dataset='predictions', ground_tr
     print(f'Using chunk size {chunk_size}', file=sys.stderr)
 
     n_seqs = int(np.ceil(y_true.shape[0] / chunk_size))
-    cm = ConfusionMatrix(None)
+    cm = ConfusionMatrixGenic(None)
     for i in range(n_seqs):
         print(i, '/', n_seqs, end='\r', file=sys.stderr)
         cm.count_and_calculate_one_batch(y_true[i * chunk_size: (i + 1) * chunk_size],
                                          y_pred[i * chunk_size: (i + 1) * chunk_size],
                                          sw[i * chunk_size: (i + 1) * chunk_size])
-    scores = cm._get_composite_scores()
+    scores = cm._get_scores()
     cm.print_cm()
 
 
