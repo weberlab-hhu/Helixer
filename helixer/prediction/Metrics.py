@@ -6,15 +6,17 @@ from terminaltables import AsciiTable
 from scipy.sparse import coo_matrix
 
 
-class ConfusionMatrix():
+class ConfusionMatrix:
 
-    def __init__(self, col_names=['ig', 'utr', 'exon', 'intron'], skip_uncertainty=True):
-        self.col_names = {i:name for i, name in enumerate(col_names)}
+    def __init__(self, col_names=None, skip_uncertainty=True):
+        if col_names is None:
+            col_names = ['ig', 'utr', 'exon', 'intron']
+        self.col_names = {i: name for i, name in enumerate(col_names)}
         self.skip_uncertainty = skip_uncertainty
         self.n_classes = len(self.col_names)
         self.cm = np.zeros((self.n_classes, self.n_classes), dtype=np.uint64)
         if not self.skip_uncertainty:
-            self.uncertainties = {col_name:list() for col_name in self.col_names.values()}
+            self.uncertainties = {col_name: list() for col_name in self.col_names.values()}
             self.max_uncertainty = -sum([e * np.log2(e) for e in [1 / self.n_classes] * self.n_classes])
 
     @staticmethod
@@ -40,7 +42,7 @@ class ConfusionMatrix():
             # https://github.com/scikit-learn/scikit-learn/blob/
             # 42aff4e2edd8e8887478f6ff1628f27de97be6a3/sklearn/metrics/_classification.py#L342
             cm_batch = coo_matrix((np.ones(y_true.shape[0], dtype=np.int8), (y_true, y_pred)),
-                                   shape=(4, 4), dtype=np.uint32).toarray()
+                                  shape=(self.n_classes, self.n_classes), dtype=np.uint32).toarray()
             self.cm += cm_batch
 
     def _add_to_uncertainty(self, y_true, y_pred):
@@ -97,10 +99,10 @@ class ConfusionMatrix():
     def _get_scores(self):
         scores = defaultdict(dict)
         # single column metrics
-        for col in range(4):
+        for col in range(self.n_classes):
             name = self.col_names[col]
             d = scores[name]
-            not_col = np.arange(4) != col
+            not_col = np.arange(self.n_classes) != col
             d['TP'] = self.cm[col, col]
             d['FP'] = np.sum(self.cm[not_col, col])
             d['FN'] = np.sum(self.cm[col, not_col])
