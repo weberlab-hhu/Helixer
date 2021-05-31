@@ -896,16 +896,16 @@ def test_featureless_filter():
 
 def test_phases():
     """Tests the output of phase, which should be encoded for every cds base"""
-    def check_phase_in_cds(phases, introns, is_plus):
+    def check_phase_in_cds(phases, introns, is_plus, phase=0):
         assert np.all(phases[introns][:, 0] == 1)  # if there is no phase in introns
         coding_phases = phases[~introns]
         # a bit dumb but fool proof way to test phase encoding, different from phase generation
         for i, phase_enc in enumerate(coding_phases):
-            if i % 3 == 0:
+            if (i + phase) % 3 == 0:
                 assert phase_enc[1] == 1
-            elif i % 3 == 1:
+            elif (i + phase) % 3 == 1:
                 assert phase_enc[3] == 1
-            elif i % 3 == 2:
+            elif (i + phase) % 3 == 2:
                 assert phase_enc[2] == 1
 
     _, controller, _ = setup_dummyloci()
@@ -935,8 +935,9 @@ def test_phases():
         (3, slice(chunk_3_len - 1725, chunk_3_len - 1574)),
     ]
 
-    for region in cds_regions_plus:
-        check_phase_in_cds(ph[region], y[region][..., 3].astype(np.bool), True)
+    for i, region in enumerate(cds_regions_plus):
+        phase = 0 if i != 3 else 1  # the 4th cds region has phase 1
+        check_phase_in_cds(ph[region], y[region][..., 3].astype(np.bool), True, phase)
     for region in cds_regions_minus:
         check_phase_in_cds(ph[region], y[region][..., 3].astype(np.bool), False)
 

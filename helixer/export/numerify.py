@@ -240,7 +240,10 @@ class AnnotationNumerifier(Numerifier):
             cds_idx = np.logical_not(self.matrix[start:end, 2])
             cds_len = np.count_nonzero(cds_idx)
             # generate for full codons, truncate later if mismatched_ending_phase error
-            cds_phase = np.tile(np.array([1, 3, 2], dtype=np.int8), int(np.ceil(cds_len / 3)))
+            phase_base = np.array([1, 3, 2], dtype=np.int8)
+            if cds_feature.phase != 0:
+                phase_base = np.roll(phase_base, 3 - cds_feature.phase)
+            cds_phase = np.tile(phase_base, int(np.ceil(cds_len / 3)))
             if not is_plus_strand:
                 cds_phase = cds_phase[::-1]
             cds_phase_one_hot = np.squeeze(np.eye(4, dtype=np.int8)[cds_phase])
