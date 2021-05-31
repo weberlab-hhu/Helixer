@@ -971,6 +971,7 @@ def setup_feature_transitions():
                                                  type=geenuff.types.GEENUFF_CDS,
                                                  start_is_biological_start=True,
                                                  end_is_biological_end=True,
+                                                 phase=0,
                                                  coordinate=coord)
     transcript_feature_intron1 = geenuff.orm.Feature(start=221,
                                                      end=311,
