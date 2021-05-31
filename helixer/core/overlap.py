@@ -136,9 +136,9 @@ class OverlapSeqHelper(object):
         assert overlap_offset > 0
 
         # contiguous ranges should be created by .helpers.get_contiguous_ranges
-        self.sliding_batches = self._mk_sliding_batches(contiguous_ranges=contiguous_ranges)
+        self.sliding_batches = self._mk_sliding_batches(contiguous_ranges=contiguous_ranges, chunk_size=chunk_size, overlap_offset=overlap_offset)
 
-    def _mk_sliding_batches(self, contiguous_ranges):
+    def _mk_sliding_batches(self, contiguous_ranges, chunk_size, overlap_offset):
         max_n_chunks = _n_ori_chunks_from_batch_chunks(self.max_batch_size, self.overlap_depth)
         step = max_n_chunks - 2   # -2 bc ends will be cropped
         # most of these will effectively be final batches, but short seqs/ends may be grouped together (for efficiency)
@@ -158,7 +158,8 @@ class OverlapSeqHelper(object):
                              edge_handle_start=sub_batch_start == crange['start_i'],
                              edge_handle_end=i + step + 1 > crange['end_i'],
                              keep_start=keep_start,
-                             keep_end=keep_end)
+                             keep_end=keep_end,
+                             overlap_offset=overlap_offset, chunk_size=chunk_size)
                 )
 
         # group into final batches, so as to keep total size <= max_batch_size
