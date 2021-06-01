@@ -1,6 +1,9 @@
 """convert cleaned-db schema to numeric values describing gene structure"""
 import time
+
+import geenuff.base.types
 import numpy as np
+import math
 import logging
 import multiprocess
 from abc import ABC, abstractmethod
@@ -488,7 +491,7 @@ class SplitFinder:
 
     def _find_splits(self):
         """yields splits of ~write_by size that can be safely split at"""
-        tr_mask = self._transition_mask()
+        tr_mask = self._transition_and_split_cds_mask()
         for i in range(self.write_by, self.coord_length, self.write_by):
             if i not in tr_mask:
                 yield i
@@ -499,13 +502,27 @@ class SplitFinder:
                         break
         yield self.coord_length
 
-    def _transition_mask(self):
+    def _transition_and_split_cds_mask(self):
         """mark all possible splits where there is a transition, so splitting there would change the numerify results"""
         tr_mask = set()
         for feature in self.features:
-            for tr in self._plus_strand_transitions(feature):
+            # avoid splitting exactly at transitions, as transitions are dected by
+            # state change (of binary encoding) and you can't detect state-change
+            # if you split at it
+            f_start, f_end = self._plus_strand_transitions(feature)
+            for tr in (f_start, f_end):
                 if not tr % self.chunk_size:
                     tr_mask.add(tr)
+            # also avoid splitting in the middle of a CDS, this is necessary to
+            # simplify the encoding of phase / avoid painful edge cases
+            # this should add all chunk ends with a CDS to the mask
+            cs = self.chunk_size
+            if feature.type.value == geenuff.base.types.GEENUFF_CDS:
+                round_start = math.ceil(f_start / cs)
+                round_end = math.ceil(f_end / cs)
+                for chunk_end in range(round_start * cs, round_end * cs, cs):
+                    tr_mask.add(chunk_end)
+
         return tr_mask
 
     @staticmethod
@@ -513,4 +530,4 @@ class SplitFinder:
         if feature.is_plus_strand:
             return feature.start, feature.end
         else:
-            return feature.start - 1, feature.end - 1
+            return feature.end - 1, feature.start - 1
