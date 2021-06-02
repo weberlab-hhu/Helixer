@@ -21,10 +21,12 @@ def main(args):
         match_existing = False
         h5_group = '/data/'
 
+    write_by = round(args.write_by / args.chunk_size) * args.chunk_size
+
     controller = HelixerExportController(args.main_db_path, args.out_dir, not args.split_into_train_val,
                                          match_existing=match_existing, h5_group=h5_group)
     controller.export(chunk_size=args.chunk_size, genomes=args.genomes, val_size=args.val_size,
-                      keep_featureless=not args.exclude_featureless, write_by=args.write_by, modes=modes,
+                      keep_featureless=not args.exclude_featureless, write_by=write_by, modes=modes,
                       multiprocess=not args.no_multiprocess)
 
 
@@ -62,7 +64,7 @@ if __name__ == '__main__':
                            'you are adding an additional annotation set to an existing file.')
     data.add_argument('--write-by', type=int, default=10_000_000_000,
                       help='write in super-chunks with this many bp, '
-                           'must be divisible by chunk-size')
+                           'will be rounded to be divisible by chunk-size')
     data.add_argument('--no-multiprocess', action='store_true',
                       help='Whether to parallize numerification of large sequences. Uses 2x the memory.')
 
