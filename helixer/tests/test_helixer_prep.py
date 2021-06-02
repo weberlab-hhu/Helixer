@@ -1328,6 +1328,21 @@ def test_ol_identical_preds_return_ori():
     assert np.allclose(fin_preds, x_dset)
 
 
+def test_ol_indivisible_chunksize():
+    """confirms input -> output holds for overlap offsets that don't divide chunksize"""
+    x_dsets = [np.random.rand(16, 20000, 4) for _ in range(10)]
+    indices_to_test = [(0,), (1,), (4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
+                       (1, 2), (3, 4, 5), (6, 7, 8, 9, 10, 11), tuple(range(8))]
+    for x_dset in x_dsets:
+        for indices in indices_to_test:
+            for core_length in [8000, 20000]:
+                for oo in [3000, 4245, 6000]:
+                    sb = overlap.SubBatch(h5_indices=indices, overlap_offset=oo, chunk_size=20000)
+                    # just checking identity, doesn't matter whether we actually have preds
+                    raw_preds = sb.mk_sliding_overlaps_for_data_sub_batch(data_sub_batch=x_dset[np.array(sb.h5_indices)])
+                    expect = x_dset[np.array(indices)]
+                    assert np.allclose(expect, sb._overlap_preds(raw_preds, core_length=core_length))
+
 def test_ol_pred_overlap_and_weighting():
     sb = overlap.SubBatch(h5_indices=(0, 1),
                           overlap_offset=5000, chunk_size=20000)

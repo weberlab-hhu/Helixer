@@ -695,7 +695,7 @@ class HelixerModel(ABC):
                 self.loaded_model_hash = subprocess.check_output(cmd).strip().decode()
                 print(f'Md5sum of the loaded model: {self.loaded_model_hash}')
         except subprocess.CalledProcessError:
-            print('An error occured while running a subprocess')
+            print('An error occurred while running a subprocess, unable to record loaded_model_hash')
             self.loaded_model_hash = 'error'
 
         print()
