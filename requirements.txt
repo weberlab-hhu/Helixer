@@ -7,7 +7,6 @@ Keras==2.4.3
 terminaltables
 HTSeq
 intervaltree
-sqlalchemy
 numpy
 h5py
 multiprocess
