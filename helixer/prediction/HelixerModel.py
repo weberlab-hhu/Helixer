@@ -62,7 +62,7 @@ class ConfusionMatrixTrain(Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         print(f'training took {(time.time() - self.epoch_start) / 60:.2f}m')
-        _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, self.model, calc_H=calc_H)
+        _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, self.model, calc_H=self.calc_H)
         if self.report_to_nni:
             nni.report_intermediate_result(val_genic_f1)
         if val_genic_f1 > self.best_val_genic_f1:
