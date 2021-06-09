@@ -26,11 +26,11 @@ def main(args):
         controller = HelixerExportController(args.main_db_path, args.output_path, match_existing=match_existing,
                                              h5_group=h5_group)
         controller.export(chunk_size=args.chunk_size, genomes=genomes, write_by=write_by, modes=modes,
-                          multiprocess=not args.no_multiprocess)
+                          compression=args.compression, multiprocess=not args.no_multiprocess)
     else:
         controller = HelixerFastaToH5Controller(args.direct_fasta_to_h5_path, args.output_path)
         controller.export_fasta_to_h5(chunk_size=args.chunk_size, genome=genomes[0],
-                                      multiprocess=not args.no_multiprocess)
+                                      compression=args.compression, multiprocess=not args.no_multiprocess)
 
 
 if __name__ == '__main__':
@@ -62,6 +62,8 @@ if __name__ == '__main__':
     data.add_argument('--write-by', type=int, default=10_000_000_000,
                       help='write in super-chunks with this many bp, '
                            'will be rounded to be divisible by chunk-size')
+    data.add_argument('--compression', type=str, default='gzip', choices=['gzip', 'lzf'],
+                      help='Compression algorithm used for the .h5 output files compression level is set as 4.')
     data.add_argument('--no-multiprocess', action='store_true',
                       help='Whether to parallize numerification of large sequences. Uses 2x the memory.')
     args = parser.parse_args()

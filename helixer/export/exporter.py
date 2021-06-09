@@ -38,7 +38,7 @@ class HelixerExportControllerBase(object):
         return n_chunks
 
     @staticmethod
-    def _create_dataset(h5_file, key, matrix, dtype, create_empty=True):
+    def _create_dataset(h5_file, key, matrix, dtype, compression='gzip', create_empty=True):
         shape = list(matrix.shape)
         shuffle = len(shape) > 1
         if create_empty:
@@ -48,24 +48,25 @@ class HelixerExportControllerBase(object):
                                maxshape=tuple([None] + shape[1:]),
                                chunks=tuple([1] + shape[1:]),
                                dtype=dtype,
-                               compression='gzip',
+                               compression=compression,
                                shuffle=shuffle)  # only for the compression
 
-    def _create_or_expand_datasets(self, h5_group, flat_data, n_chunks):
+    def _create_or_expand_datasets(self, h5_group, flat_data, n_chunks, compression='gzip'):
         if h5_group not in self.h5 or len(self.h5[h5_group].keys()) == 0:
             for mat_info in flat_data:
-                self._create_dataset(self.h5, h5_group + mat_info.key, mat_info.matrix, mat_info.dtype)
+                self._create_dataset(self.h5, h5_group + mat_info.key, mat_info.matrix, mat_info.dtype, compression)
 
         old_len = self.h5[h5_group + flat_data[0].key].shape[0]
         self.h5_coord_offset = old_len
         for mat_info in flat_data:
             self.h5[h5_group + mat_info.key].resize(old_len + n_chunks, axis=0)
 
-    def _save_data(self, flat_data, h5_coords, n_chunks, first_round_for_coordinate, h5_group='/data/'):
+    def _save_data(self, flat_data, h5_coords, n_chunks, first_round_for_coordinate, compression='gzip',
+                   h5_group='/data/'):
         assert len(set(mat_info.matrix.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
 
         if first_round_for_coordinate:
-            self._create_or_expand_datasets(h5_group, flat_data, n_chunks)
+            self._create_or_expand_datasets(h5_group, flat_data, n_chunks, compression)
 
         # h5_coords are relative for the coordinate/chromosome, so offset by previous length
         old_len = self.h5_coord_offset
@@ -143,7 +144,7 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
         def __repr__(self):
             return f'Fasta only Coordinate (seqid: {self.seqid}, len: {self.length})'
 
-    def export_fasta_to_h5(self, chunk_size, genome, multiprocess):
+    def export_fasta_to_h5(self, chunk_size, genome, compression, multiprocess):
         fasta_importer = FastaImporter(genome)
         fasta_seqs = fasta_importer.parse_fasta(self.input_path)
         self.h5 = h5py.File(self.output_path, 'w')
@@ -157,7 +158,7 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
             data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, genome, multiprocess=multiprocess)
             for j, data in enumerate(data_gen):
                 self._save_data(data, h5_coords=(0, len(data[0].matrix)), n_chunks=n_chunks,
-                                first_round_for_coordinate=(j == 0))
+                                first_round_for_coordinate=(j == 0), compression=compression)
             print(f'{i + 1} Numerified {coord} of {genome} in {time.time() - start_time:.2f} secs', end='\n\n')
         self._add_data_attrs([genome])
         self.h5.close()
@@ -287,7 +288,7 @@ class HelixerExportController(HelixerExportControllerBase):
             yield coord_data, coord, masked_bases_perc, ig_bases_perc, h5_coord
 
     def export(self, chunk_size, genomes, one_hot=True, all_transcripts=False, write_by=10_000_000_000,
-               modes=('X', 'y', 'anno_meta', 'transitions'), multiprocess=True):
+               modes=('X', 'y', 'anno_meta', 'transitions'), compression='gzip', multiprocess=True):
         genome_coord_features = {genome_name: self.exporters[genome_name].genome_query(all_transcripts=all_transcripts)
                                  for genome_name in genomes}
         # make version without features for shorter downstream code
@@ -315,11 +316,9 @@ class HelixerExportController(HelixerExportControllerBase):
                 numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size, one_hot, write_by=write_by,
                                                         modes=modes, multiprocess=multiprocess)
 
-                first_round_for_coordinate = True
-                for flat_data, coord, masked_bases_perc, ig_bases_perc, h5_coord in numerify_outputs:
-                    self._save_data(flat_data, h5_coords=h5_coord, n_chunks=n_chunks,
-                                    first_round_for_coordinate=first_round_for_coordinate, h5_group=self.h5_group)
-                    first_round_for_coordinate = False
+                for i, (flat_data, coord, masked_bases_perc, ig_bases_perc, h5_coord) in enumerate(numerify_outputs):
+                    self._save_data(flat_data, h5_coords=h5_coord, n_chunks=n_chunks, first_round_for_coordinate=(i == 0),
+                                    compression=compression, h5_group=self.h5_group)
                     n_writing_chunks += 1
 
                 print(f'{n_coords_done}/{n_coords} Numerified {coord} of {genome_name} '
