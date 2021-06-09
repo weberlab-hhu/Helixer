@@ -323,6 +323,38 @@ class CoordNumerifier(object):
         return padded_d
 
     @staticmethod
+    def start_ends(numerifier, strand):
+        assert isinstance(numerifier, Numerifier)
+        if strand == 'plus':
+            start_ends = numerifier.paired_steps
+        else:
+            # flip the start ends back for - strand
+            start_ends = [(x[1], x[0]) for x in numerifier.paired_steps[::-1]]
+        start_ends = np.array(start_ends, dtype=np.int64)
+        return start_ends
+
+    @staticmethod
+    def seq_matinfos(coord, genome, start_ends, length):
+        res = [MatAndInfo('species', np.array([genome.encode('ASCII')] * length), 'S25'),
+               MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * length), 'S50'),
+               MatAndInfo('start_ends', start_ends, 'int64')]
+        return res
+
+    @staticmethod
+    def numerify_only_fasta(coord, max_len, genome, one_hot=True, multiprocess=False):
+        """Extra function to just export the FASTA sequence to avoid littering other functions with many
+        if statements. Bypasses super chunk writing as it is not needed for only the sequence"""
+        seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=0, end=None,
+                                            multiprocess=multiprocess)
+        xb = seq_numerifier.coord_to_matrices()
+        for strand in ['plus', 'minus']:
+            x = CoordNumerifier.pad(xb[strand], max_len)
+            start_ends = CoordNumerifier.start_ends(seq_numerifier, strand)
+            out = [MatAndInfo('X', x, 'float16')]
+            out.extend(CoordNumerifier.seq_matinfos(coord, genome, start_ends, len(x)))
+            yield tuple(out)
+
+    @staticmethod
     def numerify(coord, coord_features, max_len, one_hot=True, mode=('X', 'y', 'anno_meta', 'transitions'),
                  write_by=5000000, multiprocess=True):
         assert isinstance(max_len, int) and max_len > 0, 'what is {} of type {}'.format(max_len, type(max_len))
@@ -335,8 +367,8 @@ class CoordNumerifier(object):
                 yield strand_res
 
     @staticmethod
-    def _numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len, one_hot,
-                                    coord_features, mode, multiprocess):
+    def _numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len, one_hot, coord_features, mode,
+                                    multiprocess):
         export_x = 'X' in mode
         start, end = bp_coord
 
@@ -359,14 +391,8 @@ class CoordNumerifier(object):
                                                            gene_lengthsb[strand],
                                                            phasessb[strand],
                                                            transitionsb[strand]])
-            # todo, move to be part of anno numerifier??
-            if strand == 'plus':
-                start_ends = anno_numerifier.paired_steps
-            else:
-                # flip the start ends back for - strand
-                start_ends = [(x[1], x[0]) for x in anno_numerifier.paired_steps[::-1]]
-            start_ends = np.array(start_ends, dtype=np.int64)
-            start_ends += bp_coord[0]
+            start_ends = CoordNumerifier.start_ends(anno_numerifier, strand)
+            start_ends += start
 
             # mark examples from featureless coordinate / assume there is no trustworthy annotation
             if not coord_features:
@@ -392,10 +418,8 @@ class CoordNumerifier(object):
                    MatAndInfo('transitions', transitions, 'int8'),
                    MatAndInfo('err_samples', err_samples, 'bool'),
                    MatAndInfo('fully_intergenic_samples', fully_intergenic_samples,  'bool'),
-                   MatAndInfo('species', np.array([coord.genome.species.encode('ASCII')] * len(y)), 'S25'),
-                   MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(y)), 'S50'),
-                   MatAndInfo('start_ends', start_ends, 'int64'),
                    MatAndInfo('is_annotated', is_annotated, 'bool')]
+            out.extend(CoordNumerifier.seq_matinfos(coord, coord.genome.species, start_ends, len(y)))
             if export_x:
                 out.append(MatAndInfo('X', x, 'float16'))
             out = tuple(out)
