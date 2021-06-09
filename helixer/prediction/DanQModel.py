@@ -19,24 +19,24 @@ class DanQSequence(HelixerSequence):
         pool_size = self.model.pool_size
 
         if pool_size > 1:
-            if y.shape[1] % pool_size != 0:
+            if X.shape[1] % pool_size != 0:
                 # clip to maximum size possible with the pooling length
                 overhang = y.shape[1] % pool_size
                 X = X[:, :-overhang]
-                y = y[:, :-overhang]
-                sw = sw[:, :-overhang]
-                if self.predict_phase:
-                    phases = phases[:, :-overhang]
-                if self.mode == 'train' and self.transition_weights is not None:
-                    transitions = transitions[:, :-overhang]
+                if not self.only_predictions:
+                    y = y[:, :-overhang]
+                    sw = sw[:, :-overhang]
+                    if self.predict_phase:
+                        phases = phases[:, :-overhang]
+                    if self.mode == 'train' and self.transition_weights is not None:
+                        transitions = transitions[:, :-overhang]
 
-            y = self._mk_timestep_pools_class_last(y)
-
-            sw = sw.reshape((sw.shape[0], -1, pool_size))
-            sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
+            if not self.only_predictions:
+                y = self._mk_timestep_pools_class_last(y)
+                sw = sw.reshape((sw.shape[0], -1, pool_size))
+                sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
 
             if self.mode == 'train':
-
                 if self.class_weights is not None:
                     # class weights are additive for the individual timestep predictions
                     # giving even more weight to transition points
@@ -64,11 +64,14 @@ class DanQSequence(HelixerSequence):
                     coverage_scores = np.mean(coverage_scores, axis=2)
                     sw = np.multiply(coverage_scores, sw)
 
-            if self.predict_phase:
+            if self.predict_phase and not self.only_predictions:
                 y_phase = self._mk_timestep_pools_class_last(phases)
                 y = [y, y_phase]
 
-        return X, y, sw
+        if self.only_predictions:
+            return X
+        else:
+            return X, y, sw
 
 
 class DanQModel(HelixerModel):

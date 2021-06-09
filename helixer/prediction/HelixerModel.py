@@ -115,28 +115,33 @@ class HelixerSequence(Sequence):
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
                                  'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
-                                 'no_utrs', 'predict_phase', 'load_predictions', 'debug'])
-        x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
+                                 'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
+
+        print(f'\nStarting to load {self.mode} data into memory..')
+        x_dset = h5_file['data/X']
+        print(f'X shape: {x_dset.shape}')
+        if not self.only_predictions:
+            y_dset = h5_file['data/y']
+            print(f'y shape: {y_dset.shape}')
+
         if self.debug:
             self.n_seqs = 1000
         else:
-            self.n_seqs = y_dset.shape[0]
-        self.chunk_size = y_dset.shape[1]
+            self.n_seqs = x_dset.shape[0]
+        self.chunk_size = x_dset.shape[1]
 
-        print(f'\nStarting to load {self.mode} data into memory..')
-        print(f'X shape: {x_dset.shape}')
-        print(f'y shape: {y_dset.shape}')
-
-        self.data_list_names = ['data/X', 'data/y', 'data/sample_weights']
-        if self.load_predictions:
-            self.data_list_names.append('data/predictions')
-        if self.predict_phase:
-            self.data_list_names.append('data/phases')
-        if self.mode == 'train':
-            if self.transition_weights is not None:
-                self.data_list_names.append('data/transitions')
-            if self.coverage_weights:
-                self.data_list_names.append('scores/by_bp')
+        self.data_list_names = ['data/X']
+        if not self.only_predictions:
+            self.data_list_names += ['data/y', 'data/sample_weights']
+            if self.load_predictions:
+                self.data_list_names.append('data/predictions')
+            if self.predict_phase:
+                self.data_list_names.append('data/phases')
+            if self.mode == 'train':
+                if self.transition_weights is not None:
+                    self.data_list_names.append('data/transitions')
+                if self.coverage_weights:
+                    self.data_list_names.append('scores/by_bp')
 
         if self.overlap:
             assert self.mode == "test", "overlapping currently only works for test (predictions & eval)"
@@ -147,7 +152,7 @@ class HelixerSequence(Sequence):
                                                       overlap_offset=self.overlap_offset,
                                                       core_length=self.core_length)
 
-        if self.input_coverage:
+        if self.input_coverage and not self.only_predictions:
             self.data_list_names += ['evaluation/coverage', 'evaluation/spliced_coverage']
 
         self.data_lists = [[] for _ in range(len(self.data_list_names))]
@@ -399,6 +404,7 @@ class HelixerModel(ABC):
         args = vars(self.parser.parse_args())
         self.__dict__.update(args)
         self.testing = bool(self.load_model_path and not self.resume_training)
+        self.only_predictions = (self.testing and not self.eval)  # do only load X in this case
         assert not (not self.testing and self.test_data)
         assert not (self.resume_training and (not self.load_model_path or not self.data_dir))
 
@@ -617,7 +623,11 @@ class HelixerModel(ABC):
         for batch_index in range(len(test_sequence)):
             if self.verbose:
                 print(batch_index, '/', len(test_sequence), end='\r')
-            predictions = model.predict_on_batch(test_sequence[batch_index][0])
+            if not self.only_predictions:
+                input_data = test_sequence[batch_index][0]
+            else:
+                input_data = test_sequence[batch_index]
+            predictions = model.predict_on_batch(input_data)
             if isinstance(predictions, list):
                 # when we have two outputs, one is for phase
                 output_names = ['predictions', 'predictions_phase']
