@@ -14,7 +14,7 @@ def main(args):
     else:
         modes = tuple(args.modes.split(','))
 
-    if args.add_additional is not None:
+    if args.add_additional:
         match_existing = True
         h5_group = '/alternative/' + args.add_additional + '/'
     else:
