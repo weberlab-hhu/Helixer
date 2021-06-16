@@ -60,7 +60,6 @@ class Numerifier(ABC):
         self.max_len = max_len
         self.dtype = dtype
         self.matrix = None
-        self.error_mask = None
         self.start = start
         self.end = end
         self.length = self.end - self.start
@@ -91,8 +90,6 @@ class Numerifier(ABC):
 
     def _zero_matrix(self):
         self.matrix = np.zeros((self.length, self.n_cols,), self.dtype)
-        # 0 means error so this can be used directly as sample weight later on
-        self.error_mask = np.ones((self.length,), np.int8)
 
 
 class SequenceNumerifier(Numerifier):
@@ -164,6 +161,12 @@ class AnnotationNumerifier(Numerifier):
         self.features = features
         self.one_hot = one_hot
         self.coord = coord
+        self.error_mask = None
+
+    def _zero_matrix(self):
+        super()._zero_matrix()
+        # 0 means error so this can be used directly as sample weight later on
+        self.error_mask = np.ones((self.length,), np.int8)
 
     def _init_additional_data(self):
         self.gene_lengths = np.zeros(self.length, dtype=np.uint32)
