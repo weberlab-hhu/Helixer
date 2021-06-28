@@ -4,21 +4,21 @@
 
 import numpy as np
 import math
+import sys
 
 
-def _n_ori_chunks_from_batch_chunks(max_batch_size=32, overlap_depth=4):
-    """calculate max number of original (non overlapped) chunks that fit in overlapped batch_size (or remaining)"""
-    # batch_size_out = 1 + (n_chunks - 1) * overlap_depth
-    # max_batch_size > 1 + (n_chunks - 1) * overlap_depth
-    # (max_batch_size - 1) / overlap_depth  + 1 > n_chunks
-    max_n_chunks = (max_batch_size - 1) // overlap_depth + 1
-    return max_n_chunks
+def _n_ori_chunks_from_batch_chunks(max_batch_size=32, overlap_offset=5000, chunk_size=20000):
+    """check max number of original (non overlapped) chunks that fit in overlapped batch_size (or remaining)"""
+    # this is going to be empirical for A simplicity and B maintainability
+    end = 0
+    empirical_bs = 0
+    while empirical_bs <= max_batch_size:
+        end += 1
+        sb = SubBatch(tuple(range(end)),
+                      overlap_offset=overlap_offset, chunk_size=chunk_size)
+        empirical_bs = sb.sub_batch_size
 
-
-def _n_batch_from_ori_chunks(n_chunks=8, overlap_depth=4):
-    """calculates resulting batch size from given number of contiguous original sequence chunks"""
-    # batch_size_out = 1 + (n_chunks - 1) * overlap_depth
-    return 1 + (n_chunks - 1) * overlap_depth
+    return end - 1  # the while loop only breaks _after_ overshooting max
 
 
 class SubBatch:
@@ -34,9 +34,11 @@ class SubBatch:
         self.edge_handle_start = edge_handle_start
         self.edge_handle_end = edge_handle_end
         self.is_plus_strand = is_plus_strand
-        self.overlap_depth = math.ceil(chunk_size / overlap_offset)  # todo, test user settings once, not here
+        self.overlap_depth = math.ceil(chunk_size / overlap_offset)
         self.overlap_offset = overlap_offset
         self.chunk_size = chunk_size
+        self.sliding_coordinates = self._mk_sliding_coordinates()
+        self.sub_batch_size = len(self.sliding_coordinates)
 
     def __repr__(self):
         sstr, estr = '(', ')'
@@ -52,19 +54,25 @@ class SubBatch:
     def seq_length(self):
         return self.chunk_size * len(self.h5_indices)
 
-    @property
-    def sub_batch_size(self):
-        return _n_batch_from_ori_chunks(len(self.h5_indices), self.overlap_depth)
-
-    def sliding_coordinates(self):
+    def _mk_sliding_coordinates(self):
+        out = []
         for i in range(0, self.seq_length - self.chunk_size + 1, self.overlap_offset):
-            yield i, i + self.chunk_size
+            out.append((i, i + self.chunk_size))
+        # add one final one for special case with uneven fit
+        # [chunkCHUNK] with offset 3 characters
+        # [00000     ]
+        #     11111  ]
+        #        2222]2   <--- not this X
+        #       22222]    <--- but this :-)
+        if out[-1][1] < self.seq_length:
+            out.append((self.seq_length - self.chunk_size, self.seq_length))
+        return tuple(out)
 
     def mk_sliding_overlaps_for_data_sub_batch(self, data_sub_batch):
         """makes sliding window of input data (x, or coverage data)"""
         # combine first 2 dimensions (i.e. merge chunks)
         dat = data_sub_batch.reshape([np.prod(data_sub_batch.shape[:2])] + list(data_sub_batch.shape[2:]))
-        sliding_dat = [dat[start:end] for start, end in self.sliding_coordinates()]
+        sliding_dat = [dat[start:end] for start, end in self.sliding_coordinates]
         return sliding_dat
 
     def _overlap_preds(self, preds, core_length=10000):
@@ -77,9 +85,8 @@ class SubBatch:
         counts = np.zeros(shape=(self.seq_length, 1))
 
         len_preds = len(preds)
-        for i, chunk, start_end in zip(range(len_preds), preds, self.sliding_coordinates()):
+        for i, chunk, start_end in zip(range(len_preds), preds, self.sliding_coordinates):
             start, end = start_end
-            #print('pre trim chunk shape is ', chunk.shape, )
             # cut to core, (but not sequence ends)
             if trim_by > 0:
                 if i > 0:  # all except first seq
@@ -93,7 +100,6 @@ class SubBatch:
                     trim_by, core_length, chunk.shape[0]))
             sub_counts = counts[start:end]
             # average weighted by number of predictions counted at position so far
-            #print(start, end, sub_counts.shape, chunk.shape, trim_by, f"counts shape is {counts.shape}")
             preds_out[start:end] = (preds_out[start:end] * sub_counts + chunk) / (sub_counts + 1)
             # increment counted so far
             counts[start:end] += 1
@@ -125,21 +131,24 @@ class OverlapSeqHelper(object):
         # check validity of settings
         self.max_batch_size = max_batch_size
         self.core_length = core_length
-        assert not chunk_size % overlap_offset, "chunk size must be divisible by overlap_offset"
-        self.overlap_depth = chunk_size // overlap_offset
-        min_functional_bs = 2 * self.overlap_depth + 1
-        assert max_batch_size >= min_functional_bs, "batch_size is set too small to functionally overlap, " \
-                                                    "set to at least {}, increase overlap_offset, or don't overlap" \
-                                                    "".format(min_functional_bs)
-        assert overlap_offset <= chunk_size - core_length, "change settings to over-, not under-lap"
+        if chunk_size % overlap_offset:
+            print("chunk size is not divisible by overlap_offset, so coverage depth"
+                  "during overlapping will vary by 1", file=sys.stderr)
+
+        assert overlap_offset <= core_length, "change settings to over-, not under-lap (offset < core length)"
         assert core_length > 0
         assert overlap_offset > 0
 
         # contiguous ranges should be created by .helpers.get_contiguous_ranges
-        self.sliding_batches = self._mk_sliding_batches(contiguous_ranges=contiguous_ranges)
+        self.sliding_batches = self._mk_sliding_batches(contiguous_ranges=contiguous_ranges,
+                                                        chunk_size=chunk_size,
+                                                        overlap_offset=overlap_offset)
 
-    def _mk_sliding_batches(self, contiguous_ranges):
-        max_n_chunks = _n_ori_chunks_from_batch_chunks(self.max_batch_size, self.overlap_depth)
+    def _mk_sliding_batches(self, contiguous_ranges, chunk_size, overlap_offset):
+        max_n_chunks = _n_ori_chunks_from_batch_chunks(self.max_batch_size, overlap_offset, chunk_size)
+        assert max_n_chunks > 0, "batch_size is set too small to functionally overlap, " \
+                                 "either a) set higher (to ~ 2 * chunk_size / overlap_offset + 1), " \
+                                 "b) increase overlap_offset, or c) don't overlap"
         step = max_n_chunks - 2   # -2 bc ends will be cropped
         # most of these will effectively be final batches, but short seqs/ends may be grouped together (for efficiency)
         sub_batches = []
@@ -158,7 +167,8 @@ class OverlapSeqHelper(object):
                              edge_handle_start=sub_batch_start == crange['start_i'],
                              edge_handle_end=i + step + 1 > crange['end_i'],
                              keep_start=keep_start,
-                             keep_end=keep_end)
+                             keep_end=keep_end,
+                             overlap_offset=overlap_offset, chunk_size=chunk_size)
                 )
 
         # group into final batches, so as to keep total size <= max_batch_size

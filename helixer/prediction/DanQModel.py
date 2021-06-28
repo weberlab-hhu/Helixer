@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 import numpy as np
+import tensorflow as tf
 
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
@@ -14,26 +15,28 @@ class DanQSequence(HelixerSequence):
             assert not mode == 'test'  # only use class weights during training and validation
 
     def __getitem__(self, idx):
-        X, y, sw, transitions, _, coverage_scores = self._get_batch_data(idx)
+        X, y, sw, transitions, phases, _, coverage_scores = self._get_batch_data(idx)
         pool_size = self.model.pool_size
 
         if pool_size > 1:
-            if y.shape[1] % pool_size != 0:
+            if X.shape[1] % pool_size != 0:
                 # clip to maximum size possible with the pooling length
                 overhang = y.shape[1] % pool_size
                 X = X[:, :-overhang]
-                y = y[:, :-overhang]
-                sw = sw[:, :-overhang]
-                if self.mode == 'train' and self.transition_weights is not None:
-                    transitions = transitions[:, :-overhang]
+                if not self.only_predictions:
+                    y = y[:, :-overhang]
+                    sw = sw[:, :-overhang]
+                    if self.predict_phase:
+                        phases = phases[:, :-overhang]
+                    if self.mode == 'train' and self.transition_weights is not None:
+                        transitions = transitions[:, :-overhang]
 
-            y = self._mk_timestep_pools_class_last(y)
-
-            sw = sw.reshape((sw.shape[0], -1, pool_size))
-            sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
+            if not self.only_predictions:
+                y = self._mk_timestep_pools_class_last(y)
+                sw = sw.reshape((sw.shape[0], -1, pool_size))
+                sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
 
             if self.mode == 'train':
-
                 if self.class_weights is not None:
                     # class weights are additive for the individual timestep predictions
                     # giving even more weight to transition points
@@ -61,7 +64,14 @@ class DanQSequence(HelixerSequence):
                     coverage_scores = np.mean(coverage_scores, axis=2)
                     sw = np.multiply(coverage_scores, sw)
 
-        return X, y, sw
+            if self.predict_phase and not self.only_predictions:
+                y_phase = self._mk_timestep_pools_class_last(phases)
+                y = [y, y_phase]
+
+        if self.only_predictions:
+            return X
+        else:
+            return X, y, sw
 
 
 class DanQModel(HelixerModel):
@@ -116,18 +126,33 @@ class DanQModel(HelixerModel):
         if self.dropout2 > 0.0:
             x = Dropout(self.dropout2)(x)
 
-        x = Dense(self.pool_size * 4)(x)
-        x = Reshape((-1, self.pool_size, 4))(x)
-        x = Activation('softmax', name='main')(x)
+        if self.predict_phase:
+            x = Dense(self.pool_size * 4 * 2)(x)  # predict twice a many floats
+            x_genic, x_phase = tf.split(x, 2, axis=-1)
 
-        outputs = [x]
+            x_genic = Reshape((-1, self.pool_size, 4))(x_genic)
+            x_genic = Activation('softmax', name='genic')(x_genic)
+
+            x_phase = Reshape((-1, self.pool_size, 4))(x_phase)
+            x_phase = Activation('softmax', name='phase')(x_phase)
+
+            outputs = [x_genic, x_phase]
+        else:
+            x = Dense(self.pool_size * 4)(x)
+            x = Reshape((-1, self.pool_size, 4))(x)
+            x = Activation('softmax', name='main')(x)
+            outputs = [x]
+
         model = Model(inputs=main_input, outputs=outputs)
         return model
 
     def compile_model(self, model):
-
-        losses = ['categorical_crossentropy']
-        loss_weights = [1.0]
+        if self.predict_phase:
+            losses = ['categorical_crossentropy', 'categorical_crossentropy']
+            loss_weights = [0.8, 0.2]
+        else:
+            losses = ['categorical_crossentropy']
+            loss_weights = [1.0]
 
         model.compile(optimizer=self.optimizer,
                       loss=losses,
