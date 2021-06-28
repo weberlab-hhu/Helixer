@@ -862,30 +862,30 @@ def test_gene_lengths():
     f.close()
 
 
-def test_featureless_filter():
-    """Tests the exclusion/inclusion of chunks from featureless coordinates"""
+def test_seqids_start_ends():
     _, controller, _ = setup_dummyloci()
-    # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=5000, genomes=['dummy'], one_hot=True,
-                      all_transcripts=True)
+    controller.export(chunk_size=400, genomes=['dummy'], one_hot=False, all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
-    y = f['/data/y']
-    sw = f['/data/sample_weights'][:]
-    print(sw.shape)
-    print(sw)
-    print(np.all(sw == 0, axis=1), 'wwwwwwwww')
-    print(f['data/X'][:])
-    assert len(y) == 6  # one for each coord and strand (incl. unannotated coord #3)
-    f.close()
-    # dump the whole db in chunks into a .h5 file
-    _, controller, _ = setup_dummyloci()
-    controller.export(chunk_size=5000, genomes=['dummy'], one_hot=True, all_transcripts=True)
+    seqids = f['/data/seqids'][:]
+    start_ends = f['/data/start_ends'][:]
 
-    f = h5py.File(H5_OUT_FILE, 'r')
-    y = f['/data/y']
-    assert len(y) == 6  # one for each coord and strand, with featureless coord 3 (kept)
-    f.close()
+    seqids_true = np.concatenate([np.full((10,), b'1', dtype=seqids.dtype),
+                                  np.full((10,), b'2', dtype=seqids.dtype),
+                                  np.full((2,), b'3', dtype=seqids.dtype)])
+    assert np.array_equal(seqids, seqids_true)
+
+    start_ends_1 = [[0, 400], [400, 800], [800, 1200], [1200, 1600], [1600, 1801]]
+    start_ends_2 = start_ends_1.copy()
+    start_ends_2[-1] = [1600, 1755]
+    start_ends_3 = [[0, 300]]
+    start_ends_true = []
+
+    for se in [start_ends_1, start_ends_2, start_ends_3]:
+        start_ends_true += se  # plus strand
+        # minus strand, reverse both order of chunks as well as order inside chunks coords
+        start_ends_true += [[end, start] for start, end in se[::-1]]
+    assert np.array_equal(start_ends, np.array(start_ends_true, dtype=start_ends.dtype))
 
 
 def test_phases():
