@@ -1436,7 +1436,7 @@ def test_direct_fasta_export():
     geenuff_controller.export(chunk_size=400, genomes=['dummy'], one_hot=False, all_transcripts=True)
 
     h5_fasta = h5py.File(FASTA_OUT_FILE, 'r')
-    h5_db = h5py.File(FASTA_OUT_FILE, 'r')
+    h5_db = h5py.File(H5_OUT_FILE, 'r')
 
     # check if both have the same seqid/start_ends combinations - the ordering may vary
     X_fasta, X_db = h5_fasta['/data/X'][:], h5_db['/data/X'][:]

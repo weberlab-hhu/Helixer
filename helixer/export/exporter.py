@@ -157,7 +157,9 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
             n_chunks = HelixerExportControllerBase.calc_n_chunks(coord.length, chunk_size)
             data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, genome, multiprocess=multiprocess)
             for j, data in enumerate(data_gen):
-                self._save_data(data, h5_coords=(0, len(data[0].matrix)), n_chunks=n_chunks,
+                n_samples = len(data[0].matrix)
+                h5_coords = (j * n_samples, (j + 1) * n_samples)
+                self._save_data(data, h5_coords=h5_coords, n_chunks=n_chunks,
                                 first_round_for_coordinate=(j == 0), compression=compression)
             print(f'{i + 1} Numerified {coord} of {genome} in {time.time() - start_time:.2f} secs', end='\n\n')
         self._add_data_attrs([genome])

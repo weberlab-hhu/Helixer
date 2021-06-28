@@ -346,7 +346,7 @@ class CoordNumerifier(object):
     @staticmethod
     def numerify_only_fasta(coord, max_len, genome, one_hot=True, multiprocess=False):
         """Extra function to just export the FASTA sequence to avoid littering other functions with many
-        if statements. Bypasses super chunk writing as it is not needed for only the sequence"""
+        if statements. Bypasses super chunk writing as it is probably not needed for only the sequence"""
         seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=0, end=None,
                                             multiprocess=multiprocess)
         xb = seq_numerifier.coord_to_matrices()
