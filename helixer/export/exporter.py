@@ -144,8 +144,8 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
         def __repr__(self):
             return f'Fasta only Coordinate (seqid: {self.seqid}, len: {self.length})'
 
-    def export_fasta_to_h5(self, chunk_size, genome, compression, multiprocess):
-        fasta_importer = FastaImporter(genome)
+    def export_fasta_to_h5(self, chunk_size, compression, multiprocess):
+        fasta_importer = FastaImporter(None)
         fasta_seqs = fasta_importer.parse_fasta(self.input_path)
         self.h5 = h5py.File(self.output_path, 'w')
         print(f'Effectively set --modes to "X" and --write-by to infinite due to '
@@ -155,13 +155,15 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
             start_time = time.time()
             coord = HelixerFastaToH5Controller.CoordinateSurrogate(seqid, seq)
             n_chunks = HelixerExportControllerBase.calc_n_chunks(coord.length, chunk_size)
-            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, genome, multiprocess=multiprocess)
+            # pass empty genome name as we don't have that and should not need it in '/data/species'
+            # for the direct fasta export
+            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, '', multiprocess=multiprocess)
             for j, data in enumerate(data_gen):
                 n_samples = len(data[0].matrix)
                 h5_coords = (j * n_samples, (j + 1) * n_samples)
                 self._save_data(data, h5_coords=h5_coords, n_chunks=n_chunks,
                                 first_round_for_coordinate=(j == 0), compression=compression)
-            print(f'{i + 1} Numerified {coord} of {genome} in {time.time() - start_time:.2f} secs', end='\n\n')
+            print(f'{i + 1} Numerified {coord} in {time.time() - start_time:.2f} secs', end='\n\n')
         self._add_data_attrs()
         self.h5.close()
 
