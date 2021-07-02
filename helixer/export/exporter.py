@@ -73,36 +73,6 @@ class HelixerExportControllerBase(object):
         start = old_len + h5_coords[0]
         end = old_len + h5_coords[1]
 
-        # sanity check sort order
-        if self.match_existing:
-            # find out exactly where things align with existing
-            start_ends = [x.matrix for x in flat_data if x.key == "start_ends"][0]
-            seqid = [x.matrix for x in flat_data if x.key == "seqids"][0][0]
-            tuple_start_ends = np.zeros(shape=(start_ends.shape[0],), dtype=tuple)
-            for i, pair in enumerate(start_ends):
-                tuple_start_ends[i] = tuple(pair)
-
-            _, idx_existing, idx_new = np.intersect1d(
-                self.current_sp_start_ends[seqid],
-                tuple_start_ends,
-                return_indices=True,
-                assume_unique=True
-            )
-            start = min(idx_existing) + old_len
-            end = max(idx_existing) + old_len + 1
-
-            mask = sorted(idx_new)
-
-            for mat_info in flat_data:
-                mat_info.matrix = mat_info.matrix[mask]
-
-            # take species, seqids, and start_ends and assert the match those under '/data/'
-            for key in ['seqids', 'start_ends', 'species']:
-                expected = self.h5['/data/' + key][start:end]
-                for mat_info in flat_data:
-                    if mat_info.key == key:
-                        assert np.all(mat_info.matrix == expected), '{} != {} :-('.format(mat_info.matrix, expected)
-
         # writing to the h5 file
         for mat_info in flat_data:
             self.h5[h5_group + mat_info.key][start:end] = mat_info.matrix
@@ -190,67 +160,17 @@ class HelixerExportController(HelixerExportControllerBase):
             # confirm files exist
             assert os.path.exists(self.output_path), 'output_path not existing'
             self.h5 = h5py.File(output_path, 'a')
-            self.species_seq_ranges = get_sp_seq_ranges(self.h5)
         else:
             self.h5 = h5py.File(output_path, 'w')
         print(f'Exporting all data to {output_path}')
 
-    def _set_current_sp_start_ends(self, species):
-        sp_start_ends = {}  # {seqid: {'seqid': np.array([(0, 20k), (20k, 40k), ...]),
-        #                              'seqid2': ...}}
-        sp_ranges = self.species_seq_ranges[species]
-        sp_se_array = self.h5['data/start_ends'][sp_ranges['start']:sp_ranges['end']]
-        sp_start = sp_ranges['start']
-        for seqid, ranges in sp_ranges['seqids'].items():
-            rel_start, rel_end = [i - sp_start for i in ranges]
-            length = rel_end - rel_start
-            tuple_array = np.zeros(shape=(length,), dtype=tuple)
-            for i, se in enumerate(sp_se_array[rel_start:rel_end]):
-                tuple_array[i] = tuple(se)
-            sp_start_ends[seqid] = tuple_array
-        self.current_sp_start_ends = sp_start_ends
-
-    def _gen_sp_seqid(self, genome_coords):
-        for genome_name in genome_coords:
-            for i, (coord_id, coord_len) in enumerate(genome_coords[genome_name]):
-                # get coord (to later access species name and sequence name)
-                coord = self.exporter.get_coord_by_id(coord_id)
-                if i == 0:
-                    sp = genome_name.encode('ASCII')
-                seqid = coord.seqid.encode('ASCII')
-                yield coord_id, sp, seqid, coord_len
-
-    def _get_sp_seqids_from_h5(self, by=1000):
-        """from flat h5 datasets to dict with {species: [seqid, seqid2, ...], ...}"""
-        # todo, is this fully redundant with get_sp_seq_ranges?
-        out = defaultdict(dict)
-        for i in range(0, self.h5['data/y'].shape[0], by):
-            species = self.h5['data/species'][i:(i + by)]
-            seqids = self.h5['data/seqids'][i:(i + by)]
-            for j in range(len(seqids)):
-                out[species[j]][seqids[j]] = 0
-        out = dict(out)
-        for key in out:
-            out[key] = list(out[key].keys())
-        return dict(out)
-
-    def _resort_genome_coords_from_existing(self, genome_coords):
-        # setup keys to go from the h5 naming to the db naming
-        pre_decode = self._gen_sp_seqid(genome_coords)
-        ckey = defaultdict(dict)
-        for coord_id, sp, seqid, coord_len in pre_decode:
-            sp = sp.decode()
-            ckey[sp][seqid] = (coord_id, coord_len)
-
-        # pull ordering from h5s, but replace with ids from db
-        genome_coords = defaultdict(list)
-        in_h5 = self._get_sp_seqids_from_h5()
-        for sp in in_h5:
-            sp_str = sp.decode()
-            for seqid in in_h5[sp]:
-                coord_tuple = ckey[sp_str][seqid]
-                genome_coords[sp_str].append(coord_tuple)
-        return genome_coords
+    def _coord_info(self, coords_features):
+        coord_info = {}
+        for i, (coord_id, coord_len) in enumerate(coord_features):
+            coord = self.exporter.get_coord_by_id(coord_id)
+            seqid = coord.seqid.encode('ASCII')
+            coord_info[seqid] = (coord_id, coord_len)
+        return coord_info
 
     def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, write_by, modes, multiprocess):
         """filtering and stats"""
@@ -281,17 +201,18 @@ class HelixerExportController(HelixerExportControllerBase):
         coords_features = self.exporter.genome_query(all_transcripts=all_transcripts)
         print(f'\n{len(coords_features)} coordinates chosen to numerify')
         if self.match_existing:
-            # resort coordinates to match existing as well (bc length sort doesn't work on ties)
-            coords = self._resort_genome_coords_from_existing(list(coord_features.keys()))
+            # resort coordinates to match existing
+            seqids = self.h5['data/seqids'][:]
+            seqid_idxs = sorted(np.unique(seqids, return_index=True)[1])  # seqid info in the h5
+            unique_seqids = seqids[seqid_idxs]
+
+            coord_info = self._coord_info(coords_features)  # seqid info of the current data
+            # the following assumes order preserving dict, which is the case since python 3.6
+            coords_features = {coord_info[seqid]:coords_features[coord_info[seqid]] for seqid in unique_seqids}
 
         n_coords_done = 1
         n_writing_chunks = 0
         prev_genome_name = None
-        if self.match_existing:
-            # once per species, setup dicts with {seqid: [(start,end), ...], ...} for each h5
-            # this avoids excessive random disk reads
-            self._set_current_sp_start_ends(genome_name.encode('ASCII'))
-
         for (coord_id, coord_len), one_coord_features in coords_features.items():
             start_time = time.time()
             n_chunks = HelixerExportControllerBase.calc_n_chunks(coord_len, chunk_size)
