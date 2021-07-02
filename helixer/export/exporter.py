@@ -166,7 +166,7 @@ class HelixerExportController(HelixerExportControllerBase):
 
     def _coord_info(self, coords_features):
         coord_info = {}
-        for i, (coord_id, coord_len) in enumerate(coord_features):
+        for coord_id, coord_len in coord_features.keys():
             coord = self.exporter.get_coord_by_id(coord_id)
             seqid = coord.seqid.encode('ASCII')
             coord_info[seqid] = (coord_id, coord_len)
