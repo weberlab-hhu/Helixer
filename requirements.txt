@@ -1,7 +1,5 @@
-sqlalchemy
-pytest
-numpy
-tensorflow==2.4.0
+sqlalchemy==1.3.22
+tensorflow==2.4.1
 tensorflow_addons
 nni
 seaborn
@@ -10,7 +8,6 @@ keras_layer_normalization
 terminaltables
 HTSeq
 intervaltree
-sqlalchemy
 numpy
 h5py
 multiprocess

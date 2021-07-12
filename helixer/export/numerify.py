@@ -1,6 +1,9 @@
 """convert cleaned-db schema to numeric values describing gene structure"""
 import time
+
+import geenuff.base.types
 import numpy as np
+import math
 import logging
 import multiprocess
 from abc import ABC, abstractmethod
@@ -57,9 +60,9 @@ class Numerifier(ABC):
         self.max_len = max_len
         self.dtype = dtype
         self.matrix = None
-        self.error_mask = None
         self.start = start
         self.end = end
+        self.length = self.end - self.start
         # set paired steps
         partitioner = Stepper(end=self.end - self.start, by=self.max_len)
         self.paired_steps = list(partitioner.step_to_end())
@@ -86,10 +89,7 @@ class Numerifier(ABC):
         return all_slices
 
     def _zero_matrix(self):
-        length = self.end - self.start
-        self.matrix = np.zeros((length, self.n_cols,), self.dtype)
-        # 0 means error so this can be used directly as sample weight later on
-        self.error_mask = np.ones((length,), np.int8)
+        self.matrix = np.zeros((self.length, self.n_cols,), self.dtype)
 
 
 class SequenceNumerifier(Numerifier):
@@ -161,10 +161,17 @@ class AnnotationNumerifier(Numerifier):
         self.features = features
         self.one_hot = one_hot
         self.coord = coord
-        self._zero_gene_lengths()
+        self.error_mask = None
 
-    def _zero_gene_lengths(self):
-        self.gene_lengths = np.zeros((self.end - self.start,), dtype=np.uint32)
+    def _zero_matrix(self):
+        super()._zero_matrix()
+        # 0 means error so this can be used directly as sample weight later on
+        self.error_mask = np.ones((self.length,), np.int8)
+
+    def _init_additional_data(self):
+        self.gene_lengths = np.zeros(self.length, dtype=np.uint32)
+        self.phases = np.zeros((self.length, 4), dtype=np.int8)
+        self.phases[:, 0] = 1  # set no phase encoding as default
 
     def coord_to_matrices(self):
         """Always numerifies both strands one after the other."""
@@ -177,7 +184,7 @@ class AnnotationNumerifier(Numerifier):
 
     def _encode_strand(self, is_plus_strand):
         self._zero_matrix()
-        self._zero_gene_lengths()
+        self._init_additional_data()
         self._update_matrix_and_error_mask(is_plus_strand=is_plus_strand)
 
         # encoding of transitions
@@ -191,14 +198,12 @@ class AnnotationNumerifier(Numerifier):
                                         label_matrix,
                                         self.error_mask,
                                         self.gene_lengths,
+                                        self.phases,
                                         binary_transition_matrix)
         return matrices
 
     def _update_matrix_and_error_mask(self, is_plus_strand):
-        for feature in self.features:
-            # don't include features from the other strand
-            if not feature.is_plus_strand == is_plus_strand:
-                continue
+        def start_end_of_feature(feature):
             start = feature.start - self.start  # self.start used as offset for writing chunk
             end = feature.end - self.start
             if not is_plus_strand:
@@ -207,6 +212,14 @@ class AnnotationNumerifier(Numerifier):
             gene_length = end - start
             start = max(start, 0)
             end = min(end, self.matrix.shape[0])
+            return start, end, gene_length
+
+        for feature in self.features:
+            # don't include features from the other strand
+            if not feature.is_plus_strand == is_plus_strand:
+                continue
+            start, end, gene_length = start_end_of_feature(feature)
+            # regular feature encoding with 3 columns
             if feature.type in AnnotationNumerifier.feature_to_col.keys():
                 col = AnnotationNumerifier.feature_to_col[feature.type]
                 self.matrix[start:end, col] = 1
@@ -217,8 +230,37 @@ class AnnotationNumerifier(Numerifier):
             # also fill self.gene_lengths
             # give precedence for the longer transcript if present
             if feature.type.value == types.GEENUFF_TRANSCRIPT:
-                length_arr = np.full(shape=(end - start,), fill_value=gene_length)
+                length_arr = np.full(end - start, gene_length)
                 self.gene_lengths[start:end] = np.maximum(self.gene_lengths[start:end], length_arr)
+
+        # figure out phases of cds regions after everything has, ignoring the introns
+        # directly writes the one hot encoding for the 4 phase classes: -1, 0, 1, 2 (in that order)
+        # expects only one transcript per gene, this will not work for all_transcripts=True in
+        # HelixerExportController.export()
+        cds_features = [f for f in self.features if f.type.value == types.GEENUFF_CDS]
+        for cds_feature in cds_features:
+            if not cds_feature.is_plus_strand == is_plus_strand:
+                continue
+            start, end, _ = start_end_of_feature(cds_feature)
+            # get the region where there is cds but no intron
+            cds_idx = np.logical_not(self.matrix[start:end, 2])
+            cds_len = np.count_nonzero(cds_idx)
+            # generate for full codons, truncate later if mismatched_ending_phase error
+            phase_base = np.array([1, 3, 2], dtype=np.int8)
+            if cds_feature.phase != 0:
+                phase_base = np.roll(phase_base, 3 - cds_feature.phase)
+            cds_phase = np.tile(phase_base, int(np.ceil(cds_len / 3)))
+            if not is_plus_strand:
+                cds_phase = cds_phase[::-1]
+            cds_phase_one_hot = np.squeeze(np.eye(4, dtype=np.int8)[cds_phase])
+            # need to potentially truncate from different side if phase error present (start with 0)
+            overhang = len(cds_phase) - cds_len
+            if overhang > 0:
+                if is_plus_strand:
+                    cds_phase_one_hot = cds_phase_one_hot[:-overhang]
+                else:
+                    cds_phase_one_hot = cds_phase_one_hot[overhang:]
+            self.phases[start:end][cds_idx] = cds_phase_one_hot
 
     def _encode_onehot4(self):
         # Class order: Intergenic, UTR, CDS, (non-coding Intron), Intron
@@ -284,6 +326,38 @@ class CoordNumerifier(object):
         return padded_d
 
     @staticmethod
+    def start_ends(numerifier, strand):
+        assert isinstance(numerifier, Numerifier)
+        if strand == 'plus':
+            start_ends = numerifier.paired_steps
+        else:
+            # flip the start ends back for - strand
+            start_ends = [(x[1], x[0]) for x in numerifier.paired_steps[::-1]]
+        start_ends = np.array(start_ends, dtype=np.int64)
+        return start_ends
+
+    @staticmethod
+    def seq_matinfos(coord, genome, start_ends, length):
+        res = [MatAndInfo('species', np.array([genome.encode('ASCII')] * length), 'S25'),
+               MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * length), 'S50'),
+               MatAndInfo('start_ends', start_ends, 'int64')]
+        return res
+
+    @staticmethod
+    def numerify_only_fasta(coord, max_len, genome, one_hot=True, multiprocess=False):
+        """Extra function to just export the FASTA sequence to avoid littering other functions with many
+        if statements. Bypasses super chunk writing as it is probably not needed for only the sequence"""
+        seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=0, end=None,
+                                            multiprocess=multiprocess)
+        xb = seq_numerifier.coord_to_matrices()
+        for strand in ['plus', 'minus']:
+            x = CoordNumerifier.pad(xb[strand], max_len)
+            start_ends = CoordNumerifier.start_ends(seq_numerifier, strand)
+            out = [MatAndInfo('X', x, 'float16')]
+            out.extend(CoordNumerifier.seq_matinfos(coord, genome, start_ends, len(x)))
+            yield tuple(out)
+
+    @staticmethod
     def numerify(coord, coord_features, max_len, one_hot=True, mode=('X', 'y', 'anno_meta', 'transitions'),
                  write_by=5000000, multiprocess=True):
         assert isinstance(max_len, int) and max_len > 0, 'what is {} of type {}'.format(max_len, type(max_len))
@@ -296,8 +370,8 @@ class CoordNumerifier(object):
                 yield strand_res
 
     @staticmethod
-    def _numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len, one_hot,
-                                    coord_features, mode, multiprocess):
+    def _numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len, one_hot, coord_features, mode,
+                                    multiprocess):
         export_x = 'X' in mode
         start, end = bp_coord
 
@@ -310,23 +384,18 @@ class CoordNumerifier(object):
         # todo, make mode more elegant / extensible
         if export_x:
             xb = seq_numerifier.coord_to_matrices()
-        yb, sample_weightsb, gene_lengthsb, transitionsb = anno_numerifier.coord_to_matrices()
+        yb, sample_weightsb, gene_lengthsb, phasessb, transitionsb = anno_numerifier.coord_to_matrices()
         for strand in ['plus', 'minus']:
             if export_x:
                 x = CoordNumerifier.pad(xb[strand], max_len)
-            y, sample_weights, gene_lengths, transitions = \
+            y, sample_weights, gene_lengths, phases, transitions = \
                 (CoordNumerifier.pad(x, max_len) for x in [yb[strand],
                                                            sample_weightsb[strand],
                                                            gene_lengthsb[strand],
+                                                           phasessb[strand],
                                                            transitionsb[strand]])
-            # todo, move to be part of anno numerifier??
-            if strand == 'plus':
-                start_ends = anno_numerifier.paired_steps
-            else:
-                # flip the start ends back for - strand
-                start_ends = [(x[1], x[0]) for x in anno_numerifier.paired_steps[::-1]]
-            start_ends = np.array(start_ends, dtype=np.int64)
-            start_ends += bp_coord[0]
+            start_ends = CoordNumerifier.start_ends(anno_numerifier, strand)
+            start_ends += start
 
             # mark examples from featureless coordinate / assume there is no trustworthy annotation
             if not coord_features:
@@ -348,13 +417,12 @@ class CoordNumerifier(object):
             out = [MatAndInfo('y', y, 'int8'),  # y should always be first (bc currently we always want it)
                    MatAndInfo('sample_weights', sample_weights, 'int8'),
                    MatAndInfo('gene_lengths', gene_lengths, 'uint32'),
+                   MatAndInfo('phases', phases, 'int8'),
                    MatAndInfo('transitions', transitions, 'int8'),
                    MatAndInfo('err_samples', err_samples, 'bool'),
                    MatAndInfo('fully_intergenic_samples', fully_intergenic_samples,  'bool'),
-                   MatAndInfo('species', np.array([coord.genome.species.encode('ASCII')] * len(y)), 'S25'),
-                   MatAndInfo('seqids', np.array([coord.seqid.encode('ASCII')] * len(y)), 'S50'),
-                   MatAndInfo('start_ends', start_ends, 'int64'),
                    MatAndInfo('is_annotated', is_annotated, 'bool')]
+            out.extend(CoordNumerifier.seq_matinfos(coord, coord.genome.species, start_ends, len(y)))
             if export_x:
                 out.append(MatAndInfo('X', x, 'float16'))
             out = tuple(out)
@@ -450,7 +518,7 @@ class SplitFinder:
 
     def _find_splits(self):
         """yields splits of ~write_by size that can be safely split at"""
-        tr_mask = self._transition_mask()
+        tr_mask = self._transition_and_split_cds_mask()
         for i in range(self.write_by, self.coord_length, self.write_by):
             if i not in tr_mask:
                 yield i
@@ -461,13 +529,27 @@ class SplitFinder:
                         break
         yield self.coord_length
 
-    def _transition_mask(self):
+    def _transition_and_split_cds_mask(self):
         """mark all possible splits where there is a transition, so splitting there would change the numerify results"""
         tr_mask = set()
         for feature in self.features:
-            for tr in self._plus_strand_transitions(feature):
+            # avoid splitting exactly at transitions, as transitions are dected by
+            # state change (of binary encoding) and you can't detect state-change
+            # if you split at it
+            f_start, f_end = self._plus_strand_transitions(feature)
+            for tr in (f_start, f_end):
                 if not tr % self.chunk_size:
                     tr_mask.add(tr)
+            # also avoid splitting in the middle of a CDS, this is necessary to
+            # simplify the encoding of phase / avoid painful edge cases
+            # this should add all chunk ends with a CDS to the mask
+            cs = self.chunk_size
+            if feature.type.value == geenuff.base.types.GEENUFF_CDS:
+                round_start = math.ceil(f_start / cs)
+                round_end = math.ceil(f_end / cs)
+                for chunk_end in range(round_start * cs, round_end * cs, cs):
+                    tr_mask.add(chunk_end)
+
         return tr_mask
 
     @staticmethod
@@ -475,4 +557,4 @@ class SplitFinder:
         if feature.is_plus_strand:
             return feature.start, feature.end
         else:
-            return feature.start - 1, feature.end - 1
+            return feature.end - 1, feature.start - 1

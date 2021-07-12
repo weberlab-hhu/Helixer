@@ -29,7 +29,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import Sequence
 from tensorflow_addons.optimizers import AdamW
 
-from helixer.prediction.ConfusionMatrix import ConfusionMatrix
+from helixer.prediction.Metrics import Metrics
 from helixer.core import overlap
 
 
@@ -45,12 +45,14 @@ class SaveEveryEpoch(Callback):
 
 
 class ConfusionMatrixTrain(Callback):
-    def __init__(self, save_model_path, train_generator, val_generator, large_eval_folder, patience, report_to_nni=False):
+    def __init__(self, save_model_path, train_generator, val_generator, large_eval_folder, patience, calc_H=False,
+                 report_to_nni=False):
         self.save_model_path = save_model_path
         self.train_generator = train_generator
         self.val_generator = val_generator
         self.large_eval_folder = large_eval_folder
         self.patience = patience
+        self.calc_H = calc_H
         self.report_to_nni = report_to_nni
         self.best_val_genic_f1 = 0.0
         self.epochs_without_improvement = 0
@@ -60,7 +62,7 @@ class ConfusionMatrixTrain(Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         print(f'training took {(time.time() - self.epoch_start) / 60:.2f}m')
-        _, _, val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, self.model)
+        _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, self.model, calc_H=self.calc_H)
         if self.report_to_nni:
             nni.report_intermediate_result(val_genic_f1)
         if val_genic_f1 > self.best_val_genic_f1:
@@ -80,7 +82,7 @@ class ConfusionMatrixTrain(Callback):
             best_model = load_model(self.save_model_path)
             # double check that we loaded the correct model, can be remove if confirmed this works
             print('\nValidation set again:')
-            _, _, val_genic_f1 = HelixerModel.run_confusion_matrix(self.val_generator, best_model, print_to_stdout=True)
+            _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, best_model, print_to_stdout=True, calc_H=calc_H)
             assert val_genic_f1 == self.best_val_genic_f1
 
             training_species = self.train_generator.h5_file.attrs['genomes']
@@ -113,26 +115,33 @@ class HelixerSequence(Sequence):
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
                                  'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
-                                 'no_utrs', 'load_predictions', 'debug'])
-        x_dset, y_dset = h5_file['data/X'], h5_file['data/y']
+                                 'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
+
+        print(f'\nStarting to load {self.mode} data into memory..')
+        x_dset = h5_file['data/X']
+        print(f'X shape: {x_dset.shape}')
+        if not self.only_predictions:
+            y_dset = h5_file['data/y']
+            print(f'y shape: {y_dset.shape}')
+
         if self.debug:
             self.n_seqs = 1000
         else:
-            self.n_seqs = y_dset.shape[0]
-        self.chunk_size = y_dset.shape[1]
+            self.n_seqs = x_dset.shape[0]
+        self.chunk_size = x_dset.shape[1]
 
-        print(f'\nStarting to load {self.mode} data into memory..')
-        print(f'X shape: {x_dset.shape}')
-        print(f'y shape: {y_dset.shape}')
-
-        self.data_list_names = ['data/X', 'data/y', 'data/sample_weights']
-        if self.load_predictions:
-            self.data_list_names.append('data/predictions')
-        if self.mode == 'train':
-            if self.transition_weights is not None:
-                self.data_list_names.append('data/transitions')
-            if self.coverage_weights:
-                self.data_list_names.append('scores/by_bp')
+        self.data_list_names = ['data/X']
+        if not self.only_predictions:
+            self.data_list_names += ['data/y', 'data/sample_weights']
+            if self.load_predictions:
+                self.data_list_names.append('data/predictions')
+            if self.predict_phase:
+                self.data_list_names.append('data/phases')
+            if self.mode == 'train':
+                if self.transition_weights is not None:
+                    self.data_list_names.append('data/transitions')
+                if self.coverage_weights:
+                    self.data_list_names.append('scores/by_bp')
 
         if self.overlap:
             assert self.mode == "test", "overlapping currently only works for test (predictions & eval)"
@@ -143,7 +152,7 @@ class HelixerSequence(Sequence):
                                                       overlap_offset=self.overlap_offset,
                                                       core_length=self.core_length)
 
-        if self.input_coverage:
+        if self.input_coverage and not self.only_predictions:
             self.data_list_names += ['evaluation/coverage', 'evaluation/spliced_coverage']
 
         self.data_lists = [[] for _ in range(len(self.data_list_names))]
@@ -187,7 +196,8 @@ class HelixerSequence(Sequence):
     def _get_batch_data(self, batch_idx):
         batch = []
         # batch must have one thing for everything unpacked by __getitem__ (and in order)
-        for name in ['data/X', 'data/y', 'data/sample_weights', 'data/transitions', 'data/predictions', 'scores/by_bp']:
+        for name in ['data/X', 'data/y', 'data/sample_weights', 'data/transitions', 'data/phases',
+                     'data/predictions', 'scores/by_bp']:
             if name not in self.data_list_names:
                 batch.append(None)
             else:
@@ -327,7 +337,6 @@ class HelixerSequence(Sequence):
 
     def __len__(self):
         """how many batches in epoch"""
-
         if self.debug:
             # if self.debug and self.mode == 'train':
             return 3
@@ -364,7 +373,9 @@ class HelixerModel(ABC):
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
         self.parser.add_argument('--coverage-weights', action='store_true')
         self.parser.add_argument('--coverage-offset', type=float, default=0.0)
+        self.parser.add_argument('--calculate-uncertainty', action='store_true')
         self.parser.add_argument('--no-utrs', action='store_true')
+        self.parser.add_argument('--predict-phase', action='store_true')
         self.parser.add_argument('--load-predictions', action='store_true')
         self.parser.add_argument('--resume-training', action='store_true')
         # testing / predicting
@@ -374,7 +385,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--eval', action='store_true')
         self.parser.add_argument('--overlap', action="store_true",
                                  help="will improve prediction quality at 'chunk' ends by creating and overlapping "
-                                      "sliding-window predictions (with proportional increase in  time usage)")
+                                      "sliding-window predictions (with proportional increase in time usage)")
         self.parser.add_argument('--overlap-offset', type=int, default=2500)
         self.parser.add_argument('--core-length', type=int, default=10000)
         # resources
@@ -388,13 +399,12 @@ class HelixerModel(ABC):
         self.parser.add_argument('--nni', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
         self.parser.add_argument('--debug', action='store_true')
-        self.parser.add_argument('--progbar', action='store_true')
-        self.parser.add_argument('--tf-errors', action='store_true')
 
     def parse_args(self):
         args = vars(self.parser.parse_args())
         self.__dict__.update(args)
         self.testing = bool(self.load_model_path and not self.resume_training)
+        self.only_predictions = (self.testing and not self.eval)  # do only load X in this case
         assert not (not self.testing and self.test_data)
         assert not (self.resume_training and (not self.load_model_path or not self.data_dir))
 
@@ -429,7 +439,8 @@ class HelixerModel(ABC):
 
     def generate_callbacks(self, train_generator):
         callbacks = [ConfusionMatrixTrain(self.save_model_path, train_generator, self.gen_validation_data(),
-                                          self.large_eval_folder, self.patience, report_to_nni=self.nni)]
+                                          self.large_eval_folder, self.patience, calc_H=self.calculate_uncertainty,
+                                          report_to_nni=self.nni)]
         callbacks.append(PreshuffleCallback(train_generator))
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
@@ -460,17 +471,19 @@ class HelixerModel(ABC):
                            shuffle=False)
 
     @staticmethod
-    def run_confusion_matrix(generator, model, print_to_stdout=True):
+    def run_metrics(generator, model, print_to_stdout=True, calc_H=False):
         start = time.time()
-        cm_calculator = ConfusionMatrix(generator, print_to_stdout=print_to_stdout)
-        precision, recall, genic_f1 = cm_calculator.calculate_cm(model)
-        if np.isnan(genic_f1):
-            genic_f1 = 0.0
-        print('\ncm calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
-        return precision, recall, genic_f1
+        metrics_calculator = Metrics(generator, print_to_stdout=print_to_stdout,
+                                     skip_uncertainty=not calc_H)
+        metrics = metrics_calculator.calculate_metrics(model)
+        genic_metrics = metrics['genic_base_wise']['genic']
+        if np.isnan(genic_metrics['f1']):
+            genic_metrics['f1'] = 0.0
+        print('\nmetrics calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
+        return genic_metrics['precision'], genic_metrics['recall'], genic_metrics['f1']
 
     @staticmethod
-    def run_large_eval(folder, model, generator, training_species, print_to_stdout=False):
+    def run_large_eval(folder, model, generator, training_species, print_to_stdout=False, calc_H=False):
         def print_table(results, table_name, training_species):
             table = [['Name', 'Precision', 'Recall', 'F1-Score']]
             for name, values in results:
@@ -497,7 +510,7 @@ class HelixerModel(ABC):
             GenCls = generator.__class__
             gen = GenCls(model=generator.model, h5_file=h5_eval, mode='val',
                          batch_size=adjusted_batch_size, shuffle=False)
-            perf_one_species = HelixerModel.run_confusion_matrix(gen, model, print_to_stdout=print_to_stdout)
+            perf_one_species = HelixerModel.run_metrics(gen, model, print_to_stdout=print_to_stdout, calc_H=calc_H)
             results.append([species_name, perf_one_species])
         # print results in tables sorted alphabetically and by f1
         results_by_name = sorted(results, key=lambda r: r[0])
@@ -610,44 +623,57 @@ class HelixerModel(ABC):
         for batch_index in range(len(test_sequence)):
             if self.verbose:
                 print(batch_index, '/', len(test_sequence), end='\r')
-            predictions = model.predict_on_batch(test_sequence[batch_index][0])
-            # join last two dims when predicting one hot labels
-            predictions = predictions.reshape(predictions.shape[:2] + (-1,))
-            # reshape when predicting more than one point at a time
-            label_dim = 4
-            if predictions.shape[2] != label_dim:
-                n_points = predictions.shape[2] // label_dim
-                predictions = predictions.reshape(
-                    predictions.shape[0],
-                    predictions.shape[1] * n_points,
-                    label_dim,
-                )
-                # add 0-padding if needed
-                n_removed = self.shape_test[1] - predictions.shape[1]
-                if n_removed > 0:
-                    zero_padding = np.zeros((predictions.shape[0], n_removed, predictions.shape[2]),
-                                            dtype=predictions.dtype)
-                    predictions = np.concatenate((predictions, zero_padding), axis=1)
+            if not self.only_predictions:
+                input_data = test_sequence[batch_index][0]
             else:
-                n_removed = 0  # just to avoid crashing with Unbound Local Error setting attrs for dCNN
-
-            if self.overlap:
-                predictions = test_sequence.ol_helper.overlap_predictions(batch_index, predictions)
-
-            # prepare h5 dataset and save the predictions to disk
-            if batch_index == 0:
-                old_len = 0
-                pred_out.create_dataset('/predictions',
-                                        data=predictions,
-                                        maxshape=(None,) + predictions.shape[1:],
-                                        chunks=(1,) + predictions.shape[1:],
-                                        dtype='float16',
-                                        compression='lzf',
-                                        shuffle=True)
+                input_data = test_sequence[batch_index]
+            predictions = model.predict_on_batch(input_data)
+            if isinstance(predictions, list):
+                # when we have two outputs, one is for phase
+                output_names = ['predictions', 'predictions_phase']
             else:
-                old_len = pred_out['/predictions'].shape[0]
-                pred_out['/predictions'].resize(old_len + predictions.shape[0], axis=0)
-            pred_out['/predictions'][old_len:] = predictions
+                # if we just had one output
+                predictions = (predictions,)
+                output_names = ['predictions']
+
+            for dset_name, pred_dset in zip(output_names, predictions):
+                # join last two dims when predicting one hot labels
+                pred_dset = pred_dset.reshape(pred_dset.shape[:2] + (-1,))
+                # reshape when predicting more than one point at a time
+                label_dim = 4
+                if pred_dset.shape[2] != label_dim:
+                    n_points = pred_dset.shape[2] // label_dim
+                    pred_dset = pred_dset.reshape(
+                        pred_dset.shape[0],
+                        pred_dset.shape[1] * n_points,
+                        label_dim,
+                    )
+                    # add 0-padding if needed
+                    n_removed = self.shape_test[1] - pred_dset.shape[1]
+                    if n_removed > 0:
+                        zero_padding = np.zeros((pred_dset.shape[0], n_removed, pred_dset.shape[2]),
+                                                dtype=pred_dset.dtype)
+                        pred_dset = np.concatenate((pred_dset, zero_padding), axis=1)
+                else:
+                    n_removed = 0  # just to avoid crashing with Unbound Local Error setting attrs for dCNN
+
+                if self.overlap:
+                    pred_dset = test_sequence.ol_helper.overlap_predictions(batch_index, pred_dset)
+
+                # prepare h5 dataset and save the predictions to disk
+                if batch_index == 0:
+                    old_len = 0
+                    pred_out.create_dataset(dset_name,
+                                            data=pred_dset,
+                                            maxshape=(None,) + pred_dset.shape[1:],
+                                            chunks=(1,) + pred_dset.shape[1:],
+                                            dtype='float16',
+                                            compression='lzf',
+                                            shuffle=True)
+                else:
+                    old_len = pred_out[dset_name].shape[0]
+                    pred_out[dset_name].resize(old_len + pred_dset.shape[0], axis=0)
+                pred_out[dset_name][old_len:] = pred_dset
 
         # add model config and other attributes to predictions
         h5_model = h5py.File(self.load_model_path, 'r')
@@ -679,7 +705,7 @@ class HelixerModel(ABC):
                 self.loaded_model_hash = subprocess.check_output(cmd).strip().decode()
                 print(f'Md5sum of the loaded model: {self.loaded_model_hash}')
         except subprocess.CalledProcessError:
-            print('An error occured while running a subprocess')
+            print('An error occurred while running a subprocess, unable to record loaded_model_hash')
             self.loaded_model_hash = 'error'
 
         print()
@@ -713,7 +739,7 @@ class HelixerModel(ABC):
                       epochs=self.epochs,
                       workers=self.workers,
                       callbacks=self.generate_callbacks(train_generator),
-                      verbose=self.progbar)
+                      verbose=True)
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
@@ -723,12 +749,12 @@ class HelixerModel(ABC):
 
             if self.eval:
                 test_generator = self.gen_test_data()
-                _, _, _ = HelixerModel.run_confusion_matrix(test_generator, model)
+                _, _, _ = HelixerModel.run_metrics(test_generator, model, calc_H=self.calculate_uncertainty)
                 if self.large_eval_folder:
                     assert self.data_dir != '', 'need training data of the model for training genome names'
                     training_species = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r').attrs['genomes']
                     _ = HelixerModel.run_large_eval(self.large_eval_folder, model, test_generator, training_species,
-                                                    print_to_stdout=True)
+                                                    print_to_stdout=True, calc_H=self.calculate_uncertainty)
             else:
                 if os.path.isfile(self.prediction_output_path):
                     print(f'{self.prediction_output_path} already exists and will be overwritten.')
