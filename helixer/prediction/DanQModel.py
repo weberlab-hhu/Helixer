@@ -21,7 +21,7 @@ class DanQSequence(HelixerSequence):
         if pool_size > 1:
             if X.shape[1] % pool_size != 0:
                 # clip to maximum size possible with the pooling length
-                overhang = y.shape[1] % pool_size
+                overhang = X.shape[1] % pool_size
                 X = X[:, :-overhang]
                 if not self.only_predictions:
                     y = y[:, :-overhang]

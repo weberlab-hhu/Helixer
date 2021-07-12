@@ -403,10 +403,6 @@ class HelixerModel(ABC):
     def parse_args(self):
         args = vars(self.parser.parse_args())
         self.__dict__.update(args)
-        self.testing = bool(self.load_model_path and not self.resume_training)
-        self.only_predictions = (self.testing and not self.eval)  # do only load X in this case
-        assert not (not self.testing and self.test_data)
-        assert not (self.resume_training and (not self.load_model_path or not self.data_dir))
 
         if self.nni:
             hyperopt_args = nni.get_next_parameter()
@@ -424,6 +420,12 @@ class HelixerModel(ABC):
             # for the print out
             args['save_model_path'] = nni_save_model_path
             args['prediction_output_path'] = nni_pred_output_path
+
+        self.testing = bool(self.load_model_path and not self.resume_training)
+        self.only_predictions = (self.testing and not self.eval)  # do only load X in this case
+        assert not (not self.testing and self.test_data)
+        assert not (self.resume_training and (not self.load_model_path or not self.data_dir))
+
 
         self.class_weights = eval(self.class_weights)
         if type(self.class_weights) is list:
