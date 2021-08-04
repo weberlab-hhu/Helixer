@@ -50,7 +50,7 @@ def setup_dummy_db(request):
         copy(geenuff_test_folder + f, 'testdata/')
 
     # setup dummyloci, import into a Geenuff database
-    controller = ImportController(database_path='sqlite:///' + DUMMYLOCI_DB)
+    controller = ImportController(database_path='sqlite:///' + DUMMYLOCI_DB, config={})
     controller.add_genome('testdata/dummyloci.fa', 'testdata/dummyloci.gff',
                           genome_args={"species": "dummy"})
 
@@ -104,12 +104,12 @@ def mk_controllers(source_db, helixer_db=TMP_DB, h5_out=H5_OUT_FILE):
             os.remove(p)
 
     mer_controller = HelixerController(source_db, helixer_db, '', '')
-    export_controller = HelixerExportController(os.path.dirname(helixer_db), h5_out)
+    export_controller = HelixerExportController(helixer_db, h5_out)
     return mer_controller, export_controller
 
 
 def memory_import_fasta(fasta_path):
-    controller = ImportController(database_path='sqlite:///:memory:')
+    controller = ImportController(database_path='sqlite:///:memory:', config={})
     controller.add_sequences(fasta_path)
     coords = controller.session.query(Coordinate).order_by(Coordinate.id).all()
     return controller, coords
@@ -117,7 +117,7 @@ def memory_import_fasta(fasta_path):
 
 def setup_dummyloci():
     _, export_controller = mk_controllers(DUMMYLOCI_DB)
-    session = export_controller.exporters['dummy'].session
+    session = export_controller.exporter.session
     coordinate = session.query(Coordinate).first()
     return session, export_controller, coordinate
 
@@ -146,7 +146,7 @@ def setup_simpler_numerifier():
 ### db import from GeenuFF ###
 def test_copy_n_import():
     _, controller = mk_controllers(source_db=DUMMYLOCI_DB)
-    session = controller.exporters['dummy'].session
+    session = controller.exporter.session
     sl = session.query(SuperLocus).filter(SuperLocus.given_name == 'gene0').one()
     assert len(sl.transcripts) == 3
     assert len(sl.proteins) == 3
@@ -311,7 +311,7 @@ def test_minus_strand_numerify():
 def test_coord_numerifier_and_h5_gen_plus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=400, genomes=['dummy'], one_hot=False, all_transcripts=True)
+    controller.export(chunk_size=400, one_hot=False, all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     x = f['/data/X'][:]
@@ -358,7 +358,7 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     """Tests numerification of test case 8 on coordinate 2"""
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=200, genomes=['dummy'], one_hot=False, all_transcripts=True)
+    controller.export(chunk_size=200, one_hot=False, all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     x = f['/data/X'][:]
@@ -443,7 +443,7 @@ def test_numerify_with_end_neg1():
     def masks1():
         return np.ones((1000,), dtype=np.int)
 
-    controller = ImportController(database_path='sqlite:///:memory:')
+    controller = ImportController(database_path='sqlite:///:memory:', config={})
     controller.add_genome('testdata/edges.fa', 'testdata/edges.gff',
                           genome_args={"species": "edges"})
     # test case: plus strand, start, features
@@ -822,8 +822,7 @@ def test_gene_lengths():
     """Tests the '/data/gene_lengths' array"""
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=5000, genomes=['dummy'], one_hot=True,
-                      all_transcripts=True)
+    controller.export(chunk_size=5000, one_hot=True, all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     gl = f['/data/gene_lengths']
@@ -864,7 +863,7 @@ def test_gene_lengths():
 
 def test_seqids_start_ends():
     _, controller, _ = setup_dummyloci()
-    controller.export(chunk_size=400, genomes=['dummy'], one_hot=False, all_transcripts=True)
+    controller.export(chunk_size=400, one_hot=False, all_transcripts=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     seqids = f['/data/seqids'][:]
@@ -904,7 +903,7 @@ def test_phases():
 
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=5000, genomes=['dummy'], one_hot=True, all_transcripts=False)
+    controller.export(chunk_size=5000, one_hot=True, all_transcripts=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     ph = f['/data/phases'][:]
@@ -1148,7 +1147,7 @@ def test_super_chunking4write():
     """Tests that the exact same h5 is produced, regardless of how many super-chunks it is written in"""
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    n_writing_chunks = controller.export(chunk_size=500, genomes=['dummy'], one_hot=True, all_transcripts=True,
+    n_writing_chunks = controller.export(chunk_size=500, one_hot=True, all_transcripts=True,
                                          write_by=10_000_000_000)  # write by left large enough to yield just once
 
     f = h5py.File(H5_OUT_FILE, 'r')
@@ -1163,7 +1162,7 @@ def test_super_chunking4write():
     assert n_writing_chunks == 6  # 2 per coordinate
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    n_writing_chunks = controller.export(chunk_size=500, genomes=['dummy'], one_hot=True, all_transcripts=True,
+    n_writing_chunks = controller.export(chunk_size=500,  all_transcripts=True,
                                          write_by=1000)  # write by should result in multiple super-chunks
 
     f = h5py.File(H5_OUT_FILE, 'r')
@@ -1188,14 +1187,14 @@ def test_super_chunking4write():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     with pytest.raises(ValueError):
-        controller.export(chunk_size=500, genomes=['dummy'], one_hot=True, all_transcripts=True,
+        controller.export(chunk_size=500, one_hot=True, all_transcripts=True,
                           write_by=1001)  # write by should result in multiple super-chunks
 
 
 def test_rangefinder():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    n_writing_chunks = controller.export(chunk_size=500, genomes=['dummy'], one_hot=True,
+    n_writing_chunks = controller.export(chunk_size=500, one_hot=True,
                                          all_transcripts=True, write_by=10_000_000_000)
     f = h5py.File(H5_OUT_FILE, 'r')
     sp_seqid_ranges = helpers.get_sp_seq_ranges(f)
@@ -1429,11 +1428,11 @@ def test_ol_overlap_seq_helper():
 
 def test_direct_fasta_export():
     fasta_controller = HelixerFastaToH5Controller('testdata/dummyloci.fa', FASTA_OUT_FILE)
-    fasta_controller.export_fasta_to_h5(chunk_size=400, genome='dummy', compression='gzip', multiprocess=True)
+    fasta_controller.export_fasta_to_h5(chunk_size=400, compression='gzip', multiprocess=True)
 
     _, geenuff_controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    geenuff_controller.export(chunk_size=400, genomes=['dummy'], one_hot=False, all_transcripts=True)
+    geenuff_controller.export(chunk_size=400, one_hot=False, all_transcripts=True)
 
     h5_fasta = h5py.File(FASTA_OUT_FILE, 'r')
     h5_db = h5py.File(H5_OUT_FILE, 'r')

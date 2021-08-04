@@ -73,45 +73,15 @@ class HelixerExportControllerBase(object):
         start = old_len + h5_coords[0]
         end = old_len + h5_coords[1]
 
-        # sanity check sort order
-        if self.match_existing:
-            # find out exactly where things align with existing
-            start_ends = [x.matrix for x in flat_data if x.key == "start_ends"][0]
-            seqid = [x.matrix for x in flat_data if x.key == "seqids"][0][0]
-            tuple_start_ends = np.zeros(shape=(start_ends.shape[0],), dtype=tuple)
-            for i, pair in enumerate(start_ends):
-                tuple_start_ends[i] = tuple(pair)
-
-            _, idx_existing, idx_new = np.intersect1d(
-                self.current_sp_start_ends[seqid],
-                tuple_start_ends,
-                return_indices=True,
-                assume_unique=True
-            )
-            start = min(idx_existing) + old_len
-            end = max(idx_existing) + old_len + 1
-
-            mask = sorted(idx_new)
-
-            for mat_info in flat_data:
-                mat_info.matrix = mat_info.matrix[mask]
-
-            # take species, seqids, and start_ends and assert the match those under '/data/'
-            for key in ['seqids', 'start_ends', 'species']:
-                expected = self.h5['/data/' + key][start:end]
-                for mat_info in flat_data:
-                    if mat_info.key == key:
-                        assert np.all(mat_info.matrix == expected), '{} != {} :-('.format(mat_info.matrix, expected)
-
         # writing to the h5 file
         for mat_info in flat_data:
             self.h5[h5_group + mat_info.key][start:end] = mat_info.matrix
         self.h5.flush()
 
-    def _add_data_attrs(self, genomes):
+    def _add_data_attrs(self):
         attrs = {
             'timestamp': str(datetime.datetime.now()),
-            'genomes': ','.join(genomes),
+            'input_path': self.input_path
         }
         # get GeenuFF and Helixer commit hashes
         pwd = os.getcwd()
@@ -144,8 +114,8 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
         def __repr__(self):
             return f'Fasta only Coordinate (seqid: {self.seqid}, len: {self.length})'
 
-    def export_fasta_to_h5(self, chunk_size, genome, compression, multiprocess):
-        fasta_importer = FastaImporter(genome)
+    def export_fasta_to_h5(self, chunk_size, compression, multiprocess):
+        fasta_importer = FastaImporter(None)
         fasta_seqs = fasta_importer.parse_fasta(self.input_path)
         self.h5 = h5py.File(self.output_path, 'w')
         print(f'Effectively set --modes to "X" and --write-by to infinite due to '
@@ -155,14 +125,16 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
             start_time = time.time()
             coord = HelixerFastaToH5Controller.CoordinateSurrogate(seqid, seq)
             n_chunks = HelixerExportControllerBase.calc_n_chunks(coord.length, chunk_size)
-            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, genome, multiprocess=multiprocess)
+            # pass empty genome name as we don't have that and should not need it in '/data/species'
+            # for the direct fasta export
+            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, '', multiprocess=multiprocess)
             for j, data in enumerate(data_gen):
                 n_samples = len(data[0].matrix)
                 h5_coords = (j * n_samples, (j + 1) * n_samples)
                 self._save_data(data, h5_coords=h5_coords, n_chunks=n_chunks,
                                 first_round_for_coordinate=(j == 0), compression=compression)
-            print(f'{i + 1} Numerified {coord} of {genome} in {time.time() - start_time:.2f} secs', end='\n\n')
-        self._add_data_attrs([genome])
+            print(f'{i + 1} Numerified {coord} in {time.time() - start_time:.2f} secs', end='\n\n')
+        self._add_data_attrs()
         self.h5.close()
 
 
@@ -171,99 +143,34 @@ class HelixerExportController(HelixerExportControllerBase):
     def __init__(self, input_path, output_path, match_existing=False, h5_group='/data/'):
         super().__init__(input_path, output_path, match_existing)
         self.h5_group = h5_group
-        main_db_path = self.input_path
+        input_db_path = self.input_path
+        self.h5_coord_offset = 0
 
-        def check_db(path):
-            genome_name_file = file_stem(path)
-            conn = sqlite3.connect(path)
-            c = conn.cursor()
-            c.execute('''SELECT species from genome;''')
-            genome_name_db = c.fetchall()
-            conn.close()
+        # check db
+        conn = sqlite3.connect(input_db_path)
+        c = conn.cursor()
+        c.execute('''SELECT species from genome;''')
+        genome_name_db = c.fetchall()
+        conn.close()
+        assert len(genome_name_db) == 1, f'{input_db_path} is not a valid db as it contains more than one genome'
 
-            assert len(genome_name_db) == 1, f'{path} is not a valid db as it contains more than one genome'
-            msg = f'the name of {path} must match the species name inside:'
-            assert genome_name_file.lower() == genome_name_db[0][0].lower(), msg
-            print(f'{path} looks good')
-
-        db_paths = {file_stem(db_path): db_path for db_path in glob.glob(os.path.join(main_db_path, '*.sqlite3'))}
-        assert os.path.exists(main_db_path) and db_paths, "main_db_paths, must be a folder containing one or more " \
-                                                          "*.sqlite3 files, where the * matches the names from the " \
-                                                          "--genomes parameter"
-        # open connections to all dbs in path
-        start_time = time.time()
-        with ThreadPool(8) as p:
-            p.map(check_db, list(db_paths.values()))
-        self.exporters = {genome: GeenuffExportController(path, longest=True) for genome, path in db_paths.items()}
-        print(f'Checked and opened connections to {len(db_paths)} dbs in {time.time() - start_time:.2f} seconds')
+        self.exporter = GeenuffExportController(input_db_path, longest=True)
 
         if match_existing:
             # confirm files exist
             assert os.path.exists(self.output_path), 'output_path not existing'
             self.h5 = h5py.File(output_path, 'a')
-            self.species_seq_ranges = get_sp_seq_ranges(self.h5)
         else:
             self.h5 = h5py.File(output_path, 'w')
-
         print(f'Exporting all data to {output_path}')
-        self.h5_coord_offset = 0
 
-    def _set_current_sp_start_ends(self, species):
-        sp_start_ends = {}  # {seqid: {'seqid': np.array([(0, 20k), (20k, 40k), ...]),
-        #                              'seqid2': ...}}
-        sp_ranges = self.species_seq_ranges[species]
-        sp_se_array = self.h5['data/start_ends'][sp_ranges['start']:sp_ranges['end']]
-        sp_start = sp_ranges['start']
-        for seqid, ranges in sp_ranges['seqids'].items():
-            rel_start, rel_end = [i - sp_start for i in ranges]
-            length = rel_end - rel_start
-            tuple_array = np.zeros(shape=(length,), dtype=tuple)
-            for i, se in enumerate(sp_se_array[rel_start:rel_end]):
-                tuple_array[i] = tuple(se)
-            sp_start_ends[seqid] = tuple_array
-        self.current_sp_start_ends = sp_start_ends
-
-    def _gen_sp_seqid(self, genome_coords):
-        for genome_name in genome_coords:
-            for i, (coord_id, coord_len) in enumerate(genome_coords[genome_name]):
-                # get coord (to later access species name and sequence name)
-                coord = self.exporters[genome_name].get_coord_by_id(coord_id)
-                if i == 0:
-                    sp = genome_name.encode('ASCII')
-                seqid = coord.seqid.encode('ASCII')
-                yield coord_id, sp, seqid, coord_len
-
-    def _get_sp_seqids_from_h5(self, by=1000):
-        """from flat h5 datasets to dict with {species: [seqid, seqid2, ...], ...}"""
-        # todo, is this fully redundant with get_sp_seq_ranges?
-        out = defaultdict(dict)
-        for i in range(0, self.h5['data/y'].shape[0], by):
-            species = self.h5['data/species'][i:(i + by)]
-            seqids = self.h5['data/seqids'][i:(i + by)]
-            for j in range(len(seqids)):
-                out[species[j]][seqids[j]] = 0
-        out = dict(out)
-        for key in out:
-            out[key] = list(out[key].keys())
-        return dict(out)
-
-    def _resort_genome_coords_from_existing(self, genome_coords):
-        # setup keys to go from the h5 naming to the db naming
-        pre_decode = self._gen_sp_seqid(genome_coords)
-        ckey = defaultdict(dict)
-        for coord_id, sp, seqid, coord_len in pre_decode:
-            sp = sp.decode()
-            ckey[sp][seqid] = (coord_id, coord_len)
-
-        # pull ordering from h5s, but replace with ids from db
-        genome_coords = defaultdict(list)
-        in_h5 = self._get_sp_seqids_from_h5()
-        for sp in in_h5:
-            sp_str = sp.decode()
-            for seqid in in_h5[sp]:
-                coord_tuple = ckey[sp_str][seqid]
-                genome_coords[sp_str].append(coord_tuple)
-        return genome_coords
+    def _coord_info(self, coords_features):
+        coord_info = {}
+        for coord_id, coord_len in coord_features.keys():
+            coord = self.exporter.get_coord_by_id(coord_id)
+            seqid = coord.seqid.encode('ASCII')
+            coord_info[seqid] = (coord_id, coord_len)
+        return coord_info
 
     def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, write_by, modes, multiprocess):
         """filtering and stats"""
@@ -289,47 +196,41 @@ class HelixerExportController(HelixerExportControllerBase):
 
             yield coord_data, coord, masked_bases_perc, ig_bases_perc, h5_coord
 
-    def export(self, chunk_size, genomes, one_hot=True, all_transcripts=False, write_by=10_000_000_000,
+    def export(self, chunk_size, one_hot=True, all_transcripts=False, write_by=10_000_000_000,
                modes=('X', 'y', 'anno_meta', 'transitions'), compression='gzip', multiprocess=True):
-        genome_coord_features = {genome_name: self.exporters[genome_name].genome_query(all_transcripts=all_transcripts)
-                                 for genome_name in genomes}
-        # make version without features for shorter downstream code
-        genome_coords = {genome_name: list(values.keys()) for genome_name, values in genome_coord_features.items()}
-
-        n_coords = sum([len(coords) for genome_name, coords in genome_coords.items()])
-        print('\n{} coordinates chosen to numerify'.format(n_coords))
+        coords_features = self.exporter.genome_query(all_transcripts=all_transcripts)
+        print(f'\n{len(coords_features)} coordinates chosen to numerify')
         if self.match_existing:
-            # resort coordinates to match existing as well (bc length sort doesn't work on ties)
-            genome_coords = self._resort_genome_coords_from_existing(genome_coords)
+            # resort coordinates to match existing
+            seqids = self.h5['data/seqids'][:]
+            seqid_idxs = sorted(np.unique(seqids, return_index=True)[1])  # seqid info in the h5
+            unique_seqids = seqids[seqid_idxs]
+
+            coord_info = self._coord_info(coords_features)  # seqid info of the current data
+            # the following assumes order preserving dict, which is the case since python 3.6
+            coords_features = {coord_info[seqid]:coords_features[coord_info[seqid]] for seqid in unique_seqids}
+
         n_coords_done = 1
         n_writing_chunks = 0
         prev_genome_name = None
-        for genome_name, coords in genome_coords.items():
-            if genome_name != prev_genome_name and self.match_existing:
-                # once per species, setup dicts with {seqid: [(start,end), ...], ...} for each h5
-                # this avoids excessive random disk reads
-                self._set_current_sp_start_ends(genome_name.encode('ASCII'))
+        for (coord_id, coord_len), one_coord_features in coords_features.items():
+            start_time = time.time()
+            n_chunks = HelixerExportControllerBase.calc_n_chunks(coord_len, chunk_size)
+            coord = self.exporter.get_coord_by_id(coord_id)
+            numerify_outputs = self._numerify_coord(coord, one_coord_features, chunk_size, one_hot, write_by=write_by,
+                                                    modes=modes, multiprocess=multiprocess)
 
-            for (coord_id, coord_len) in coords:
-                start_time = time.time()
-                n_chunks = HelixerExportControllerBase.calc_n_chunks(coord_len, chunk_size)
-                coord = self.exporters[genome_name].get_coord_by_id(coord_id)
-                coord_features = genome_coord_features[genome_name][(coord_id, coord_len)]
-                numerify_outputs = self._numerify_coord(coord, coord_features, chunk_size, one_hot, write_by=write_by,
-                                                        modes=modes, multiprocess=multiprocess)
+            for i, (flat_data, coord, masked_bases_perc, ig_bases_perc, h5_coord) in enumerate(numerify_outputs):
+                self._save_data(flat_data, h5_coords=h5_coord, n_chunks=n_chunks, first_round_for_coordinate=(i == 0),
+                                compression=compression, h5_group=self.h5_group)
+                n_writing_chunks += 1
 
-                for i, (flat_data, coord, masked_bases_perc, ig_bases_perc, h5_coord) in enumerate(numerify_outputs):
-                    self._save_data(flat_data, h5_coords=h5_coord, n_chunks=n_chunks, first_round_for_coordinate=(i == 0),
-                                    compression=compression, h5_group=self.h5_group)
-                    n_writing_chunks += 1
-
-                print(f'{n_coords_done}/{n_coords} Numerified {coord} of {genome_name} '
-                      f"with {len(coord.features)} features in {flat_data[0].matrix.shape[0]} chunks, "
-                      f'masked rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
-                      f'({time.time() - start_time:.2f} secs)', end='\n\n')
-                n_coords_done += 1
-            prev_genome_name = genome_name
-        self._add_data_attrs(genomes)
+            print(f'{n_coords_done}/{len(coords_features)} Numerified {coord} '
+                  f"with {len(coord.features)} features in {flat_data[0].matrix.shape[0]} chunks, "
+                  f'masked rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
+                  f'({time.time() - start_time:.2f} secs)', end='\n\n')
+            n_coords_done += 1
+        self._add_data_attrs()
         self.h5.close()
         print('Export from geenuff db to h5 file(s) with numeric matrices finished successfully.')
         return n_writing_chunks  # for testing only atm
