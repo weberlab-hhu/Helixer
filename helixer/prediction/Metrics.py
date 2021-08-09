@@ -10,7 +10,7 @@ class ConfusionMatrix:
 
     def __init__(self, col_names=None, skip_uncertainty=True):
         if col_names is None:
-            col_names = ['ig', 'utr', 'exon', 'intron']
+            col_names = ['ig', 'utr', 'intron', "phase_1", "phase_2", "phase_3"]
         self.col_names = {i: name for i, name in enumerate(col_names)}
         self.skip_uncertainty = skip_uncertainty
         self.n_classes = len(self.col_names)
@@ -185,14 +185,14 @@ class ConfusionMatrixGenic(ConfusionMatrix):
         # pretty redundant code to below, but done for minimizing the risk to mess up (for now)
         d = scores['sub_genic']
         for base_metric in ['TP', 'FP', 'FN']:
-            d[base_metric] = sum([scores[m][base_metric] for m in ['exon', 'intron']])
+            d[base_metric] = sum([scores[m][base_metric] for m in ["phase_1", "phase_2", "phase_3", 'intron']])
         ConfusionMatrix._add_to_scores(d)
 
         # genic metrics are calculated by summing up TP, FP, FN, essentially calculating a weighted
         # sum for the individual metrics. TP of the intergenic class are not taken into account
         d = scores['genic']
         for base_metric in ['TP', 'FP', 'FN']:
-            d[base_metric] = sum([scores[m][base_metric] for m in ['utr', 'exon', 'intron']])
+            d[base_metric] = sum([scores[m][base_metric] for m in ['utr', 'phase_1', 'phase_2', 'phase_3', 'intron']])
         ConfusionMatrix._add_to_scores(d)
 
         return scores

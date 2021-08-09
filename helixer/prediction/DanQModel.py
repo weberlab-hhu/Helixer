@@ -32,7 +32,7 @@ class DanQSequence(HelixerSequence):
                         transitions = transitions[:, :-overhang]
 
             if not self.only_predictions:
-		y = y[:, :, [0, 1, 3]]
+                y = y[:, :, [0, 1, 3]]
                 y = self._mk_timestep_pools_class_last(y)
                 sw = sw.reshape((sw.shape[0], -1, pool_size))
                 sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
@@ -67,9 +67,9 @@ class DanQSequence(HelixerSequence):
 
             if self.predict_phase and not self.only_predictions:
                 #split up data
-                y_phase = y_phase[:, :, [1, 2, 3]]
-                y_phase = self._mk_timestep_pools_class_last(phases)
-                y = np.concatenate((y, y_phase), axis=3))
+                y_phase = phases[:, :, [1, 2, 3]]
+                y_phase = self._mk_timestep_pools_class_last(y_phase)
+                y = np.concatenate((y, y_phase), axis=3)
 
         if self.only_predictions:
             return X
@@ -105,20 +105,28 @@ class DanQModel(HelixerModel):
             else:
                 input_data = test_sequence[batch_index]
             predictions = model.predict_on_batch(input_data)
-	    if self.predict_phase:
-		#convert array containing 6 labels(ig,utr,intron,ph1-3 into 2x4 labels)
-		dtype_ = predictions.dtype
-		shape_ = list(predictions.shape)
-		shape_[-1] = 1
-		empty_array = np.zeros((shape_)).astype(dtype_) #empty array to insert
-		genic = predictions[:, :, :, 0:3] #creation of genic prediction array
-		genic = np.roll(genic, 1, axis=3)
-		genic = np.concatenate((genic, empty_array), axis=3)
-		genic = np.roll(genic, -1, axis=3)
+            if self.predict_phase:
+                dtype_ = predictions.dtype
+                shape_ = list(predictions.shape)
+                shape_[-1] = 1
+                #make phase none as 1- the sum(rest)
+                phase = predictions[:, :, :, 3:]
+                phase_sum = 1- np.sum(phase, axis=3).reshape(shape_)
+                phase = np.concatenate((phase_sum, phase), axis=3)
 
-		phase = predictions[:, :, :, 3:] #same for predictions
-		phase = np.concatenate((empty_array, phase), axis=3)
-		predictions = [genic, phase]
+                #CDS class to the max(3 phases)
+                genic = predictions[:, :, :, 0:3] #creation of genic prediction array
+                #array containing max values of phase predictions
+                genic_CDS = np.amax(phase[:, :, :, 1:], axis=3).reshape(shape_)
+
+                #x = [intergenic, UTR, intron]. x = x * (1 - CDS) / sum(x) for rescaling of the others
+                genic = genic * (1-genic_CDS) / np.sum(genic, axis=3).reshape(shape_)
+                #addition of the CDS probabilities
+                genic = np.roll(genic, 1, axis=3)
+                genic = np.concatenate((genic, genic_CDS), axis=3)
+                genic = np.roll(genic, -1, axis=3)
+                #generate final list
+                predictions = [genic, phase]
 
             if isinstance(predictions, list):
                 # when we have two outputs, one is for phase
@@ -219,7 +227,7 @@ class DanQModel(HelixerModel):
             x = Dropout(self.dropout2)(x)
 
         if self.predict_phase:
-	    x = Dense(self.pool_size * 6)(x)
+            x = Dense(self.pool_size * 6)(x)
             x = Reshape((-1, self.pool_size, 6))(x)
             x = Activation('softmax', name='main')(x)
             outputs = [x]
