@@ -37,6 +37,11 @@ class DanQSequence(HelixerSequence):
             if not self.only_predictions:
                 y = y[:, :, [0, 1, 3]]
                 y = self._mk_timestep_pools_class_last(y)
+                if self.predict_phase:
+                    #split up data
+                    y_phase = phases[:, :, [1, 2, 3]]
+                    y_phase = self._mk_timestep_pools_class_last(y_phase)
+                    y = np.concatenate((y, y_phase), axis=3)
                 sw = sw.reshape((sw.shape[0], -1, pool_size))
                 sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
 
@@ -45,13 +50,13 @@ class DanQSequence(HelixerSequence):
                     # class weights are additive for the individual timestep predictions
                     # giving even more weight to transition points
                     # class weights without pooling not supported yet
-                    # cw = np.array([1.0, 1.2, 1.0, 0.8], dtype=np.float32)
+                    # cw = np.array([1.0, 1.2, 1.0, 0.8], dtype=np.float32) 
                     cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(6)]
                     cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
                     # add class weights to applicable timesteps
-                    cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
-                    cw = np.sum(cw_arrays, axis=2)
-                    sw = np.multiply(cw, sw)
+                    cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,))).astype(np.float16)
+                    cw = np.sum(cw_arrays, axis=2).astype(np.float16)
+                    sw = np.multiply(cw, sw).astype(np.float16)
 
                 # todo, while now compressed, the following is still 1:1 with LSTM model... --> HelixerModel
                 if self.transition_weights is not None:
@@ -69,10 +74,7 @@ class DanQSequence(HelixerSequence):
                     sw = np.multiply(coverage_scores, sw)
 
             if self.predict_phase and not self.only_predictions:
-                #split up data
-                y_phase = phases[:, :, [1, 2, 3]]
-                y_phase = self._mk_timestep_pools_class_last(y_phase)
-                y = np.concatenate((y, y_phase), axis=3)
+                pass
 
         if self.only_predictions:
             return X
