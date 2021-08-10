@@ -1,7 +1,8 @@
 #! /usr/bin/env python3
 import numpy as np
+import h5py
 import tensorflow as tf
-
+import datetime
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
                                      Activation, Input, BatchNormalization)
@@ -182,7 +183,7 @@ class DanQModel(HelixerModel):
         pred_out.attrs['test_data_path'] = self.test_data
         pred_out.attrs['model_path'] = self.load_model_path
         pred_out.attrs['timestamp'] = str(datetime.datetime.now())
-        pred_out.attrs['model_md5sum'] = self.loaded_model_hash
+        #pred_out.attrs['model_md5sum'] = self.loaded_model_hash yields ERROR
         pred_out.close()
         h5_model.close()
 
@@ -213,7 +214,7 @@ class DanQModel(HelixerModel):
 
         if self.pool_size > 1:
             x = Reshape((-1, self.pool_size * self.filter_depth))(x)
-            # x = MaxPooling1D(pool_size=self.pool_size, padding='same')(x)
+            #x = MaxPooling1D(pool_size=self.pool_size, padding='same')(x)
 
         if self.dropout1 > 0.0:
             x = Dropout(self.dropout1)(x)
