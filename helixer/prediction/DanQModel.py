@@ -1,6 +1,8 @@
 #! /usr/bin/env python3
 import numpy as np
 import h5py
+import os
+import subprocess
 import tensorflow as tf
 import datetime
 from tensorflow.keras.models import Model
@@ -183,9 +185,38 @@ class DanQModel(HelixerModel):
         pred_out.attrs['test_data_path'] = self.test_data
         pred_out.attrs['model_path'] = self.load_model_path
         pred_out.attrs['timestamp'] = str(datetime.datetime.now())
-        #pred_out.attrs['model_md5sum'] = self.loaded_model_hash yields ERROR
+        pred_out.attrs['model_md5sum'] = self.loaded_model_hash #gave error --> method was not inherited?!
         pred_out.close()
         h5_model.close()
+
+    def _print_model_info(self, model):
+        pwd = os.getcwd()
+        os.chdir(os.path.dirname(__file__))
+        try:
+            cmd = ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
+            branch = subprocess.check_output(cmd, stderr=subprocess.STDOUT).strip().decode()
+            cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
+            commit = subprocess.check_output(cmd, stderr=subprocess.STDOUT).strip().decode()
+            print(f'Current Helixer branch: {branch} ({commit})')
+        except subprocess.CalledProcessError:
+            version = pkg_resources.require('helixer')[0].version
+            print(f'Current Helixer version: {version}')
+
+        try:
+            if os.path.isfile(self.load_model_path):
+                cmd = ['md5sum', self.load_model_path]
+                self.loaded_model_hash = subprocess.check_output(cmd).strip().decode()
+                print(f'Md5sum of the loaded model: {self.loaded_model_hash}')
+        except subprocess.CalledProcessError:
+            print('An error occurred while running a subprocess, unable to record loaded_model_hash')
+            self.loaded_model_hash = 'error'
+
+        print()
+        if self.verbose:
+            print(model.summary())
+        else:
+            print('Total params: {:,}'.format(model.count_params()))
+        os.chdir(pwd)  # return to previous directory
 
 
     @staticmethod
