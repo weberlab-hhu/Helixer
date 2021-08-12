@@ -25,7 +25,7 @@ class DanQSequence(HelixerSequence):
             if X.shape[1] % pool_size != 0:
                 # clip to maximum size possible with the pooling length
                 overhang = X.shape[1] % pool_size
-                X = X[:, :-overhang]
+                X = X[:, :-overhang].astype(np.int8)
                 if not self.only_predictions:
                     y = y[:, :-overhang]
                     sw = sw[:, :-overhang]
@@ -35,13 +35,13 @@ class DanQSequence(HelixerSequence):
                         transitions = transitions[:, :-overhang]
 
             if not self.only_predictions:
-                y = y[:, :, [0, 1, 3]]
+                y = y[:, :, [0, 1, 3]].astype(np.int8)
                 y = self._mk_timestep_pools_class_last(y)
                 if self.predict_phase:
                     #split up data
-                    y_phase = phases[:, :, [1, 2, 3]]
+                    y_phase = phases[:, :, [1, 2, 3]].astype(np.int8)
                     y_phase = self._mk_timestep_pools_class_last(y_phase)
-                    y = np.concatenate((y, y_phase), axis=3)
+                    y = np.concatenate((y, y_phase), axis=3).astype(np.int8)
                 sw = sw.reshape((sw.shape[0], -1, pool_size))
                 sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
 
