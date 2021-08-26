@@ -3,6 +3,7 @@ import numpy as np
 import h5py
 import os
 import subprocess
+import pkg_resources
 import tensorflow as tf
 import datetime
 from tensorflow.keras.models import Model
@@ -95,6 +96,11 @@ class DanQModel(HelixerModel):
         self.parser.add_argument('--dropout2', type=float, default=0.0)
         self.parse_args()
 
+    #method to test if sums are formed correctly
+    @staticmethod
+    def test_sum(phase):
+        return (np.sum(phase, axis=-1) > 0.9).all()
+
     #method to create the predictions .h5 file
     def _make_predictions(self, model):
         # loop through batches and continuously expand output dataset as everything might
@@ -111,13 +117,14 @@ class DanQModel(HelixerModel):
                 input_data = test_sequence[batch_index]
             predictions = model.predict_on_batch(input_data)
             if self.predict_phase:
-                dtype_ = predictions.dtype
+                dtype_ = np.float32#predictions[0, 0, 0, 0].dtype
                 shape_ = list(predictions.shape)
                 shape_[-1] = 1
                 #make phase none as 1- the sum(rest)
-                phase = predictions[:, :, :, 3:]
-                phase_sum = 1- np.sum(phase, axis=3).reshape(shape_)
+                phase = predictions[:, :, :, 3:].astype(dtype_)
+                phase_sum = 1- np.sum(phase, axis=3).reshape(shape_).astype(dtype_)
                 phase = np.concatenate((phase_sum, phase), axis=3)
+                assert self.test_sum(phase), 'sum of phases do not add up to 1'
 
                 #CDS class to the max(3 phases)
                 genic = predictions[:, :, :, 0:3] #creation of genic prediction array
@@ -187,7 +194,7 @@ class DanQModel(HelixerModel):
         pred_out.attrs['test_data_path'] = self.test_data
         pred_out.attrs['model_path'] = self.load_model_path
         pred_out.attrs['timestamp'] = str(datetime.datetime.now())
-        pred_out.attrs['model_md5sum'] = self.loaded_model_hash #gave error --> method was not inherited?!
+        #pred_out.attrs['model_md5sum'] = self.loaded_model_hash #gave error --> method was not inherited?!
         pred_out.close()
         h5_model.close()
 
