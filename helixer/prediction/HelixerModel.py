@@ -663,6 +663,7 @@ class HelixerModel(ABC):
                     pred_dset = test_sequence.ol_helper.overlap_predictions(batch_index, pred_dset)
 
                 # prepare h5 dataset and save the predictions to disk
+                pred_dset = pred_dset.astype(np.float16)
                 if batch_index == 0:
                     old_len = 0
                     pred_out.create_dataset(dset_name,

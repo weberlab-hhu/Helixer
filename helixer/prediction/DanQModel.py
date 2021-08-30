@@ -1,11 +1,7 @@
 #! /usr/bin/env python3
 import numpy as np
-import h5py
-import os
-import subprocess
-import pkg_resources
 import tensorflow as tf
-import datetime
+
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
                                      Activation, Input, BatchNormalization)
@@ -26,7 +22,7 @@ class DanQSequence(HelixerSequence):
             if X.shape[1] % pool_size != 0:
                 # clip to maximum size possible with the pooling length
                 overhang = X.shape[1] % pool_size
-                X = X[:, :-overhang].astype(np.int8)
+                X = X[:, :-overhang]
                 if not self.only_predictions:
                     y = y[:, :-overhang]
                     sw = sw[:, :-overhang]
@@ -38,13 +34,7 @@ class DanQSequence(HelixerSequence):
                         transitions = transitions[:, :-overhang]
 
             if not self.only_predictions:
-                y = y[:, :, [0, 1, 3]].astype(np.int8)
                 y = self._mk_timestep_pools_class_last(y)
-                if self.predict_phase:
-                    #split up data
-                    y_phase = phases[:, :, [1, 2, 3]].astype(np.int8)
-                    y_phase = self._mk_timestep_pools_class_last(y_phase)
-                    y = np.concatenate((y, y_phase), axis=3).astype(np.int8)
                 sw = sw.reshape((sw.shape[0], -1, pool_size))
                 sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
 
@@ -53,13 +43,13 @@ class DanQSequence(HelixerSequence):
                     # class weights are additive for the individual timestep predictions
                     # giving even more weight to transition points
                     # class weights without pooling not supported yet
-                    # cw = np.array([1.0, 1.2, 1.0, 0.8], dtype=np.float32) 
-                    cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(6)]
+                    # cw = np.array([1.0, 1.2, 1.0, 0.8], dtype=np.float32)
+                    cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
                     cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
                     # add class weights to applicable timesteps
-                    cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,))).astype(np.float16)
-                    cw = np.sum(cw_arrays, axis=2).astype(np.float16)
-                    sw = np.multiply(cw, sw).astype(np.float16)
+                    cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
+                    cw = np.sum(cw_arrays, axis=2)
+                    sw = np.multiply(cw, sw)
 
                 # todo, while now compressed, the following is still 1:1 with LSTM model... --> HelixerModel
                 if self.transition_weights is not None:
@@ -77,7 +67,8 @@ class DanQSequence(HelixerSequence):
                     sw = np.multiply(coverage_scores, sw)
 
             if self.predict_phase and not self.only_predictions:
-                pass
+                y_phase = self._mk_timestep_pools_class_last(phases)
+                y = [y, y_phase]
 
         if self.only_predictions:
             return X
@@ -97,138 +88,6 @@ class DanQModel(HelixerModel):
         self.parser.add_argument('--dropout1', type=float, default=0.0)
         self.parser.add_argument('--dropout2', type=float, default=0.0)
         self.parse_args()
-
-    #method to test if sums are formed correctly
-    @staticmethod
-    def test_sum(phase):
-        return (np.sum(phase, axis=-1) > 0.9).all()
-
-    #method to create the predictions .h5 file
-    def _make_predictions(self, model):
-        # loop through batches and continuously expand output dataset as everything might
-        # not fit in memory
-        pred_out = h5py.File(self.prediction_output_path, 'w')
-        test_sequence = self.gen_test_data()
-
-        for batch_index in range(len(test_sequence)):
-            if self.verbose:
-                print(batch_index, '/', len(test_sequence), end='\r')
-            if not self.only_predictions:
-                input_data = test_sequence[batch_index][0]
-            else:
-                input_data = test_sequence[batch_index]
-            predictions = model.predict_on_batch(input_data)
-            if self.predict_phase:
-                dtype_ = np.float32#predictions[0, 0, 0, 0].dtype
-                shape_ = list(predictions.shape)
-                shape_[-1] = 1
-                #make phase none as 1- the sum(rest)
-                phase = predictions[:, :, :, 3:].astype(dtype_)
-                phase_sum = 1- np.sum(phase, axis=3).reshape(shape_).astype(dtype_)
-                phase = np.concatenate((phase_sum, phase), axis=3)
-                assert self.test_sum(phase), 'sum of phases do not add up to 1'
-
-                #CDS class to the max(3 phases)
-                genic = predictions[:, :, :, 0:3] #creation of genic prediction array
-                #array containing max values of phase predictions
-                genic_CDS = np.amax(phase[:, :, :, 1:], axis=3).reshape(shape_)
-
-                #x = [intergenic, UTR, intron]. x = x * (1 - CDS) / sum(x) for rescaling of the others
-                genic = genic * (1-genic_CDS) / np.sum(genic, axis=3).reshape(shape_)
-                #addition of the CDS probabilities
-                genic = np.roll(genic, 1, axis=3)
-                genic = np.concatenate((genic, genic_CDS), axis=3)
-                genic = np.roll(genic, -1, axis=3)
-                #generate final list
-                predictions = [genic, phase]
-
-            if isinstance(predictions, list):
-                # when we have two outputs, one is for phase
-                output_names = ['predictions', 'predictions_phase']
-            else:
-                # if we just had one output
-                predictions = (predictions,)
-                output_names = ['predictions']
-
-            for dset_name, pred_dset in zip(output_names, predictions):
-                # join last two dims when predicting one hot labels
-                pred_dset = pred_dset.reshape(pred_dset.shape[:2] + (-1,))
-                # reshape when predicting more than one point at a time
-                label_dim = 4
-                if pred_dset.shape[2] != label_dim:
-                    n_points = pred_dset.shape[2] // label_dim
-                    pred_dset = pred_dset.reshape(
-                        pred_dset.shape[0],
-                        pred_dset.shape[1] * n_points,
-                        label_dim,
-                    )
-                    # add 0-padding if needed
-                    n_removed = self.shape_test[1] - pred_dset.shape[1]
-                    if n_removed > 0:
-                        zero_padding = np.zeros((pred_dset.shape[0], n_removed, pred_dset.shape[2]),
-                                                dtype=pred_dset.dtype)
-                        pred_dset = np.concatenate((pred_dset, zero_padding), axis=1)
-                else:
-                    n_removed = 0  # just to avoid crashing with Unbound Local Error setting attrs for dCNN
-
-                if self.overlap:
-                    pred_dset = test_sequence.ol_helper.overlap_predictions(batch_index, pred_dset)
-
-                # prepare h5 dataset and save the predictions to disk
-                if batch_index == 0:
-                    old_len = 0
-                    pred_out.create_dataset(dset_name,
-                                            data=pred_dset,
-                                            maxshape=(None,) + pred_dset.shape[1:],
-                                            chunks=(1,) + pred_dset.shape[1:],
-                                            dtype='float16',
-                                            compression='lzf',
-                                            shuffle=True)
-                else:
-                    old_len = pred_out[dset_name].shape[0]
-                    pred_out[dset_name].resize(old_len + pred_dset.shape[0], axis=0)
-                pred_out[dset_name][old_len:] = pred_dset
-
-        # add model config and other attributes to predictions
-        h5_model = h5py.File(self.load_model_path, 'r')
-        pred_out.attrs['model_config'] = h5_model.attrs['model_config']
-        pred_out.attrs['n_bases_removed'] = n_removed
-        pred_out.attrs['test_data_path'] = self.test_data
-        pred_out.attrs['model_path'] = self.load_model_path
-        pred_out.attrs['timestamp'] = str(datetime.datetime.now())
-        #pred_out.attrs['model_md5sum'] = self.loaded_model_hash #gave error --> method was not inherited?!
-        pred_out.close()
-        h5_model.close()
-
-    def _print_model_info(self, model):
-        pwd = os.getcwd()
-        os.chdir(os.path.dirname(__file__))
-        try:
-            cmd = ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
-            branch = subprocess.check_output(cmd, stderr=subprocess.STDOUT).strip().decode()
-            cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
-            commit = subprocess.check_output(cmd, stderr=subprocess.STDOUT).strip().decode()
-            print(f'Current Helixer branch: {branch} ({commit})')
-        except subprocess.CalledProcessError:
-            version = pkg_resources.require('helixer')[0].version
-            print(f'Current Helixer version: {version}')
-
-        try:
-            if os.path.isfile(self.load_model_path):
-                cmd = ['md5sum', self.load_model_path]
-                self.loaded_model_hash = subprocess.check_output(cmd).strip().decode()
-                print(f'Md5sum of the loaded model: {self.loaded_model_hash}')
-        except subprocess.CalledProcessError:
-            print('An error occurred while running a subprocess, unable to record loaded_model_hash')
-            self.loaded_model_hash = 'error'
-
-        print()
-        if self.verbose:
-            print(model.summary())
-        else:
-            print('Total params: {:,}'.format(model.count_params()))
-        os.chdir(pwd)  # return to previous directory
-
 
     @staticmethod
     def sequence_cls():
@@ -256,7 +115,7 @@ class DanQModel(HelixerModel):
 
         if self.pool_size > 1:
             x = Reshape((-1, self.pool_size * self.filter_depth))(x)
-            #x = MaxPooling1D(pool_size=self.pool_size, padding='same')(x)
+            # x = MaxPooling1D(pool_size=self.pool_size, padding='same')(x)
 
         if self.dropout1 > 0.0:
             x = Dropout(self.dropout1)(x)
@@ -270,11 +129,16 @@ class DanQModel(HelixerModel):
             x = Dropout(self.dropout2)(x)
 
         if self.predict_phase:
-            x = Dense(self.pool_size * 6)(x)
-            x = Reshape((-1, self.pool_size, 6))(x)
-            x = Activation('softmax', name='main')(x)
-            outputs = [x]
+            x = Dense(self.pool_size * 4 * 2)(x)  # predict twice a many floats
+            x_genic, x_phase = tf.split(x, 2, axis=-1)
 
+            x_genic = Reshape((-1, self.pool_size, 4))(x_genic)
+            x_genic = Activation('softmax', name='genic')(x_genic)
+
+            x_phase = Reshape((-1, self.pool_size, 4))(x_phase)
+            x_phase = Activation('softmax', name='phase')(x_phase)
+
+            outputs = [x_genic, x_phase]
         else:
             x = Dense(self.pool_size * 4)(x)
             x = Reshape((-1, self.pool_size, 4))(x)
@@ -286,8 +150,8 @@ class DanQModel(HelixerModel):
 
     def compile_model(self, model):
         if self.predict_phase:
-            losses = ['categorical_crossentropy']
-            loss_weights = [1.0]
+            losses = ['categorical_crossentropy', 'categorical_crossentropy']
+            loss_weights = [0.8, 0.2]
         else:
             losses = ['categorical_crossentropy']
             loss_weights = [1.0]
