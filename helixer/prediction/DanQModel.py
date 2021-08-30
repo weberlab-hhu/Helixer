@@ -32,6 +32,8 @@ class DanQSequence(HelixerSequence):
                     sw = sw[:, :-overhang]
                     if self.predict_phase:
                         phases = phases[:, :-overhang]
+                    if self.coverage_weights:
+                        coverage_scores = coverage_scores[:, :-overhang]
                     if self.mode == 'train' and self.transition_weights is not None:
                         transitions = transitions[:, :-overhang]
 
