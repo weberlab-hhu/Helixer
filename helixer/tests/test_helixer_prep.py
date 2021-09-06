@@ -23,6 +23,8 @@ from ..prediction.Metrics import ConfusionMatrix, ConfusionMatrixGenic
 from helixer.prediction.LSTMModel import LSTMSequence
 from ..evaluation import rnaseq
 
+from Helixer.helixer.prediction import HelixerModel
+
 TMP_DB = 'testdata/tmp/dummy.sqlite3'
 DUMMYLOCI_DB = 'testdata/dummyloci/dummyloci.sqlite3'
 H5_OUT_FOLDER = 'testdata/numerify_test_out/'
@@ -1456,7 +1458,46 @@ def test_direct_fasta_export():
         assert np.array_equal(X_fasta[i], X_db[j])
 
 
+def test_h5_writer():
+    """ Predictions made by HELIXER and written to the Hard drive via h5py resulted in regions, where
+    the prediction probabilities did not add up to one. The output of the Network itself were tested and
+    correctly added up to one. Apparently, h5py appeared to suffer from float-point precision
+    to the base of 2, resulting in the predictions to add up to 0.5 rather than 1.
+    The function aims to check, whether h5py is writing the correct prediction to the hard drive"""
+    def shuffle_along_axis(a, axis):
+        idx = np.random.rand(*a.shape).argsort(axis=axis)
+        return np.take_along_axis(a, idx, axis=axis)
+
+    def rand_arr(batches, length=20000):
+        arr = np.full((batches, length, 1), 1).astype(np.int32)
+        arr2 = np.full((batches, length, 3), 0).astype(np.int32)
+        arr_test = np.concatenate((arr, arr2), axis=-1)
+        arr_test = shuffle_along_axis(arr_test, axis=-1).astype(np.float32)
+        return arr_test
+
+    class Test_class:
+        def __init__(self, test_data):
+            self.overlap = False
+            self.test_data = test_data
+            self.shape_test = self.test_data.shape
 
 
+    #generate arbitrary h5file for output
+    path = os.getcwd() + '/test.h5'
+
+    test_data = rand_arr(2, 15000)
+    self = Test_class(test_data)
+
+    predictions = rand_arr(2)
+
+    test_sequence = None
+    batch_index = 0
+
+
+    pred_out = h5py.File(path, 'w')
+
+    #now use array to write to file using function from HelxierModel.py
+    n_removed = HelixerModel.HelixerModel.pred_to_h5(self, predictions, test_sequence, batch_index, pred_out)
+    pred_out.close()
 
 
