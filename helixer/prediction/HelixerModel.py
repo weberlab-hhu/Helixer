@@ -140,8 +140,8 @@ class HelixerSequence(Sequence):
             if self.mode == 'train':
                 if self.transition_weights is not None:
                     self.data_list_names.append('data/transitions')
-                if self.coverage_weights:
-                    self.data_list_names.append('scores/by_bp')
+            if self.coverage_weights:
+                self.data_list_names.append('scores/by_bp')
 
         if self.overlap:
             assert self.mode == "test", "overlapping currently only works for test (predictions & eval)"
