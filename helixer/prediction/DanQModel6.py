@@ -96,6 +96,7 @@ class DanQModel(HelixerModel):
         self.parser.add_argument('--pool-size', type=int, default=10)
         self.parser.add_argument('--dropout1', type=float, default=0.0)
         self.parser.add_argument('--dropout2', type=float, default=0.0)
+        self.parser.add_argument('--dense', type=int, default=0)
         self.parse_args()
 
     #method to test if sums are formed correctly
@@ -271,6 +272,9 @@ class DanQModel(HelixerModel):
             x = Dropout(self.dropout2)(x)
 
         if self.predict_phase:
+            if self.dense > 0:
+                x = Dense(self.dense)(x)
+
             x = Dense(self.pool_size * 6)(x)
             x = Reshape((-1, self.pool_size, 6))(x)
             x = Activation('softmax', name='main')(x)
