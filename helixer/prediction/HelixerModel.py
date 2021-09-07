@@ -406,7 +406,18 @@ class HelixerModel(ABC):
 
         if self.nni:
             hyperopt_args = nni.get_next_parameter()
-            assert all([key in args for key in hyperopt_args.keys()]), 'Unknown nni parameter'
+            for key in hyperopt_args.keys():
+                has_dash = key.find('-') > -1
+                if key not in args:
+                    if has_dash:
+                        maybe_fixed = key.replace('-', '_')
+                        raise AssertionError(f'Parameter from nni: "{key}" does not match parsed arguments.\n'
+                                             f'Hint: "{key}" contains a "-"; maybe it should be "{maybe_fixed}" '
+                                             'so as to match arguments parsed by ArgumentParser?')
+                    else:
+                        raise AssertionError(f'Parameter from nni: "{key}" does not match processed arguments')
+
+
             # cast int params to int as we may get them as float
             hyperopt_args = {name:(int(value) if isinstance(self.parser.get_default(name), int) else value)
                              for name, value in hyperopt_args.items()}
