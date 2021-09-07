@@ -4,7 +4,11 @@ from sklearn.metrics import precision_recall_fscore_support as f1_scores
 from sklearn.metrics import accuracy_score
 import numpy as np
 import pytest
+
 import h5py
+import tensorflow as tf
+from tensorflow_addons.optimizers import AdamW
+from helixer.prediction import HelixerModel
 
 import geenuff
 from geenuff.tests.test_geenuff import mk_memory_session
@@ -23,7 +27,7 @@ from ..prediction.Metrics import ConfusionMatrix, ConfusionMatrixGenic
 from helixer.prediction.LSTMModel import LSTMSequence
 from ..evaluation import rnaseq
 
-from Helixer.helixer.prediction import HelixerModel
+
 
 TMP_DB = 'testdata/tmp/dummy.sqlite3'
 DUMMYLOCI_DB = 'testdata/dummyloci/dummyloci.sqlite3'
@@ -1464,17 +1468,6 @@ def test_h5_writer():
     correctly added up to one. Apparently, h5py appeared to suffer from float-point precision
     to the base of 2, resulting in the predictions to add up to 0.5 rather than 1.
     The function aims to check, whether h5py is writing the correct prediction to the hard drive"""
-    def shuffle_along_axis(a, axis):
-        idx = np.random.rand(*a.shape).argsort(axis=axis)
-        return np.take_along_axis(a, idx, axis=axis)
-
-    def rand_arr(batches, length=20000):
-        arr = np.full((batches, length, 1), 1).astype(np.int32)
-        arr2 = np.full((batches, length, 3), 0).astype(np.int32)
-        arr_test = np.concatenate((arr, arr2), axis=-1)
-        arr_test = shuffle_along_axis(arr_test, axis=-1).astype(np.float32)
-        return arr_test
-
     class Test_class:
         def __init__(self, test_data):
             self.overlap = False
@@ -1482,22 +1475,35 @@ def test_h5_writer():
             self.shape_test = self.test_data.shape
 
 
-    #generate arbitrary h5file for output
-    path = os.getcwd() + '/test.h5'
+    #load data for pseudo predictions
+    test_data_path = os.getcwd() + '/testdata/test_data.h5'
+    test_data = h5py.File(test_data_path, 'r')
+    test_batch = test_data['data/X']
 
-    test_data = rand_arr(2, 15000)
-    self = Test_class(test_data)
+    #load a model for pseudo predictions
+    model_path = os.getcwd() + '/testdata/test_model.h5'
+    with tf.device('/CPU:0'):
+        model = tf.keras.models.load_model(model_path, compile=True)
+        predictions = model.predict_on_batch(test_batch)
 
-    predictions = rand_arr(2)
-
+    self = Test_class(test_batch)
     test_sequence = None
     batch_index = 0
 
-
+    path = os.getcwd() + '/test.h5'
     pred_out = h5py.File(path, 'w')
-
-    #now use array to write to file using function from HelxierModel.py
     n_removed = HelixerModel.HelixerModel.pred_to_h5(self, predictions, test_sequence, batch_index, pred_out)
     pred_out.close()
+    test_data.close()
+
+    #read the newly created file and test of classes add up to 1
+    pred_in_ = h5py.File(path, 'r')
+    pred_in = pred_in_['predictions_phase']
+    below_one = np.sum(np.sum(pred_in, axis=-1) < 0.9)
+    os.remove(path)
+    pred_in_.close()
+    print(below_one)
+    assert below_one == 0
+
 
 
