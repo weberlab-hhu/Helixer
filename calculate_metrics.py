@@ -14,7 +14,7 @@ import itertools
 ###################### REFERENCE FILE #######################
 fpath = '/mnt/data/niklas/with_coverage/Mesculenta/test_data.h5'
 
-till = 100
+till = 1000
 
 
 class Matrix_class:
@@ -28,10 +28,11 @@ class Matrix_class:
         data = np.array(list(data.values())).reshape((4,4))
         #normalize the data
         sums_ = np.sum(data, axis=1).reshape(-1, 1)
-        return data/sums_
+        normalized = data/sums_
+        return normalized.flatten()
     
     def abs_data(self, data):
-        data = np.array(list(data.values())).reshape((4,4))
+        data = np.array(list(data.values()))
         return data
 
 #class for h5 file containing all methods for analysis
@@ -88,14 +89,13 @@ class H6FILE:
         ent = ent_cds + ent_phase
         return np.array([ent_cds, ent_phase, ent])
 
-    def entropy(self):
-        h_ent = np.sum(np.array(list(map(self.cce_per_nt, self.ref_CDS, self.pred_CDS, self.ref_phase, self.pred_phase))), axis=0)
-        if self.is_helixer:
+    def entropy(self, argmax=False):
+        if argmax:
             cce_argmax = functools.partial(self.cce_per_nt, argmax_=True)
-            arg_ent = np.sum(np.array(list(map(cce_argmax, self.ref_CDS, self.pred_CDS, self.ref_phase, self.pred_phase))), axis=0)
+            h_ent = np.sum(np.array(list(map(cce_argmax, self.ref_CDS, self.pred_CDS, self.ref_phase, self.pred_phase))), axis=0)
         else:
-            arg_ent= np.array([0, 0, 0])
-        return np.array([h_ent, arg_ent]).reshape((-1, 3))
+            h_ent = np.sum(np.array(list(map(self.cce_per_nt, self.ref_CDS, self.pred_CDS, self.ref_phase, self.pred_phase))), axis=0)
+        return h_ent
 
 
     def f1_per_chunk(self, ref_CDS, pred_CDS, ref_phase, pred_phase, argmax_=False):
@@ -122,8 +122,12 @@ class H6FILE:
     
         return np.array([result_cds, result_phase]).reshape(-1)
 
-    def f1_by_class(self):
-        h_f1 = np.array(list(map(self.f1_per_chunk, self.ref_CDS, self.pred_CDS, self.ref_phase, self.pred_phase)))
+    def f1_by_class(self, argmax=False):
+        if argmax:
+            f1_argmax = functools.partial(self.f1_per_chunk, argmax_=True)
+            h_f1 = np.array(list(map(f1_argmax, self.ref_CDS, self.pred_CDS, self.ref_phase, self.pred_phase)))
+        else:
+            h_f1 = np.array(list(map(self.f1_per_chunk, self.ref_CDS, self.pred_CDS, self.ref_phase, self.pred_phase)))
         cols = range(h_f1.shape[1])
         means = np.array([np.mean(h_f1[h_f1[:,e] != 0, e]) for e in cols])
         return np.around(means, decimals=3)
@@ -217,8 +221,8 @@ class H6FILE:
 
     def error_quantification(self, ref_CDS, pred_CDS, argmax=False):
         if argmax:
-            cce_argmax = functools.partial(self.error_classes, argmax_=True)
-            h_err = list(map(cce_argmax, ref_CDS, pred_CDS))
+            error_argmax = functools.partial(self.error_classes, argmax_=True)
+            h_err = list(map(error_argmax, ref_CDS, pred_CDS))
         else: 
             h_err = list(map(self.error_classes, ref_CDS, pred_CDS))
         helixer = Counter(itertools.chain(*h_err))
@@ -226,17 +230,23 @@ class H6FILE:
         helixer = Matrix_class(helixer, "helixer") ####change namHERE !!!!
         return helixer
 
-    def to_dataframe(self):
-        ent = self.entropy()
-        f1_score = self.f1_by_class()
-        genic = self.error_quantification(self.ref_CDS, self.pred_CDS, argmax=False)
-        phase = self.error_quantification(self.ref_phase, self.pred_phase, argmax=False) 
-        
-
-        d = {"entropy": ent, 'f1': f1_score, "genic_matrix": genic.normalized}
-        df = pd.DataFrame(data=list(d.items()))
+    def to_dataframe(self, argmax=False):
+        ent = self.entropy(argmax=argmax)
+        f1_score = self.f1_by_class(argmax=argmax)
+        genic = self.error_quantification(self.ref_CDS, self.pred_CDS, argmax=argmax)
+        phase = self.error_quantification(self.ref_phase, self.pred_phase, argmax=argmax) 
+        df = np.array([ent, f1_score, genic.normalized, genic.absolute, phase.normalized, phase.absolute])
         return df 
 
+
+    def calc_metrics(self):
+        if self.is_helixer:
+            df_helixer = self.to_dataframe(argmax=False)
+            df_argmax = self.to_dataframe(argmax=True)
+            return np.array([df_helixer, df_argmax]).reshape((2, -1))
+        if not self.is_helixer:
+            df_post = self.to_dataframe(argmax=False)
+            return df_post
 
 def run():
     paths = sys.argv
@@ -249,8 +259,8 @@ def run():
         for file in predictions:
             print(file)
             data_class = H6FILE(file)
-            df = data_class.to_dataframe()
-            print(df.to_string())
+            df = data_class.calc_metrics()
+            print(df)
             data_class.file.close()
             data_class.ref.close()
         print("________________________")    
