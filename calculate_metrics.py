@@ -8,12 +8,31 @@ import pandas as pd
 import tensorflow as tf
 import functools
 import tensorflow_addons as tfa
-
+from collections import Counter, OrderedDict
+import itertools
 
 ###################### REFERENCE FILE #######################
 fpath = '/mnt/data/niklas/with_coverage/Mesculenta/test_data.h5'
 
-till = 10000
+till = 100
+
+
+class Matrix_class:
+    def __init__(self, data, name):
+        self.data = data
+        self.name = name
+        self.normalized = self.data_nrom(data)
+        self.absolute = self.abs_data(data)
+        
+    def data_nrom(self, data):
+        data = np.array(list(data.values())).reshape((4,4))
+        #normalize the data
+        sums_ = np.sum(data, axis=1).reshape(-1, 1)
+        return data/sums_
+    
+    def abs_data(self, data):
+        data = np.array(list(data.values())).reshape((4,4))
+        return data
 
 #class for h5 file containing all methods for analysis
 class H6FILE:
@@ -37,6 +56,7 @@ class H6FILE:
         if self.is_helixer:
             return self.file["predictions"][0:till], self.file["predictions_phase"][0:till]
         else:
+            return self.file["data/y"][0:till], self.file["data/phases"][0:till]
 
     @staticmethod
     def pred_to_argmax(pred):
@@ -108,14 +128,14 @@ class H6FILE:
         means = np.array([np.mean(h_f1[h_f1[:,e] != 0, e]) for e in cols])
         return np.around(means, decimals=3)
 
-    def error_classes(ref_CDS, pred_CDS, argmax_=False):
+    def error_classes(self, ref_CDS, pred_CDS, argmax_=False):
         idx = np.sum(ref_CDS, axis=1) != 0
         ref_CDS = ref_CDS[idx]
         pred_CDS = pred_CDS[idx]
 
         #argmax function
         if argmax_:
-            pred_CDS = comp.pred_to_argmax(pred_CDS)
+            pred_CDS = self.pred_to_argmax(pred_CDS)
 
         #transformation of data
         ref_CDS = np.argmax(ref_CDS, axis=1)
@@ -195,15 +215,28 @@ class H6FILE:
 
         return error_matrix.astype(np.int8)
 
-
+    def error_quantification(self, ref_CDS, pred_CDS, argmax=False):
+        if argmax:
+            cce_argmax = functools.partial(self.error_classes, argmax_=True)
+            h_err = list(map(cce_argmax, ref_CDS, pred_CDS))
+        else: 
+            h_err = list(map(self.error_classes, ref_CDS, pred_CDS))
+        helixer = Counter(itertools.chain(*h_err))
+        helixer = OrderedDict(sorted(helixer.items()))
+        helixer = Matrix_class(helixer, "helixer") ####change namHERE !!!!
+        return helixer
 
     def to_dataframe(self):
         ent = self.entropy()
         f1_score = self.f1_by_class()
+        genic = self.error_quantification(self.ref_CDS, self.pred_CDS, argmax=False)
+        phase = self.error_quantification(self.ref_phase, self.pred_phase, argmax=False) 
         
-        d = {"entropy": ent, 'f1': f1_score}
+
+        d = {"entropy": ent, 'f1': f1_score, "genic_matrix": genic.normalized}
         df = pd.DataFrame(data=list(d.items()))
         return df 
+
 
 def run():
     paths = sys.argv
