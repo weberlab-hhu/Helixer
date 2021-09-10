@@ -29,17 +29,18 @@ class Matrix_class:
         #normalize the data
         sums_ = np.sum(data, axis=1).reshape(-1, 1)
         normalized = data/sums_
-        return normalized.flatten()
+        return normalized
     
     def abs_data(self, data):
         data = np.array(list(data.values()))
-        return data
+        return data.reshape((4, 4))
 
 #class for h5 file containing all methods for analysis
 class H6FILE:
     def __init__(self, path):
         self.path = path
         self.file = h5py.File(path, mode='r')
+        self.out_path = self.path[:-3] + "_METRICS.h5"
         self.is_helixer = self.get_mode()
         self.pred_CDS, self.pred_phase = self.get_pred_data()
 
@@ -235,7 +236,15 @@ class H6FILE:
         f1_score = self.f1_by_class(argmax=argmax)
         genic = self.error_quantification(self.ref_CDS, self.pred_CDS, argmax=argmax)
         phase = self.error_quantification(self.ref_phase, self.pred_phase, argmax=argmax) 
-        df = np.array([ent, f1_score, genic.normalized, genic.absolute, phase.normalized, phase.absolute])
+        df = np.array([ent, f1_score, genic.normalized, genic.absolute, phase.normalized, phase.absolute], dtype=object)
+        file_out = h5py.File(self.out_path, 'w')
+        file_out.create_dataset("entropy", data=ent)
+        file_out.create_dataset("f1_score", data=f1_score)
+        file_out.create_dataset("genic_normalized", data=genic.normalized)
+        file_out.create_dataset('genic_absolute', data=genic.absolute)
+        file_out.create_dataset('phase_normalized', data=phase.normalized)
+        file_out.create_dataset('phase_absolute', data=phase.absolute)
+        file_out.close()
         return df 
 
 
@@ -261,6 +270,7 @@ def run():
             data_class = H6FILE(file)
             df = data_class.calc_metrics()
             print(df)
+            print(data_class.out_path)
             data_class.file.close()
             data_class.ref.close()
         print("________________________")    
