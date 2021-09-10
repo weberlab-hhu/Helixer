@@ -1,6 +1,8 @@
 #! /usr/bin/env python3
+import sys
 import torch
 import numpy as np
+import numcodecs
 from collections import defaultdict
 from dustdas import fastahelper
 from transformers import BertConfig, BertForMaskedLM, BertTokenizerFast, Trainer, TrainingArguments
@@ -37,7 +39,6 @@ class HelixerDataCollator(DataCollatorForLanguageModeling):
         indices_replaced_extended = extend_mask(indices_replaced)
         inputs[indices_replaced_extended] = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
 
-
         # 10% of the time, we replace masked input tokens with random word
         # 0.48 instead of 0.5 to make up for random replacements superseding [MASK] replacements
         indices_random = torch.bernoulli(torch.full(labels.shape, 0.48)).bool() & masked_indices & ~indices_replaced
@@ -51,29 +52,39 @@ class HelixerDataCollator(DataCollatorForLanguageModeling):
 class HelixerDataset(torch.utils.data.Dataset):
     def __init__(self, seq_file):
         self.tokenizer = BertTokenizerFast('vocab', do_lower_case=False)
+        self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)
+        self.encodings = defaultdict(list)
 
         fp = fastahelper.FastaParser()
         for i, (fasta_header, seq) in enumerate(fp.read_fasta(seq_file)):
+            # if i == 0:
+                # continue
+            if len(seq) < 1e6:
+                print(f'skipping {fasta_header} (length: {len(seq)})')
+                continue
             seq = seq.upper()
             kmer_seqs = []
             for offset in range(0, len(seq), 512):
                 seq_part = seq[offset:offset+512]  # 512 chars make 510 3-mers, which become 512 tokens with [CLS] and [SEP]
                 kmer_seqs.append(' '.join([seq_part[i:i+3] for i in range(510)]))  # convert to 3-mers
+            del seq
 
             # do in batches to not run into mem limits
-            self.encodings = defaultdict(list)
             batch_size = 50000
             for offset in range(0, len(kmer_seqs), batch_size):
                 tokenized_seqs = self.tokenizer(kmer_seqs[offset:offset+batch_size], padding=True, return_special_tokens_mask=True)
                 # convert int lists to int8 np arrays and append to tokenized_seqs
                 for key, vals in tokenized_seqs.items():
-                    key_seqs_int8 = [np.array(arr, dtype=np.int8) for arr in vals]
+                    key_seqs_int8 = [self.compressor.encode(np.array(arr, dtype=np.int8)) for arr in vals]
                     self.encodings[key].extend(key_seqs_int8)
                 print(f'processed {min(offset+batch_size, len(kmer_seqs))}/{len(kmer_seqs)} of {fasta_header}')
-            break
+            mem_footprints = {key:sum([sys.getsizeof(e) for e in vals]) / 2 ** 20 for key, vals in self.encodings.items()}
+            print(f'memory footprints in MB: {mem_footprints}')
+            # break
 
     def __getitem__(self, idx):
-        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
+        item = {key: torch.tensor(np.frombuffer(self.compressor.decode(val[idx]), dtype=np.int8))
+                for key, val in self.encodings.items()}
         return item
 
     def __len__(self):
