@@ -239,8 +239,11 @@ class H6FILE:
         print("CROSS-ENTROPY: ")
         print(ent)
         print("\n========== CALCULATING CLASS-WISE F1 SCORE  ==========")
-        f1_score = self.f1_by_class(argmax=argmax)
-        print("F1-SCORE: ")
+        if not argmax:
+            f1_score = self.f1_by_class(argmax=argmax)
+        if argmax:
+            f1_score = 0
+        print("F1-SCORE:")
         print(np.around(f1_score, decimals=4))
         print("\n========== CALCULATING GENIC CONFUSION MATRIX  ==========")
         genic = self.error_quantification(self.ref_CDS, self.pred_CDS, argmax=argmax)
