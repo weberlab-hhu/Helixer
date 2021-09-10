@@ -1,5 +1,7 @@
 #! /usr/bin/env python3
 import torch
+import numpy as np
+from collections import defaultdict
 from dustdas import fastahelper
 from transformers import BertConfig, BertForMaskedLM, BertTokenizerFast, Trainer, TrainingArguments
 from transformers.data.data_collator import DataCollatorForLanguageModeling
@@ -46,8 +48,6 @@ class HelixerDataset(torch.utils.data.Dataset):
 
         fp = fastahelper.FastaParser()
         for i, (fasta_header, seq) in enumerate(fp.read_fasta(seq_file)):
-            if i == 0:
-                continue
             seq = seq.upper()
             kmer_seqs = []
             for offset in range(0, len(seq), 512):
@@ -55,15 +55,14 @@ class HelixerDataset(torch.utils.data.Dataset):
                 kmer_seqs.append(' '.join([seq_part[i:i+3] for i in range(510)]))  # convert to 3-mers
 
             # do in batches to not run into mem limits
-            tokenized_seqs = []
+            self.encodings = defaultdict(list)
             batch_size = 50000
             for offset in range(0, len(kmer_seqs), batch_size):
                 tokenized_seqs = self.tokenizer(kmer_seqs[offset:offset+batch_size], padding=True, return_special_tokens_mask=True)
-                if offset == 0 and i == 1:
-                    self.encodings = tokenized_seqs
-                else:
-                    for key in self.encodings.keys():
-                        self.encodings[key] += tokenized_seqs[key]
+                # convert int lists to int8 np arrays and append to tokenized_seqs
+                for key, vals in tokenized_seqs.items():
+                    key_seqs_int8 = [np.array(arr, dtype=np.int8) for arr in vals]
+                    self.encodings[key].extend(key_seqs_int8)
                 print(f'processed {min(offset+batch_size, len(kmer_seqs))}/{len(kmer_seqs)} of {fasta_header}')
             break
 
