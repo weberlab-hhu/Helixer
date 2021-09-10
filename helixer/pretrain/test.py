@@ -12,6 +12,9 @@ class HelixerDataCollator(DataCollatorForLanguageModeling):
         Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
         Override this function so we mask k kmers in a row.
         """
+        def extend_mask(mask):
+            return mask | torch.roll(mask, 1, 1) | torch.roll(mask, 2, 1)
+
         labels = inputs.clone()
         # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
         # Devide probability by ~3 so we end up with ~15% of 3-mer tokens masked
@@ -27,17 +30,20 @@ class HelixerDataCollator(DataCollatorForLanguageModeling):
         probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
         probability_matrix[:, -3:-1] = 0.0  # Don't mask the last two token so we always mask full k-mers
         masked_indices = torch.bernoulli(probability_matrix).bool()
-        masked_indices = masked_indices | torch.roll(masked_indices, 1, 1) | torch.roll(masked_indices, 2, 1)
         labels[~masked_indices] = -100  # We only compute loss on masked tokens
 
         # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
         indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices
-        inputs[indices_replaced] = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
+        indices_replaced_extended = extend_mask(indices_replaced)
+        inputs[indices_replaced_extended] = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
+
 
         # 10% of the time, we replace masked input tokens with random word
-        indices_random = torch.bernoulli(torch.full(labels.shape, 0.5)).bool() & masked_indices & ~indices_replaced
+        # 0.48 instead of 0.5 to make up for random replacements superseding [MASK] replacements
+        indices_random = torch.bernoulli(torch.full(labels.shape, 0.48)).bool() & masked_indices & ~indices_replaced
+        indices_random_extended = extend_mask(indices_random)
         random_words = torch.randint(len(self.tokenizer), labels.shape, dtype=torch.long)
-        inputs[indices_random] = random_words[indices_random]
+        inputs[indices_random_extended] = random_words[indices_random_extended]
 
         # The rest of the time (10% of the time) we keep the masked input tokens unchanged
         return inputs, labels
