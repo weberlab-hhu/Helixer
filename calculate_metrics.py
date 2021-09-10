@@ -11,6 +11,7 @@ import tensorflow_addons as tfa
 from collections import Counter, OrderedDict
 import itertools
 
+
 ###################### REFERENCE FILE #######################
 fpath = '/mnt/data/niklas/with_coverage/Mesculenta/test_data.h5'
 
@@ -131,7 +132,7 @@ class H6FILE:
             h_f1 = np.array(list(map(self.f1_per_chunk, self.ref_CDS, self.pred_CDS, self.ref_phase, self.pred_phase)))
         cols = range(h_f1.shape[1])
         means = np.array([np.mean(h_f1[h_f1[:,e] != 0, e]) for e in cols])
-        return np.around(means, decimals=3)
+        return means 
 
     def error_classes(self, ref_CDS, pred_CDS, argmax_=False):
         idx = np.sum(ref_CDS, axis=1) != 0
@@ -232,12 +233,27 @@ class H6FILE:
         return helixer
 
     def to_dataframe(self, argmax=False):
+        print("\n========== CALCULATING CROSSENTROPY  ==========")
         ent = self.entropy(argmax=argmax)
+        print("CROSS-ENTROPY: ")
+        print(ent)
+        print("\n========== CALCULATING CLASS-WISE F1 SCORE  ==========")
         f1_score = self.f1_by_class(argmax=argmax)
+        print("F1-SCORE: ")
+        print(np.around(f1_score, decimals=4))
+        print("\n========== CALCULATING GENIC CONFUSION MATRIX  ==========")
         genic = self.error_quantification(self.ref_CDS, self.pred_CDS, argmax=argmax)
-        phase = self.error_quantification(self.ref_phase, self.pred_phase, argmax=argmax) 
-        df = np.array([ent, f1_score, genic.normalized, genic.absolute, phase.normalized, phase.absolute], dtype=object)
-        file_out = h5py.File(self.out_path, 'w')
+        print("Genic normalized confusion matrix: ")
+        print(np.around(genic.normalized, decimals=4))
+        print("\n========== CALCULATING PHASE CONFUSION MATRIX  ==========")
+        phase = self.error_quantification(self.ref_phase, self.pred_phase, argmax=argmax)
+        print(" Phase normalized confusion matric: ")
+        print(np.around(phase.normalized, decimals=4))
+        if argmax:
+            savepath = self.path[:-3] + "_ARGMAX_METRICS.h5"
+        else:
+            savepath = self.out_path
+        file_out = h5py.File(savepath, 'w')
         file_out.create_dataset("entropy", data=ent)
         file_out.create_dataset("f1_score", data=f1_score)
         file_out.create_dataset("genic_normalized", data=genic.normalized)
@@ -245,14 +261,14 @@ class H6FILE:
         file_out.create_dataset('phase_normalized', data=phase.normalized)
         file_out.create_dataset('phase_absolute', data=phase.absolute)
         file_out.close()
-        return df 
 
 
     def calc_metrics(self):
         if self.is_helixer:
             df_helixer = self.to_dataframe(argmax=False)
+            print("\n===== HELIXER-ARGMAX =====")
             df_argmax = self.to_dataframe(argmax=True)
-            return np.array([df_helixer, df_argmax]).reshape((2, -1))
+            return np.array([df_helixer, df_argmax], dtype=object).reshape((2, -1))
         if not self.is_helixer:
             df_post = self.to_dataframe(argmax=False)
             return df_post
@@ -266,11 +282,10 @@ def run():
         filenames = path + "/*.h5"
         predictions = glob.glob(filenames)
         for file in predictions:
-            print(file)
+            print("\n========== STARING OPERATION WITH: " + file + " ==========")
             data_class = H6FILE(file)
-            df = data_class.calc_metrics()
-            print(df)
-            print(data_class.out_path)
+            data_class.calc_metrics()
+            print("========== PATH OF H5FILE: " + data_class.out_path)
             data_class.file.close()
             data_class.ref.close()
         print("________________________")    
