@@ -13,7 +13,7 @@ import itertools
 
 
 ###################### REFERENCE FILE #######################
-fpath = '/mnt/data/niklas/with_coverage/Mesculenta/test_data.h5'
+fpath = '/home/niklas/ref_data_with_coverage/test_data.h5'
 
 
 class Matrix_class:
