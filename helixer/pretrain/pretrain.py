@@ -53,41 +53,53 @@ class HelixerDataCollator(DataCollatorForLanguageModeling):
         # The rest of the time (10% of the time) we keep the masked input tokens unchanged
         return inputs, labels
 
-class HelixerDataset(torch.utils.data.Dataset):
-    def __init__(self, fasta_folder):
+class HelixerDatasetBase(torch.utils.data.Dataset):
+    def __init__(self, args):
+        self.args = args
         self.tokenizer = BertTokenizerFast('vocab', do_lower_case=False)
         self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)
         self.encodings = defaultdict(list)
 
+    def _tokenize(self, seq, seq_name, capitalize=True, skip_below=1e6):
+        """Tokenizes a sequence into 3-mers and adds the compressed arrays to self.encodings."""
+        if len(seq) < skip_below:
+            print(f'skipping {seq_name} (length: {len(seq)})')
+            return
+        if capitalize:
+            seq = seq.upper()
+
+        kmer_seqs = []
+        for offset in range(0, len(seq), 512):
+            seq_part = seq[offset:offset+512]  # 512 chars make 510 3-mers, which become 512 tokens with [CLS] and [SEP]
+            kmer_seqs.append(' '.join([seq_part[i:i+3] for i in range(510)]))  # convert to 3-mers
+        del seq
+
+        # do in batches to not run into mem limits
+        batch_size = 50000
+        for offset in range(0, len(kmer_seqs), batch_size):
+            tokenized_seqs = self.tokenizer(kmer_seqs[offset:offset+batch_size], padding=True, return_special_tokens_mask=True)
+            # convert int lists to int8 np arrays and append to tokenized_seqs
+            for key, vals in tokenized_seqs.items():
+                key_seqs_int8 = [self.compressor.encode(np.array(arr, dtype=np.int8)) for arr in vals]
+                self.encodings[key].extend(key_seqs_int8)
+            print(f'processed {min(offset+batch_size, len(kmer_seqs))}/{len(kmer_seqs)} of {seq_name}')
+        mem_footprints = {key:sum([sys.getsizeof(e) for e in vals]) / 2 ** 20 for key, vals in self.encodings.items()}
+        mem_footprints_str = {key:f'{val:.2f} MB' for key, val in mem_footprints.items()}
+        print(f'memory footprints: {mem_footprints_str}')
+
+    def __len__(self):
+        return len(self.encodings['input_ids'])
+
+
+class HelixerDatasetPretrain(HelixerDatasetBase):
+    def __init__(self, args):
+        super().__init__(args)
+
         fp = fastahelper.FastaParser()
-        for fasta_file in Path(fasta_folder).glob('*.fa'):
+        for fasta_file in Path(args.fasta_folder).glob('*.fa'):
             print(f'starting with {fasta_file.name}')
             for i, (fasta_header, seq) in enumerate(fp.read_fasta(fasta_file)):
-                # if i == 0:
-                    # continue
-                if len(seq) < 1e6:
-                    print(f'skipping {fasta_header} (length: {len(seq)})')
-                    continue
-                seq = seq.upper()
-                kmer_seqs = []
-                for offset in range(0, len(seq), 512):
-                    seq_part = seq[offset:offset+512]  # 512 chars make 510 3-mers, which become 512 tokens with [CLS] and [SEP]
-                    kmer_seqs.append(' '.join([seq_part[i:i+3] for i in range(510)]))  # convert to 3-mers
-                del seq
-
-                # do in batches to not run into mem limits
-                batch_size = 50000
-                for offset in range(0, len(kmer_seqs), batch_size):
-                    tokenized_seqs = self.tokenizer(kmer_seqs[offset:offset+batch_size], padding=True, return_special_tokens_mask=True)
-                    # convert int lists to int8 np arrays and append to tokenized_seqs
-                    for key, vals in tokenized_seqs.items():
-                        key_seqs_int8 = [self.compressor.encode(np.array(arr, dtype=np.int8)) for arr in vals]
-                        self.encodings[key].extend(key_seqs_int8)
-                    print(f'processed {min(offset+batch_size, len(kmer_seqs))}/{len(kmer_seqs)} of {fasta_header}')
-                mem_footprints = {key:sum([sys.getsizeof(e) for e in vals]) / 2 ** 20 for key, vals in self.encodings.items()}
-                print(f'memory footprints in MB: {mem_footprints}')
-                break
-            break
+                self._tokenize(seq, fasta_header)
 
     def __getitem__(self, idx):
         item = {key: torch.tensor(np.frombuffer(self.compressor.decode(val[idx]), dtype=np.int8))
@@ -118,7 +130,7 @@ class HelixerModelBase(ABC):
     def run(self):
         pass
 
-class HelixerModelPreTrain(HelixerModelBase):
+class HelixerModelPretrain(HelixerModelBase):
     def __init__(self):
         super().__init__()
         self.parser.add_argument('--fasta-folder', type=str, required=True,
@@ -129,7 +141,7 @@ class HelixerModelPreTrain(HelixerModelBase):
 
     def run(self):
         args = self.args
-        train_dataset = HelixerDataset(args.fasta_folder)
+        train_dataset = HelixerDatasetPretrain(args)
 
         training_args = TrainingArguments(
             output_dir='./results',
@@ -156,4 +168,4 @@ class HelixerModelPreTrain(HelixerModelBase):
         trainer.train()
 
 if __name__ == '__main__':
-    model = HelixerModelPreTrain()
+    model = HelixerModelPretrain()
