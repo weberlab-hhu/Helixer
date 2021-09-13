@@ -1,4 +1,5 @@
 #! /usr/bin/env python3
+from abc import ABC, abstractmethod
 import sys
 import torch
 from pprint import pprint
@@ -85,7 +86,8 @@ class HelixerDataset(torch.utils.data.Dataset):
                     print(f'processed {min(offset+batch_size, len(kmer_seqs))}/{len(kmer_seqs)} of {fasta_header}')
                 mem_footprints = {key:sum([sys.getsizeof(e) for e in vals]) / 2 ** 20 for key, vals in self.encodings.items()}
                 print(f'memory footprints in MB: {mem_footprints}')
-                # break
+                break
+            break
 
     def __getitem__(self, idx):
         item = {key: torch.tensor(np.frombuffer(self.compressor.decode(val[idx]), dtype=np.int8))
@@ -95,49 +97,63 @@ class HelixerDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.encodings['input_ids'])
 
-def main(args):
-    train_dataset = HelixerDataset(args.fasta_folder)
+class HelixerModelBase(ABC):
+    def __init__(self):
+        self.parser = argparse.ArgumentParser()
+        self.parser.add_argument('--n-epochs', type=int, default=3)
+        self.parser.add_argument('--batch-size-train', type=int, default=16)
+        self.parser.add_argument('--batch-size-valid', type=int, default=64)
+        self.parser.add_argument('--warmup-steps', type=int, default=500)
+        self.parser.add_argument('--weight-decay', type=int, default=0.01)
 
-    training_args = TrainingArguments(
-        output_dir='./results',
-        num_train_epochs=args.n_epochs,
-        per_device_train_batch_size=args.n_batch_size_train,
-        per_device_eval_batch_size=args.n_batch_size_valid,
-        warmup_steps=args.warmup_steps,
-        weight_decay=args.weight_decay,
-        logging_dir='./logs',
-        logging_steps=10,
-    )
+    def parse_args(self):
+        args = self.parser.parse_args()
+        self.args = args
 
-    configuration = BertConfig(num_hidden_layers=args.n_layers)
-    model = BertForMaskedLM(configuration)
-    collator = HelixerDataCollator(train_dataset.tokenizer)
+        print('Config:')
+        pprint(vars(self.args))
+        print()
 
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset,
-        # eval_dataset=val_dataset,
-        data_collator=collator
-    )
+    @abstractmethod
+    def run(self):
+        pass
 
-    trainer.train()
+class HelixerModelPreTrain(HelixerModelBase):
+    def __init__(self):
+        super().__init__()
+        self.parser.add_argument('--fasta-folder', type=str, required=True,
+                            help='Path to a folder with fasta files which will be used for pre-training.')
+        self.parser.add_argument('--n-layers', type=int, default=3)
+        self.parse_args()
+        self.run()
 
+    def run(self):
+        args = self.args
+        train_dataset = HelixerDataset(args.fasta_folder)
+
+        training_args = TrainingArguments(
+            output_dir='./results',
+            num_train_epochs=args.n_epochs,
+            per_device_train_batch_size=args.batch_size_train,
+            per_device_eval_batch_size=args.batch_size_valid,
+            warmup_steps=args.warmup_steps,
+            weight_decay=args.weight_decay,
+            logging_dir='./logs',
+            logging_steps=10,
+        )
+
+        configuration = BertConfig(num_hidden_layers=args.n_layers)
+        model = BertForMaskedLM(configuration)
+        collator = HelixerDataCollator(train_dataset.tokenizer)
+
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=train_dataset,
+            # eval_dataset=val_dataset,
+            data_collator=collator
+        )
+        trainer.train()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--fasta-folder', type=str, required=True,
-                        help='Path to a folder with fasta files which will be used for pre-training.')
-    parser.add_argument('--n-layers', type=int, default=3)
-    parser.add_argument('--n-epochs', type=int, default=3)
-    parser.add_argument('--batch-size-train', type=int, default=16)
-    parser.add_argument('--batch-size-valid', type=int, default=64)
-    parser.add_argument('--warmup-steps', type=int, default=500)
-    parser.add_argument('--weight-decay', type=int, default=0.01)
-    args = parser.parse_args()
-
-    print('Pretrain config:')
-    pprint(vars(args))
-    print()
-
-    main(args)
+    model = HelixerModelPreTrain()
