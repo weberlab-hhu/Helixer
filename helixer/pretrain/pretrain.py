@@ -12,6 +12,8 @@ from dustdas import fastahelper
 from transformers import BertConfig, BertForMaskedLM, BertTokenizerFast, Trainer, TrainingArguments
 from transformers.data.data_collator import DataCollatorForLanguageModeling
 
+from helixer.pretrain.base import HelixerDatasetBase, HelixerModelBase
+
 class HelixerDataCollator(DataCollatorForLanguageModeling):
     def torch_mask_tokens(self, inputs, special_tokens_mask):
         """
@@ -53,44 +55,6 @@ class HelixerDataCollator(DataCollatorForLanguageModeling):
         # The rest of the time (10% of the time) we keep the masked input tokens unchanged
         return inputs, labels
 
-class HelixerDatasetBase(torch.utils.data.Dataset):
-    def __init__(self, args):
-        self.args = args
-        self.tokenizer = BertTokenizerFast('vocab', do_lower_case=False)
-        self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)
-        self.encodings = defaultdict(list)
-
-    def _tokenize(self, seq, seq_name, capitalize=True, skip_below=1e6):
-        """Tokenizes a sequence into 3-mers and adds the compressed arrays to self.encodings."""
-        if len(seq) < skip_below:
-            print(f'skipping {seq_name} (length: {len(seq)})')
-            return
-        if capitalize:
-            seq = seq.upper()
-
-        kmer_seqs = []
-        for offset in range(0, len(seq), 512):
-            seq_part = seq[offset:offset+512]  # 512 chars make 510 3-mers, which become 512 tokens with [CLS] and [SEP]
-            kmer_seqs.append(' '.join([seq_part[i:i+3] for i in range(510)]))  # convert to 3-mers
-        del seq
-
-        # do in batches to not run into mem limits
-        batch_size = 50000
-        for offset in range(0, len(kmer_seqs), batch_size):
-            tokenized_seqs = self.tokenizer(kmer_seqs[offset:offset+batch_size], padding=True, return_special_tokens_mask=True)
-            # convert int lists to int8 np arrays and append to tokenized_seqs
-            for key, vals in tokenized_seqs.items():
-                key_seqs_int8 = [self.compressor.encode(np.array(arr, dtype=np.int8)) for arr in vals]
-                self.encodings[key].extend(key_seqs_int8)
-            print(f'processed {min(offset+batch_size, len(kmer_seqs))}/{len(kmer_seqs)} of {seq_name}')
-        mem_footprints = {key:sum([sys.getsizeof(e) for e in vals]) / 2 ** 20 for key, vals in self.encodings.items()}
-        mem_footprints_str = {key:f'{val:.2f} MB' for key, val in mem_footprints.items()}
-        print(f'memory footprints: {mem_footprints_str}')
-
-    def __len__(self):
-        return len(self.encodings['input_ids'])
-
-
 class HelixerDatasetPretrain(HelixerDatasetBase):
     def __init__(self, args):
         super().__init__(args)
@@ -99,7 +63,20 @@ class HelixerDatasetPretrain(HelixerDatasetBase):
         for fasta_file in Path(args.fasta_folder).glob('*.fa'):
             print(f'starting with {fasta_file.name}')
             for i, (fasta_header, seq) in enumerate(fp.read_fasta(fasta_file)):
-                self._tokenize(seq, fasta_header)
+                if len(seq) < 1e6:
+                    print(f'skipping {fasta_header} (length: {len(seq)})')
+                    continue
+                else:
+                    print(f'starting with {fasta_header} (length: {len(seq)})')
+
+                seq = seq.upper()
+                kmer_seqs = []
+                for offset in range(0, len(seq), input_len):
+                    # 512 chars would make 510 3-mers, which become 512 tokens with [CLS] and [SEP]
+                    seq_part = seq[offset:offset+input_len]
+                    kmer_seqs.append(' '.join([seq_part[i:i+3] for i in range(input_len - 2)]))  # convert to 3-mers
+                del seq
+                self._tokenize(kmer_seqs)
 
     def __getitem__(self, idx):
         item = {key: torch.tensor(np.frombuffer(self.compressor.decode(val[idx]), dtype=np.int8))
@@ -108,27 +85,6 @@ class HelixerDatasetPretrain(HelixerDatasetBase):
 
     def __len__(self):
         return len(self.encodings['input_ids'])
-
-class HelixerModelBase(ABC):
-    def __init__(self):
-        self.parser = argparse.ArgumentParser()
-        self.parser.add_argument('--n-epochs', type=int, default=3)
-        self.parser.add_argument('--batch-size-train', type=int, default=16)
-        self.parser.add_argument('--batch-size-valid', type=int, default=64)
-        self.parser.add_argument('--warmup-steps', type=int, default=500)
-        self.parser.add_argument('--weight-decay', type=int, default=0.01)
-
-    def parse_args(self):
-        args = self.parser.parse_args()
-        self.args = args
-
-        print('Config:')
-        pprint(vars(self.args))
-        print()
-
-    @abstractmethod
-    def run(self):
-        pass
 
 class HelixerModelPretrain(HelixerModelBase):
     def __init__(self):
@@ -143,24 +99,13 @@ class HelixerModelPretrain(HelixerModelBase):
         args = self.args
         train_dataset = HelixerDatasetPretrain(args)
 
-        training_args = TrainingArguments(
-            output_dir='./results',
-            num_train_epochs=args.n_epochs,
-            per_device_train_batch_size=args.batch_size_train,
-            per_device_eval_batch_size=args.batch_size_valid,
-            warmup_steps=args.warmup_steps,
-            weight_decay=args.weight_decay,
-            logging_dir='./logs',
-            logging_steps=10,
-        )
-
         configuration = BertConfig(num_hidden_layers=args.n_layers)
         model = BertForMaskedLM(configuration)
         collator = HelixerDataCollator(train_dataset.tokenizer)
 
         trainer = Trainer(
             model=model,
-            args=training_args,
+            args=self.training_args(),
             train_dataset=train_dataset,
             # eval_dataset=val_dataset,
             data_collator=collator
