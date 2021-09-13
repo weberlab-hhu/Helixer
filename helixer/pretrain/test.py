@@ -1,8 +1,11 @@
 #! /usr/bin/env python3
 import sys
 import torch
-import numpy as np
+from pprint import pprint
+import argparse
 import numcodecs
+import numpy as np
+from pathlib import Path
 from collections import defaultdict
 from dustdas import fastahelper
 from transformers import BertConfig, BertForMaskedLM, BertTokenizerFast, Trainer, TrainingArguments
@@ -50,37 +53,39 @@ class HelixerDataCollator(DataCollatorForLanguageModeling):
         return inputs, labels
 
 class HelixerDataset(torch.utils.data.Dataset):
-    def __init__(self, seq_file):
+    def __init__(self, fasta_folder):
         self.tokenizer = BertTokenizerFast('vocab', do_lower_case=False)
         self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)
         self.encodings = defaultdict(list)
 
         fp = fastahelper.FastaParser()
-        for i, (fasta_header, seq) in enumerate(fp.read_fasta(seq_file)):
-            # if i == 0:
-                # continue
-            if len(seq) < 1e6:
-                print(f'skipping {fasta_header} (length: {len(seq)})')
-                continue
-            seq = seq.upper()
-            kmer_seqs = []
-            for offset in range(0, len(seq), 512):
-                seq_part = seq[offset:offset+512]  # 512 chars make 510 3-mers, which become 512 tokens with [CLS] and [SEP]
-                kmer_seqs.append(' '.join([seq_part[i:i+3] for i in range(510)]))  # convert to 3-mers
-            del seq
+        for fasta_file in Path(fasta_folder).glob('*.fa'):
+            print(f'starting with {fasta_file.name}')
+            for i, (fasta_header, seq) in enumerate(fp.read_fasta(fasta_file)):
+                # if i == 0:
+                    # continue
+                if len(seq) < 1e6:
+                    print(f'skipping {fasta_header} (length: {len(seq)})')
+                    continue
+                seq = seq.upper()
+                kmer_seqs = []
+                for offset in range(0, len(seq), 512):
+                    seq_part = seq[offset:offset+512]  # 512 chars make 510 3-mers, which become 512 tokens with [CLS] and [SEP]
+                    kmer_seqs.append(' '.join([seq_part[i:i+3] for i in range(510)]))  # convert to 3-mers
+                del seq
 
-            # do in batches to not run into mem limits
-            batch_size = 50000
-            for offset in range(0, len(kmer_seqs), batch_size):
-                tokenized_seqs = self.tokenizer(kmer_seqs[offset:offset+batch_size], padding=True, return_special_tokens_mask=True)
-                # convert int lists to int8 np arrays and append to tokenized_seqs
-                for key, vals in tokenized_seqs.items():
-                    key_seqs_int8 = [self.compressor.encode(np.array(arr, dtype=np.int8)) for arr in vals]
-                    self.encodings[key].extend(key_seqs_int8)
-                print(f'processed {min(offset+batch_size, len(kmer_seqs))}/{len(kmer_seqs)} of {fasta_header}')
-            mem_footprints = {key:sum([sys.getsizeof(e) for e in vals]) / 2 ** 20 for key, vals in self.encodings.items()}
-            print(f'memory footprints in MB: {mem_footprints}')
-            # break
+                # do in batches to not run into mem limits
+                batch_size = 50000
+                for offset in range(0, len(kmer_seqs), batch_size):
+                    tokenized_seqs = self.tokenizer(kmer_seqs[offset:offset+batch_size], padding=True, return_special_tokens_mask=True)
+                    # convert int lists to int8 np arrays and append to tokenized_seqs
+                    for key, vals in tokenized_seqs.items():
+                        key_seqs_int8 = [self.compressor.encode(np.array(arr, dtype=np.int8)) for arr in vals]
+                        self.encodings[key].extend(key_seqs_int8)
+                    print(f'processed {min(offset+batch_size, len(kmer_seqs))}/{len(kmer_seqs)} of {fasta_header}')
+                mem_footprints = {key:sum([sys.getsizeof(e) for e in vals]) / 2 ** 20 for key, vals in self.encodings.items()}
+                print(f'memory footprints in MB: {mem_footprints}')
+                # break
 
     def __getitem__(self, idx):
         item = {key: torch.tensor(np.frombuffer(self.compressor.decode(val[idx]), dtype=np.int8))
@@ -90,33 +95,49 @@ class HelixerDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.encodings['input_ids'])
 
-train_dataset = HelixerDataset('/home/felix/Desktop/helixer/GCF_000001405.39_GRCh38.p13_genomic.fa')
+def main(args):
+    train_dataset = HelixerDataset(args.fasta_folder)
 
-training_args = TrainingArguments(
-    output_dir='./results',
-    num_train_epochs=3,
-    per_device_train_batch_size=16,
-    per_device_eval_batch_size=64,
-    warmup_steps=500,
-    weight_decay=0.01,
-    logging_dir='./logs',
-    logging_steps=10,
-)
+    training_args = TrainingArguments(
+        output_dir='./results',
+        num_train_epochs=args.n_epochs,
+        per_device_train_batch_size=args.n_batch_size_train,
+        per_device_eval_batch_size=args.n_batch_size_valid,
+        warmup_steps=args.warmup_steps,
+        weight_decay=args.weight_decay,
+        logging_dir='./logs',
+        logging_steps=10,
+    )
 
-configuration = BertConfig(num_hidden_layers=3)
-model = BertForMaskedLM(configuration)
-collator = HelixerDataCollator(train_dataset.tokenizer)
+    configuration = BertConfig(num_hidden_layers=args.n_layers)
+    model = BertForMaskedLM(configuration)
+    collator = HelixerDataCollator(train_dataset.tokenizer)
 
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=train_dataset,
-    # eval_dataset=val_dataset,
-    data_collator=collator
-)
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        # eval_dataset=val_dataset,
+        data_collator=collator
+    )
 
-trainer.train()
-
-
+    trainer.train()
 
 
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--fasta-folder', type=str, required=True,
+                        help='Path to a folder with fasta files which will be used for pre-training.')
+    parser.add_argument('--n-layers', type=int, default=3)
+    parser.add_argument('--n-epochs', type=int, default=3)
+    parser.add_argument('--batch-size-train', type=int, default=16)
+    parser.add_argument('--batch-size-valid', type=int, default=64)
+    parser.add_argument('--warmup-steps', type=int, default=500)
+    parser.add_argument('--weight-decay', type=int, default=0.01)
+    args = parser.parse_args()
+
+    print('Pretrain config:')
+    pprint(vars(args))
+    print()
+
+    main(args)
