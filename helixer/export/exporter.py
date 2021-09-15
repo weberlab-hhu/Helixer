@@ -114,7 +114,7 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
         def __repr__(self):
             return f'Fasta only Coordinate (seqid: {self.seqid}, len: {self.length})'
 
-    def export_fasta_to_h5(self, chunk_size, compression, multiprocess):
+    def export_fasta_to_h5(self, chunk_size, compression, multiprocess, species):
         fasta_importer = FastaImporter(None)
         fasta_seqs = fasta_importer.parse_fasta(self.input_path)
         self.h5 = h5py.File(self.output_path, 'w')
@@ -127,7 +127,7 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
             n_chunks = HelixerExportControllerBase.calc_n_chunks(coord.length, chunk_size)
             # pass empty genome name as we don't have that and should not need it in '/data/species'
             # for the direct fasta export
-            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, '', multiprocess=multiprocess)
+            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species, multiprocess=multiprocess)
             for j, data in enumerate(data_gen):
                 n_samples = len(data[0].matrix)
                 h5_coords = (j * n_samples, (j + 1) * n_samples)

@@ -27,7 +27,7 @@ def main(args):
     else:
         controller = HelixerFastaToH5Controller(args.direct_fasta_to_h5_path, args.output_path)
         controller.export_fasta_to_h5(chunk_size=args.chunk_size, compression=args.compression,
-                                      multiprocess=not args.no_multiprocess)
+                                      multiprocess=not args.no_multiprocess, species=args.species)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -40,6 +40,7 @@ if __name__ == '__main__':
     io.add_argument('--add-additional', type=str, default='',
                     help='outputs the datasets under alternatives/{add-additional}/ (and checks sort order against '
                          'existing "data" datasets). Use to add e.g. additional annotations from Augustus.')
+    io.add_argument('--species', type=str, default='', help='Species name. Only used with --direct-fasta-to-h5-path.')
 
     data = parser.add_argument_group("Data generation parameters")
     data.add_argument('--chunk-size', type=int, default=20000,
