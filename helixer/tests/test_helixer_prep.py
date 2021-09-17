@@ -1429,7 +1429,8 @@ def test_ol_overlap_seq_helper():
 
 def test_direct_fasta_export():
     fasta_controller = HelixerFastaToH5Controller('testdata/dummyloci.fa', FASTA_OUT_FILE)
-    fasta_controller.export_fasta_to_h5(chunk_size=400, compression='gzip', multiprocess=True)
+    fasta_controller.export_fasta_to_h5(chunk_size=400, compression='gzip', multiprocess=True,
+                                        species='dummy')
 
     _, geenuff_controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
