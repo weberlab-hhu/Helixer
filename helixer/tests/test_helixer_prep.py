@@ -1181,7 +1181,8 @@ def test_super_chunking4write():
     assert np.all(gl0 == gl1)
     assert np.all(phases0 == phases1)
     # this makes sure it's being writen in multiple pieces at all
-    assert n_writing_chunks == 8  # 4 per feature-containing coordinate (each is 1000 < 2000 in length)
+    # 4 for each of the two 'longer' coordinates (1000 < 2000 in length) + 2 for short & featureless coord
+    assert n_writing_chunks == 10
 
     # finally, make sure it fails on invalid write_by val
     _, controller, _ = setup_dummyloci()
