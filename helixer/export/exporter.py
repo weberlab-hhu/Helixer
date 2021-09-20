@@ -212,7 +212,7 @@ class HelixerExportController(HelixerExportControllerBase):
 
         n_coords_done = 1
         n_writing_chunks = 0
-        prev_genome_name = None
+
         for (coord_id, coord_len), one_coord_features in coords_features.items():
             start_time = time.time()
             n_chunks = HelixerExportControllerBase.calc_n_chunks(coord_len, chunk_size)

@@ -136,7 +136,8 @@ class SequenceNumerifier(Numerifier):
 
         # put everything together
         data = {'plus': data_plus, 'minus': data_minus}
-        print(f'Numerification of only the sequence of {self.coord.seqid} took {time.time() - start_time:.2f} secs')
+        print(f'Numerification of {self.start}-{self.end} of the sequence of {self.coord.seqid} '
+              f'took {time.time() - start_time:.2f} secs')
         return data
 
 
@@ -523,7 +524,7 @@ class SplitFinder:
             if i not in tr_mask:
                 yield i
             else:
-                for i_fudge in range(i, i + self.write_by, self.chunk_size):
+                for i_fudge in range(i, min(i + self.write_by, self.coord_length), self.chunk_size):
                     if i_fudge not in tr_mask:
                         yield i_fudge
                         break
