@@ -19,8 +19,12 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
         X = np.full(h5_file['data/X'].shape[:2], 'N', dtype='|S1')
         # get indices of all ATCG bases, the rest gets encoded as 'N'
         batch_size = 20000
+        bases = ['C', 'A', 'T', 'G']
         for offset in range(0, len(X), batch_size):
-            np.where(h5_file['data/X'][offset:offset+batch_size] == 1.)
+            idx_all = np.where(h5_file['data/X'][offset:offset+batch_size] == 1.)
+            for i in range(4):
+                idx_base = idx_all[2] == i
+                X[idx_all[0][idx_base], idx_all[1][idx_base]] = bases[i]
 
 
         self._tokenize(kmer_seqs, '')
@@ -34,6 +38,7 @@ class HelixerModelFinetune(HelixerModelBase):
     def __init__(self):
         super().__init__()
         self.parser.add_argument('-d', '--data-dir', type=str, required=True)
+        self.parser.add_argument('-l', '--load-model-path', type=str, default='')
         self.parser.add_argument('--n-lstm-layers', type=int, default=1)
         self.parser.add_argument('--n-lstm-units', type=int, default=128)
         self.parse_args()
