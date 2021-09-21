@@ -71,6 +71,7 @@ class HelixerDatasetPretrain(HelixerDatasetBase):
 
                 seq = seq.upper()
                 kmer_seqs = []
+                input_len = args.pretrain_input_len
                 for offset in range(0, len(seq), input_len):
                     # 512 chars would make 510 3-mers, which become 512 tokens with [CLS] and [SEP]
                     seq_part = seq[offset:offset+input_len]
@@ -92,6 +93,7 @@ class HelixerModelPretrain(HelixerModelBase):
         self.parser.add_argument('--fasta-folder', type=str, required=True,
                             help='Path to a folder with fasta files which will be used for pre-training.')
         self.parser.add_argument('--n-layers', type=int, default=3)
+        self.parser.add_argument('--pretrain-input-len', type=int, default=500)
         self.parse_args()
         self.run()
 
@@ -99,7 +101,7 @@ class HelixerModelPretrain(HelixerModelBase):
         args = self.args
         train_dataset = HelixerDatasetPretrain(args)
 
-        configuration = BertConfig(num_hidden_layers=args.n_layers)
+        configuration = BertConfig(num_hidden_layers=args.n_layers, max_position_embeddings=args.pretrain_input_len)
         model = BertForMaskedLM(configuration)
         collator = HelixerDataCollator(train_dataset.tokenizer)
 
