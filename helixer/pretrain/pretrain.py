@@ -69,15 +69,8 @@ class HelixerDatasetPretrain(HelixerDatasetBase):
                 else:
                     print(f'starting with {fasta_header} (length: {len(seq)})')
 
-                seq = seq.upper()
-                kmer_seqs = []
-                input_len = args.pretrain_input_len
-                for offset in range(0, len(seq), input_len):
-                    # 512 chars would make 510 3-mers, which become 512 tokens with [CLS] and [SEP]
-                    seq_part = seq[offset:offset+input_len]
-                    kmer_seqs.append(' '.join([seq_part[i:i+3] for i in range(input_len - 2)]))  # convert to 3-mers
-                del seq
-                self._tokenize(kmer_seqs)
+                self._tokenize(seq, num_max_tokens=self.args.pretrain_input_len, upper_case=True)
+                break
 
     def __getitem__(self, idx):
         item = {key: torch.tensor(np.frombuffer(self.compressor.decode(val[idx]), dtype=np.int8))
@@ -103,6 +96,8 @@ class HelixerModelPretrain(HelixerModelBase):
 
         configuration = BertConfig(num_hidden_layers=args.n_layers, max_position_embeddings=args.pretrain_input_len)
         model = BertForMaskedLM(configuration)
+        print('Pretraining config:')
+        print(model.config)
         collator = HelixerDataCollator(train_dataset.tokenizer)
 
         trainer = Trainer(

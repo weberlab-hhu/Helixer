@@ -15,9 +15,18 @@ class HelixerDatasetBase(torch.utils.data.Dataset):
         self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)
         self.encodings = defaultdict(list)
 
-    def _tokenize(self, kmer_seqs):
+    def _tokenize(self, seq, num_max_tokens=500, upper_case=False):
         """Tokenizes a sequence into 3-mers and adds the compressed arrays to self.encodings.
-        Do in batches to not run into mem limits."""
+        Done in batches to not run into mem limits."""
+        if upper_case:
+            seq = seq.upper()
+        kmer_seqs = []
+        for offset in range(0, len(seq), num_max_tokens):
+            # 512 chars would make 510 3-mers, which become 512 tokens with [CLS] and [SEP]
+            seq_part = seq[offset:offset+num_max_tokens]
+            kmer_seqs.append(' '.join([seq_part[i:i+3] for i in range(num_max_tokens - 2)]))  # convert to 3-mers
+        del seq
+
         batch_size = 50000
         for offset in range(0, len(kmer_seqs), batch_size):
             tokenized_seqs = self.tokenizer(kmer_seqs[offset:offset+batch_size], padding=True, return_special_tokens_mask=True)
