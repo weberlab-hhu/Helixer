@@ -57,7 +57,11 @@ class HelixerBert(BertPreTrainedModel):
         self.num_labels = 4
         self.bert = BertModel.from_pretrained(args.load_model_path)
 
-        self.classifier = torch.nn.Linear(self.config.hidden_size, self.config.num_labels)
+        self.lstm = torch.nn.LSTM(input_size=self.config.hidden_size,
+                                  hidden_size=args.n_lstm_units,
+                                  num_layers=args.n_lstm_layers,
+                                  bidirectional=True)
+        self.classifier = torch.nn.Linear(args.n_lstm_units * 2, self.config.num_labels)
         self.init_weights()
 
     def forward(self,
@@ -75,7 +79,7 @@ class HelixerBert(BertPreTrainedModel):
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.bert(
+        bert_outputs = self.bert(
             input_ids.int(),
             attention_mask=attention_mask.int(),
             token_type_ids=token_type_ids.int(),
@@ -87,8 +91,8 @@ class HelixerBert(BertPreTrainedModel):
             return_dict=return_dict,
         )
 
-        sequence_output = outputs[0]
-        logits = self.classifier(sequence_output)
+        lstm_outputs = self.lstm(bert_outputs[0])
+        logits = self.classifier(lstm_outputs[0])
 
         loss = None
         if labels is not None:
@@ -113,8 +117,8 @@ class HelixerBert(BertPreTrainedModel):
         return TokenClassifierOutput(
             loss=loss,
             logits=logits,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
+            # hidden_states=bert_outputs.hidden_states,
+            # attentions=bert_outputs.attentions,
         )
 
 
