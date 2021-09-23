@@ -22,8 +22,8 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
         # all kinds of bugs here with padding, sample_weights, etc... just a quick test for downstream code
         debug_size = 100
         X = np.full((debug_size, 20000), 'N', dtype='|S1')
-        self.labels = np.full((debug_size * 40, 502), 0, dtype=np.int8)  # this sets the labels for CLS and SEP to 0
-        self.labels[:, 1:-1] = np.argmax(h5_file['/data/y'][:debug_size], axis=-1).reshape(-1, 500)
+        self.labels = np.full((debug_size, 40, 502), 0, dtype=np.int8)  # this sets the labels for CLS and SEP to 0
+        self.labels[:, :, 1:-1] = np.argmax(h5_file['/data/y'][:debug_size], axis=-1).reshape(-1, 40, 500)
         # self.labels = np.argmax(h5_file['/data/y'][:debug_size], axis=-1).reshape(-1, 500)
 
         # get indices of all ATCG bases, the rest gets encoded as 'N'
@@ -35,12 +35,12 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
                 idx_base = idx_all[2] == i
                 X[idx_all[0][idx_base], idx_all[1][idx_base]] = bases[i]
             break
-        self._tokenize(X.flatten().tobytes().decode())
+        self._tokenize(X.flatten().tobytes().decode(), pretrain=False)
 
     def __getitem__(self, idx):
-        item = {key: torch.tensor(np.frombuffer(self.compressor.decode(val[idx]), dtype=np.int8)).int()
-                for key, val in self.encodings.items()
-                if key != 'special_tokens_mask'}
+        item = {key: torch.tensor(
+                    [np.frombuffer(self.compressor.decode(sub_val), dtype=np.int8) for sub_val in val[idx]]).int()
+                for key, val in self.encodings.items()}
         item['labels'] = torch.tensor(self.labels[idx]).long()
         return item
 
@@ -79,17 +79,17 @@ class HelixerBert(BertPreTrainedModel):
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        bert_outputs = self.bert(
-            input_ids.int(),
-            attention_mask=attention_mask.int(),
-            token_type_ids=token_type_ids.int(),
+        bert_outputs = [self.bert(
+            input_ids[i].int(),
+            attention_mask=attention_mask[i].int(),
+            token_type_ids=token_type_ids[i].int(),
             position_ids=position_ids,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
-        )
+        ) for i in range(len(input_ids))]
 
         lstm_outputs = self.lstm(bert_outputs[0])
         logits = self.classifier(lstm_outputs[0])

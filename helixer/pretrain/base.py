@@ -29,10 +29,10 @@ class HelixerDatasetBase(torch.utils.data.Dataset):
         self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)
         self.encodings = defaultdict(list)
 
-    def _tokenize(self, seq, num_max_tokens=502, upper_case=False):
+    def _tokenize(self, seq, num_max_tokens=502, pretrain=True):
         """Tokenizes a sequence into 3-mers and adds the compressed arrays to self.encodings.
         Done in batches to not run into mem limits."""
-        if upper_case:
+        if pretrain:
             seq = seq.upper()
         kmer_seqs = []
         for offset in range(0, len(seq), num_max_tokens - 2):
@@ -43,13 +43,20 @@ class HelixerDatasetBase(torch.utils.data.Dataset):
             kmer_seqs.append(' '.join([seq_part[i:i+3] for i in range(num_max_tokens - 2)]))  # convert to 3-mers
         del seq
 
-        batch_size = 50000
+        batch_size = 40000
+        n_short_samples_per_seq = 40
         for offset in range(0, len(kmer_seqs), batch_size):
-            tokenized_seqs = self.tokenizer(kmer_seqs[offset:offset+batch_size], padding=True, return_special_tokens_mask=True)
+            tokenized_seqs = self.tokenizer(kmer_seqs[offset:offset+batch_size], padding=True,
+                                            return_special_tokens_mask=pretrain)
             # convert int lists to int8 np arrays and append to tokenized_seqs
             for key, vals in tokenized_seqs.items():
-                key_seqs_int8 = [self.compressor.encode(np.array(arr, dtype=np.int8)) for arr in vals]
-                self.encodings[key].extend(key_seqs_int8)
+                key_seqs_int8_flat = [self.compressor.encode(np.array(arr, dtype=np.int8)) for arr in vals]
+                if pretrain:
+                    self.encodings[key].extend(key_seqs_int8_flat)
+                else:
+                    # append list of grouped sequences for finetuning or inference
+                    for i in range(0, len(key_seqs_int8_flat), n_short_samples_per_seq):
+                        self.encodings[key].append(key_seqs_int8_flat[i:i+n_short_samples_per_seq])
             print(f'processed {min(offset+batch_size, len(kmer_seqs))}/{len(kmer_seqs)}')
         mem_footprints = {key:sum([sys.getsizeof(e) for e in vals]) / 2 ** 20 for key, vals in self.encodings.items()}
         mem_footprints_str = {key:f'{val:.2f} MB' for key, val in mem_footprints.items()}
