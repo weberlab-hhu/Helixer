@@ -86,7 +86,7 @@ class HelixerModelPretrain(HelixerModelBase):
         self.parser.add_argument('--fasta-folder', type=str, required=True,
                             help='Path to a folder with fasta files which will be used for pre-training.')
         self.parser.add_argument('--n-layers', type=int, default=3)
-        self.parser.add_argument('--pretrain-input-len', type=int, default=500)
+        self.parser.add_argument('--pretrain-input-len', type=int, default=502, help='Including [CLS] and [SEP]')
         self.parse_args()
         self.run()
 
@@ -94,11 +94,13 @@ class HelixerModelPretrain(HelixerModelBase):
         args = self.args
         train_dataset = HelixerDatasetPretrain(args)
 
-        configuration = BertConfig(num_hidden_layers=args.n_layers, max_position_embeddings=args.pretrain_input_len)
+        configuration = BertConfig(num_hidden_layers=args.n_layers,
+                                   max_position_embeddings=args.pretrain_input_len,
+                                   vocab_size=train_dataset.tokenizer.vocab_size)
         model = BertForMaskedLM(configuration)
-        print('Pretraining config:')
-        print(model.config)
         collator = HelixerDataCollator(train_dataset.tokenizer)
+
+        HelixerModelBase.print_model_info(model, 'Pretraining')
 
         trainer = Trainer(
             model=model,

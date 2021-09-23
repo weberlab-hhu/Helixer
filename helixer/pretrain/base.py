@@ -8,6 +8,20 @@ import numpy as np
 from collections import defaultdict
 from transformers import BertTokenizerFast, TrainingArguments
 
+def print_model_parameter_counts(model):
+    """Taken from https://stackoverflow.com/questions/48393608/pytorch-network-parameter-calculation"""
+    total_param = 0
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            num_param = np.prod(param.size())
+            if param.dim() > 1:
+                print(name, ':', 'x'.join(str(x) for x in list(param.size())), '=', num_param)
+            else:
+                print(name, ':', num_param)
+            total_param += num_param
+    total_param_str = f'{total_param:,}'.replace(',', '.')
+    print(f'total parameters: {total_param_str}')
+
 class HelixerDatasetBase(torch.utils.data.Dataset):
     def __init__(self, args):
         self.args = args
@@ -15,15 +29,17 @@ class HelixerDatasetBase(torch.utils.data.Dataset):
         self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)
         self.encodings = defaultdict(list)
 
-    def _tokenize(self, seq, num_max_tokens=500, upper_case=False):
+    def _tokenize(self, seq, num_max_tokens=502, upper_case=False):
         """Tokenizes a sequence into 3-mers and adds the compressed arrays to self.encodings.
         Done in batches to not run into mem limits."""
         if upper_case:
             seq = seq.upper()
         kmer_seqs = []
-        for offset in range(0, len(seq), num_max_tokens):
-            # 512 chars would make 510 3-mers, which become 512 tokens with [CLS] and [SEP]
-            seq_part = seq[offset:offset+num_max_tokens]
+        for offset in range(0, len(seq), num_max_tokens - 2):
+            # 502 chars would make 500 3-mers, which become 502 tokens with [CLS] and [SEP]
+            # as each kmer represents a single base we need sequences that overlap by 2 bases
+            # otherwise there would not be predictions for the last 2 bases of each subsequence
+            seq_part = seq[offset:offset+num_max_tokens+2]
             kmer_seqs.append(' '.join([seq_part[i:i+3] for i in range(num_max_tokens - 2)]))  # convert to 3-mers
         del seq
 
@@ -60,6 +76,15 @@ class HelixerModelBase(ABC):
         pprint(vars(self.args))
         print()
 
+    @staticmethod
+    def print_model_info(model, prefix):
+        print(f'\n{prefix} config:')
+        print(model.config)
+        print(f'{prefix} model: ')
+        print(model)
+        print_model_parameter_counts(model)
+        print()
+
     def training_args(self):
         training_args = TrainingArguments(
             output_dir='./results',
@@ -76,4 +101,3 @@ class HelixerModelBase(ABC):
     @abstractmethod
     def run(self):
         pass
-

@@ -6,8 +6,10 @@ import numcodecs
 import numpy as np
 from pathlib import Path
 import torch
-from transformers import BertConfig, BertForMaskedLM, BertTokenizerFast, Trainer, TrainingArguments
+from torch.nn import CrossEntropyLoss
+from transformers import BertConfig, BertModel, BertForMaskedLM, BertTokenizerFast, Trainer, TrainingArguments, BertForTokenClassification
 from transformers.models.bert.modeling_bert import BertPreTrainedModel
+from transformers.modeling_outputs import TokenClassifierOutput
 from helixer.pretrain.base import HelixerDatasetBase, HelixerModelBase
 
 class HelixerDatasetFinetune(HelixerDatasetBase):
@@ -18,10 +20,14 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
 
         # turn one hot encoding into strings again ...
         # all kinds of bugs here with padding, sample_weights, etc... just a quick test for downstream code
-        X = np.full((1000, 20000), 'N', dtype='|S1')
-        self.labels = h5_file['/data/y'][:1000]
+        debug_size = 100
+        X = np.full((debug_size, 20000), 'N', dtype='|S1')
+        self.labels = np.full((debug_size * 40, 502), 0, dtype=np.int8)  # this sets the labels for CLS and SEP to 0
+        self.labels[:, 1:-1] = np.argmax(h5_file['/data/y'][:debug_size], axis=-1).reshape(-1, 500)
+        # self.labels = np.argmax(h5_file['/data/y'][:debug_size], axis=-1).reshape(-1, 500)
+
         # get indices of all ATCG bases, the rest gets encoded as 'N'
-        batch_size = 1000
+        batch_size = debug_size
         bases = ['C', 'A', 'T', 'G']
         for offset in range(0, len(X), batch_size):
             idx_all = np.where(h5_file['data/X'][offset:offset+batch_size] == 1.)
@@ -32,8 +38,10 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
         self._tokenize(X.flatten().tobytes().decode())
 
     def __getitem__(self, idx):
-        item = {key: torch.tensor(np.frombuffer(self.compressor.decode(val[idx]), dtype=np.int8))
-                for key, val in self.encodings.items()}
+        item = {key: torch.tensor(np.frombuffer(self.compressor.decode(val[idx]), dtype=np.int8)).int()
+                for key, val in self.encodings.items()
+                if key != 'special_tokens_mask'}
+        item['labels'] = torch.tensor(self.labels[idx]).long()
         return item
 
 
@@ -45,12 +53,14 @@ class HelixerBert(BertPreTrainedModel):
     def __init__(self, args):
         self.config = BertConfig(num_labels=4)
         super().__init__(self.config)
-        self.bert = BertForMaskedLM.from_pretrained(args.load_model_path)
+
+        self.num_labels = 4
+        self.bert = BertModel.from_pretrained(args.load_model_path)
 
         self.classifier = torch.nn.Linear(self.config.hidden_size, self.config.num_labels)
         self.init_weights()
 
-    def forward( self,
+    def forward(self,
         input_ids=None,
         attention_mask=None,
         token_type_ids=None,
@@ -78,7 +88,6 @@ class HelixerBert(BertPreTrainedModel):
         )
 
         sequence_output = outputs[0]
-
         logits = self.classifier(sequence_output)
 
         loss = None
@@ -86,6 +95,8 @@ class HelixerBert(BertPreTrainedModel):
             loss_fct = CrossEntropyLoss()
             # Only keep active parts of the loss
             if attention_mask is not None:
+                attention_mask[:, 0] = 0
+                attention_mask[:, -1] = 0
                 active_loss = attention_mask.view(-1) == 1
                 active_logits = logits.view(-1, self.num_labels)
                 active_labels = torch.where(
@@ -120,9 +131,10 @@ class HelixerModelFinetune(HelixerModelBase):
     def run(self):
         args = self.args
 
+        # config = BertConfig(num_labels=4, max_position_embeddings=502, vocab_size=69, num_hidden_layers=3)
+        # finetuning_model = BertForTokenClassification.from_pretrained(args.load_model_path, config=config)
         finetuning_model = HelixerBert(args)
-        print('Finetuning config:')
-        print(finetuning_model.config)
+        HelixerModelBase.print_model_info(finetuning_model, 'Finetuning')
 
         trainer = Trainer(
             model=finetuning_model,
