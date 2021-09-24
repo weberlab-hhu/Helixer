@@ -6,9 +6,12 @@ import numcodecs
 import numpy as np
 from pathlib import Path
 from functools import partial
+from collections import defaultdict
+from sklearn.metrics import confusion_matrix
 import torch
 from torch.nn import CrossEntropyLoss
-from transformers import BertConfig, BertModel, BertForMaskedLM, BertTokenizerFast, Trainer, TrainingArguments, BertForTokenClassification
+from transformers import (BertConfig, BertModel, BertForMaskedLM, BertTokenizerFast, Trainer,
+                          TrainingArguments, BertForTokenClassification, TrainerCallback)
 from transformers.models.bert.modeling_bert import BertPreTrainedModel
 from transformers.modeling_outputs import TokenClassifierOutput
 from helixer.pretrain.base import HelixerDatasetBase, HelixerModelBase, print_tensors
@@ -21,7 +24,7 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
 
         # turn one hot encoding into strings again ...
         # all kinds of bugs here with padding, sample_weights, etc... just a quick test for downstream code
-        debug_size = 1000
+        debug_size = 100
         X = np.full((debug_size, 20000), 'N', dtype='|S1')
         self.labels = np.argmax(h5_file['/data/y'][:debug_size], axis=-1)
         # self.labels = np.argmax(h5_file['/data/y'][:debug_size], axis=-1).reshape(-1, 500)
@@ -130,12 +133,29 @@ class HelixerBert(BertPreTrainedModel):
             output = (logits,) + outputs[2:]
             return ((loss,) + output) if loss is not None else output
 
-        return TokenClassifierOutput(
-            loss=loss,
-            logits=logits,
-            # hidden_states=bert_outputs.hidden_states,
-            # attentions=bert_outputs.attentions,
-        )
+        return TokenClassifierOutput(loss=loss, logits=logits)
+
+
+class HelixerEvalCallback(TrainerCallback):
+    def __init__(self, cli_args, model, eval_dataset):
+        self.cli_args = cli_args
+        self.batch_size = cli_args.batch_size_valid
+        self.model = model
+        self.eval_dataset = eval_dataset
+
+    def on_epoch_end(self, args, state, control, **kwargs):
+        input_keys = ['input_ids', 'attention_mask', 'token_type_ids']
+        for offset in range(0, len(self.eval_dataset), self.batch_size):
+            print(f'{offset}/{len(self.eval_dataset)}')
+            inputs = defaultdict(list)
+            for i in range(self.batch_size):
+                data = self.eval_dataset[offset+i]
+                for key in input_keys:
+                    inputs[key].append(data[key])
+
+            batched_inputs = {key:torch.stack(vals, axis=0).cuda() for key, vals in inputs.items()}
+            with torch.no_grad():
+                out = self.model.forward(**batched_inputs)
 
 
 class HelixerModelFinetune(HelixerModelBase):
@@ -149,18 +169,19 @@ class HelixerModelFinetune(HelixerModelBase):
         self.run()
 
     def run(self):
-        args = self.args
+        train_dataset = HelixerDatasetFinetune(self.args, 'training')
+        eval_dataset = HelixerDatasetFinetune(self.args, 'validation')
 
         # config = BertConfig(num_labels=4, max_position_embeddings=502, vocab_size=69, num_hidden_layers=3)
         # finetuning_model = BertForTokenClassification.from_pretrained(args.load_model_path, config=config)
-        finetuning_model = HelixerBert(args)
+        finetuning_model = HelixerBert(self.args)
         HelixerModelBase.print_model_info(finetuning_model, 'Finetuning')
 
         trainer = Trainer(
             model=finetuning_model,
             args=self.training_args(),
-            train_dataset=HelixerDatasetFinetune(args, 'training'),
-            eval_dataset=HelixerDatasetFinetune(args, 'validation')
+            train_dataset=train_dataset,
+            callbacks=[HelixerEvalCallback(self.args, finetuning_model, eval_dataset)],
         )
         trainer.train()
 

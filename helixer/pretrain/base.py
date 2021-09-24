@@ -103,7 +103,7 @@ class HelixerModelBase(ABC):
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('--n-epochs', type=int, default=3)
         self.parser.add_argument('--batch-size-train', type=int, default=16)
-        self.parser.add_argument('--batch-size-valid', type=int, default=64)
+        self.parser.add_argument('--batch-size-valid', type=int, default=16)
         self.parser.add_argument('--warmup-steps', type=int, default=500)
         self.parser.add_argument('--weight-decay', type=int, default=0.01)
         self.parser.add_argument('--pretrain-input-len', type=int, default=502, help='Including [CLS] and [SEP]')
