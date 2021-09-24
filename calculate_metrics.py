@@ -1,20 +1,16 @@
 import sys
-import os
 import glob
 import h5py
 from tensorflow.keras.losses import categorical_crossentropy
 import numpy as np
-import pandas as pd
 import tensorflow as tf
 import functools
-import tensorflow_addons as tfa
 from collections import Counter, OrderedDict
 import itertools
 
 
 ###################### REFERENCE FILE #######################
-fpath = '/home/niklas/ref_data_with_coverage/test_data.h5'
-
+fpath = '/mnt/data/niklas/with_coverage/Mesculenta/test_data.h5'
 
 class Matrix_class:
     def __init__(self, data, name):
@@ -88,7 +84,7 @@ class H6FILE:
         ent_cds = np.sum(tf.cast(ent_cds, tf.int64))
         ent_phase = np.sum(tf.cast(ent_phase, tf.int64))
         ent = ent_cds + ent_phase
-        print(index, "/", len(self.ref_size), end = "\r")
+        #print(index, "/", len(self.ref_size), end = "\r")
         return np.array([ent_cds, ent_phase, ent])
 
     def entropy(self, argmax=False):
@@ -99,40 +95,40 @@ class H6FILE:
             h_ent = np.sum(np.array(list(map(self.cce_per_nt, self.ref_CDS, self.pred_CDS, self.ref_phase, self.pred_phase, self.ref_size))), axis=0)
         return h_ent
 
+    @staticmethod
+    def scores(chunk, ref, mode):
+        idx = np.argmax(chunk, axis=1)
+        chunk = np.eye(4)[idx].astype(np.int8)
+        tp = np.sum(np.logical_and(ref[:, mode] == 1, chunk[:, mode] == 1))
+        fp = np.sum(np.logical_and(ref[:, mode] == 0, chunk[:, mode] == 1))
+        fn = np.sum(np.logical_and(ref[:, mode] == 1, chunk[:, mode] == 0))
+        return np.array([tp, fp, fn])
 
-    def f1_per_chunk(self, ref_CDS, pred_CDS, ref_phase, pred_phase, index, argmax_=False):
-        idx = np.sum(ref_CDS, axis=1) != 0
-        ref_CDS = ref_CDS[idx]
-        pred_CDS = pred_CDS[idx].astype(np.float16)
-    
-        ref_phase = ref_phase[idx]
-        pred_phase = pred_phase[idx].astype(np.float16)
-    
-        if argmax_:
-            pred_CDS = self.pred_to_argmax(pred_CDS)
-            pred_phase = self.pred_to_argmax(pred_phase)
-    
-        metric = tfa.metrics.F1Score(num_classes=4)
-        metric.update_state(ref_CDS, pred_CDS)
-        result_cds = metric.result()
-        result_cds.numpy().astype(np.float16)
-    
-        metric = tfa.metrics.F1Score(num_classes=4)
-        metric.update_state(ref_phase, pred_phase)
-        result_phase = metric.result()
-        result_phase.numpy().astype(np.float16)
-        print(index, "/", len(self.ref_size), end = "\r")
-        return np.array([result_cds, result_phase]).reshape(-1)
+    @staticmethod
+    def f1_calc(metrics):
+        tp = metrics[0]
+        fp = metrics[1]
+        fn = metrics[2]
+        f1 = tp / (tp + 0.5 * (fp + fn))
+        return f1
 
-    def f1_by_class(self, argmax=False):
-        if argmax:
-            f1_argmax = functools.partial(self.f1_per_chunk, argmax_=True)
-            h_f1 = np.array(list(map(f1_argmax, self.ref_CDS, self.pred_CDS, self.ref_phase, self.pred_phase, self.ref_size)))
-        else:
-            h_f1 = np.array(list(map(self.f1_per_chunk, self.ref_CDS, self.pred_CDS, self.ref_phase, self.pred_phase, self.ref_size)))
-        cols = range(h_f1.shape[1])
-        means = np.array([np.mean(h_f1[h_f1[:,e] != 0, e]) for e in cols])
-        return means 
+    def f1_score(self, chunk, ref):
+        # count tp, fp ,fn per class
+        ig = np.sum(np.array([self.scores(chunk[e], ref[e], 0) for e in range(len(self.ref_size))]), axis=0)
+        utr = np.sum(np.array([self.scores(chunk[e], ref[e], 1) for e in range(len(self.ref_size))]), axis=0)
+        cds = np.sum(np.array([self.scores(chunk[e], ref[e], 2) for e in range(len(self.ref_size))]), axis=0)
+        intron = np.sum(np.array([self.scores(chunk[e], ref[e], 3) for e in range(len(self.ref_size))]), axis=0)
+        # calculate f1 scores
+        ig_f1 = self.f1_calc(ig)
+        utr_f1 = self.f1_calc(utr)
+        cds_f1 = self.f1_calc(cds)
+        intron_c1 = self.f1_calc(intron)
+        return np.array([ig_f1, utr_f1, cds_f1, intron_c1])
+
+    def f1_total(self):
+        f1_genic = self.f1_score(self.pred_CDS, self.ref_CDS)
+        f1_phase = self.f1_score(self.pred_phase, self.ref_phase)
+        return np.array([f1_genic, f1_phase])
 
     def error_classes(self, ref_CDS, pred_CDS, index, argmax_=False):
         idx = np.sum(ref_CDS, axis=1) != 0
@@ -219,7 +215,7 @@ class H6FILE:
         idx = np.logical_and(ref_CDS == 3, pred_CDS == 3)
         error_matrix[idx] = 16
 
-        print(index, "/", len(self.ref_size), end = "\r")
+        #print(index, "/", len(self.ref_size), end = "\r")
         return error_matrix.astype(np.int8)
 
     def error_quantification(self, ref_CDS, pred_CDS, argmax=False):
@@ -233,54 +229,51 @@ class H6FILE:
         helixer = Matrix_class(helixer, "helixer") ####change namHERE !!!!
         return helixer
 
-    def to_dataframe(self, argmax=False):
+    def to_dataframe(self):
         print("\n========== CALCULATING CROSSENTROPY  ==========")
-        ent = self.entropy(argmax=argmax)
+        ent = self.entropy()
         print("CROSS-ENTROPY: ")
         print(ent)
+        if self.is_helixer:
+            print("\nCalculating argmaxed cross-entropy")
+            ent_argmax = self.entropy(argmax=True)
+            print("CROSS-ENTROPY: ")
+            print(ent_argmax)
+
         print("\n========== CALCULATING CLASS-WISE F1 SCORE  ==========")
-        if not argmax:
-            f1_score = self.f1_by_class(argmax=argmax)
-        if argmax:
-            f1_score = 0
+        f1_score = self.f1_total()
         print("F1-SCORE:")
         print(np.around(f1_score, decimals=4))
+
         print("\n========== CALCULATING GENIC CONFUSION MATRIX  ==========")
-        genic = self.error_quantification(self.ref_CDS, self.pred_CDS, argmax=argmax)
+        genic = self.error_quantification(self.ref_CDS, self.pred_CDS)
         print("Genic normalized confusion matrix: ")
         print(np.around(genic.normalized, decimals=4))
         print("\n========== CALCULATING PHASE CONFUSION MATRIX  ==========")
-        phase = self.error_quantification(self.ref_phase, self.pred_phase, argmax=argmax)
+        phase = self.error_quantification(self.ref_phase, self.pred_phase)
         print(" Phase normalized confusion matric: ")
         print(np.around(phase.normalized, decimals=4))
-        if argmax:
-            savepath = self.path[:-3] + "_ARGMAX_METRICS.h5"
-        else:
-            savepath = self.out_path
-        file_out = h5py.File(savepath, 'w')
+
+        file_out = h5py.File(self.out_path, 'w')
         file_out.create_dataset("entropy", data=ent)
+        if self.is_helixer:
+            file_out.create_dataset("entropy_argmax", data=ent_argmax)
         file_out.create_dataset("f1_score", data=f1_score)
         file_out.create_dataset("genic_normalized", data=genic.normalized)
         file_out.create_dataset('genic_absolute', data=genic.absolute)
         file_out.create_dataset('phase_normalized', data=phase.normalized)
         file_out.create_dataset('phase_absolute', data=phase.absolute)
-        file_out.create_dataset('name', data=self.path)
+        file_out.create_dataset('name', data=str(self.path))
         file_out.close()
 
-
     def calc_metrics(self):
-        if self.is_helixer:
-            df_helixer = self.to_dataframe(argmax=False)
-            print("\n===== HELIXER-ARGMAX =====")
-            df_argmax = self.to_dataframe(argmax=True)
-            return np.array([df_helixer, df_argmax], dtype=object).reshape((2, -1))
-        if not self.is_helixer:
-            df_post = self.to_dataframe(argmax=False)
-            return df_post
+        df_helixer = self.to_dataframe()
+        return df_helixer
 
 def run():
     paths = sys.argv
     paths = paths[1:]
+    #reference_path = str(input("Provide path to reference file: "))
     print("___________________")
     for path in paths:
         print("Current directory: \n" + path)
