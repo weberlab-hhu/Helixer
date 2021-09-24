@@ -69,7 +69,7 @@ class HelixerDatasetPretrain(HelixerDatasetBase):
                 else:
                     print(f'starting with {fasta_header} (length: {len(seq)})')
 
-                self._tokenize(seq, num_max_tokens=self.args.pretrain_input_len, upper_case=True)
+                self._tokenize(seq, num_max_tokens=self.args.pretrain_input_len, pretrain=True)
                 break
 
     def __getitem__(self, idx):
@@ -85,8 +85,11 @@ class HelixerModelPretrain(HelixerModelBase):
         super().__init__()
         self.parser.add_argument('--fasta-folder', type=str, required=True,
                             help='Path to a folder with fasta files which will be used for pre-training.')
-        self.parser.add_argument('--n-layers', type=int, default=3)
-        self.parser.add_argument('--pretrain-input-len', type=int, default=502, help='Including [CLS] and [SEP]')
+        # the defaults are for the BERT-Mini variant from https://github.com/google-research/bert
+        self.parser.add_argument('--n-layers', type=int, default=4)
+        self.parser.add_argument('--n-attention-heads', type=int, default=4)
+        self.parser.add_argument('--hidden-size', type=int, default=256)
+        self.parser.add_argument('--intermediate-size', type=int, default=1024)
         self.parse_args()
         self.run()
 
@@ -95,6 +98,9 @@ class HelixerModelPretrain(HelixerModelBase):
         train_dataset = HelixerDatasetPretrain(args)
 
         configuration = BertConfig(num_hidden_layers=args.n_layers,
+                                   num_attention_heads=args.n_attention_heads,
+                                   hidden_size=args.hidden_size,
+                                   intermediate_size=args.intermediate_size,
                                    max_position_embeddings=args.pretrain_input_len,
                                    vocab_size=train_dataset.tokenizer.vocab_size)
         model = BertForMaskedLM(configuration)

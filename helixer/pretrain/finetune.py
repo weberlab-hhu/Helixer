@@ -5,12 +5,13 @@ import argparse
 import numcodecs
 import numpy as np
 from pathlib import Path
+from functools import partial
 import torch
 from torch.nn import CrossEntropyLoss
 from transformers import BertConfig, BertModel, BertForMaskedLM, BertTokenizerFast, Trainer, TrainingArguments, BertForTokenClassification
 from transformers.models.bert.modeling_bert import BertPreTrainedModel
 from transformers.modeling_outputs import TokenClassifierOutput
-from helixer.pretrain.base import HelixerDatasetBase, HelixerModelBase
+from helixer.pretrain.base import HelixerDatasetBase, HelixerModelBase, print_tensors
 
 class HelixerDatasetFinetune(HelixerDatasetBase):
     def __init__(self, args, split):
@@ -20,10 +21,9 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
 
         # turn one hot encoding into strings again ...
         # all kinds of bugs here with padding, sample_weights, etc... just a quick test for downstream code
-        debug_size = 100
+        debug_size = 1000
         X = np.full((debug_size, 20000), 'N', dtype='|S1')
-        self.labels = np.full((debug_size, 40, 502), 0, dtype=np.int8)  # this sets the labels for CLS and SEP to 0
-        self.labels[:, :, 1:-1] = np.argmax(h5_file['/data/y'][:debug_size], axis=-1).reshape(-1, 40, 500)
+        self.labels = np.argmax(h5_file['/data/y'][:debug_size], axis=-1)
         # self.labels = np.argmax(h5_file['/data/y'][:debug_size], axis=-1).reshape(-1, 500)
 
         # get indices of all ATCG bases, the rest gets encoded as 'N'
@@ -51,13 +51,13 @@ class HelixerBert(BertPreTrainedModel):
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
 
     def __init__(self, args):
-        self.config = BertConfig(num_labels=4)
+        self.config = BertConfig(num_labels=4)  # not sure about this
         super().__init__(self.config)
 
         self.num_labels = 4
         self.bert = BertModel.from_pretrained(args.load_model_path)
 
-        self.lstm = torch.nn.LSTM(input_size=self.config.hidden_size,
+        self.lstm = torch.nn.LSTM(input_size=self.bert.config.hidden_size,
                                   hidden_size=args.n_lstm_units,
                                   num_layers=args.n_lstm_layers,
                                   bidirectional=True)
@@ -79,19 +79,36 @@ class HelixerBert(BertPreTrainedModel):
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        bert_outputs = [self.bert(
-            input_ids[i].int(),
-            attention_mask=attention_mask[i].int(),
-            token_type_ids=token_type_ids[i].int(),
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        ) for i in range(len(input_ids))]
+        # call the BERT model for each of the 40 subsequences individually, but for the whole batch
+        input_ids = input_ids.int()
+        attention_mask = attention_mask.int()
+        token_type_ids = token_type_ids.int()
+        n_sub_seqs = input_ids.shape[1]
+        bert_outputs = []
+        # only backprop a small number of bert forward passes
+        backprop_idxs = np.random.choice(range(n_sub_seqs), 2, replace=False)
+        for i in range(n_sub_seqs):
+            bert_call = partial(self.bert,
+                torch.squeeze(input_ids[:, i]),
+                attention_mask=torch.squeeze(attention_mask[:, i]),
+                token_type_ids=torch.squeeze(token_type_ids[:, i]),
+                position_ids=position_ids,
+                head_mask=head_mask,
+                inputs_embeds=inputs_embeds,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+            if i in backprop_idxs:
+                out = bert_call()
+            else:
+                with torch.no_grad():
+                    out = bert_call()
+            bert_outputs.append(out[0])
 
-        lstm_outputs = self.lstm(bert_outputs[0])
+        lstm_input = torch.stack(bert_outputs, axis=1)
+        lstm_input = lstm_input[:, :, 1:-1].reshape(lstm_input.shape[0], -1, lstm_input.shape[-1])
+        lstm_outputs = self.lstm(lstm_input)
         logits = self.classifier(lstm_outputs[0])
 
         loss = None
@@ -99,9 +116,8 @@ class HelixerBert(BertPreTrainedModel):
             loss_fct = CrossEntropyLoss()
             # Only keep active parts of the loss
             if attention_mask is not None:
-                attention_mask[:, 0] = 0
-                attention_mask[:, -1] = 0
-                active_loss = attention_mask.view(-1) == 1
+                attention_mask = attention_mask[:, :, 1:-1]
+                active_loss = attention_mask.reshape(-1) == 1
                 active_logits = logits.view(-1, self.num_labels)
                 active_labels = torch.where(
                     active_loss, labels.view(-1), torch.tensor(loss_fct.ignore_index).type_as(labels)

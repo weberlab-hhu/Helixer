@@ -22,6 +22,38 @@ def print_model_parameter_counts(model):
     total_param_str = f'{total_param:,}'.replace(',', '.')
     print(f'total parameters: {total_param_str}')
 
+
+def print_tensors():
+    """Prints the currently active GPU tensors for debugging."""
+    import gc
+    from tabulate import tabulate
+    rows = []
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                size = obj.size()
+                if obj.dtype == torch.float16:
+                    byte_size = 2
+                elif obj.dtype == torch.float32:
+                    byte_size = 4
+                elif obj.dtype == torch.float64:
+                    byte_size = 8
+                else:
+                    byte_size = 4
+                if len(size) > 0:
+                    rows.append([str(size),
+                                 f'{np.prod(list(size)) * byte_size / 2 ** 30:.4f} GB',
+                                 str(type(obj)),
+                                 str(obj.dtype),
+                                 str(obj.requires_grad)])
+        except:
+            pass
+    print(tabulate(rows, headers=['shape', 'size', 'class', 'dtype', 'requires_grad']))
+    print(f'pytorch total mem: {torch.cuda.get_device_properties(0).total_memory / 2 ** 30:.4f} GB')
+    print(f'pytorch reserved mem: {torch.cuda.memory_reserved(0) / 2 ** 30:.4f} GB')
+    print(f'pytorch allocated mem: {torch.cuda.memory_allocated(0) / 2 ** 30:.4f} GB')
+
+
 class HelixerDatasetBase(torch.utils.data.Dataset):
     def __init__(self, args):
         self.args = args

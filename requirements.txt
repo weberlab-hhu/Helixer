@@ -6,6 +6,7 @@ seaborn
 Keras==2.4.3
 keras_layer_normalization
 terminaltables
+tabulate
 HTSeq
 intervaltree
 numpy
