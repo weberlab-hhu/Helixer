@@ -8,12 +8,15 @@ from pathlib import Path
 from functools import partial
 from collections import defaultdict
 from sklearn.metrics import confusion_matrix
+
 import torch
 from torch.nn import CrossEntropyLoss
+from ignite.metrics.confusion_matrix import ConfusionMatrix
 from transformers import (BertConfig, BertModel, BertForMaskedLM, BertTokenizerFast, Trainer,
                           TrainingArguments, BertForTokenClassification, TrainerCallback)
 from transformers.models.bert.modeling_bert import BertPreTrainedModel
 from transformers.modeling_outputs import TokenClassifierOutput
+
 from helixer.pretrain.base import HelixerDatasetBase, HelixerModelBase, print_tensors
 
 class HelixerDatasetFinetune(HelixerDatasetBase):
@@ -37,7 +40,8 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
             for i in range(4):
                 idx_base = idx_all[2] == i
                 X[idx_all[0][idx_base], idx_all[1][idx_base]] = bases[i]
-            break
+            if args.debug:
+                break
         self._tokenize(X.flatten().tobytes().decode(), pretrain=False)
 
     def __getitem__(self, idx):
@@ -142,9 +146,10 @@ class HelixerEvalCallback(TrainerCallback):
         self.batch_size = cli_args.batch_size_valid
         self.model = model
         self.eval_dataset = eval_dataset
+        self.cm = ConfusionMatrix(4, device='cuda')
 
     def on_epoch_end(self, args, state, control, **kwargs):
-        input_keys = ['input_ids', 'attention_mask', 'token_type_ids']
+        input_keys = ['input_ids', 'attention_mask', 'token_type_ids', 'labels']
         for offset in range(0, len(self.eval_dataset), self.batch_size):
             print(f'{offset}/{len(self.eval_dataset)}')
             inputs = defaultdict(list)
@@ -156,6 +161,44 @@ class HelixerEvalCallback(TrainerCallback):
             batched_inputs = {key:torch.stack(vals, axis=0).cuda() for key, vals in inputs.items()}
             with torch.no_grad():
                 out = self.model.forward(**batched_inputs)
+                # accumulate cm on the GPU
+                y_pred = out[1].view(-1, 4)
+                y_true = batched_inputs['labels'].view(-1)
+                self.cm.update((y_pred, y_true))
+
+    def _get_scores(self):
+        scores = defaultdict(dict)
+        # single column metrics
+        for col in range(4):
+            name = self.col_names[col]
+            d = scores[name]
+            not_col = np.arange(self.n_classes) != col
+            d['TP'] = self.cm[col, col]
+            d['FP'] = np.sum(self.cm[not_col, col])
+            d['FN'] = np.sum(self.cm[col, not_col])
+            # add average uncertanties
+            if not self.skip_uncertainty:
+                d['H'] = np.mean(self.uncertainties[name])
+
+            ConfusionMatrix._add_to_scores(d)
+        return scores
+
+    @staticmethod
+    def _precision_recall_f1(tp, fp, fn):
+        if (tp + fp) > 0:
+            precision = tp / (tp + fp)
+        else:
+            precision = 0.0  # avoid an error due to division by 0
+        if (tp + fn) > 0:
+            recall = tp / (tp + fn)
+        else:
+            recall = 0.0
+        if (precision + recall) > 0:
+            f1 = 2 * precision * recall / (precision + recall)
+        else:
+            f1 = 0.0
+        return precision, recall, f1
+
 
 
 class HelixerModelFinetune(HelixerModelBase):

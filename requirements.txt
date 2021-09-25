@@ -7,6 +7,8 @@ Keras==2.4.3
 keras_layer_normalization
 terminaltables
 tabulate
+transformers
+ignite
 HTSeq
 intervaltree
 numpy

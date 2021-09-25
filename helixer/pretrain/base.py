@@ -107,6 +107,9 @@ class HelixerModelBase(ABC):
         self.parser.add_argument('--warmup-steps', type=int, default=500)
         self.parser.add_argument('--weight-decay', type=int, default=0.01)
         self.parser.add_argument('--pretrain-input-len', type=int, default=502, help='Including [CLS] and [SEP]')
+        self.parser.add_argument('--save-steps', type=int, default=2000)
+        self.parser.add_argument('--debug', action='store_true')
+
 
     def parse_args(self):
         args = self.parser.parse_args()
@@ -134,7 +137,8 @@ class HelixerModelBase(ABC):
             warmup_steps=self.args.warmup_steps,
             weight_decay=self.args.weight_decay,
             logging_dir='./logs',
-            logging_steps=10,
+            logging_steps=50,
+            save_steps=self.args.save_steps
         )
         return training_args
 

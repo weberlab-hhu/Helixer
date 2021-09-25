@@ -70,7 +70,8 @@ class HelixerDatasetPretrain(HelixerDatasetBase):
                     print(f'starting with {fasta_header} (length: {len(seq)})')
 
                 self._tokenize(seq, num_max_tokens=self.args.pretrain_input_len, pretrain=True)
-                break
+                if args.debug:
+                    break
 
     def __getitem__(self, idx):
         item = {key: torch.tensor(np.frombuffer(self.compressor.decode(val[idx]), dtype=np.int8))
@@ -113,7 +114,7 @@ class HelixerModelPretrain(HelixerModelBase):
             args=self.training_args(),
             train_dataset=train_dataset,
             # eval_dataset=val_dataset,
-            data_collator=collator
+            data_collator=collator,
         )
         trainer.train()
 
