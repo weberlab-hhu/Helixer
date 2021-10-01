@@ -19,7 +19,9 @@ from transformers.modeling_outputs import TokenClassifierOutput
 
 from helixer.pretrain.base import HelixerDatasetBase, HelixerModelBase, print_tensors
 
+
 class HelixerDatasetFinetune(HelixerDatasetBase):
+
     def __init__(self, args, split):
         super().__init__(args)
 
@@ -43,16 +45,15 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
             self.labels.extend([self.compressor.encode(e) for e in list(y_batch)])
             self.sample_weights.extend([self.compressor.encode(e) for e in list(sw_batch)])
 
-            # the following could be improved by concatenation seqs with the same seqid
+            # the following could be improved by concatenating seqs with the same seqid
             for i in range(load_batch_size):
                 self._tokenize(X[i].tobytes().decode(), pretrain=False)
 
-            print(f'{offset}/{len(X_dset)}')
+            print(f'{offset + load_batch_size}/{len(X_dset)}')
 
             if args.debug:
                 X = X[:load_batch_size]
                 break
-
 
     def __getitem__(self, idx):
         item = {key: torch.tensor(
