@@ -24,35 +24,44 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
         super().__init__(args)
 
         h5_file = h5py.File(f'{args.data_dir}/{split}_data.h5', 'r')
+        X_dset = h5_file['/data/X']
 
-        X = np.full(h5_file['/data/X'].shape[:2], 'N', dtype='|S1')
         self.labels, self.sample_weights = [], []
-
-        load_batch_size = 10000
+        load_batch_size = 100 if args.debug else 10000
         bases = ['C', 'A', 'T', 'G']
-        for offset in range(0, len(X), load_batch_size):
+        for offset in range(0, len(X_dset), load_batch_size):
+            X = np.full((load_batch_size, X_dset.shape[1]), 'N', dtype='|S1')
             # get indices of all ATCG bases, the rest gets encoded as 'N'
             batch_slice = slice(offset, offset + load_batch_size)
-            idx_all = np.where(h5_file['data/X'][batch_slice] == 1.)
+            idx_all = np.where(X_dset[batch_slice] == 1.)
             for i in range(4):
                 idx_base = idx_all[2] == i
                 X[idx_all[0][idx_base], idx_all[1][idx_base]] = bases[i]
             # load and compress labels and sample weights
-            y_batch = h5_file['/data/y'][batch_slice]
-            sw_batch = h5_file['/data/sampel_weights'][batch_slice]
-            self.labels.extend([self.compressor.encode(e) for e in y_batch.tolist()])
-            self.sample_weights.extend([self.compressor.encode(e) for e in y_batch.tolist()])
+            y_batch = np.argmax(h5_file['/data/y'][batch_slice], axis=-1).astype(np.uint8)
+            sw_batch = h5_file['/data/sample_weights'][batch_slice]
+            self.labels.extend([self.compressor.encode(e) for e in list(y_batch)])
+            self.sample_weights.extend([self.compressor.encode(e) for e in list(sw_batch)])
+
+            # the following could be improved by concatenation seqs with the same seqid
+            for i in range(load_batch_size):
+                self._tokenize(X[i].tobytes().decode(), pretrain=False)
+
+            print(f'{offset}/{len(X_dset)}')
 
             if args.debug:
+                X = X[:load_batch_size]
                 break
 
-        self._tokenize(X.flatten().tobytes().decode(), pretrain=False)
 
     def __getitem__(self, idx):
         item = {key: torch.tensor(
                     [np.frombuffer(self.compressor.decode(sub_val), dtype=np.int8) for sub_val in val[idx]]).int()
                 for key, val in self.encodings.items()}
-        item['labels'] = torch.tensor(self.labels[idx]).long()
+        label = np.frombuffer(self.compressor.decode(self.labels[idx]), dtype=np.uint8)
+        sample_weight = np.frombuffer(self.compressor.decode(self.sample_weights[idx]), dtype=np.int8)
+        item['labels'] = torch.tensor(label).long()
+        item['sample_weights'] = torch.tensor(sample_weight)
         return item
 
 
@@ -62,6 +71,7 @@ class HelixerBert(BertPreTrainedModel):
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
 
     def __init__(self, args):
+        self.args = args
         self.config = BertConfig(num_labels=4)  # not sure about this
         super().__init__(self.config)
 
@@ -83,6 +93,7 @@ class HelixerBert(BertPreTrainedModel):
         head_mask=None,
         inputs_embeds=None,
         labels=None,
+        sample_weights=None,
         special_tokens_mask=None,
         output_attentions=None,
         output_hidden_states=None,
@@ -153,11 +164,12 @@ class HelixerEvalCallback(TrainerCallback):
         self.cm = ConfusionMatrix(4, device='cuda')
 
     def on_epoch_end(self, args, state, control, **kwargs):
-        input_keys = ['input_ids', 'attention_mask', 'token_type_ids', 'labels']
+        input_keys = ['input_ids', 'attention_mask', 'token_type_ids', 'labels', 'sample_weights']
+        # construct batches by hand, there probably is code for that in transformers.Trainer
         for offset in range(0, len(self.eval_dataset), self.batch_size):
             print(f'{offset}/{len(self.eval_dataset)}')
             inputs = defaultdict(list)
-            for i in range(self.batch_size):
+            for i in range(min(self.batch_size, (len(self.eval_dataset) - offset))):
                 data = self.eval_dataset[offset+i]
                 for key in input_keys:
                     inputs[key].append(data[key])
@@ -169,6 +181,11 @@ class HelixerEvalCallback(TrainerCallback):
                 y_pred = out[1].view(-1, 4)
                 y_true = batched_inputs['labels'].view(-1)
                 self.cm.update((y_pred, y_true))
+        print(self.cm.confusion_matrix)
+
+    def print_cm(self):
+        scores = self._get_scores()
+        self._print_results(scores)
 
     def _get_scores(self):
         scores = defaultdict(dict)
@@ -180,12 +197,43 @@ class HelixerEvalCallback(TrainerCallback):
             d['TP'] = self.cm[col, col]
             d['FP'] = np.sum(self.cm[not_col, col])
             d['FN'] = np.sum(self.cm[col, not_col])
-            # add average uncertanties
-            if not self.skip_uncertainty:
-                d['H'] = np.mean(self.uncertainties[name])
 
             ConfusionMatrix._add_to_scores(d)
         return scores
+
+    def _print_results(self, scores):
+        for table, table_name in self.prep_tables(scores):
+            print('\n', AsciiTable(table, table_name).table, sep='')
+        print('Total acc: {:.4f}'.format(self._total_accuracy()))
+
+    def prep_tables(self, scores):
+        out = []
+        names = list(self.col_names.values())
+
+        # confusion matrix
+        cm = [[''] + [x + '_pred' for x in names]]
+        for i, row in enumerate(self.cm.astype(int).tolist()):
+            cm.append([names[i] + '_ref'] + row)
+        out.append((cm, 'confusion_matrix'))
+
+        # normalized
+        normalized_cm = [cm[0]]
+        for i, row in enumerate(self._get_normalized_cm().tolist()):
+            normalized_cm.append([names[i] + '_ref'] + [round(x, ndigits=4) for x in row])
+        out.append((normalized_cm, 'normalized_confusion_matrix'))
+
+        # F1
+        table = [['', 'norm. H', 'Precision', 'Recall', 'F1-Score']]
+        for i, (name, values) in enumerate(scores.items()):
+            # check if there is an entropy value comming (only for single type classes)
+            metrics = ['']
+            metrics += ['{:.4f}'.format(s) for s in list(values.values())[3:]]  # [3:] to skip TP, FP, FN
+            table.append([name] + metrics)
+            if i == (len(names) - 1) and len(scores) > len(names):
+                table.append([''] * 4)
+        out.append((table, 'F1_summary'))
+
+        return out
 
     @staticmethod
     def _precision_recall_f1(tp, fp, fn):

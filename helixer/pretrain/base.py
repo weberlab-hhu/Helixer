@@ -89,10 +89,11 @@ class HelixerDatasetBase(torch.utils.data.Dataset):
                     # append list of grouped sequences for finetuning or inference
                     for i in range(0, len(key_seqs_int8_flat), n_short_samples_per_seq):
                         self.encodings[key].append(key_seqs_int8_flat[i:i+n_short_samples_per_seq])
-            print(f'processed {min(offset+batch_size, len(kmer_seqs))}/{len(kmer_seqs)}')
-        mem_footprints = {key:sum([sys.getsizeof(e) for e in vals]) / 2 ** 20 for key, vals in self.encodings.items()}
-        mem_footprints_str = {key:f'{val:.2f} MB' for key, val in mem_footprints.items()}
-        print(f'memory footprints: {mem_footprints_str}')
+            if len(kmer_seqs) > batch_size:
+                print(f'processed {min(offset+batch_size, len(kmer_seqs))}/{len(kmer_seqs)}')
+        # mem_footprints = {key:sum([sys.getsizeof(e) for e in vals]) / 2 ** 20 for key, vals in self.encodings.items()}
+        # mem_footprints_str = {key:f'{val:.2f} MB' for key, val in mem_footprints.items()}
+        # print(f'memory footprints: {mem_footprints_str}')
 
     def __len__(self):
         return len(self.encodings['input_ids'])
