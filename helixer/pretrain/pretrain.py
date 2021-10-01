@@ -72,6 +72,8 @@ class HelixerDatasetPretrain(HelixerDatasetBase):
                 self._tokenize(seq, num_max_tokens=self.args.pretrain_input_len, pretrain=True)
                 if args.debug:
                     break
+            if args.debug:
+                break
 
     def __getitem__(self, idx):
         item = {key: torch.tensor(np.frombuffer(self.compressor.decode(val[idx]), dtype=np.int8))

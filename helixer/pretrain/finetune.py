@@ -26,11 +26,16 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
         h5_file = h5py.File(f'{args.data_dir}/{split}_data.h5', 'r')
 
         # turn one hot encoding into strings again ...
-        # all kinds of bugs here with padding, sample_weights, etc... just a quick test for downstream code
-        debug_size = 100
-        X = np.full((debug_size, 20000), 'N', dtype='|S1')
-        self.labels = np.argmax(h5_file['/data/y'][:debug_size], axis=-1)
-        # self.labels = np.argmax(h5_file['/data/y'][:debug_size], axis=-1).reshape(-1, 500)
+        if args.debug:
+            debug_size = 100
+            X = np.full((debug_size, 20000), 'N', dtype='|S1')
+            self.labels = np.argmax(h5_file['/data/y'][:debug_size], axis=-1)
+        else:
+            X = np.full(h5_file['/data/X'].shape[:2], 'N', dtype='|S1')
+            y = h5_file['/data/y'][:]
+            self.labels = np.argmax(y, axis=-1).astype(np.int8)
+            self.sample_weights = h5_file['/data/sample_weights'].astype(np.int8)
+
 
         # get indices of all ATCG bases, the rest gets encoded as 'N'
         batch_size = debug_size
