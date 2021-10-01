@@ -25,28 +25,27 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
 
         h5_file = h5py.File(f'{args.data_dir}/{split}_data.h5', 'r')
 
-        # turn one hot encoding into strings again ...
-        if args.debug:
-            debug_size = 100
-            X = np.full((debug_size, 20000), 'N', dtype='|S1')
-            self.labels = np.argmax(h5_file['/data/y'][:debug_size], axis=-1)
-        else:
-            X = np.full(h5_file['/data/X'].shape[:2], 'N', dtype='|S1')
-            y = h5_file['/data/y'][:]
-            self.labels = np.argmax(y, axis=-1).astype(np.int8)
-            self.sample_weights = h5_file['/data/sample_weights'].astype(np.int8)
+        X = np.full(h5_file['/data/X'].shape[:2], 'N', dtype='|S1')
+        self.labels, self.sample_weights = [], []
 
-
-        # get indices of all ATCG bases, the rest gets encoded as 'N'
-        batch_size = debug_size
+        load_batch_size = 10000
         bases = ['C', 'A', 'T', 'G']
-        for offset in range(0, len(X), batch_size):
-            idx_all = np.where(h5_file['data/X'][offset:offset+batch_size] == 1.)
+        for offset in range(0, len(X), load_batch_size):
+            # get indices of all ATCG bases, the rest gets encoded as 'N'
+            batch_slice = slice(offset, offset + load_batch_size)
+            idx_all = np.where(h5_file['data/X'][batch_slice] == 1.)
             for i in range(4):
                 idx_base = idx_all[2] == i
                 X[idx_all[0][idx_base], idx_all[1][idx_base]] = bases[i]
+            # load and compress labels and sample weights
+            y_batch = h5_file['/data/y'][batch_slice]
+            sw_batch = h5_file['/data/sampel_weights'][batch_slice]
+            self.labels.extend([self.compressor.encode(e) for e in y_batch.tolist()])
+            self.sample_weights.extend([self.compressor.encode(e) for e in y_batch.tolist()])
+
             if args.debug:
                 break
+
         self._tokenize(X.flatten().tobytes().decode(), pretrain=False)
 
     def __getitem__(self, idx):
