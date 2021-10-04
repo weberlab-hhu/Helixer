@@ -25,8 +25,9 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
     def __init__(self, args, split):
         super().__init__(args)
 
+        print(f'loading all {split} data in memory')
         h5_file = h5py.File(f'{args.data_dir}/{split}_data.h5', 'r')
-        X_dset = h5_file['/data/X'][:30000]
+        X_dset = h5_file['/data/X']
 
         self.labels, self.sample_weights = [], []
         load_batch_size = 100 if args.debug else 10000
@@ -109,7 +110,7 @@ class HelixerBert(BertPreTrainedModel):
         n_sub_seqs = input_ids.shape[1]
         bert_outputs = []
         # only backprop a small number of bert forward passes
-        backprop_idxs = np.random.choice(range(n_sub_seqs), 2, replace=False)
+        backprop_idxs = np.random.choice(range(n_sub_seqs), self.n_backprob_samples, replace=False)
         for i in range(n_sub_seqs):
             bert_call = partial(self.bert,
                 torch.squeeze(input_ids[:, i]),
@@ -192,6 +193,7 @@ class HelixerModelFinetune(HelixerModelBase):
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
         self.parser.add_argument('--n-lstm-layers', type=int, default=1)
         self.parser.add_argument('--n-lstm-units', type=int, default=128)
+        self.parser.add_argument('--n-backprop-samples', type=int, default=2)
         self.parse_args()
         self.run()
 
