@@ -30,7 +30,7 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
         X_dset = h5_file['/data/X']
 
         self.labels, self.sample_weights = [], []
-        load_batch_size = 1000 if args.debug else 10000
+        load_batch_size = 200 if args.debug else 10000
         bases = ['C', 'A', 'T', 'G']
         for offset in range(0, len(X_dset), load_batch_size):
             batch_slice = slice(offset, offset + load_batch_size)
@@ -80,11 +80,11 @@ class HelixerBert(BertPreTrainedModel):
         self.num_labels = 4
         self.bert = BertModel.from_pretrained(args.load_model_path)
 
-        self.lstm = torch.nn.LSTM(input_size=self.bert.config.hidden_size,
+        self.lstm = torch.nn.LSTM(input_size=self.bert.config.hidden_size * args.block_size,
                                   hidden_size=args.n_lstm_units,
                                   num_layers=args.n_lstm_layers,
                                   bidirectional=True)
-        self.classifier = torch.nn.Linear(args.n_lstm_units * 2, self.config.num_labels)
+        self.classifier = torch.nn.Linear(args.n_lstm_units * 2, self.config.num_labels * args.block_size)
         self.init_weights()
 
     def forward(self,
@@ -131,9 +131,11 @@ class HelixerBert(BertPreTrainedModel):
             bert_outputs.append(out[0])
 
         lstm_input = torch.stack(bert_outputs, axis=1)
-        lstm_input = lstm_input[:, :, 1:-1].reshape(lstm_input.shape[0], -1, lstm_input.shape[-1])
+        lstm_input = lstm_input[:, :, 1:-1]
+        lstm_input = lstm_input.reshape(lstm_input.shape[0], -1, self.args.block_size * lstm_input.shape[-1])
         lstm_outputs = self.lstm(lstm_input)
         logits = self.classifier(lstm_outputs[0])
+        logits = logits.reshape(lstm_input.shape[0], -1, self.num_labels)
 
         loss = None
         if labels is not None:
@@ -193,6 +195,7 @@ class HelixerModelFinetune(HelixerModelBase):
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
         self.parser.add_argument('--n-lstm-layers', type=int, default=1)
         self.parser.add_argument('--n-lstm-units', type=int, default=128)
+        self.parser.add_argument('--block-size', type=int, default=5)
         self.parser.add_argument('--n-backprop-samples', type=int, default=2)
         self.parse_args()
         self.run()
