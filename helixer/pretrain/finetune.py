@@ -30,7 +30,7 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
         X_dset = h5_file['/data/X']
 
         self.labels, self.sample_weights = [], []
-        load_batch_size = 100 if args.debug else 10000
+        load_batch_size = 1000 if args.debug else 10000
         bases = ['C', 'A', 'T', 'G']
         for offset in range(0, len(X_dset), load_batch_size):
             batch_slice = slice(offset, offset + load_batch_size)
