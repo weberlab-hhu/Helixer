@@ -110,7 +110,7 @@ class HelixerBert(BertPreTrainedModel):
         n_sub_seqs = input_ids.shape[1]
         bert_outputs = []
         # only backprop a small number of bert forward passes
-        backprop_idxs = np.random.choice(range(n_sub_seqs), self.n_backprob_samples, replace=False)
+        backprop_idxs = np.random.choice(range(n_sub_seqs), self.args.n_backprop_samples, replace=False)
         for i in range(n_sub_seqs):
             bert_call = partial(self.bert,
                 torch.squeeze(input_ids[:, i]),
@@ -179,9 +179,9 @@ class HelixerEvalCallback(TrainerCallback):
                 # accumulate cm on the GPU
                 y_pred = out[1].view(-1, 4)
                 y_true = batched_inputs['labels'].view(-1)
-                # sw = batched_inputs['sample_weights'].view(-1)
-                # y_pred = y_pred[sw]
-                # y_true = y_true[sw]
+                sw = batched_inputs['sample_weights'].view(-1)
+                y_pred = y_pred[sw]
+                y_true = y_true[sw]
                 cm.add_to_cm(y_true, y_pred)
         cm.print_cm()
 
