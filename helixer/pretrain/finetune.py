@@ -26,7 +26,7 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
         super().__init__(args)
 
         h5_file = h5py.File(f'{args.data_dir}/{split}_data.h5', 'r')
-        X_dset = h5_file['/data/X'][:11000]
+        X_dset = h5_file['/data/X'][:30000]
 
         self.labels, self.sample_weights = [], []
         load_batch_size = 100 if args.debug else 10000
@@ -47,7 +47,7 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
             self.sample_weights.extend([self.compressor.encode(e) for e in list(sw_batch)])
 
             # the following could be improved by concatenating seqs with the same seqid
-            for i in range(load_batch_size):
+            for i in range(len(X_batch)):
                 self._tokenize(X_batch[i].tobytes().decode(), pretrain=False)
 
             print(f'{offset + load_batch_size}/{len(X_dset)}')
@@ -136,18 +136,16 @@ class HelixerBert(BertPreTrainedModel):
 
         loss = None
         if labels is not None:
-            loss_fct = CrossEntropyLoss()
-            # Only keep active parts of the loss
-            if attention_mask is not None:
-                attention_mask = attention_mask[:, :, 1:-1]
-                active_loss = attention_mask.reshape(-1) == 1
-                active_logits = logits.view(-1, self.num_labels)
-                active_labels = torch.where(
-                    active_loss, labels.view(-1), torch.tensor(loss_fct.ignore_index).type_as(labels)
-                )
-                loss = loss_fct(active_logits, active_labels)
-            else:
-                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            # hardcoded weights for now
+            loss_fct = CrossEntropyLoss(weight=torch.Tensor([0.7, 1.6, 1.2, 1.2]).cuda())
+            # only keep active parts of the loss
+            attention_mask = attention_mask[:, :, 1:-1]
+            active_loss = (attention_mask.reshape(-1) == 1) & sample_weights.reshape(-1)
+            active_logits = logits.view(-1, self.num_labels)
+            active_labels = torch.where(
+                active_loss, labels.view(-1), torch.tensor(loss_fct.ignore_index).type_as(labels)
+            )
+            loss = loss_fct(active_logits, active_labels)
 
         if not return_dict:
             output = (logits,) + outputs[2:]
