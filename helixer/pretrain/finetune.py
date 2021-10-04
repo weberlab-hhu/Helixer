@@ -11,13 +11,13 @@ from sklearn.metrics import confusion_matrix
 
 import torch
 from torch.nn import CrossEntropyLoss
-from ignite.metrics.confusion_matrix import ConfusionMatrix
 from transformers import (BertConfig, BertModel, BertForMaskedLM, BertTokenizerFast, Trainer,
                           TrainingArguments, BertForTokenClassification, TrainerCallback)
 from transformers.models.bert.modeling_bert import BertPreTrainedModel
 from transformers.modeling_outputs import TokenClassifierOutput
 
 from helixer.pretrain.base import HelixerDatasetBase, HelixerModelBase, print_tensors
+from helixer.pretrain.Metrics import HelixerConfusionMatrixGenic
 
 
 class HelixerDatasetFinetune(HelixerDatasetBase):
@@ -26,19 +26,20 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
         super().__init__(args)
 
         h5_file = h5py.File(f'{args.data_dir}/{split}_data.h5', 'r')
-        X_dset = h5_file['/data/X']
+        X_dset = h5_file['/data/X'][:11000]
 
         self.labels, self.sample_weights = [], []
         load_batch_size = 100 if args.debug else 10000
         bases = ['C', 'A', 'T', 'G']
         for offset in range(0, len(X_dset), load_batch_size):
-            X = np.full((load_batch_size, X_dset.shape[1]), 'N', dtype='|S1')
-            # get indices of all ATCG bases, the rest gets encoded as 'N'
             batch_slice = slice(offset, offset + load_batch_size)
-            idx_all = np.where(X_dset[batch_slice] == 1.)
+            X_one_hot = X_dset[batch_slice]
+            X_batch = np.full(X_one_hot.shape[:2], 'N', dtype='|S1')
+            # get indices of all ATCG bases, the rest gets encoded as 'N'
+            idx_all = np.where(X_one_hot == 1.)
             for i in range(4):
                 idx_base = idx_all[2] == i
-                X[idx_all[0][idx_base], idx_all[1][idx_base]] = bases[i]
+                X_batch[idx_all[0][idx_base], idx_all[1][idx_base]] = bases[i]
             # load and compress labels and sample weights
             y_batch = np.argmax(h5_file['/data/y'][batch_slice], axis=-1).astype(np.uint8)
             sw_batch = h5_file['/data/sample_weights'][batch_slice]
@@ -47,12 +48,11 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
 
             # the following could be improved by concatenating seqs with the same seqid
             for i in range(load_batch_size):
-                self._tokenize(X[i].tobytes().decode(), pretrain=False)
+                self._tokenize(X_batch[i].tobytes().decode(), pretrain=False)
 
             print(f'{offset + load_batch_size}/{len(X_dset)}')
 
             if args.debug:
-                X = X[:load_batch_size]
                 break
 
     def __getitem__(self, idx):
@@ -62,7 +62,7 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
         label = np.frombuffer(self.compressor.decode(self.labels[idx]), dtype=np.uint8)
         sample_weight = np.frombuffer(self.compressor.decode(self.sample_weights[idx]), dtype=np.int8)
         item['labels'] = torch.tensor(label).long()
-        item['sample_weights'] = torch.tensor(sample_weight)
+        item['sample_weights'] = torch.tensor(sample_weight).bool()
         return item
 
 
@@ -158,13 +158,12 @@ class HelixerBert(BertPreTrainedModel):
 
 class HelixerEvalCallback(TrainerCallback):
     def __init__(self, cli_args, model, eval_dataset):
-        self.cli_args = cli_args
         self.batch_size = cli_args.batch_size_valid
         self.model = model
         self.eval_dataset = eval_dataset
-        self.cm = ConfusionMatrix(4, device='cuda')
 
     def on_epoch_end(self, args, state, control, **kwargs):
+        cm = HelixerConfusionMatrixGenic()
         input_keys = ['input_ids', 'attention_mask', 'token_type_ids', 'labels', 'sample_weights']
         # construct batches by hand, there probably is code for that in transformers.Trainer
         for offset in range(0, len(self.eval_dataset), self.batch_size):
@@ -181,77 +180,11 @@ class HelixerEvalCallback(TrainerCallback):
                 # accumulate cm on the GPU
                 y_pred = out[1].view(-1, 4)
                 y_true = batched_inputs['labels'].view(-1)
-                self.cm.update((y_pred, y_true))
-        print(self.cm.confusion_matrix)
-
-    def print_cm(self):
-        scores = self._get_scores()
-        self._print_results(scores)
-
-    def _get_scores(self):
-        scores = defaultdict(dict)
-        # single column metrics
-        for col in range(4):
-            name = self.col_names[col]
-            d = scores[name]
-            not_col = np.arange(self.n_classes) != col
-            d['TP'] = self.cm[col, col]
-            d['FP'] = np.sum(self.cm[not_col, col])
-            d['FN'] = np.sum(self.cm[col, not_col])
-
-            ConfusionMatrix._add_to_scores(d)
-        return scores
-
-    def _print_results(self, scores):
-        for table, table_name in self.prep_tables(scores):
-            print('\n', AsciiTable(table, table_name).table, sep='')
-        print('Total acc: {:.4f}'.format(self._total_accuracy()))
-
-    def prep_tables(self, scores):
-        out = []
-        names = list(self.col_names.values())
-
-        # confusion matrix
-        cm = [[''] + [x + '_pred' for x in names]]
-        for i, row in enumerate(self.cm.astype(int).tolist()):
-            cm.append([names[i] + '_ref'] + row)
-        out.append((cm, 'confusion_matrix'))
-
-        # normalized
-        normalized_cm = [cm[0]]
-        for i, row in enumerate(self._get_normalized_cm().tolist()):
-            normalized_cm.append([names[i] + '_ref'] + [round(x, ndigits=4) for x in row])
-        out.append((normalized_cm, 'normalized_confusion_matrix'))
-
-        # F1
-        table = [['', 'norm. H', 'Precision', 'Recall', 'F1-Score']]
-        for i, (name, values) in enumerate(scores.items()):
-            # check if there is an entropy value comming (only for single type classes)
-            metrics = ['']
-            metrics += ['{:.4f}'.format(s) for s in list(values.values())[3:]]  # [3:] to skip TP, FP, FN
-            table.append([name] + metrics)
-            if i == (len(names) - 1) and len(scores) > len(names):
-                table.append([''] * 4)
-        out.append((table, 'F1_summary'))
-
-        return out
-
-    @staticmethod
-    def _precision_recall_f1(tp, fp, fn):
-        if (tp + fp) > 0:
-            precision = tp / (tp + fp)
-        else:
-            precision = 0.0  # avoid an error due to division by 0
-        if (tp + fn) > 0:
-            recall = tp / (tp + fn)
-        else:
-            recall = 0.0
-        if (precision + recall) > 0:
-            f1 = 2 * precision * recall / (precision + recall)
-        else:
-            f1 = 0.0
-        return precision, recall, f1
-
+                # sw = batched_inputs['sample_weights'].view(-1)
+                # y_pred = y_pred[sw]
+                # y_true = y_true[sw]
+                cm.add_to_cm(y_true, y_pred)
+        cm.print_cm()
 
 
 class HelixerModelFinetune(HelixerModelBase):
