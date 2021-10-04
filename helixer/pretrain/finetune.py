@@ -201,8 +201,6 @@ class HelixerModelFinetune(HelixerModelBase):
         train_dataset = HelixerDatasetFinetune(self.args, 'training')
         eval_dataset = HelixerDatasetFinetune(self.args, 'validation')
 
-        # config = BertConfig(num_labels=4, max_position_embeddings=502, vocab_size=69, num_hidden_layers=3)
-        # finetuning_model = BertForTokenClassification.from_pretrained(args.load_model_path, config=config)
         finetuning_model = HelixerBert(self.args)
         HelixerModelBase.print_model_info(finetuning_model, 'Finetuning')
 
