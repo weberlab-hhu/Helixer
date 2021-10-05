@@ -51,7 +51,7 @@ class HelixerDatasetFinetune(HelixerDatasetBase):
             for i in range(len(X_batch)):
                 self._tokenize(X_batch[i].tobytes().decode(), pretrain=False)
 
-            print(f'{offset + load_batch_size}/{len(X_dset)}')
+            print(f'{offset + load_batch_size}/{len(X_dset)}', flush=True)
 
             if args.debug:
                 break
@@ -168,7 +168,7 @@ class HelixerEvalCallback(TrainerCallback):
         input_keys = ['input_ids', 'attention_mask', 'token_type_ids', 'labels', 'sample_weights']
         # construct batches by hand, there probably is code for that in transformers.Trainer
         for offset in range(0, len(self.eval_dataset), self.batch_size):
-            print(f'{offset}/{len(self.eval_dataset)}')
+            print(f'{offset}/{len(self.eval_dataset)}', flush=True)
             inputs = defaultdict(list)
             for i in range(min(self.batch_size, (len(self.eval_dataset) - offset))):
                 data = self.eval_dataset[offset+i]

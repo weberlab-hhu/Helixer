@@ -69,8 +69,8 @@ class HelixerConfusionMatrix:
 
     def _print_results(self, scores):
         for table, table_name in self.prep_tables(scores):
-            print('\n', AsciiTable(table, table_name).table, sep='')
-        print('Total acc: {:.4f}'.format(self._total_accuracy()))
+            print('\n', AsciiTable(table, table_name).table, sep='', flush=True)
+        print('Total acc: {:.4f}'.format(self._total_accuracy()), flush=True)
 
     def print_cm(self):
         scores = self._get_scores()
