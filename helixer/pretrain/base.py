@@ -107,7 +107,7 @@ class HelixerModelBase(ABC):
         self.parser.add_argument('--batch-size-valid', type=int, default=16)
         self.parser.add_argument('--learning-rate', type=float, default=1e-4)
         self.parser.add_argument('--warmup-steps', type=int, default=500)
-        self.parser.add_argument('--weight-decay', type=int, default=0.01)
+        self.parser.add_argument('--weight-decay', type=float, default=1e-5)
         self.parser.add_argument('--pretrain-input-len', type=int, default=502, help='Including [CLS] and [SEP]')
         self.parser.add_argument('--save-steps', type=int, default=2000)
         self.parser.add_argument('--debug', action='store_true')

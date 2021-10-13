@@ -129,8 +129,8 @@ class HelixerBert(BertPreTrainedModel):
             else:
                 with torch.no_grad():
                     out = bert_call()
-            proj_out = self.bert_proj(out)
-            proj_bert_outputs.append(proj_out[0])
+            proj_out = self.bert_proj(out[0])
+            proj_bert_outputs.append(proj_out)
 
         lstm_input = torch.stack(proj_bert_outputs, axis=1)
         lstm_input = lstm_input[:, :, 1:-1]
