@@ -105,6 +105,7 @@ class HelixerModelBase(ABC):
         self.parser.add_argument('--n-epochs', type=int, default=3)
         self.parser.add_argument('--batch-size-train', type=int, default=16)
         self.parser.add_argument('--batch-size-valid', type=int, default=16)
+        self.parser.add_argument('--learning-rate', type=float, default=1e-4)
         self.parser.add_argument('--warmup-steps', type=int, default=500)
         self.parser.add_argument('--weight-decay', type=int, default=0.01)
         self.parser.add_argument('--pretrain-input-len', type=int, default=502, help='Including [CLS] and [SEP]')
@@ -135,6 +136,7 @@ class HelixerModelBase(ABC):
             num_train_epochs=self.args.n_epochs,
             per_device_train_batch_size=self.args.batch_size_train,
             per_device_eval_batch_size=self.args.batch_size_valid,
+            learning_rate=self.args.learning_rate,
             warmup_steps=self.args.warmup_steps,
             weight_decay=self.args.weight_decay,
             logging_dir='./logs',

@@ -79,8 +79,9 @@ class HelixerBert(BertPreTrainedModel):
 
         self.num_labels = 4
         self.bert = BertModel.from_pretrained(args.load_model_path)
+        self.bert_proj = torch.nn.Linear(self.bert.config.hidden_size, args.project_to)
 
-        self.lstm = torch.nn.LSTM(input_size=self.bert.config.hidden_size * args.block_size,
+        self.lstm = torch.nn.LSTM(input_size=args.project_to * args.block_size,
                                   hidden_size=args.n_lstm_units,
                                   num_layers=args.n_lstm_layers,
                                   bidirectional=True)
@@ -108,7 +109,7 @@ class HelixerBert(BertPreTrainedModel):
         attention_mask = attention_mask.int()
         token_type_ids = token_type_ids.int()
         n_sub_seqs = input_ids.shape[1]
-        bert_outputs = []
+        proj_bert_outputs = []
         # only backprop a small number of bert forward passes
         backprop_idxs = np.random.choice(range(n_sub_seqs), self.args.n_backprop_samples, replace=False)
         for i in range(n_sub_seqs):
@@ -128,9 +129,10 @@ class HelixerBert(BertPreTrainedModel):
             else:
                 with torch.no_grad():
                     out = bert_call()
-            bert_outputs.append(out[0])
+            proj_out = self.bert_proj(out)
+            proj_bert_outputs.append(proj_out[0])
 
-        lstm_input = torch.stack(bert_outputs, axis=1)
+        lstm_input = torch.stack(proj_bert_outputs, axis=1)
         lstm_input = lstm_input[:, :, 1:-1]
         lstm_input = lstm_input.reshape(lstm_input.shape[0], -1, self.args.block_size * lstm_input.shape[-1])
         lstm_outputs = self.lstm(lstm_input)
@@ -139,8 +141,8 @@ class HelixerBert(BertPreTrainedModel):
 
         loss = None
         if labels is not None:
-            # hardcoded weights for now
-            loss_fct = CrossEntropyLoss(weight=torch.Tensor([0.7, 1.6, 1.2, 1.2]).cuda())
+            # hardcoded weights for now, slightly changed
+            loss_fct = CrossEntropyLoss(weight=torch.Tensor([0.4, 1.6, 1.2, 1.2]).cuda())
             # only keep active parts of the loss
             attention_mask = attention_mask[:, :, 1:-1]
             active_loss = (attention_mask.reshape(-1) == 1) & sample_weights.reshape(-1)
@@ -195,7 +197,8 @@ class HelixerModelFinetune(HelixerModelBase):
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
         self.parser.add_argument('--n-lstm-layers', type=int, default=1)
         self.parser.add_argument('--n-lstm-units', type=int, default=128)
-        self.parser.add_argument('--block-size', type=int, default=5)
+        self.parser.add_argument('--project-to', type=int, default=128)
+        self.parser.add_argument('--block-size', type=int, default=10)
         self.parser.add_argument('--n-backprop-samples', type=int, default=2)
         self.parse_args()
         self.run()
