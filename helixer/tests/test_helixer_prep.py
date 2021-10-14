@@ -72,14 +72,18 @@ def setup_dummy_db(request):
 def setup_dummy_evaluation_h5(request):
     start_ends = [[0, 20000],  # increasing 0
                   [20000, 40000],  # increasing 0
-                  [60000, 80000],  # increasing 1
-                  [100000, 120000],  # increasing 2
-                  [120000, 133333],  # increasing 3 (non contig, bc special edge handling)
+                  [40000, 60000],  # increasing 0
+                  [60000, 80000],  # increasing 0
+                  [80000, 100000],  # increasing 0
+                  [100000, 120000],  # increasing 0
+                  [120000, 133333],  # increasing 1 (non contig, bc special edge handling)
                   [133333, 120000],  # decreasing 0 (")
                   [120000, 100000],  # decreasing 1
                   [100000, 80000],  # decreasing 1
-                  [60000, 40000],  # decreasing 2
-                  [20000, 0]]  # decreasing 3
+                  [80000, 60000],  # decreasing 1
+                  [60000, 40000],  # decreasing 1
+                  [40000, 20000], # decreasing 1
+                  [20000, 0]]  # decreasing 1
     seqids = [b'chr1'] * len(start_ends)
     h5path = EVAL_H5
 
@@ -89,7 +93,7 @@ def setup_dummy_evaluation_h5(request):
     h5.create_dataset('/data/seqids', data=seqids, dtype='S50', compression='lzf')
 
     h5.create_group('evaluation')
-    h5.create_dataset('evaluation/coverage', shape=[10, 20000], dtype='int', fillvalue=-1, compression='lzf')
+    h5.create_dataset('evaluation/coverage', shape=[14, 20000], dtype='int', fillvalue=-1, compression='lzf')
     h5.close()
 
     yield None  # all tests are run
@@ -1069,18 +1073,18 @@ def test_transition_encoding_and_weights():
 
 ### RNAseq / coverage or scoring related (evaluation)
 def test_contiguous_bits():
-    """confirm correct splitting at sequence breaks or after filtering when data is chunked for mem efficiency"""
+    """confirm correct splitting at anything that needs special handling due to padding"""
 
     h5 = h5py.File(EVAL_H5, 'r')
     bits_plus, bits_minus = rnaseq.find_contiguous_segments(h5, start_i=0, end_i=h5['data/start_ends'].shape[0],
                                                             chunk_size=h5['evaluation/coverage'].shape[1])
 
-    assert [len(x.start_ends) for x in bits_plus] == [2, 1, 1, 1]
-    assert [len(x.start_ends) for x in bits_minus] == [1, 2, 1, 1]
-    assert [x.start_i_h5 for x in bits_plus] == [0, 2, 3, 4]
-    assert [x.end_i_h5 for x in bits_plus] == [2, 3, 4, 5]
-    assert [x.start_i_h5 for x in bits_minus] == [5, 6, 8, 9]
-    assert [x.end_i_h5 for x in bits_minus] == [6, 8, 9, 10]
+    assert [len(x.start_ends) for x in bits_plus] == [6, 1]
+    assert [len(x.start_ends) for x in bits_minus] == [1, 6]
+    assert [x.start_i_h5 for x in bits_plus] == [0, 6]
+    assert [x.end_i_h5 for x in bits_plus] == [6, 7]
+    assert [x.start_i_h5 for x in bits_minus] == [7, 8]
+    assert [x.end_i_h5 for x in bits_minus] == [8, 14]
 
     for b in bits_plus:
         print(b)
