@@ -215,6 +215,12 @@ def histo_expected_coverage(h5, start_i, end_i, bins):
 
 def main(species, bam, h5_data, d_utp, dont_score):
 
+    # change d_utp to strandedness (just 2 and None, to be consistent with old implementation, todo fix w/ argparse)
+    if d_utp:
+        strandedness = 2
+    else:
+        strandedness = None
+
     # open h5
     h5 = h5py.File(h5_data, 'r+')
     # create evaluation, score, & metadata placeholders if they don't exist
@@ -268,7 +274,7 @@ def main(species, bam, h5_data, d_utp, dont_score):
         for coord in coords:
             print(coord, file=sys.stderr)
             coord_cov_counts = rnaseq.coverage_from_coord_to_h5(
-                coord, h5, bam=htseqbam, d_utp=d_utp,
+                coord, h5, bam=htseqbam, strandedness=strandedness,
                 chunk_size=chunk_size, memmap_dirs=memmap_dirs)
             for key in coord_cov_counts:
                 cov_counts[key] += coord_cov_counts[key]
@@ -366,14 +372,14 @@ def main(species, bam, h5_data, d_utp, dont_score):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--species', help="species name, matching geenuff db and h5 files", required=True)
-    parser.add_argument('-d', '--h5_data', help='h5 data file (with /data/{X, y, species, seqids, etc...}) '
+    parser.add_argument('-d', '--h5-data', help='h5 data file (with /data/{X, y, species, seqids, etc...}) '
                                                 'to which evaluation coverage will be ADDED!',
                         required=True)
     parser.add_argument('-b', '--bam', help='sorted (and indexed) bam file. Omit to only score existing coverage.',
                         default=None)
-    parser.add_argument('-x', '--not_dUTP', help='bam does not contain stranded (from typical dUTP protocol) reads',
+    parser.add_argument('-x', '--not-dUTP', help='bam does not contain stranded (from typical dUTP protocol) reads',
                         action='store_true')
-    parser.add_argument('-r', '--skip_scoring', action="store_true",
+    parser.add_argument('-r', '--skip-scoring', action="store_true",
                         help="set this to add coverage to the bam file, but not 'score' it (raw cov. only)")
     args = parser.parse_args()
     main(args.species,

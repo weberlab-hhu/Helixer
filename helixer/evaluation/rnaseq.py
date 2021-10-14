@@ -37,10 +37,14 @@ def is_spliced_coverage(cigar_entry):
         return False
 
 
-def get_sense_strand(read):
+def get_sense_strand(read, sense_strand=2):
     """returns strand of original mRNA
 
-    assumes dUTP protocol, that is, 2nd read is sense strand"""
+    default is dUTP protocol, that is, 2nd read is sense strand"""
+
+    assert sense_strand in [1, 2]
+
+    # this part assumes sense strand is 2
     if not read.paired_end:
         flip = True
     elif read.pe_which == "first":
@@ -51,6 +55,9 @@ def get_sense_strand(read):
         raise Exception("failed read strand interpretation ({}, {}, {})".format(read.paired_end,
                                                                                 read.pe_which,
                                                                                 read))
+    if sense_strand is not 2:
+        flip = not flip
+
     strand = read.iv.strand
     assert strand in ['-', "+"]
 
@@ -63,14 +70,13 @@ def get_sense_strand(read):
     return strand
 
 
-def get_sense_cov_intervals(read, chromosome, d_utp):
+def get_sense_cov_intervals(read, chromosome, strandedness):
     """gets intervals for standard and spliced coverage"""
-    if d_utp:
-        strand = get_sense_strand(read)
+    if strandedness is not None:
+        strand = get_sense_strand(read, strandedness)
     else:
         # take raw strand for un-stranded protocol, bc it's easier than dealing with the if/else of un-stranded
         strand = read.iv.strand
-    # todo, stranded but not d_utp
 
     # ignore clipping and other info for now, take only coverage regions
     standard_raw = [x for x in read.cigar if is_coverage(x)]
@@ -92,14 +98,14 @@ def get_length_from_header(htseqbam, chromosome):
 COVERAGE_COUNTS = {'reads': 0, 'coverage': 0, 'spliced_coverage': 0}
 
 
-def cov_by_chrom(chromosome, htseqbam, d_utp=False, memmap_dirs=None):
+def cov_by_chrom(chromosome, htseqbam, strandedness, memmap_dirs=None):
     length = get_length_from_header(htseqbam, chromosome)
     # returns htseq genomic array
     chromosomes = {chromosome: length}
     if memmap_dirs is not None:
         storage = "memmap"
     else:
-        storage="ndarray"
+        storage = "ndarray"
         memmap_dirs = ["", ""]
     cov_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage=storage, memmap_dir=memmap_dirs[0])
     spliced_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage=storage, memmap_dir=memmap_dirs[1])
@@ -109,7 +115,7 @@ def cov_by_chrom(chromosome, htseqbam, d_utp=False, memmap_dirs=None):
     for read in htseqbam.fetch(region="{}:1-{}".format(chromosome, length)):
         if not skippable(read):
             counts['reads'] += 1
-            standard_ivs, spliced_ivs = get_sense_cov_intervals(read, chromosome, d_utp)
+            standard_ivs, spliced_ivs = get_sense_cov_intervals(read, chromosome, strandedness)
             for iv in standard_ivs:
                 cov_array[iv] += 1
                 counts['coverage'] += iv.end - iv.start
@@ -249,15 +255,11 @@ class ContiguousBit:
                                                                              len(self.start_ends))
 
 
-def matches_and_no_end_case(starts, ends, seqids, is_plusses, chunk_size):
+def matches_and_no_end_case(starts, ends, is_plusses, chunk_size):
     curr_start, prev_start = starts
     curr_end, prev_end = ends
-    # detect any non-contiguity on coords
-    if curr_start != prev_end:
-        out = False
-    elif seqids[0] != seqids[1]:
-        out = False
-    elif is_plusses[0] != is_plusses[1]:
+    # we can assume contiguity and same sequence, only break at strand flip
+    if is_plusses[0] != is_plusses[1]:
         out = False
     # detect edge cases (bc padding choices cause non-contiguity of minus strand edge case)
     # break both before and after edge case (to make sure it's on it's own)
@@ -290,11 +292,10 @@ def find_contiguous_segments(h5, start_i, end_i, chunk_size):
         curr_seqid = seqids[i_rel]
         curr_start, curr_end = start_ends[i_rel]
         curr_is_plus = curr_start < curr_end
-        # if current start == previous end with same sequence & dir w/o edge case: append
-        if matches_and_no_end_case((curr_start, prev_start), 
+        # still necessary to handle edge-cases with padding, and detect +- strand flip
+        if matches_and_no_end_case((curr_start, prev_start),
                                    (curr_end, prev_end),
-                                   (curr_seqid, prev_seqid), 
-                                   (curr_is_plus, prev_is_plus), 
+                                   (curr_is_plus, prev_is_plus),
                                    chunk_size):
             current_start_ends.append((curr_start, curr_end))
         # else if there was a break in the continuity, save
@@ -327,12 +328,12 @@ def find_contiguous_segments(h5, start_i, end_i, chunk_size):
     return bits_plus, bits_minus
 
 
-def write_in_bits(array, contiguous_bits, h5_dataset, chunk_size):
+def write_in_bits(array, contiguous_bits, h5_dataset, chunk_size, final_dimension=None):
     for bit in contiguous_bits:
-        write_a_bit(array, bit, h5_dataset, chunk_size)
+        write_a_bit(array, bit, h5_dataset, chunk_size, final_dimension)
 
 
-def write_a_bit(array, bit, h5_dataset, chunk_size):
+def write_a_bit(array, bit, h5_dataset, chunk_size, final_dimension=None):
     start_array = bit.start_ends[0][0]
     end_array = bit.start_ends[-1][1]
 
@@ -357,10 +358,13 @@ def write_a_bit(array, bit, h5_dataset, chunk_size):
     # shape into chunks
     array_slice = np.reshape(array_slice, [n_chunks, chunk_size])
     # and write to file
-    h5_dataset[bit.start_i_h5:bit.end_i_h5] = array_slice
+    if final_dimension is None:
+        h5_dataset[bit.start_i_h5:bit.end_i_h5] = array_slice
+    else:
+        h5_dataset[bit.start_i_h5:bit.end_i_h5, :, final_dimension] = array_slice
 
 
-def coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, chunk_size, memmap_dirs):
+def coverage_from_coord_to_h5(coord, h5_out, bam, strandedness, chunk_size, memmap_dirs):
     """calculates coverage for a coordinate from bam, saves to h5, returns counts for aggregating"""
     b_seqid, start_i, end_i = coord
     seqid = b_seqid.decode('utf-8')
@@ -370,7 +374,7 @@ def coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, chunk_size, memmap_dirs
     bits = {"+": bits_plus, "-": bits_minus}
 
     # calculate coverage
-    cov_array, spliced_array, length, counts = cov_by_chrom(seqid, bam, d_utp, memmap_dirs)
+    cov_array, spliced_array, length, counts = cov_by_chrom(seqid, bam, strandedness, memmap_dirs)
     all_coverage = {"coverage": cov_array, "spliced_coverage": spliced_array}
 
     # write to h5 contiguous bit by contiguous bit
@@ -384,6 +388,13 @@ def coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, chunk_size, memmap_dirs
 
 
 def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
+
+    # change d_utp to strandedness (just 2 and None, to be consistent with old implementation, todo fix w/ argparse)
+    if d_utp:
+        strandedness = 2
+    else:
+        strandedness = None
+
     # open data in files
     bam = HTSeq.BAM_Reader(bamfile)
     h5_data = h5py.File(h5_input, "r")
@@ -409,7 +420,7 @@ def main(species, bamfile, h5_input, h5_predictions, h5_output, d_utp=False):
     # get coverage by chromosome
     for coord in coords:
         # writes coverage to h5, return totals for aggregating
-        coord_counts = coverage_from_coord_to_h5(coord, h5_out, bam, d_utp, chunk_size, memmap_dirs)
+        coord_counts = coverage_from_coord_to_h5(coord, h5_out, bam, strandedness, chunk_size, memmap_dirs)
         for key in counts:
             counts[key] += coord_counts[key]
 
