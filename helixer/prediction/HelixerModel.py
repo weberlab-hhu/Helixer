@@ -56,6 +56,7 @@ class ConfusionMatrixTrain(Callback):
         self.report_to_nni = report_to_nni
         self.best_val_genic_f1 = 0.0
         self.epochs_without_improvement = 0
+        self.epoch_start = None
 
     def on_epoch_begin(self, epoch, logs=None):
         self.epoch_start = time.time()
@@ -393,7 +394,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--cpus', type=int, default=8)
         self.parser.add_argument('--gpu-id', type=int, default=-1)
         self.parser.add_argument('--workers', type=int, default=1,
-                                 help='Probaly should be the same a number of GPUs')
+                                 help='Probably should be the same as the number of GPUs')
         # misc flags
         self.parser.add_argument('--save-every-epoch', action='store_true')
         self.parser.add_argument('--nni', action='store_true')
