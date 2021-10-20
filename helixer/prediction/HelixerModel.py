@@ -696,7 +696,8 @@ class HelixerModel(ABC):
         pred_out.attrs['test_data_path'] = self.test_data
         pred_out.attrs['model_path'] = self.load_model_path
         pred_out.attrs['timestamp'] = str(datetime.datetime.now())
-        pred_out.attrs['model_md5sum'] = self.loaded_model_hash
+        if hasattr(self, 'loaded_model_hash'):
+            pred_out.attrs['model_md5sum'] = self.loaded_model_hash
         pred_out.close()
         h5_model.close()
 
