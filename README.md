@@ -18,7 +18,7 @@ First, download and checkout the latest release
 # from a directory of your choice
 git clone https://github.com/weberlab-hhu/Helixer.git
 cd Helixer
-git checkout dev # v0.2.0
+# git checkout dev # v0.2.0
 ```
 
 ### Virtualenv (optional)
@@ -27,6 +27,10 @@ virtual environment:
 https://docs.python-guide.org/dev/virtualenvs/
 
 ### System dependencies
+
+#### Python 3.6 or later
+
+#### Python development libraries
 Ubuntu (& co.)
 ```shell script
 sudo apt install python3-dev
@@ -41,11 +45,9 @@ And to run on a GPU (highly recommended for realistically sized datasets),
 everything for tensorflow-gpu is required, 
 see: https://www.tensorflow.org/install/gpu
 
-Most recently tested with the following (but in theory any valid
-tensorflow-gpu setup >2.0 should work).
 
 python packages:
-* tensorflow-gpu==2.4.0
+* tensorflow-gpu>=2.6.2
 
 system packages:
 * cuda-11-0
@@ -78,36 +80,84 @@ validation and testing dataset and then use those to first train a model
 and then to make gene predictions with Helixer.
 
 ### Generating training-ready data
-Our example database contains the genetic information 
-(that is the information of the FASTA and GFF3 files from the 
-Phytosome 13 database) of three very small algae: 
-*Ostreococcus_sp._lucimarinus*, *Micromonas_sp._RCC299* and *Micromonas_pusilla*. 
-We will train our model with the first two and then predict on the third.
+
+#### Pre-processing w/ GeenuFF
+>Note: you will be able to skip working with GeenuFF if
+> only wish to predict, and not train. See instead the
+> --direct-fasta-to-h5-path parameter of Helixer/export.py
+
+First we will need to pre-process the data (Fasta & GFF3 files)
+using GeenuFF. This provides a more biologically-realistic
+representation of gene structures, and, most importantly
+right now, provides identification and masking of invalid
+gene structures from the gff file (e.g. those that don't
+have _any_ UTR between coding and intergenic or those that
+have overlapping exons within one transcript). 
+
+See the GeenuFF repository for more information.
+
+For now we can just run the provided example script to
+download and pre-process some algae data.
 
 ```shell script
-# generating the training and validation dataset
-# the genome names are a bit different due to the naming used in Phytosome
-python3 export.py --db-path-in example/three_algae.sqlite3 \
-  --genomes Olucimarinus,MspRCC299 --out-dir example/train
+cd <your/path/to>/GeenuFF
+bash example.sh
+# store full path in a variable for later usage
+data_at=`readlink -f three_algae`
+cd <your/path/to/Helixer>
 ```
+This downloads and pre-processes data for the species
+(Chlamydomonas_reinhardtii,  Cyanidioschyzon_merolae, and  Ostreococcus_lucimarinus)
+as you can see with `ls $data_at`
+#### numeric encoding of data
+To actually train (or predict) we will need to encode the
+data numerically (e.g. as 1s and 0s). 
 
 ```shell script
-# generating the test dataset
-python3 export.py --db-path-in example/three_algae.sqlite3 --genomes MpusillaCCMP1545 \
-  --out-dir example/test --only-test-set 
+mkdir example/h5s
+for species in `ls $data_at`
+do
+  mkdir example/h5s/$species
+  python3 export.py --input-db-path $data_at/$species/output/$species.sqlite3 \
+    --output-path example/h5s/$species/test_data.h5
+done
+```
+To create the simples working example, we will use Chlamydomonas_reinhardtii 
+for training and Cyanidioschyzon_merolae for validation (normally you
+would merge multiple species for each) and use Ostreococcus_lucimarinus for
+testing / predicting / etc.
+
+```shell script
+# The training script requires two files in one folder named
+# training_data.h5 and validation_data.h5
+#
+# while we would need to merge multiple datasets to create our
+# training_data.h5 and validation_data.h5 normally, for this as-simple-
+# as-possible example we will point to one species each with symlinks
+mkdir example/train
+cd example/train/
+# set training data 
+ln -s ../h5s/Chlamydomonas_reinhardtii/test_data.h5 training_data.h5
+# and validation
+ln -s ../h5s/Cyanidioschyzon_merolae/test_data.h5 validation_data.h5
+cd ../..
 ```
 
 We should now have the following files in `example/`. 
 Note that the test data was not split into a training 
 and validation set due to the `--only-test-set` option: 
 ```
-example/
-├── test
-│   └── test_data.h5
-├── three_algae.sqlite3
+example
+├── h5s
+│   ├── Chlamydomonas_reinhardtii
+│   │   └── test_data.h5
+│   ├── Cyanidioschyzon_merolae
+│   │   └── test_data.h5
+│   └── Ostreococcus_lucimarinus
+│       └── test_data.h5
 └── train
-    ├── training_data.h5
-    └── validation_data.h5
+    ├── training_data.h5 -> ../h5s/Chlamydomonas_reinhardtii/test_data.h5
+    └── validation_data.h5 -> ../h5s/Cyanidioschyzon_merolae/test_data.h5
 ```
 
 ### Model training
@@ -117,7 +167,7 @@ LSTM architeture for 5 epochs and save the best iteration
 `example/best_helixer_model.h5`. 
 
 ```shell script
-python3 helixer/prediction/LSTMModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 --units 64 --pool-size 10
+python3 helixer/prediction/DanQModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 
 ```
 
 Right before the training starts we may get one or two warnings about 
