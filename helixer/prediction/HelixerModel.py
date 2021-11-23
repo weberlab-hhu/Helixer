@@ -82,7 +82,8 @@ class ConfusionMatrixTrain(Callback):
             best_model = load_model(self.save_model_path)
             # double check that we loaded the correct model, can be remove if confirmed this works
             print('\nValidation set again:')
-            _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, best_model, print_to_stdout=True, calc_H=calc_H)
+            _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, best_model, print_to_stdout=True,
+                                                          calc_H=self.calc_H)
             assert val_genic_f1 == self.best_val_genic_f1
 
             training_species = self.train_generator.h5_file.attrs['genomes']
@@ -117,9 +118,9 @@ class HelixerSequence(Sequence):
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
                                  'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
 
-        print(f'\nStarting to load {self.mode} data into memory..')
-        x_dset = h5_file['data/X']
-        print(f'X shape: {x_dset.shape}')
+        print(f'\nstarting to load {self.mode} data into memory..')
+        x_dset = h5_file['data/x']
+        print(f'x shape: {x_dset.shape}')
         if not self.only_predictions:
             y_dset = h5_file['data/y']
             print(f'y shape: {y_dset.shape}')
@@ -466,7 +467,7 @@ class HelixerModel(ABC):
 
         K.set_floatx(self.float_precision)
         if self.gpu_id > -1:
-            tf.config.set_visible_devices([gpu_devices[self.gpu_id]],'GPU')
+            tf.config.set_visible_devices([gpu_devices[self.gpu_id]], 'GPU')
 
     def gen_training_data(self):
         SequenceCls = self.sequence_cls()
