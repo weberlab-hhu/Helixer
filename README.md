@@ -197,54 +197,10 @@ python3 helixer/visualization/visualize.py --predictions example/mpusillaCCMP154
 ```
 
 ### Using trained models
-> WARNING: we have only tested it briefly, so while it does appear that
-> the LSTM models that were trained with tensorflow 1 work with tensorflow 2,
-> we make no promises.
-
-We have uploaded pre-trained models under https://zenodo.org/record/3974409. 
-
-#### animals
-The animal models were trained on: 
-Anabas_testudineus,
-Drosophila_melanogaster,
-Gallus_gallus,
-Mus_musculus,
-Oryzias_latipes, and
-Theropithecus_gelada
-
-The 'animal' models are recommended for usage within vertebrates.
-
-#### plants
-The plant models were trained on:
-Arabidopsis_thaliana,
-Brachypodium_distachyon,
-Chlamydomonas_reinhardtii,
-Glycine_max,
-Mimulus_guttatus,
-Marchantia_polymorpha,
-Populus_trichocarpa,
-Setaria_italica, and
-Zea_mays
-
-The 'plant' models are recommended for usage within Embryophyta.
-
-#### demo
-While not strictly recommended (performance is lower than for
-within Embryophyta), for compatibility with the rest of the
-example, we will demonstrate how to obtain and use the best plant
-model for our algae test data. 
-
-```shell script
-# download
-wget https://zenodo.org/record/3974409/files/plants_a_e10.h5 -P example
-# change only the --load-model-path and evaluate as above 
-# you don't need to respecify any training parameters unless --pool-size was non-default
-python3 helixer/prediction/LSTMModel.py --load-model-path example/plants_a_e10.h5 -test-data example/test/test_data.h5 --eval
-```
-
-The same idea can be used for predictions and visualization. To achieve top performance
-for *predictions* you should also consider adding the parameter `--overlap` 
-and setting `--batch-size` higher (depending on GPU memory).
+> WARNING: to use the pre-trained models you will need the published
+> version of the code! Run `git checkout v0.2.0` and follow the instructions
+> there in. As soon as pre-trained phase-containing models are generally 
+> available, this section will be updated.
 
 #### Citation
 
