@@ -46,14 +46,16 @@ everything for tensorflow-gpu is required,
 see: https://www.tensorflow.org/install/gpu
 
 
+The following has been most recently tested.
+
 python packages:
-* tensorflow-gpu>=2.6.2
+* tensorflow-gpu==2.7.0
 
 system packages:
-* cuda-11-0
+* cuda-11-2
 * libcudnn8
 * libcudnn8-dev
-* nvidia-driver-450
+* nvidia-driver-495
 
 A GPU with 11GB Memory (e.g. GTX 1080 Ti) can run the largest 
 configurations described below, for smaller GPUs you might
@@ -170,88 +172,94 @@ LSTM architeture for 5 epochs and save the best iteration
 python3 helixer/prediction/DanQModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 
 ```
 
-Right before the training starts we may get one or two warnings about 
-the data that are not relevant for this example. This trains a very 
-small single layer BLSTM model with about 60.000 parameters that 
-receives 10 basepairs for each time step. After each epoch, 
-an evaluation of the last model iteration is performed and 
-the results are printed to the console. If we would like to train a model 
-with exactly the architecture and weights that was used to train our 
-actual plant models one would use the following command: 
+The rest of this example will continue with the model example/best_helixer_model.h5 produced above. 
+
+#### Full size aside
+The current 'full size' architecture that has been performing well
+in hyper optimization runs is:
 
 ```shell script
-python3 helixer/prediction/LSTMModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 --units 256 --pool-size 10 --batch-size 52 --layers 4 --layer-normalization --class-weights '[0.7, 1.6, 1.2, 1.2]'
+# the indicated batch size and val-test-batch size have been chosen to work on a 2080ti with 11GB RAM
+# and should be set as large as the graphics card will allow. 
+python3 helixer/prediction/DanQModel.py -v --pool-size 9 --batch-size 50 --val-test-batch-size 100 \
+  --class-weights "[0.7, 1.6, 1.2, 1.2]" --transition-weights "[1, 12, 3, 1, 12, 3]" --predict-phase \
+  --lstm-layers 3 --cnn-layers 4 --units 128 --filter-depth 96 --kernel-size 10 \
+  --data-dir example/train/ --save-model-path example/fullsize_helixer_model.h5
 ```
 
+But make sure you have a full size dataset to go with that model, if you're going to train it.
+
 ### Model evaluation
-We can now use this model to produce predictions for our test dataset. 
+We can now use the mini model trained above to produce predictions for our test dataset. 
 WARNING: Generating predictions can produce very large files as 
 we save every individual softmax value in 32 bit floating point format. 
 For this very small genome the predictions require 524MB of disk space. 
 ```shell script
-python3 helixer/prediction/LSTMModel.py --load-model-path example/best_helixer_model.h5 --test-data example/test/test_data.h5 --prediction-output-path example/mpusillaCCMP1545_predictions.h5
+python3 helixer/prediction/DanQModel.py --load-model-path example/best_helixer_model.h5 \
+  --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 \
+  --prediction-output-path example/Ostreococcus_lucimarinus_predictions.h5
 ```
 
 Or we can directly evaluate the predictive performance of our model. It is necessary to generate a test data file per species to get results for just that species.
 
 ```shell script
-python3 helixer/prediction/LSTMModel.py --load-model-path example/best_helixer_model.h5 --test-data example/test/test_data.h5 --eval
+python3 helixer/prediction/DanQModel.py --load-model-path example/best_helixer_model.h5 \
+  --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 --eval
 ```
 
-The last command can be sped up with a higher batch size and should give us the same break down that is performed during after a training epoch, but on the test data:
+The last command can be sped up with a higher batch size and should give us the same break down that is performed 
+during after a training epoch, but on the test data:
 
 ```
 +confusion_matrix------+----------+-----------+-------------+
 |            | ig_pred | utr_pred | exon_pred | intron_pred |
 +------------+---------+----------+-----------+-------------+
-| ig_ref     | 2563098 | 0        | 3752365   | 0           |
-| utr_ref    | 118706  | 0        | 489995    | 0           |
-| exon_ref   | 888744  | 0        | 13404195  | 0           |
-| intron_ref | 522242  | 0        | 1370375   | 0           |
+| ig_ref     | 1297055 | 151436   | 692534    | 188423      |
+| utr_ref    | 159457  | 32821    | 99856     | 16345       |
+| exon_ref   | 5014284 | 2002047  | 2001614   | 134915      |
+| intron_ref | 199752  | 62334    | 89647     | 9550        |
 +------------+---------+----------+-----------+-------------+
 
 +normalized_confusion_matrix------+-----------+-------------+
 |            | ig_pred | utr_pred | exon_pred | intron_pred |
 +------------+---------+----------+-----------+-------------+
-| ig_ref     | 0.4058  | 0.0      | 0.5942    | 0.0         |
-| utr_ref    | 0.195   | 0.0      | 0.805     | 0.0         |
-| exon_ref   | 0.0622  | 0.0      | 0.9378    | 0.0         |
-| intron_ref | 0.2759  | 0.0      | 0.7241    | 0.0         |
+| ig_ref     | 0.5568  | 0.065    | 0.2973    | 0.0809      |
+| utr_ref    | 0.5169  | 0.1064   | 0.3237    | 0.053       |
+| exon_ref   | 0.5478  | 0.2187   | 0.2187    | 0.0147      |
+| intron_ref | 0.5529  | 0.1725   | 0.2481    | 0.0264      |
 +------------+---------+----------+-----------+-------------+
 
-+F1_summary--+-----------+--------+----------+
-|            | Precision | Recall | F1-Score |
-+------------+-----------+--------+----------+
-| ig         | 0.6262    | 0.4058 | 0.4925   |
-| utr        | 0.0000    | 0.0000 | 0.0000   |
-| exon       | 0.7049    | 0.9378 | 0.8048   |
-| intron     | 0.0000    | 0.0000 | 0.0000   |
-|            |           |        |          |
-| legacy_cds | 0.7769    | 0.9128 | 0.8394   |
-| sub_genic  | 0.7049    | 0.8282 | 0.7615   |
-| genic      | 0.7049    | 0.7981 | 0.7486   |
-+------------+-----------+--------+----------+
-Total acc: 0.6909
++F1_summary--+---------+-----------+--------+----------+
+|            | norm. H | Precision | Recall | F1-Score |
++------------+---------+-----------+--------+----------+
+| ig         |         | 0.1944    | 0.5568 | 0.2882   |
+| utr        |         | 0.0146    | 0.1064 | 0.0257   |
+| exon       |         | 0.6941    | 0.2187 | 0.3326   |
+| intron     |         | 0.0273    | 0.0264 | 0.0269   |
+|            |         |           |        |          |
+| legacy_cds |         | 0.6916    | 0.2350 | 0.3508   |
+| sub_genic  |         | 0.6221    | 0.2114 | 0.3156   |
+| genic      |         | 0.3729    | 0.2081 | 0.2671   |
++------------+---------+-----------+--------+----------+
+Total acc: 0.2749
+
+metrics calculation took: 0.08 minutes
 ```
 
-In the demo run above (yours may vary) the model only predicted 
-intergenic and CDS bases. The main reason for this is likely that 
-the data contains very few bases of the other two kinds. 
-A more varied training dataset or uneven class weights 
-could change that (this result is for the small model example).
+In the demo run above (yours may vary) the model predicted
+perhaps better than random, but poorly, it practically
+need more and more varied (from different species) data
+to train it (this result is for the small model example).
 
-When we did write out the predictions to disk we can use an experimental 
-visualization to display the predictions together with the reference:
-```shell script
-python3 helixer/visualization/visualize.py --predictions example/mpusillaCCMP1545_predictions.h5 --test-data example/test/test_data.h5
-```
 
 ### Using trained models
 > WARNING: to use the pre-trained models you will need the published
 > version of the code! Run `git checkout v0.2.0` and follow the instructions
 > there in. As soon as pre-trained phase-containing models are generally 
-> available, this section will be updated.
+> available and evaluated, this section will be updated.
 
 #### Citation
 
-Felix Stiehler, Marvin Steinborn, Stephan Scholz, Daniela Dey, Andreas P M Weber, Alisandra K Denton, Helixer: Cross-species gene annotation of large eukaryotic genomes using deep learning, Bioinformatics, , btaa1044, https://doi.org/10.1093/bioinformatics/btaa1044
+Felix Stiehler, Marvin Steinborn, Stephan Scholz, Daniela Dey, Andreas P M Weber, Alisandra K Denton, 
+Helixer: Cross-species gene annotation of large eukaryotic genomes using deep learning, Bioinformatics, , btaa1044, 
+https://doi.org/10.1093/bioinformatics/btaa1044

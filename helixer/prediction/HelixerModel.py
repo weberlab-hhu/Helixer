@@ -119,7 +119,7 @@ class HelixerSequence(Sequence):
                                  'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
 
         print(f'\nstarting to load {self.mode} data into memory..')
-        x_dset = h5_file['data/x']
+        x_dset = h5_file['data/X']
         print(f'x shape: {x_dset.shape}')
         if not self.only_predictions:
             y_dset = h5_file['data/y']
