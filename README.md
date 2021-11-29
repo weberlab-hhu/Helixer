@@ -121,11 +121,11 @@ To actually train (or predict) we will need to encode the
 data numerically (e.g. as 1s and 0s). 
 
 ```shell script
-mkdir example/h5s
+mkdir -p example/h5s
 for species in `ls $data_at`
 do
   mkdir example/h5s/$species
-  python3 export.py --input-db-path $data_at/$species/output/$species.sqlite3 \
+  python export.py --input-db-path $data_at/$species/output/$species.sqlite3 \
     --output-path example/h5s/$species/test_data.h5
 done
 ```
@@ -174,7 +174,7 @@ LSTM architeture for 5 epochs and save the best iteration
 `example/best_helixer_model.h5`. 
 
 ```shell script
-python3 helixer/prediction/DanQModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 
+python helixer/prediction/DanQModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 
 ```
 
 The rest of this example will continue with the model example/best_helixer_model.h5 produced above. 
@@ -186,7 +186,7 @@ in hyper optimization runs is:
 ```shell script
 # the indicated batch size and val-test-batch size have been chosen to work on a 2080ti with 11GB RAM
 # and should be set as large as the graphics card will allow. 
-python3 helixer/prediction/DanQModel.py -v --pool-size 9 --batch-size 50 --val-test-batch-size 100 \
+python helixer/prediction/DanQModel.py -v --pool-size 9 --batch-size 50 --val-test-batch-size 100 \
   --class-weights "[0.7, 1.6, 1.2, 1.2]" --transition-weights "[1, 12, 3, 1, 12, 3]" --predict-phase \
   --lstm-layers 3 --cnn-layers 4 --units 128 --filter-depth 96 --kernel-size 10 \
   --data-dir example/train/ --save-model-path example/fullsize_helixer_model.h5
@@ -200,7 +200,7 @@ WARNING: Generating predictions can produce very large files as
 we save every individual softmax value in 32 bit floating point format. 
 For this very small genome the predictions require 524MB of disk space. 
 ```shell script
-python3 helixer/prediction/DanQModel.py --load-model-path example/best_helixer_model.h5 \
+python helixer/prediction/DanQModel.py --load-model-path example/best_helixer_model.h5 \
   --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 \
   --prediction-output-path example/Ostreococcus_lucimarinus_predictions.h5
 ```
@@ -208,7 +208,7 @@ python3 helixer/prediction/DanQModel.py --load-model-path example/best_helixer_m
 Or we can directly evaluate the predictive performance of our model. It is necessary to generate a test data file per species to get results for just that species.
 
 ```shell script
-python3 helixer/prediction/DanQModel.py --load-model-path example/best_helixer_model.h5 \
+python helixer/prediction/DanQModel.py --load-model-path example/best_helixer_model.h5 \
   --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 --eval
 ```
 
