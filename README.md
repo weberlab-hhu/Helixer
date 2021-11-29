@@ -21,11 +21,6 @@ cd Helixer
 # git checkout dev # v0.2.0
 ```
 
-### Virtualenv (optional)
-We recommend installing all the python packages in a
-virtual environment:
-https://docs.python-guide.org/dev/virtualenvs/
-
 ### System dependencies
 
 #### Python 3.6 or later
@@ -39,6 +34,17 @@ Fedora (& co.)
 ```shell script
 sudo dnf install python3-devel
 ```
+
+### Virtualenv (optional)
+We recommend installing all the python packages in a
+virtual environment: https://docs.python-guide.org/dev/virtualenvs/
+
+For example, create and activate an environment called 'env': 
+```shell script
+python3 -m venv env
+source env/bin/activate
+```
+The steps below assume you are working in the same environment.
 
 ### GPU requirements (optional, but highly recommended for realistically sized datasets)
 And to run on a GPU (highly recommended for realistically sized datasets),
@@ -61,17 +67,16 @@ A GPU with 11GB Memory (e.g. GTX 1080 Ti) can run the largest
 configurations described below, for smaller GPUs you might
 have to reduce the network or batch size. 
   
-### Most python dependencies
-
+### Most python dependencies 
 ```shell script
-pip3 install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 ### Helixer itself
 
 ```shell script
 # from the Helixer directory
-python3 setup.py install  # or `develop`, if you will be changing the code
+pip install .  # or `pip install -e .`, if you will be changing the code
 ```
 
 ## Example
