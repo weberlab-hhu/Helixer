@@ -1,3 +1,5 @@
+[![Python CI](https://github.com/weberlab-hhu/Helixer/actions/workflows/python-app.yml/badge.svg)](https://github.com/weberlab-hhu/Helixer/actions/workflows/python-app.yml)
+
 # Helixer
 Gene calling with Deep Neural Networks.
 
