@@ -115,7 +115,7 @@ class HelixerSequence(Sequence):
         self.batch_size = batch_size
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
                                  'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
-                                 'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
+                                 'stretch_transition_weights', 'coverage_weights', 'coverage_offset', 'composition',
                                  'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
 
         print(f'\nstarting to load {self.mode} data into memory..')
@@ -155,6 +155,9 @@ class HelixerSequence(Sequence):
 
         if self.input_coverage and not self.only_predictions:
             self.data_list_names += ['evaluation/coverage', 'evaluation/spliced_coverage']
+
+        if self.composition:
+            self.data_list_names += ['data/smoothed_composition']
 
         self.data_lists = [[] for _ in range(len(self.data_list_names))]
         self.data_dtypes = [h5_file[name].dtype for name in self.data_list_names]
@@ -198,7 +201,7 @@ class HelixerSequence(Sequence):
         batch = []
         # batch must have one thing for everything unpacked by __getitem__ (and in order)
         for name in ['data/X', 'data/y', 'data/sample_weights', 'data/transitions', 'data/phases',
-                     'data/predictions', 'scores/by_bp']:
+                     'data/predictions', 'scores/by_bp', 'data/smoothed_composition']:
             if name not in self.data_list_names:
                 batch.append(None)
             else:
@@ -374,6 +377,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
         self.parser.add_argument('--coverage-weights', action='store_true')
         self.parser.add_argument('--coverage-offset', type=float, default=0.0)
+        self.parser.add_argument('--composition', action='store_true')
         self.parser.add_argument('--calculate-uncertainty', action='store_true')
         self.parser.add_argument('--no-utrs', action='store_true')
         self.parser.add_argument('--predict-phase', action='store_true')
@@ -642,20 +646,19 @@ class HelixerModel(ABC):
             else:
                 input_data = test_sequence[batch_index]
             predictions = model.predict_on_batch(input_data)
-            if isinstance(predictions, list):
-                # when we have two outputs, one is for phase
-                output_names = ['predictions', 'predictions_phase']
-            else:
-                # if we just had one output
-                predictions = (predictions,)
-                output_names = ['predictions']
+
+            if not isinstance(predictions, list):
+                predictions = [predictions]
+            # when we have multiple outputs, second is for phase, third if present is for composition
+            output_names = ['predictions', 'predictions_phase', 'predictions_composition']
+            output_names = output_names[:len(predictions)]  # remove extras
 
             for dset_name, pred_dset in zip(output_names, predictions):
                 # join last two dims when predicting one hot labels
                 pred_dset = pred_dset.reshape(pred_dset.shape[:2] + (-1,))
                 # reshape when predicting more than one point at a time
                 label_dim = 4
-                if pred_dset.shape[2] != label_dim:
+                if pred_dset.shape[2] != label_dim and dset_name in output_names[:2]:  # don't do this for composition
                     n_points = pred_dset.shape[2] // label_dim
                     pred_dset = pred_dset.reshape(
                         pred_dset.shape[0],

@@ -1,10 +1,11 @@
 #! /usr/bin/env python3
+import keras.losses
 import numpy as np
 import tensorflow as tf
 
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, Dropout, Reshape,
-                                     Activation, Input, BatchNormalization)
+                                     Activation, Input, BatchNormalization, concatenate, Flatten)
 from HelixerModel import HelixerModel, HelixerSequence
 
 
@@ -15,7 +16,7 @@ class DanQSequence(HelixerSequence):
             assert not mode == 'test'  # only use class weights during training and validation
 
     def __getitem__(self, idx):
-        X, y, sw, transitions, phases, _, coverage_scores = self._get_batch_data(idx)
+        X, y, sw, transitions, phases, _, coverage_scores, composition = self._get_batch_data(idx)
         pool_size = self.model.pool_size
 
         if pool_size > 1:
@@ -68,6 +69,9 @@ class DanQSequence(HelixerSequence):
                 y_phase = self._mk_timestep_pools_class_last(phases)
                 y = [y, y_phase]
 
+                if self.composition:
+                    y.append(composition)
+
         if self.only_predictions:
             return X
         else:
@@ -118,11 +122,13 @@ class DanQModel(HelixerModel):
         if self.dropout1 > 0.0:
             x = Dropout(self.dropout1)(x)
 
-        x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
-        for _ in range(self.lstm_layers - 1):
+        for _ in range(self.lstm_layers):
             x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
 
-        # do not use recurrent dropout, but dropout on the output of the LSTM stack
+
+        x, fw_state_h, fw_state_c, bw_state_h, bw_state_c = Bidirectional(LSTM(self.units, return_sequences=True, return_state=True))(x)
+
+    # do not use recurrent dropout, but dropout on the output of the LSTM stack
         if self.dropout2 > 0.0:
             x = Dropout(self.dropout2)(x)
 
@@ -135,8 +141,13 @@ class DanQModel(HelixerModel):
 
             x_phase = Reshape((-1, self.pool_size, 4))(x_phase)
             x_phase = Activation('softmax', name='phase')(x_phase)
-
-            outputs = [x_genic, x_phase]
+            if self.composition:
+                stacked = concatenate([fw_state_h, bw_state_h])
+                #stacked = Flatten()(stacked)
+                compo = Dense(30)(stacked)
+                outputs = [x_genic, x_phase, compo]
+            else:
+                outputs = [x_genic, x_phase]
         else:
             x = Dense(self.pool_size * 4)(x)
             x = Reshape((-1, self.pool_size, 4))(x)
@@ -146,18 +157,30 @@ class DanQModel(HelixerModel):
         model = Model(inputs=main_input, outputs=outputs)
         return model
 
+    def aux_loss(self, y_true, y_pred, sample_weights=None):
+        print('shapes', y_true.shape, y_pred.shape)
+        return keras.losses.mean_squared_error(y_true, y_pred)
+
     def compile_model(self, model):
         if self.predict_phase:
-            losses = ['categorical_crossentropy', 'categorical_crossentropy']
-            loss_weights = [0.8, 0.2]
+            if self.composition:
+                losses = ['categorical_crossentropy', 'categorical_crossentropy', self.aux_loss]
+                loss_weights = [0.7, 0.2, 0.1]
+                sw_mode = ['temporal', 'temporal', None]
+            else:
+                losses = ['categorical_crossentropy', 'categorical_crossentropy']
+                loss_weights = [0.8, 0.2]
+                sw_mode = 'temporal'
         else:
             losses = ['categorical_crossentropy']
             loss_weights = [1.0]
+            sw_mode = 'temporal'
 
         model.compile(optimizer=self.optimizer,
                       loss=losses,
                       loss_weights=loss_weights,
-                      sample_weight_mode='temporal')
+                      #sample_weight_mode=sw_mode)
+                      )
 
 
 if __name__ == '__main__':
