@@ -29,9 +29,15 @@ def main(h5_data):
                 else:
                     bp_in_class = [0.25] * 4
                 composition[i + j][class_start + 1: class_start + 5] = bp_in_class
-    if 'composition' in h5['data'].keys():
-        del h5['data/composition']
-    h5.create_dataset('data/composition', data=composition)
+
+    rolled = np.stack([np.roll(composition, -i, axis=0) for i in range(-4, 5, 1)], axis=2)
+    smoothed_composition = np.mean(rolled, axis=2)
+    new_dsets = {'composition': composition, 'smoothed_composition': smoothed_composition}
+    for key in new_dsets.keys():
+        if key in h5['data'].keys():
+            del h5['data/' + key]
+        h5.create_dataset('data/' + key, data=new_dsets[key])
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
