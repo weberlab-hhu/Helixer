@@ -40,35 +40,7 @@ def add_empty_score_datasets(h5):
                           fillvalue=-1)
 
 
-def get_bool_stretches(alist):
-    targ = alist[0]
-    while alist:
-        try:
-            i = alist.index(not targ)
-        except ValueError:
-            i = len(alist)
-            yield targ, i
-            return
-        yield targ, i
-        targ = not targ
-        alist = alist[i:]
 
-
-def species_range(h5, species):
-    mask = np.array(h5['/data/species'][:] == species.encode('utf-8'))
-    stretches = list(get_bool_stretches(mask.tolist()))  # [(False, count), (True, Count), (False, Count)]
-    print(stretches)
-    i_of_true = [i for i in range(len(stretches)) if stretches[i][0]]
-    assert len(i_of_true) == 1, "not contiguous or missing species ({}) in h5???".format(species)
-    iot = i_of_true[0]
-    if iot == 0:
-        return 0, stretches[0][1]
-    elif iot == 1:
-        start = stretches[0][1]
-        length = stretches[1][1]
-        return start, start + length
-    else:
-        raise ValueError("should never be reached, maybe h5 sorting something or failed bool comparisons (None or so?)")
 
 
 class Scorer:
