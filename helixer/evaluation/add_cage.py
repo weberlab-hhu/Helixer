@@ -6,9 +6,12 @@ import random
 import os
 import shutil
 import copy
+
+import h5py.utils
 import numpy as np
 from multiprocessing import Pool
 
+BAMFILES_DATASET = 'cage_bam_files'
 CAGE_COVERAGE_SETS = ['cage_coverage', 'cage_spliced_coverage']
 COVERAGE_COUNTS = {'reads': 0, 'coverage': 0, 'spliced_coverage': 0}
 
@@ -222,6 +225,16 @@ def add_empty_cage_datasets(h5, n):
                           fillvalue=-1)
 
 
+def add_empty_cov_meta(h5, n):
+    if 'meta' not in h5.keys():
+        h5.create_group('meta')
+    h5.create_dataset('meta/' + BAMFILES_DATASET,
+                      shape=(n,),
+                      maxshape=(None, ),
+                      dtype='S512',
+                      fillvalue=''.encode('ASCII'))
+
+
 def cov_by_chrom(chrm_bam_strandedness):
     chromosome, bam_file, strandedness = chrm_bam_strandedness
     htseqbam = H5_BAMS[bam_file]
@@ -236,7 +249,7 @@ def cov_by_chrom(chrm_bam_strandedness):
     length = get_length_from_header(htseqbam, chromosome)
     # returns htseq genomic array
     chromosomes = {chromosome: length}
-
+    storage = "memmap"
     cov_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage=storage, memmap_dir=memmap_dirs[0])
     spliced_array = HTSeq.GenomicArray(chromosomes, stranded=True, typecode="i", storage=storage, memmap_dir=memmap_dirs[1])
     # 1 below because "pysam uses 0-based coordinates...The only exception is the region string in the fetch() and
@@ -330,7 +343,6 @@ def pad_cov_right(short_arr, length, fill_value=-1.):
     return out
 
 
-
 def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_final_dimension):
     """calculates coverage for a coordinate from bam, saves to h5, returns counts for aggregating"""
     b_seqid, start_i, end_i = coord
@@ -358,7 +370,7 @@ def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_
                 htseq_array = all_coverage[cov_type]
                 array = htseq_array[HTSeq.GenomicInterval(seqid, 0, length, direction)].array
                 write_in_bits(array, bits[direction], h5_out['evaluation/{}'.format(cov_type)], chunk_size,
-                                     old_final_dimension + i)
+                              old_final_dimension + i)
 
         for d in memmap_dirs:
             shutil.rmtree(d)  # rm -r
@@ -382,10 +394,17 @@ def main(species, h5_data, strandedness):
             new_size = list(old_shape[:2])
             new_size.append(old_final_dimension + nbams)
             h5['evaluation/' + cov_set].resize(tuple(new_size))
-
     except KeyError:
         add_empty_cage_datasets(h5, nbams)
         old_final_dimension = 0
+
+    try:
+        h5['meta/' + BAMFILES_DATASET].resize((old_final_dimension + nbams,))
+    except KeyError:
+        add_empty_cov_meta(h5, nbams)
+
+    bams_as_meta = np.array([str(x).encode('ASCII') for x in H5_BAMS.keys()])
+    h5['meta/' + BAMFILES_DATASET][old_final_dimension:old_final_dimension + nbams] = bams_as_meta
 
     # identify regions in h5 corresponding to species
     species_start, species_end = species_range(h5, species)
@@ -393,7 +412,6 @@ def main(species, h5_data, strandedness):
     # insert coverage into said regions
     coords = gen_coords(h5, species_start, species_end)
     print('start, end', species_start, species_end, file=sys.stderr)
-    cov_counts = copy.deepcopy(COVERAGE_COUNTS)  # tracks number reads, bp coverage, bp spliced coverage
 
     chunk_size = h5['evaluation/cage_coverage'].shape[1]
 
@@ -403,7 +421,7 @@ def main(species, h5_data, strandedness):
         print(coord, file=sys.stderr)
         cage_coverage_from_coord_to_h5(
             coord, h5, strandedness=strandedness,
-            chunk_size=chunk_size, final_dimension=final_dimension)
+            chunk_size=chunk_size, old_final_dimension=old_final_dimension)
 
 
     h5.close()
