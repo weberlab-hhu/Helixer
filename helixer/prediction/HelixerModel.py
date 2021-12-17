@@ -20,6 +20,7 @@ import numpy as np
 import tensorflow as tf
 from sklearn.utils import shuffle
 from pprint import pprint
+from termcolor import colored
 from terminaltables import AsciiTable
 
 from tensorflow.keras.callbacks import Callback
@@ -352,7 +353,9 @@ class HelixerSequence(Sequence):
 
 
 class HelixerModel(ABC):
-    def __init__(self):
+    def __init__(self, cli_args=None):
+        self.cli_args = cli_args  # if cli_args is None, the parameters from sys.argv will be used
+
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('-d', '--data-dir', type=str, default='')
         self.parser.add_argument('-s', '--save-model-path', type=str, default='./best_model.h5')
@@ -402,7 +405,10 @@ class HelixerModel(ABC):
         self.parser.add_argument('--debug', action='store_true')
 
     def parse_args(self):
-        args = vars(self.parser.parse_args())
+        """Parses the arguments either from the command line via argparse by using self.parser or
+        takes a list of cli arguments from self.cli_args. This can be used to invoke a HelixerModel from
+        another script."""
+        args = vars(self.parser.parse_args(args=self.cli_args))
         self.__dict__.update(args)
 
         if self.nni:
@@ -448,7 +454,7 @@ class HelixerModel(ABC):
             self.transition_weights = np.array(self.transition_weights, dtype = np.float32)
 
         if self.verbose:
-            print()
+            print(colored('HelixerModel config: ', 'yellow'))
             pprint(args)
 
     def generate_callbacks(self, train_generator):
