@@ -5,10 +5,10 @@ import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, MaxPooling1D, Dropout, Reshape,
                                      Activation, Input, BatchNormalization)
-from HelixerModel import HelixerModel, HelixerSequence
+from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 
 
-class DanQSequence(HelixerSequence):
+class HybridSequence(HelixerSequence):
     def __init__(self, model, h5_file, mode, batch_size, shuffle):
         super().__init__(model, h5_file, mode, batch_size, shuffle)
         if self.class_weights is not None:
@@ -74,9 +74,9 @@ class DanQSequence(HelixerSequence):
             return X, y, sw
 
 
-class DanQModel(HelixerModel):
-    def __init__(self):
-        super().__init__()
+class HybridModel(HelixerModel):
+    def __init__(self, cli_args=None):
+        super().__init__(cli_args=cli_args)
         self.parser.add_argument('--cnn-layers', type=int, default=1)
         self.parser.add_argument('--lstm-layers', type=int, default=1)
         self.parser.add_argument('--units', type=int, default=32)
@@ -89,7 +89,7 @@ class DanQModel(HelixerModel):
 
     @staticmethod
     def sequence_cls():
-        return DanQSequence
+        return HybridSequence
 
     def model(self):
         overhang = self.shape_train[1] % self.pool_size
@@ -161,5 +161,5 @@ class DanQModel(HelixerModel):
 
 
 if __name__ == '__main__':
-    model = DanQModel()
+    model = HybridModel()
     model.run()

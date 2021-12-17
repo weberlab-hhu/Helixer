@@ -118,8 +118,6 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
         fasta_importer = FastaImporter(None)
         fasta_seqs = fasta_importer.parse_fasta(self.input_path)
         self.h5 = h5py.File(self.output_path, 'w')
-        print(f'Effectively set --modes to "X" and --write-by to infinite due to '
-              f'--direct-fasta-to-h5-path being set')
 
         for i, (seqid, seq) in enumerate(fasta_seqs):
             start_time = time.time()
