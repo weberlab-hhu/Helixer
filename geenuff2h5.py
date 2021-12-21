@@ -30,8 +30,8 @@ if __name__ == '__main__':
     pp.io_group.add_argument('--add-additional', type=str,
                             help='Outputs the datasets under alternatives/{add-additional}/ (and checks sort order against '
                                  'existing "data" datasets). Use to add e.g. additional annotations from Augustus.')
-    pp.data_group.add_argument('--chunk-size', type=int,
-                              help='Size of the chunks each genomic sequence gets cut into. (Default is 20000)')
+    pp.data_group.add_argument('--subsequence-length', type=int,
+                              help='Length of the subsequences that the model will use at once. (Default is 20000)')
     pp.data_group.add_argument('--modes', type=str,
                               help='Either "all" (default), or a comma separated list with desired members of the following '
                                    '{X, y, anno_meta, transitions} that should be exported. This can be useful, for '
@@ -39,7 +39,7 @@ if __name__ == '__main__':
                                    'you are adding an additional annotation set to an existing file.')
     pp.data_group.add_argument('--write-by', type=int,
                               help='Write in super-chunks with this many base pairs, which will be rounded to be '
-                                   'divisible by chunk-size. (Default is 10_000_000_000).')
+                                   'divisible by subsequence-length. (Default is 10_000_000_000).')
 
     # need to add any default values like this
     pp.defaults['add_additional'] = ''
