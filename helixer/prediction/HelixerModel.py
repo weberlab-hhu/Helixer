@@ -318,7 +318,7 @@ class HelixerSequence(Sequence):
 
     @staticmethod
     def _apply_stretch(reshaped_sw_t, stretch):
-        """modifies sample weight shaped transitions so they are a peak instead of a single point"""
+        """modifies sample weight shaped transitions so that they are a peak instead of a single point"""
         reshaped_sw_t = np.array(reshaped_sw_t)
         dilated_rf = np.ones(np.shape(reshaped_sw_t))
 
@@ -371,16 +371,16 @@ class HelixerModel(ABC):
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
         self.parser.add_argument('--weight-decay', type=float, default=3.5e-5)
         self.parser.add_argument('--class-weights', type=str, default='None')
-        self.parser.add_argument('--input-coverage', action='store_true')
-        self.parser.add_argument('--coverage-norm', default=None)
+        self.parser.add_argument('--input-coverage', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
+        self.parser.add_argument('--coverage-norm', default=None, help=argparse.SUPPRESS)
         self.parser.add_argument('--transition-weights', type=str, default='None')
-        self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
+        self.parser.add_argument('--stretch-transition-weights', type=int, default=0, help=argparse.SUPPRESS)  # bc no clear effect on result quality
         self.parser.add_argument('--coverage-weights', action='store_true')
         self.parser.add_argument('--coverage-offset', type=float, default=0.0)
         self.parser.add_argument('--calculate-uncertainty', action='store_true')
-        self.parser.add_argument('--no-utrs', action='store_true')
+        self.parser.add_argument('--no-utrs', action='store_true', help=argparse.SUPPRESS)  # is this still needed?
         self.parser.add_argument('--predict-phase', action='store_true')
-        self.parser.add_argument('--load-predictions', action='store_true')
+        self.parser.add_argument('--load-predictions', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
         self.parser.add_argument('--resume-training', action='store_true')
         # testing / predicting
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
@@ -397,7 +397,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--cpus', type=int, default=8)
         self.parser.add_argument('--gpu-id', type=int, default=-1)
         self.parser.add_argument('--workers', type=int, default=1,
-                                 help='Probaly should be the same a number of GPUs')
+                                 help='consider setting to match the number of GPUs')
         # misc flags
         self.parser.add_argument('--save-every-epoch', action='store_true')
         self.parser.add_argument('--nni', action='store_true')
@@ -424,9 +424,8 @@ class HelixerModel(ABC):
                     else:
                         raise AssertionError(f'Parameter from nni: "{key}" does not match processed arguments')
 
-
             # cast int params to int as we may get them as float
-            hyperopt_args = {name:(int(value) if isinstance(self.parser.get_default(name), int) else value)
+            hyperopt_args = {name: (int(value) if isinstance(self.parser.get_default(name), int) else value)
                              for name, value in hyperopt_args.items()}
             # add args to class name space
             self.__dict__.update(hyperopt_args)
@@ -444,7 +443,6 @@ class HelixerModel(ABC):
         assert not (not self.testing and self.test_data)
         assert not (self.resume_training and (not self.load_model_path or not self.data_dir))
 
-
         self.class_weights = eval(self.class_weights)
         if type(self.class_weights) is list:
             self.class_weights = np.array(self.class_weights, dtype=np.float32)
@@ -460,8 +458,8 @@ class HelixerModel(ABC):
     def generate_callbacks(self, train_generator):
         callbacks = [ConfusionMatrixTrain(self.save_model_path, train_generator, self.gen_validation_data(),
                                           self.large_eval_folder, self.patience, calc_H=self.calculate_uncertainty,
-                                          report_to_nni=self.nni)]
-        callbacks.append(PreshuffleCallback(train_generator))
+                                          report_to_nni=self.nni),
+                     PreshuffleCallback(train_generator)]
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
         return callbacks
@@ -520,7 +518,7 @@ class HelixerModel(ABC):
             species_name = os.path.basename(eval_file_name).split('.')[0]
             print(f'\nEvaluating with a sample of {species_name} ({i + 1}/{len(eval_file_names)})')
 
-            # possibly adjust batch size based on sample lenght, which could be flexible
+            # possibly adjust batch size based on sample length, which could be flexible
             # assume the given batch size is for 20k length
             sample_len = h5_eval['data/X'].shape[1]
             adjusted_batch_size = int(generator.batch_size * (20000 / sample_len))
@@ -561,7 +559,8 @@ class HelixerModel(ABC):
     def compile_model(self, model):
         pass
 
-    def plot_model(self, model):
+    @staticmethod
+    def plot_model(model):
         from tensorflow.keras.utils import plot_model
         plot_model(model, to_file='model.png')
         print('Plotted to model.png')
