@@ -82,7 +82,7 @@ class HybridModel(HelixerModel):
         self.parser.add_argument('--units', type=int, default=32)
         self.parser.add_argument('--filter-depth', type=int, default=32)
         self.parser.add_argument('--kernel-size', type=int, default=26)
-        self.parser.add_argument('--pool-size', type=int, default=10)
+        self.parser.add_argument('--pool-size', type=int, default=9)
         self.parser.add_argument('--dropout1', type=float, default=0.0)
         self.parser.add_argument('--dropout2', type=float, default=0.0)
         self.parse_args()
