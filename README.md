@@ -1,3 +1,5 @@
+[![Python CI](https://github.com/weberlab-hhu/Helixer/actions/workflows/python-app.yml/badge.svg)](https://github.com/weberlab-hhu/Helixer/actions/workflows/python-app.yml)
+
 # Helixer
 Gene calling with Deep Neural Networks.
 
@@ -18,15 +20,14 @@ First, download and checkout the latest release
 # from a directory of your choice
 git clone https://github.com/weberlab-hhu/Helixer.git
 cd Helixer
-git checkout dev # v0.2.0
+# git checkout dev # v0.2.0
 ```
 
-### Virtualenv (optional)
-We recommend installing all the python packages in a
-virtual environment:
-https://docs.python-guide.org/dev/virtualenvs/
-
 ### System dependencies
+
+#### Python 3.6 or later
+
+#### Python development libraries
 Ubuntu (& co.)
 ```shell script
 sudo apt install python3-dev
@@ -36,38 +37,48 @@ Fedora (& co.)
 sudo dnf install python3-devel
 ```
 
+### Virtualenv (optional)
+We recommend installing all the python packages in a
+virtual environment: https://docs.python-guide.org/dev/virtualenvs/
+
+For example, create and activate an environment called 'env': 
+```shell script
+python3 -m venv env
+source env/bin/activate
+```
+The steps below assume you are working in the same environment.
+
 ### GPU requirements (optional, but highly recommended for realistically sized datasets)
 And to run on a GPU (highly recommended for realistically sized datasets),
 everything for tensorflow-gpu is required, 
 see: https://www.tensorflow.org/install/gpu
 
-Most recently tested with the following (but in theory any valid
-tensorflow-gpu setup >2.0 should work).
+
+The following has been most recently tested.
 
 python packages:
-* tensorflow-gpu==2.4.0
+* tensorflow-gpu==2.7.0
 
 system packages:
-* cuda-11-0
+* cuda-11-2
 * libcudnn8
 * libcudnn8-dev
-* nvidia-driver-450
+* nvidia-driver-495
 
 A GPU with 11GB Memory (e.g. GTX 1080 Ti) can run the largest 
 configurations described below, for smaller GPUs you might
 have to reduce the network or batch size. 
   
-### Most python dependencies
-
+### Most python dependencies 
 ```shell script
-pip3 install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 ### Helixer itself
 
 ```shell script
 # from the Helixer directory
-python3 setup.py install  # or `develop`, if you will be changing the code
+pip install .  # or `pip install -e .`, if you will be changing the code
 ```
 
 ## Example
@@ -78,36 +89,84 @@ validation and testing dataset and then use those to first train a model
 and then to make gene predictions with Helixer.
 
 ### Generating training-ready data
-Our example database contains the genetic information 
-(that is the information of the FASTA and GFF3 files from the 
-Phytosome 13 database) of three very small algae: 
-*Ostreococcus_sp._lucimarinus*, *Micromonas_sp._RCC299* and *Micromonas_pusilla*. 
-We will train our model with the first two and then predict on the third.
+
+#### Pre-processing w/ GeenuFF
+>Note: you will be able to skip working with GeenuFF if
+> only wish to predict, and not train. See instead the
+> --direct-fasta-to-h5-path parameter of Helixer/export.py
+
+First we will need to pre-process the data (Fasta & GFF3 files)
+using GeenuFF. This provides a more biologically-realistic
+representation of gene structures, and, most importantly
+right now, provides identification and masking of invalid
+gene structures from the gff file (e.g. those that don't
+have _any_ UTR between coding and intergenic or those that
+have overlapping exons within one transcript). 
+
+See the GeenuFF repository for more information.
+
+For now we can just run the provided example script to
+download and pre-process some algae data.
 
 ```shell script
-# generating the training and validation dataset
-# the genome names are a bit different due to the naming used in Phytosome
-python3 export.py --db-path-in example/three_algae.sqlite3 \
-  --genomes Olucimarinus,MspRCC299 --out-dir example/train
+cd <your/path/to>/GeenuFF
+bash example.sh
+# store full path in a variable for later usage
+data_at=`readlink -f three_algae`
+cd <your/path/to/Helixer>
 ```
+This downloads and pre-processes data for the species
+(Chlamydomonas_reinhardtii,  Cyanidioschyzon_merolae, and  Ostreococcus_lucimarinus)
+as you can see with `ls $data_at`
+#### numeric encoding of data
+To actually train (or predict) we will need to encode the
+data numerically (e.g. as 1s and 0s). 
 
 ```shell script
-# generating the test dataset
-python3 export.py --db-path-in example/three_algae.sqlite3 --genomes MpusillaCCMP1545 \
-  --out-dir example/test --only-test-set 
+mkdir -p example/h5s
+for species in `ls $data_at`
+do
+  mkdir example/h5s/$species
+  python export.py --input-db-path $data_at/$species/output/$species.sqlite3 \
+    --output-path example/h5s/$species/test_data.h5
+done
+```
+To create the simples working example, we will use Chlamydomonas_reinhardtii 
+for training and Cyanidioschyzon_merolae for validation (normally you
+would merge multiple species for each) and use Ostreococcus_lucimarinus for
+testing / predicting / etc.
+
+```shell script
+# The training script requires two files in one folder named
+# training_data.h5 and validation_data.h5
+#
+# while we would need to merge multiple datasets to create our
+# training_data.h5 and validation_data.h5 normally, for this as-simple-
+# as-possible example we will point to one species each with symlinks
+mkdir example/train
+cd example/train/
+# set training data 
+ln -s ../h5s/Chlamydomonas_reinhardtii/test_data.h5 training_data.h5
+# and validation
+ln -s ../h5s/Cyanidioschyzon_merolae/test_data.h5 validation_data.h5
+cd ../..
 ```
 
 We should now have the following files in `example/`. 
 Note that the test data was not split into a training 
 and validation set due to the `--only-test-set` option: 
 ```
-example/
-├── test
-│   └── test_data.h5
-├── three_algae.sqlite3
+example
+├── h5s
+│   ├── Chlamydomonas_reinhardtii
+│   │   └── test_data.h5
+│   ├── Cyanidioschyzon_merolae
+│   │   └── test_data.h5
+│   └── Ostreococcus_lucimarinus
+│       └── test_data.h5
 └── train
-    ├── training_data.h5
-    └── validation_data.h5
+    ├── training_data.h5 -> ../h5s/Chlamydomonas_reinhardtii/test_data.h5
+    └── validation_data.h5 -> ../h5s/Cyanidioschyzon_merolae/test_data.h5
 ```
 
 ### Model training
@@ -117,131 +176,97 @@ LSTM architeture for 5 epochs and save the best iteration
 `example/best_helixer_model.h5`. 
 
 ```shell script
-python3 helixer/prediction/LSTMModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 --units 64 --pool-size 10
+python helixer/prediction/DanQModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 
 ```
 
-Right before the training starts we may get one or two warnings about 
-the data that are not relevant for this example. This trains a very 
-small single layer BLSTM model with about 60.000 parameters that 
-receives 10 basepairs for each time step. After each epoch, 
-an evaluation of the last model iteration is performed and 
-the results are printed to the console. If we would like to train a model 
-with exactly the architecture and weights that was used to train our 
-actual plant models one would use the following command: 
+The rest of this example will continue with the model example/best_helixer_model.h5 produced above. 
+
+#### Full size aside
+The current 'full size' architecture that has been performing well
+in hyper optimization runs is:
 
 ```shell script
-python3 helixer/prediction/LSTMModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 --units 256 --pool-size 10 --batch-size 52 --layers 4 --layer-normalization --class-weights '[0.7, 1.6, 1.2, 1.2]'
+# the indicated batch size and val-test-batch size have been chosen to work on a 2080ti with 11GB RAM
+# and should be set as large as the graphics card will allow. 
+python helixer/prediction/DanQModel.py -v --pool-size 9 --batch-size 50 --val-test-batch-size 100 \
+  --class-weights "[0.7, 1.6, 1.2, 1.2]" --transition-weights "[1, 12, 3, 1, 12, 3]" --predict-phase \
+  --lstm-layers 3 --cnn-layers 4 --units 128 --filter-depth 96 --kernel-size 10 \
+  --data-dir example/train/ --save-model-path example/fullsize_helixer_model.h5
 ```
 
+But make sure you have a full size dataset to go with that model, if you're going to train it.
+
 ### Model evaluation
-We can now use this model to produce predictions for our test dataset. 
+We can now use the mini model trained above to produce predictions for our test dataset. 
 WARNING: Generating predictions can produce very large files as 
 we save every individual softmax value in 32 bit floating point format. 
 For this very small genome the predictions require 524MB of disk space. 
 ```shell script
-python3 helixer/prediction/LSTMModel.py --load-model-path example/best_helixer_model.h5 --test-data example/test/test_data.h5 --prediction-output-path example/mpusillaCCMP1545_predictions.h5
+python helixer/prediction/DanQModel.py --load-model-path example/best_helixer_model.h5 \
+  --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 \
+  --prediction-output-path example/Ostreococcus_lucimarinus_predictions.h5
 ```
 
 Or we can directly evaluate the predictive performance of our model. It is necessary to generate a test data file per species to get results for just that species.
 
 ```shell script
-python3 helixer/prediction/LSTMModel.py --load-model-path example/best_helixer_model.h5 --test-data example/test/test_data.h5 --eval
+python helixer/prediction/DanQModel.py --load-model-path example/best_helixer_model.h5 \
+  --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 --eval
 ```
 
-The last command can be sped up with a higher batch size and should give us the same break down that is performed during after a training epoch, but on the test data:
+The last command can be sped up with a higher batch size and should give us the same break down that is performed 
+during after a training epoch, but on the test data:
 
 ```
 +confusion_matrix------+----------+-----------+-------------+
 |            | ig_pred | utr_pred | exon_pred | intron_pred |
 +------------+---------+----------+-----------+-------------+
-| ig_ref     | 2563098 | 0        | 3752365   | 0           |
-| utr_ref    | 118706  | 0        | 489995    | 0           |
-| exon_ref   | 888744  | 0        | 13404195  | 0           |
-| intron_ref | 522242  | 0        | 1370375   | 0           |
+| ig_ref     | 1297055 | 151436   | 692534    | 188423      |
+| utr_ref    | 159457  | 32821    | 99856     | 16345       |
+| exon_ref   | 5014284 | 2002047  | 2001614   | 134915      |
+| intron_ref | 199752  | 62334    | 89647     | 9550        |
 +------------+---------+----------+-----------+-------------+
 
 +normalized_confusion_matrix------+-----------+-------------+
 |            | ig_pred | utr_pred | exon_pred | intron_pred |
 +------------+---------+----------+-----------+-------------+
-| ig_ref     | 0.4058  | 0.0      | 0.5942    | 0.0         |
-| utr_ref    | 0.195   | 0.0      | 0.805     | 0.0         |
-| exon_ref   | 0.0622  | 0.0      | 0.9378    | 0.0         |
-| intron_ref | 0.2759  | 0.0      | 0.7241    | 0.0         |
+| ig_ref     | 0.5568  | 0.065    | 0.2973    | 0.0809      |
+| utr_ref    | 0.5169  | 0.1064   | 0.3237    | 0.053       |
+| exon_ref   | 0.5478  | 0.2187   | 0.2187    | 0.0147      |
+| intron_ref | 0.5529  | 0.1725   | 0.2481    | 0.0264      |
 +------------+---------+----------+-----------+-------------+
 
-+F1_summary--+-----------+--------+----------+
-|            | Precision | Recall | F1-Score |
-+------------+-----------+--------+----------+
-| ig         | 0.6262    | 0.4058 | 0.4925   |
-| utr        | 0.0000    | 0.0000 | 0.0000   |
-| exon       | 0.7049    | 0.9378 | 0.8048   |
-| intron     | 0.0000    | 0.0000 | 0.0000   |
-|            |           |        |          |
-| legacy_cds | 0.7769    | 0.9128 | 0.8394   |
-| sub_genic  | 0.7049    | 0.8282 | 0.7615   |
-| genic      | 0.7049    | 0.7981 | 0.7486   |
-+------------+-----------+--------+----------+
-Total acc: 0.6909
++F1_summary--+---------+-----------+--------+----------+
+|            | norm. H | Precision | Recall | F1-Score |
++------------+---------+-----------+--------+----------+
+| ig         |         | 0.1944    | 0.5568 | 0.2882   |
+| utr        |         | 0.0146    | 0.1064 | 0.0257   |
+| exon       |         | 0.6941    | 0.2187 | 0.3326   |
+| intron     |         | 0.0273    | 0.0264 | 0.0269   |
+|            |         |           |        |          |
+| legacy_cds |         | 0.6916    | 0.2350 | 0.3508   |
+| sub_genic  |         | 0.6221    | 0.2114 | 0.3156   |
+| genic      |         | 0.3729    | 0.2081 | 0.2671   |
++------------+---------+-----------+--------+----------+
+Total acc: 0.2749
+
+metrics calculation took: 0.08 minutes
 ```
 
-In the demo run above (yours may vary) the model only predicted 
-intergenic and CDS bases. The main reason for this is likely that 
-the data contains very few bases of the other two kinds. 
-A more varied training dataset or uneven class weights 
-could change that (this result is for the small model example).
+In the demo run above (yours may vary) the model predicted
+perhaps better than random, but poorly, it practically
+need more and more varied (from different species) data
+to train it (this result is for the small model example).
 
-When we did write out the predictions to disk we can use an experimental 
-visualization to display the predictions together with the reference:
-```shell script
-python3 helixer/visualization/visualize.py --predictions example/mpusillaCCMP1545_predictions.h5 --test-data example/test/test_data.h5
-```
 
 ### Using trained models
-> WARNING: we have only tested it briefly, so while it does appear that
-> the LSTM models that were trained with tensorflow 1 work with tensorflow 2,
-> we make no promises.
+> WARNING: to use the pre-trained models you will need the published
+> version of the code! Run `git checkout v0.2.0` and follow the instructions
+> there in. As soon as pre-trained phase-containing models are generally 
+> available and evaluated, this section will be updated.
 
-We have uploaded pre-trained models under https://zenodo.org/record/3974409. 
+#### Citation
 
-#### animals
-The animal models were trained on: 
-Anabas_testudineus,
-Drosophila_melanogaster,
-Gallus_gallus,
-Mus_musculus,
-Oryzias_latipes, and
-Theropithecus_gelada
-
-The 'animal' models are recommended for usage within vertebrates.
-
-#### plants
-The plant models were trained on:
-Arabidopsis_thaliana,
-Brachypodium_distachyon,
-Chlamydomonas_reinhardtii,
-Glycine_max,
-Mimulus_guttatus,
-Marchantia_polymorpha,
-Populus_trichocarpa,
-Setaria_italica, and
-Zea_mays
-
-The 'plant' models are recommended for usage within Embryophyta.
-
-#### demo
-While not strictly recommended (performance is lower than for
-within Embryophyta), for compatibility with the rest of the
-example, we will demonstrate how to obtain and use the best plant
-model for our algae test data. 
-
-```shell script
-# download
-wget https://zenodo.org/record/3974409/files/plants_a_e10.h5 -P example
-# change only the --load-model-path and evaluate as above 
-# you don't need to respecify any training parameters unless --pool-size was non-default
-python3 helixer/prediction/LSTMModel.py --load-model-path example/plants_a_e10.h5 -test-data example/test/test_data.h5 --eval
-```
-
-The same idea can be used for predictions and visualization. To achieve top performance
-for *predictions* you should also consider adding the parameter `--overlap` 
-and setting `--batch-size` higher (depending on GPU memory).
+Felix Stiehler, Marvin Steinborn, Stephan Scholz, Daniela Dey, Andreas P M Weber, Alisandra K Denton, 
+Helixer: Cross-species gene annotation of large eukaryotic genomes using deep learning, Bioinformatics, , btaa1044, 
+https://doi.org/10.1093/bioinformatics/btaa1044
