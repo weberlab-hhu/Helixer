@@ -390,8 +390,11 @@ class HelixerModel(ABC):
         self.parser.add_argument('--overlap', action="store_true",
                                  help="will improve prediction quality at 'chunk' ends by creating and overlapping "
                                       "sliding-window predictions (with proportional increase in time usage)")
-        self.parser.add_argument('--overlap-offset', type=int, default=2500)
-        self.parser.add_argument('--core-length', type=int, default=10000)
+        self.parser.add_argument('--overlap-offset', type=int, default=10692,
+                                 help="distance to 'step' between predicting subsequences when overlapping")
+        self.parser.add_argument('--core-length', type=int, default=16038,
+                                 help="length of 'core' subsequence to retain before overlapping. The ends beyond this"
+                                      "region will be cropped.")
         # resources
         self.parser.add_argument('--float-precision', type=str, default='float32')
         self.parser.add_argument('--cpus', type=int, default=8)

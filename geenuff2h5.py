@@ -43,9 +43,9 @@ if __name__ == '__main__':
 
     # need to add any default values like this
     pp.defaults['add_additional'] = ''
-    pp.defaults['chunk_size'] = 20000
+    pp.defaults['chunk_size'] = 21384
     pp.defaults['modes'] = 'all'
-    pp.defaults['write_by'] = 10_000_000_000
+    pp.defaults['write_by'] = 21_384_000_000
 
     args = pp.get_args()
     main(args)

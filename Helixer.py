@@ -29,21 +29,20 @@ class HelixerParameterParser(ParameterParser):
         self.pred_group.add_argument('--batch-size', type=int,
                                      help='The batch size for the raw predictions in TensorFlow. Should be as large as '
                                           'possible to save prediction time. (Default is 8.)')
-        self.data_group.add_argument('--overlap', action='store_true',
-                                     help='Switches on the overlapping after predictions are made. Predictions with '
-                                          'overlapping will take much longer, but will have better quality towards '
-                                          'the start and end of each subsequence. Without this parameter '
-                                          '--overlap-offset '
+        self.data_group.add_argument('--no-overlap', action='store_true',
+                                     help='Switches off the overlapping after predictions are made. Predictions without'
+                                          ' overlapping will be faster, but will have lower quality towards '
+                                          'the start and end of each subsequence. With this parameter --overlap-offset '
                                           'and --overlap-core-length will have no effect.')
         self.pred_group.add_argument('--overlap-offset', type=int,
                                      help='Offset of the overlap processing. Smaller values may lead to better '
                                           'predictions but will take longer. --chunk-input-len has to be evenly '
-                                          'divisible by this value. (Default is 2673.)')
+                                          'divisible by this value. (Default is 10692.)')
         self.pred_group.add_argument('--overlap-core-length', type=int,
                                      help='Predicted sequences will be cut to this length to increase prediction '
                                           'quality if overlapping is enabled. Smaller values may lead to better '
                                           'predictions but will take longer. Has to be smaller than --chunk-input-len. '
-                                          '(Default is 10692.)')
+                                          '(Default is 16038.)')
 
         self.post_group = self.parser.add_argument_group("Post processing parameters")
         self.post_group.add_argument('--window-size', type=int, help='')
@@ -56,10 +55,10 @@ class HelixerParameterParser(ParameterParser):
             'species': '',
             'subsequence_length': 21384,
             'lineage': 'land_plant',
-            'batch_size': 8,
-            'overlap': False,
-            'overlap_offset': 2673,
-            'overlap_core_length': 10692,
+            'batch_size': 32,
+            'no_overlap': False,
+            'overlap_offset': 10692,
+            'overlap_core_length': 16038,
             'window_size': 100,
             'edge_threshold': 0.1,
             'peak_threshold': 0.8,
@@ -86,7 +85,7 @@ class HelixerParameterParser(ParameterParser):
                    f'has to be evenly divisible by {timestep_width}')
             assert args.subsequence_length % timestep_width == 0, msg
 
-        if args.overlap:
+        if not args.no_overlap:
             msg = '--overlap-offset has to evenly divide --subsequence-length'
             assert args.subsequence_length % args.overlap_offset == 0, msg
             msg = '--overlap-core-length has to be smaller than --subseqeunce-length'
@@ -97,7 +96,8 @@ if __name__ == '__main__':
     start_time = time.time()
     pp = HelixerParameterParser('config/helixer_config.yaml')
     args = pp.get_args()
-    print(colored('helixer.py config loaded. Starting FASTA to H5 conversion.', 'green'))
+    args.overlap = not args.no_overlap  # minor overlapping is a far better default for inference. Thus, this hack.
+    print(colored('Helixer.py config loaded. Starting FASTA to H5 conversion.', 'green'))
 
     # generate the .h5 file in a temp dir, which is then deleted
     with tempfile.TemporaryDirectory() as tmp_dirname:

@@ -15,6 +15,10 @@ Train one model for a wide variety of genomes.
 
 ## Install 
 
+> Coming soon: docker and singularity containers. 
+> 
+> Until then: see the full install-process below
+
 ### Get the code
 First, download and checkout the latest release
 ```shell script
@@ -26,7 +30,7 @@ cd Helixer
 
 ### System dependencies
 
-#### Python 3.6 or later
+#### Python 3.8 or later
 
 #### Python development libraries
 Ubuntu (& co.)
@@ -132,10 +136,8 @@ usage information, if necessary.
 ```bash
 # example broken into individual steps
 fasta2h5.py --species Arabidopsis_lyrata --h5-output-path Arabidopsis_lyrata.h5 --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa
-helixer/prediction/HybridModel.py --load-model-path models/land_plant.h5 --test-data Arabidopsis_lyrata.h5 --val-test-batch-size 8 -v
+helixer/prediction/HybridModel.py --load-model-path models/land_plant.h5 --test-data Arabidopsis_lyrata.h5 --overlap --val-test-batch-size 32 -v
 helixer_post_bin Arabidopsis_lyrata.h5 predictions.h5 100 0.1 0.8 60 Arabidopsis_lyrata_chromosome8_helixer.gff3
- 
-
 ```
 
 #### Citation
