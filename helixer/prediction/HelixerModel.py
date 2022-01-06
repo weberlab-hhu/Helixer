@@ -386,6 +386,8 @@ class HelixerModel(ABC):
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
         self.parser.add_argument('-t', '--test-data', type=str, default='')
         self.parser.add_argument('-p', '--prediction-output-path', type=str, default='predictions.h5')
+        self.parser.add_argument('--compression', default='gzip', help='compression used for datasets in predictions '
+                                                                       'h5 file. One of "lzf" or "gzip" (default)')
         self.parser.add_argument('--eval', action='store_true')
         self.parser.add_argument('--overlap', action="store_true",
                                  help="will improve prediction quality at 'chunk' ends by creating and overlapping "
@@ -691,7 +693,7 @@ class HelixerModel(ABC):
                                             maxshape=(None,) + pred_dset.shape[1:],
                                             chunks=(1,) + pred_dset.shape[1:],
                                             dtype='float16',
-                                            compression='lzf',
+                                            compression=self.compression,
                                             shuffle=True)
                 else:
                     old_len = pred_out[dset_name].shape[0]
