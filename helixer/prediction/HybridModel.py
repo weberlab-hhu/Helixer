@@ -9,8 +9,8 @@ from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 
 
 class HybridSequence(HelixerSequence):
-    def __init__(self, model, h5_file, mode, batch_size, shuffle):
-        super().__init__(model, h5_file, mode, batch_size, shuffle)
+    def __init__(self, model, h5_files, mode, batch_size, shuffle):
+        super().__init__(model, h5_files, mode, batch_size, shuffle)
         if self.class_weights is not None:
             assert not mode == 'test'  # only use class weights during training and validation
 

@@ -161,6 +161,7 @@ class HelixerSequence(Sequence):
             print(f'Compressed data size of {name} is at least {comp_data_size / 2 ** 30:.4f} GB\n')
 
         self.n_seqs = len(self.data_lists[0])
+        print(f'setting self.n_seqs to {self.n_seqs}, bc that is len of {self.data_list_names[0]}')
 
     def _load_one_h5(self, h5_file):
         print(f'For h5 starting with species = {h5_file["data/species"][0]}:')
@@ -172,13 +173,13 @@ class HelixerSequence(Sequence):
 
         if self.debug:
             # so that total sequences between all files add to ~1000
-            n_seqs = min(1000 // len(self.h5_files), 1)
+            n_seqs = max(1000 // len(self.h5_files), 1)
         else:
             n_seqs = x_dset.shape[0]
         self.chunk_size = x_dset.shape[1]
 
         # load at most 10000 uncompressed samples at a time in memory
-        max_at_once = 10000
+        max_at_once = min(10000, n_seqs)
         for name, data_list in zip(self.data_list_names, self.data_lists):
             start_time_dset = time.time()
             for offset in range(0, n_seqs, max_at_once):
@@ -189,8 +190,8 @@ class HelixerSequence(Sequence):
                 if self.no_utrs and name == 'data/y':
                     HelixerSequence._zero_out_utrs(data_slice)
                 data_list.extend([self.compressor.encode(e) for e in data_slice])
-            print(f'Data loading of {len(data_list)} samples of {name} into memory took '
-                  f'{time.time() - start_time_dset:.2f} secs')
+            print(f'Data loading of {len(data_slice)} (total so far {len(data_list)}) samples of {name} '
+                  f'into memory took {time.time() - start_time_dset:.2f} secs')
 
     @staticmethod
     def _zero_out_utrs(y):
@@ -242,7 +243,7 @@ class HelixerSequence(Sequence):
         if self.overlap:
             h5_indices = self.ol_helper.h5_indices_of_batch(batch_idx)
         else:
-            end = min(self.h5_file['data/X'].shape[0], (batch_idx + 1) * self.batch_size)
+            end = min(self.n_seqs, (batch_idx + 1) * self.batch_size)
             h5_indices = np.arange(batch_idx * self.batch_size, end)
 
         return self._decode_one(name, h5_indices)
@@ -489,17 +490,17 @@ class HelixerModel(ABC):
 
     def gen_training_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_files=self.h5_train, mode='train', batch_size=self.batch_size,
+        return SequenceCls(model=self, h5_files=self.h5_trains, mode='train', batch_size=self.batch_size,
                            shuffle=True)
 
     def gen_validation_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_files=self.h5_val, mode='val', batch_size=self.val_test_batch_size,
+        return SequenceCls(model=self, h5_files=self.h5_vals, mode='val', batch_size=self.val_test_batch_size,
                            shuffle=False)
 
     def gen_test_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_files=self.h5_test, mode='test', batch_size=self.val_test_batch_size,
+        return SequenceCls(model=self, h5_files=self.h5_tests, mode='test', batch_size=self.val_test_batch_size,
                            shuffle=False)
 
     @staticmethod
@@ -583,7 +584,7 @@ class HelixerModel(ABC):
     @staticmethod
     def sum_shapes(datasets):
         shapes = [ds.shape for ds in datasets]
-        return [sum(x[0] for x in shapes)] + shapes[0][1:]
+        return [sum(x[0] for x in shapes)] + list(shapes[0][1:])
 
     def open_data_files(self):
         def get_n_correct_seqs(h5_files):
