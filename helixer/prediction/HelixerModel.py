@@ -163,6 +163,14 @@ class HelixerSequence(Sequence):
         self.n_seqs = len(self.data_lists[0])
         print(f'setting self.n_seqs to {self.n_seqs}, bc that is len of {self.data_list_names[0]}')
 
+        if self.mode == "test":
+            if self.class_weights is not None:
+                print(f'ignoring the class_weights of {self.class_weights} in mode "test"')
+                self.class_weights = None
+            if self.transition_weights is not None:
+                print(f'ignoring the transition_weights of {self.transition_weights} in mode "test"')
+                self.transition_weights = None
+
     def _load_one_h5(self, h5_file):
         print(f'For h5 starting with species = {h5_file["data/species"][0]}:')
         x_dset = h5_file['data/X']
@@ -190,7 +198,7 @@ class HelixerSequence(Sequence):
                 if self.no_utrs and name == 'data/y':
                     HelixerSequence._zero_out_utrs(data_slice)
                 data_list.extend([self.compressor.encode(e) for e in data_slice])
-            print(f'Data loading of {len(data_slice)} (total so far {len(data_list)}) samples of {name} '
+            print(f'Data loading of {n_seqs} (total so far {len(data_list)}) samples of {name} '
                   f'into memory took {time.time() - start_time_dset:.2f} secs')
 
     @staticmethod
