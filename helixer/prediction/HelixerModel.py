@@ -107,10 +107,10 @@ class PreshuffleCallback(Callback):
 
 
 class HelixerSequence(Sequence):
-    def __init__(self, model, h5_file, mode, batch_size, shuffle):
+    def __init__(self, model, h5_files, mode, batch_size, shuffle):
         assert mode in ['train', 'val', 'test']
         self.model = model
-        self.h5_file = h5_file
+        self.h5_files = h5_files
         self.mode = mode
         self.shuffle = shuffle
         self.batch_size = batch_size
@@ -119,18 +119,8 @@ class HelixerSequence(Sequence):
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
                                  'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
 
-        print(f'\nstarting to load {self.mode} data into memory..')
-        x_dset = h5_file['data/X']
-        print(f'x shape: {x_dset.shape}')
-        if not self.only_predictions:
-            y_dset = h5_file['data/y']
-            print(f'y shape: {y_dset.shape}')
-
-        if self.debug:
-            self.n_seqs = 1000
-        else:
-            self.n_seqs = x_dset.shape[0]
-        self.chunk_size = x_dset.shape[1]
+        if self.mode == 'test':
+            assert len(self.h5_files) == 1, "predictions and eval should be applied to individual files only"
 
         self.data_list_names = ['data/X']
         if not self.only_predictions:
@@ -158,25 +148,58 @@ class HelixerSequence(Sequence):
             self.data_list_names += ['evaluation/coverage', 'evaluation/spliced_coverage']
 
         self.data_lists = [[] for _ in range(len(self.data_list_names))]
-        self.data_dtypes = [h5_file[name].dtype for name in self.data_list_names]
+        self.data_dtypes = [self.h5_files[0][name].dtype for name in self.data_list_names]
 
         self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)  # use BITSHUFFLE
 
+        print(f'\nstarting to load {self.mode} data into memory..')
+        for h5_file in self.h5_files:
+            self._load_one_h5(h5_file)
+
+        for name, data_list in zip(self.data_list_names, self.data_lists):
+            comp_data_size = sum([sys.getsizeof(e) for e in data_list])
+            print(f'Compressed data size of {name} is at least {comp_data_size / 2 ** 30:.4f} GB\n')
+
+        self.n_seqs = len(self.data_lists[0])
+        print(f'setting self.n_seqs to {self.n_seqs}, bc that is len of {self.data_list_names[0]}')
+
+        if self.mode == "test":
+            if self.class_weights is not None:
+                print(f'ignoring the class_weights of {self.class_weights} in mode "test"')
+                self.class_weights = None
+            if self.transition_weights is not None:
+                print(f'ignoring the transition_weights of {self.transition_weights} in mode "test"')
+                self.transition_weights = None
+
+    def _load_one_h5(self, h5_file):
+        print(f'For h5 starting with species = {h5_file["data/species"][0]}:')
+        x_dset = h5_file['data/X']
+        print(f'x shape: {x_dset.shape}')
+        if not self.only_predictions:
+            y_dset = h5_file['data/y']
+            print(f'y shape: {y_dset.shape}')
+
+        if self.debug:
+            # so that total sequences between all files add to ~1000
+            n_seqs = max(1000 // len(self.h5_files), 1)
+        else:
+            n_seqs = x_dset.shape[0]
+        self.chunk_size = x_dset.shape[1]
+
         # load at most 10000 uncompressed samples at a time in memory
+        max_at_once = min(10000, n_seqs)
         for name, data_list in zip(self.data_list_names, self.data_lists):
             start_time_dset = time.time()
-            for offset in range(0, self.n_seqs, 10000):
+            for offset in range(0, n_seqs, max_at_once):
                 if name == 'data/predictions':
-                    data_slice = h5_file[name][0, offset:offset + 10000]  # only use one prediction for now
+                    data_slice = h5_file[name][0, offset:offset + max_at_once]  # only use one prediction for now
                 else:
-                    data_slice = h5_file[name][offset:offset + 10000]
+                    data_slice = h5_file[name][offset:offset + max_at_once]
                 if self.no_utrs and name == 'data/y':
                     HelixerSequence._zero_out_utrs(data_slice)
                 data_list.extend([self.compressor.encode(e) for e in data_slice])
-            print(f'Data loading of {len(data_list)} samples of {name} into memory took '
-                  f'{time.time() - start_time_dset:.2f} secs')
-            comp_data_size = sum([sys.getsizeof(e) for e in data_list])
-            print(f'Compressed data size of {name} is at least {comp_data_size / 2 ** 30:.4f} GB\n')
+            print(f'Data loading of {n_seqs} (total so far {len(data_list)}) samples of {name} '
+                  f'into memory took {time.time() - start_time_dset:.2f} secs')
 
     @staticmethod
     def _zero_out_utrs(y):
@@ -228,7 +251,7 @@ class HelixerSequence(Sequence):
         if self.overlap:
             h5_indices = self.ol_helper.h5_indices_of_batch(batch_idx)
         else:
-            end = min(self.h5_file['data/X'].shape[0], (batch_idx + 1) * self.batch_size)
+            end = min(self.n_seqs, (batch_idx + 1) * self.batch_size)
             h5_indices = np.arange(batch_idx * self.batch_size, end)
 
         return self._decode_one(name, h5_indices)
@@ -480,17 +503,17 @@ class HelixerModel(ABC):
 
     def gen_training_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_file=self.h5_train, mode='train', batch_size=self.batch_size,
+        return SequenceCls(model=self, h5_files=self.h5_trains, mode='train', batch_size=self.batch_size,
                            shuffle=True)
 
     def gen_validation_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_file=self.h5_val, mode='val', batch_size=self.val_test_batch_size,
+        return SequenceCls(model=self, h5_files=self.h5_vals, mode='val', batch_size=self.val_test_batch_size,
                            shuffle=False)
 
     def gen_test_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_file=self.h5_test, mode='test', batch_size=self.val_test_batch_size,
+        return SequenceCls(model=self, h5_files=self.h5_tests, mode='test', batch_size=self.val_test_batch_size,
                            shuffle=False)
 
     @staticmethod
@@ -571,57 +594,68 @@ class HelixerModel(ABC):
         print('Plotted to model.png')
         sys.exit()
 
-    def open_data_files(self):
-        def get_n_correct_seqs(h5_file):
-            if 'err_samples' in h5_file['/data'].keys():
-                err_samples = np.array(h5_file['/data/err_samples'])
-                n_correct = np.count_nonzero(err_samples == False)
-                if n_correct == 0:
-                    print('WARNING: no fully correct sample found')
-            else:
-                print('No err_samples dataset found, correct samples will be set to 0')
-                n_correct = 0
-            return n_correct
+    @staticmethod
+    def sum_shapes(datasets):
+        shapes = [ds.shape for ds in datasets]
+        return [sum(x[0] for x in shapes)] + list(shapes[0][1:])
 
-        def get_n_intergenic_seqs(h5_file):
-            if 'fully_intergenic_samples' in h5_file['/data'].keys():
-                ic_samples = np.array(h5_file['/data/fully_intergenic_samples'])
-                n_fully_ig = np.count_nonzero(ic_samples == True)
-                if n_fully_ig == 0:
-                    print('WARNING: no fully intergenic samples found')
-            else:
-                print('No fully_intergenic_samples dataset found, fully intergenic samples will be set to 0')
-                n_fully_ig = 0
-            return n_fully_ig
+    def open_data_files(self):
+        def get_n_correct_seqs(h5_files):
+            sum_n_correct = 0
+            for h5_file in h5_files:
+                if 'err_samples' in h5_file['/data'].keys():
+                    err_samples = np.array(h5_file['/data/err_samples'])
+                    n_correct = np.count_nonzero(err_samples == False)
+                    if n_correct == 0:
+                        print('WARNING: no fully correct sample found')
+                else:
+                    print('No err_samples dataset found, correct samples will be set to 0')
+                    n_correct = 0
+                sum_n_correct += n_correct
+            return sum_n_correct
+
+        def get_n_intergenic_seqs(h5_files):
+            sum_n_fully_ig = 0
+            for h5_file in h5_files:
+                if 'fully_intergenic_samples' in h5_file['/data'].keys():
+                    ic_samples = np.array(h5_file['/data/fully_intergenic_samples'])
+                    n_fully_ig = np.count_nonzero(ic_samples == True)
+                    if n_fully_ig == 0:
+                        print('WARNING: no fully intergenic samples found')
+                else:
+                    print('No fully_intergenic_samples dataset found, fully intergenic samples will be set to 0')
+                    n_fully_ig = 0
+                sum_n_fully_ig += n_fully_ig
+            return sum_n_fully_ig
 
         if not self.testing:
-            self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
-            self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
-            self.shape_train = self.h5_train['/data/X'].shape
-            self.shape_val = self.h5_val['/data/X'].shape
+            self.h5_trains = [h5py.File(f, 'r') for f in glob.glob(os.path.join(self.data_dir, 'training_data*h5'))]
+            self.h5_vals = [h5py.File(f, 'r') for f in glob.glob(os.path.join(self.data_dir, 'validation_data*h5'))]
+            self.shape_train = self.sum_shapes([h5['/data/X'] for h5 in self.h5_trains])
+            self.shape_val = self.sum_shapes([h5['/data/X'] for h5 in self.h5_vals])
 
-            n_train_correct_seqs = get_n_correct_seqs(self.h5_train)
-            n_val_correct_seqs = get_n_correct_seqs(self.h5_val)
+            n_train_correct_seqs = get_n_correct_seqs(self.h5_trains)
+            n_val_correct_seqs = get_n_correct_seqs(self.h5_vals)
 
             n_train_seqs = self.shape_train[0]
             n_val_seqs = self.shape_val[0]  # always validate on all
 
-            n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
-            n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_val)
+            n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_trains)
+            n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_vals)
         else:
-            self.h5_test = h5py.File(self.test_data, 'r')
-            self.shape_test = self.h5_test['/data/X'].shape
+            self.h5_tests = [h5py.File(self.test_data, 'r')]  # list for consistency with train/val
+            self.shape_test = self.h5_tests[0]['/data/X'].shape
 
-            n_test_correct_seqs = get_n_correct_seqs(self.h5_test)
+            n_test_correct_seqs = get_n_correct_seqs(self.h5_tests)
             n_test_seqs_with_intergenic = self.shape_test[0]
-            n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_test)
+            n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_tests)
 
         if self.verbose:
             print('\nData config: ')
             if not self.testing:
                 print(dict(self.h5_train.attrs))
-                print('\nTraining data shape: {}'.format(self.shape_train[:2]))
-                print('Validation data shape: {}'.format(self.shape_val[:2]))
+                print('\nTraining data/X shape: {}'.format(self.shape_train[:2]))
+                print('Validation data/X shape: {}'.format(self.shape_val[:2]))
                 print('\nTotal est. training sequences: {}'.format(n_train_seqs))
                 print('Total est. val sequences: {}'.format(n_val_seqs))
                 print('\nEst. intergenic train/val seqs: {:.2f}% / {:.2f}%'.format(
