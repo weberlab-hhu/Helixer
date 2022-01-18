@@ -631,8 +631,18 @@ class HelixerModel(ABC):
         if not self.testing:
             self.h5_trains = [h5py.File(f, 'r') for f in glob.glob(os.path.join(self.data_dir, 'training_data*h5'))]
             self.h5_vals = [h5py.File(f, 'r') for f in glob.glob(os.path.join(self.data_dir, 'validation_data*h5'))]
-            self.shape_train = self.sum_shapes([h5['/data/X'] for h5 in self.h5_trains])
-            self.shape_val = self.sum_shapes([h5['/data/X'] for h5 in self.h5_vals])
+            try:
+                self.shape_train = self.sum_shapes([h5['/data/X'] for h5 in self.h5_trains])
+            except IndexError as e:
+                print('debugging info: self.h5_trains = {}, self.data_dir = {}'.format(self.h5_trains, self.data_dir),
+                      file=sys.stderr)
+                raise e
+            try:
+                self.shape_val = self.sum_shapes([h5['/data/X'] for h5 in self.h5_vals])
+            except IndexError as e:
+                print('debugging info: self.h5_vals = {}, self.data_dir = {}'.format(self.h5_vals, self.data_dir),
+                      file=sys.stderr)
+                raise e
 
             n_train_correct_seqs = get_n_correct_seqs(self.h5_trains)
             n_val_correct_seqs = get_n_correct_seqs(self.h5_vals)
