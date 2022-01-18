@@ -663,7 +663,7 @@ class HelixerModel(ABC):
         if self.verbose:
             print('\nData config: ')
             if not self.testing:
-                print(dict(self.h5_train.attrs))
+                print([dict(x.attrs) for x in self.h5_trains])
                 print('\nTraining data/X shape: {}'.format(self.shape_train[:2]))
                 print('Validation data/X shape: {}'.format(self.shape_val[:2]))
                 print('\nTotal est. training sequences: {}'.format(n_train_seqs))
@@ -675,7 +675,7 @@ class HelixerModel(ABC):
                     n_train_correct_seqs / self.shape_train[0] * 100,
                     n_val_correct_seqs / self.shape_val[0] * 100))
             else:
-                print(dict(self.h5_test.attrs))
+                print([dict(x.attrs) for x in self.h5_tests])
                 print('\nTest data shape: {}'.format(self.shape_test[:2]))
                 print('\nIntergenic test seqs: {:.2f}%'.format(
                     n_intergenic_test_seqs / n_test_seqs_with_intergenic * 100))
