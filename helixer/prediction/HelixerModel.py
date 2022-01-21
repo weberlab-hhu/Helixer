@@ -829,4 +829,5 @@ class HelixerModel(ABC):
                 if os.path.isfile(self.prediction_output_path):
                     print(f'{self.prediction_output_path} already exists and will be overwritten.')
                 self._make_predictions(model)
-            self.h5_test.close()
+            for h5_test in self.h5_tests:
+                h5_test.close()
