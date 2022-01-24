@@ -191,6 +191,10 @@ def histo_expected_coverage(h5, start_i, end_i, bins):
     return histo
 
 
+def sum_last_and_flatten(x):
+    return np.sum(x, axis=-1).ravel()
+
+
 def main(species, bam, h5_data, d_utp, dont_score):
 
     # open h5
@@ -259,8 +263,12 @@ def main(species, bam, h5_data, d_utp, dont_score):
             y = h5['data/y'][i:(i + by_out)]
             datay = y.reshape([-1, 4])
             _, chunk_size, n_cats = y.shape
-            coverage = h5[f'evaluation/{COV_STR}'][i:(i + by_out)].ravel()
-            spliced_coverage = h5[f'evaluation/{SC_STR}'][i:(i + by_out)].ravel()
+            coverage = h5[f'evaluation/{COV_STR}'][i:(i + by_out)]
+            spliced_coverage = h5[f'evaluation/{SC_STR}'][i:(i + by_out)]
+            # coverage and spliced_coverage will initially have dimensions [n_chunks, chunk_size, n_bams]
+            # but scoring assumes shape [n_basepairs], so they must be summed and flattened
+            coverage, spliced_coverage = sum_last_and_flatten(coverage), sum_last_and_flatten(spliced_coverage)
+
             by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size])
             norm_cov_by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size, 2])  # 2 for [cov, sc]
             for scorer in scorers:
