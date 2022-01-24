@@ -11,10 +11,6 @@ import h5py.utils
 import numpy as np
 from multiprocessing import Pool
 
-BAMFILES_DATASET = 'cage_bam_files'
-CAGE_COVERAGE_SETS = ['cage_coverage', 'cage_spliced_coverage']
-COVERAGE_COUNTS = {'reads': 0, 'coverage': 0, 'spliced_coverage': 0}
-
 
 class ContiguousBit:
     def __init__(self, seqid, start_ends, start_i_h5, end_i_h5):
@@ -211,12 +207,12 @@ def find_contiguous_segments(h5, start_i, end_i, chunk_size):
     return bits_plus, bits_minus
 
 
-def add_empty_cage_datasets(h5, n):
+def add_empty_ngs_datasets(h5, n):
     length = h5['data/X'].shape[0]
     chunk_len = h5['data/X'].shape[1]
     if 'evaluation' not in h5.keys():
         h5.create_group('evaluation')
-    for key in CAGE_COVERAGE_SETS:
+    for key in NGS_COVERAGE_SETS:
         h5.create_dataset('evaluation/' + key,
                           shape=(length, chunk_len, n),
                           maxshape=(None, chunk_len, None),
@@ -362,7 +358,7 @@ def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_
 
     for i, cov_sample in enumerate(coverage_out):
         cov_array, spliced_array, length, counts, memmap_dirs = cov_sample
-        all_coverage = {CAGE_COVERAGE_SETS[0]: cov_array, CAGE_COVERAGE_SETS[1]: spliced_array}
+        all_coverage = {NGS_COVERAGE_SETS[0]: cov_array, NGS_COVERAGE_SETS[1]: spliced_array}
 
         # write to h5 contiguous bit by contiguous bit
         for direction in bits:
@@ -386,16 +382,16 @@ def main(species, h5_data, strandedness):
 
     nbams = len(H5_BAMS)
     try:
-        old_shape = h5['evaluation/' + CAGE_COVERAGE_SETS[0]].shape
+        old_shape = h5['evaluation/' + NGS_COVERAGE_SETS[0]].shape
         # if the dataset is already there, enlarge and increment
         assert len(old_shape) == 3
         old_final_dimension = old_shape[2]  # +1 for incrementing -1 to count from 0, stays the same
-        for cov_set in CAGE_COVERAGE_SETS:
+        for cov_set in NGS_COVERAGE_SETS:
             new_size = list(old_shape[:2])
             new_size.append(old_final_dimension + nbams)
             h5['evaluation/' + cov_set].resize(tuple(new_size))
     except KeyError:
-        add_empty_cage_datasets(h5, nbams)
+        add_empty_ngs_datasets(h5, nbams)
         old_final_dimension = 0
 
     try:
@@ -413,7 +409,7 @@ def main(species, h5_data, strandedness):
     coords = gen_coords(h5, species_start, species_end)
     print('start, end', species_start, species_end, file=sys.stderr)
 
-    chunk_size = h5['evaluation/cage_coverage'].shape[1]
+    chunk_size = h5['evaluation/' + NGS_COVERAGE_SETS[0]].shape[1]
 
     # open bam (read alignment file)
 
@@ -422,7 +418,6 @@ def main(species, h5_data, strandedness):
         cage_coverage_from_coord_to_h5(
             coord, h5, strandedness=strandedness,
             chunk_size=chunk_size, old_final_dimension=old_final_dimension)
-
 
     h5.close()
 
@@ -435,6 +430,10 @@ if __name__ == "__main__":
                         required=True)
     parser.add_argument('-b', '--bam', help='sorted (and indexed) bam file. Omit to only score existing coverage.',
                         nargs='+', required=True)
+    parser.add_argument('--dataset-prefix', help="prefix for the datasets file to store the resulting coverage "
+                                                 "current expected values are 'rnaseq', or 'cage' (default). "
+                                                 "datasets will be /evaluation/{prefix}_(spliced_)coverage ",
+                        default='cage')
     parser.add_argument('--first-read-is-sense-strand',
                         help='first strand is sense strand, e.g. reads are not from a typical dUTP protocol',
                         action='store_true')
@@ -459,7 +458,14 @@ if __name__ == "__main__":
 
     H5_BAMS = {}
     for bam in args.bam:
-        H5_BAMS[bam] =  HTSeq.BAM_Reader(bam)
+        H5_BAMS[bam] = HTSeq.BAM_Reader(bam)
+
+    # add underscore to prefix as a divider
+    pfx = args.dataset_prefix + '_'
+
+    BAMFILES_DATASET = f'{pfx}bam_files'
+    NGS_COVERAGE_SETS = [f'{pfx}coverage', f'{pfx}spliced_coverage']
+    COVERAGE_COUNTS = {'reads': 0, 'coverage': 0, 'spliced_coverage': 0}
 
     main(args.species,
          args.h5_data,
