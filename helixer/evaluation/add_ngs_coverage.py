@@ -82,7 +82,7 @@ def get_sense_strand(read, sense_strand=2):
         raise Exception("failed read strand interpretation ({}, {}, {})".format(read.paired_end,
                                                                                 read.pe_which,
                                                                                 read))
-    if sense_strand is not 2:
+    if sense_strand != 2:
         flip = not flip
 
     strand = read.iv.strand
@@ -222,9 +222,10 @@ def add_empty_ngs_datasets(h5, n):
 
 
 def add_empty_cov_meta(h5, n):
-    if 'meta' not in h5.keys():
-        h5.create_group('meta')
-    h5.create_dataset('meta/' + BAMFILES_DATASET,
+    meta_str = META_STR
+    if meta_str not in h5.keys():
+        h5.create_group(meta_str)
+    h5.create_dataset(f'{meta_str}/{BAMFILES_DATASET}',
                       shape=(n,),
                       maxshape=(None, ),
                       dtype='S512',
@@ -374,7 +375,7 @@ def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_
     return counts
 
 
-def main(species, h5_data, strandedness):
+def main(species, h5_data, strandedness, prefix):
     # open h5
     h5 = h5py.File(h5_data, 'r+')
     # create evaluation, score, & metadata placeholders if they don't exist
@@ -395,12 +396,12 @@ def main(species, h5_data, strandedness):
         old_final_dimension = 0
 
     try:
-        h5['meta/' + BAMFILES_DATASET].resize((old_final_dimension + nbams,))
+        h5[f'{META_STR}/{BAMFILES_DATASET}'].resize((old_final_dimension + nbams,))
     except KeyError:
         add_empty_cov_meta(h5, nbams)
 
     bams_as_meta = np.array([str(x).encode('ASCII') for x in H5_BAMS.keys()])
-    h5['meta/' + BAMFILES_DATASET][old_final_dimension:old_final_dimension + nbams] = bams_as_meta
+    h5[f'{META_STR}/{BAMFILES_DATASET}'][old_final_dimension:old_final_dimension + nbams] = bams_as_meta
 
     # identify regions in h5 corresponding to species
     species_start, species_end = species_range(h5, species)
@@ -441,8 +442,6 @@ if __name__ == "__main__":
                         help='second strand is sense strand, e.g. reads ARE from a typical dUTP protocol')
     parser.add_argument('--unstranded', action='store_true',
                         help='reads are not stranded, final "strand" will simply arbitrarily match read strand')
-    parser.add_argument('-r', '--skip-scoring', action="store_true",
-                        help="set this to add coverage to the bam file, but not 'score' it (raw cov. only)")
     args = parser.parse_args()
 
     if args.first_read_is_sense_strand:
@@ -462,10 +461,12 @@ if __name__ == "__main__":
 
     pfx = args.dataset_prefix
 
-    BAMFILES_DATASET = f'{pfx}_bam_files'
+    BAMFILES_DATASET = 'bam_files'
     NGS_COVERAGE_SETS = [f'{pfx}_coverage', f'{pfx}_spliced_coverage']
     COVERAGE_COUNTS = {'reads': 0, 'coverage': 0, 'spliced_coverage': 0}
+    META_STR = f'{pfx}_meta'
 
     main(args.species,
          args.h5_data,
-         strandedness)
+         strandedness,
+         pfx)

@@ -2,22 +2,8 @@ import sys
 import argparse
 import h5py
 import numpy as np
-from scripts import rnaseq
 import logging
-
-
-def add_empty_eval_datasets(h5):
-    length = h5['data/X'].shape[0]
-    chunk_len = h5['data/X'].shape[1]
-
-    h5.create_group('evaluation')
-    for key in [COV_STR, SC_STR]:
-        h5.create_dataset('evaluation/' + key,
-                          shape=(length, chunk_len),
-                          maxshape=(None, chunk_len),
-                          dtype="int",
-                          compression="lzf",
-                          fillvalue=-1)
+from add_ngs_coverage import add_empty_cov_meta
 
 
 def add_empty_score_datasets(h5):
@@ -195,7 +181,7 @@ def sum_last_and_flatten(x):
     return np.sum(x, axis=-1).ravel()
 
 
-def main(species, bam, h5_data, d_utp, dont_score):
+def main(species, h5_data):
 
     # open h5
     h5 = h5py.File(h5_data, 'r+')
@@ -217,7 +203,9 @@ def main(species, bam, h5_data, d_utp, dont_score):
     try:
         h5[META_STR]
     except KeyError:
-        rnaseq.add_meta(h5)
+        pass
+        # todo match to add_ngs_coverage
+        #rnaseq.add_meta(h5)
 
     # add remaining grp not currently part of rnaseq as it's unneeded there
     try:
@@ -237,73 +225,72 @@ def main(species, bam, h5_data, d_utp, dont_score):
     start = 0
     end = h5['data/X'].shape[0]
 
-    if not dont_score:
-        # calculate coverage score  (0 - 2)
-        # setup scorers
-        mec = int(h5[f'{META_STR}/median_expected_coverage'].attrs[species])
-        ig_scorer = ScorerIntergenic(column=0, median_cov=mec)
-        utr_scorer = ScorerExon(column=1, median_cov=mec)
-        cds_scorer = ScorerExon(column=2, median_cov=mec)
-        intron_scorer = ScorerIntron(column=3, median_cov=mec)
-        scorers = [ig_scorer, utr_scorer, cds_scorer, intron_scorer]
-        norm_cov_scorer = NormScoreCoverage(column=None, median_cov=mec)
-        norm_sc_scorer = NormScoreSplicedCoverage(column=None, median_cov=mec)
-        norm_scorers = [norm_cov_scorer, norm_sc_scorer]  # calculate normalized coverage more than "scoring" persay
-        max_norm_cov = 0
-        max_norm_sc = 0
-        counts = np.zeros(shape=(end - start, 4))
-        print("scoring {}-{}".format(start, end), file=sys.stderr)
-        by = 500
-        for i in range(start, end, by):
-            if i + by > end:
-                by_out = end - i
-            else:
-                by_out = by
-            i_rel = i - start
-            y = h5['data/y'][i:(i + by_out)]
-            datay = y.reshape([-1, 4])
-            _, chunk_size, n_cats = y.shape
-            coverage = h5[f'evaluation/{COV_STR}'][i:(i + by_out)]
-            spliced_coverage = h5[f'evaluation/{SC_STR}'][i:(i + by_out)]
-            # coverage and spliced_coverage will initially have dimensions [n_chunks, chunk_size, n_bams]
-            # but scoring assumes shape [n_basepairs], so they must be summed and flattened
-            coverage, spliced_coverage = sum_last_and_flatten(coverage), sum_last_and_flatten(spliced_coverage)
+    # calculate coverage score  (0 - 2)
+    # setup scorers
+    mec = int(h5[f'{META_STR}/median_expected_coverage'].attrs[species])
+    ig_scorer = ScorerIntergenic(column=0, median_cov=mec)
+    utr_scorer = ScorerExon(column=1, median_cov=mec)
+    cds_scorer = ScorerExon(column=2, median_cov=mec)
+    intron_scorer = ScorerIntron(column=3, median_cov=mec)
+    scorers = [ig_scorer, utr_scorer, cds_scorer, intron_scorer]
+    norm_cov_scorer = NormScoreCoverage(column=None, median_cov=mec)
+    norm_sc_scorer = NormScoreSplicedCoverage(column=None, median_cov=mec)
+    norm_scorers = [norm_cov_scorer, norm_sc_scorer]  # calculate normalized coverage more than "scoring" persay
+    max_norm_cov = 0
+    max_norm_sc = 0
+    counts = np.zeros(shape=(end - start, 4))
+    print("scoring {}-{}".format(start, end), file=sys.stderr)
+    by = 500
+    for i in range(start, end, by):
+        if i + by > end:
+            by_out = end - i
+        else:
+            by_out = by
+        i_rel = i - start
+        y = h5['data/y'][i:(i + by_out)]
+        datay = y.reshape([-1, 4])
+        _, chunk_size, n_cats = y.shape
+        coverage = h5[f'evaluation/{COV_STR}'][i:(i + by_out)]
+        spliced_coverage = h5[f'evaluation/{SC_STR}'][i:(i + by_out)]
+        # coverage and spliced_coverage will initially have dimensions [n_chunks, chunk_size, n_bams]
+        # but scoring assumes shape [n_basepairs], so they must be summed and flattened
+        coverage, spliced_coverage = sum_last_and_flatten(coverage), sum_last_and_flatten(spliced_coverage)
 
-            by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size])
-            norm_cov_by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size, 2])  # 2 for [cov, sc]
-            for scorer in scorers:
-                raw_score, mask = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
-                if raw_score.size > 0:
-                    by_bp[mask] = raw_score
-            for index_asif, norm_scorer in enumerate(norm_scorers):
-                raw_score, mask = norm_scorer.score(datay=datay, coverage=coverage,
-                                                    spliced_coverage=spliced_coverage)
-                if raw_score.size > 0:
-                    norm_cov_by_bp[mask, index_asif] = raw_score
-            del coverage, spliced_coverage
-            by_bp = by_bp.reshape([by_out, chunk_size])
-            norm_cov_by_bp = norm_cov_by_bp.reshape([by_out, chunk_size, 2])
-            h5[f'{SCORE_STR}/by_bp'][i:(i + by_out)] = by_bp
-            h5[f'{SCORE_STR}/norm_cov_by_bp'][i:(i + by_out)] = norm_cov_by_bp
-            max_norm_cov = max(max_norm_cov, np.max(norm_cov_by_bp[:, 0]))
-            max_norm_sc = max(max_norm_sc, np.max(norm_cov_by_bp[:, 1]))
+        by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size])
+        norm_cov_by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size, 2])  # 2 for [cov, sc]
+        for scorer in scorers:
+            raw_score, mask = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
+            if raw_score.size > 0:
+                by_bp[mask] = raw_score
+        for index_asif, norm_scorer in enumerate(norm_scorers):
+            raw_score, mask = norm_scorer.score(datay=datay, coverage=coverage,
+                                                spliced_coverage=spliced_coverage)
+            if raw_score.size > 0:
+                norm_cov_by_bp[mask, index_asif] = raw_score
+        del coverage, spliced_coverage
+        by_bp = by_bp.reshape([by_out, chunk_size])
+        norm_cov_by_bp = norm_cov_by_bp.reshape([by_out, chunk_size, 2])
+        h5[f'{SCORE_STR}/by_bp'][i:(i + by_out)] = by_bp
+        h5[f'{SCORE_STR}/norm_cov_by_bp'][i:(i + by_out)] = norm_cov_by_bp
+        max_norm_cov = max(max_norm_cov, np.max(norm_cov_by_bp[:, 0]))
+        max_norm_sc = max(max_norm_sc, np.max(norm_cov_by_bp[:, 1]))
 
-            current_counts = np.sum(h5['data/y'][i:(i + by_out)], axis=1)
-            scores_four = np.full(fill_value=-1., shape=[by_out, 4])
-            scores_one = np.full(fill_value=-1., shape=[by_out])
-            for j in range(by_out):  # todo, can I replace this with some sort of apply?
-                for col in range(4):
-                    mask = y[j, :, col].astype(np.bool)
-                    if np.any(mask):
-                        scores_four[j, col] = np.mean(by_bp[j][y[j, :, col].astype(np.bool)])
-                    else:
-                        scores_four[j, col] = 0.
-                scores_one[j] = np.sum(current_counts[j] * scores_four[j] / np.sum(current_counts[j]))
-            counts[i_rel:(i_rel + by_out)] = current_counts
-            h5[f'{SCORE_STR}/four'][i:(i + by_out)] = scores_four
-            h5[f'{SCORE_STR}/one'][i:(i + by_out)] = scores_one
-            if not i % 2000:
-                print('reached i={}'.format(i))
+        current_counts = np.sum(h5['data/y'][i:(i + by_out)], axis=1)
+        scores_four = np.full(fill_value=-1., shape=[by_out, 4])
+        scores_one = np.full(fill_value=-1., shape=[by_out])
+        for j in range(by_out):  # todo, can I replace this with some sort of apply?
+            for col in range(4):
+                mask = y[j, :, col].astype(np.bool)
+                if np.any(mask):
+                    scores_four[j, col] = np.mean(by_bp[j][y[j, :, col].astype(np.bool)])
+                else:
+                    scores_four[j, col] = 0.
+            scores_one[j] = np.sum(current_counts[j] * scores_four[j] / np.sum(current_counts[j]))
+        counts[i_rel:(i_rel + by_out)] = current_counts
+        h5[f'{SCORE_STR}/four'][i:(i + by_out)] = scores_four
+        h5[f'{SCORE_STR}/one'][i:(i + by_out)] = scores_one
+        if not i % 2000:
+            print('reached i={}'.format(i))
         print('fin, i={}'.format(i), file=sys.stderr)
         # save maximums as attributes
         h5[f'{META_STR}/max_normalized_cov_sc'].attrs.create(name=species, data=(max_norm_cov, max_norm_sc))
@@ -325,16 +312,13 @@ if __name__ == "__main__":
                                                 'AND with /evaluation/{{prefix}_coverage, {prefix}_spliced_coverage} '
                                                 'to which {prefix}_scores will be added',
                         required=True)
-    parser.add_argument('--dataset-prefix', 'prefix of h5 datasets to be used for scoring (default "rnaseq")',
+    parser.add_argument('-s', '--species', help='species name matching that used in creation of geenuff/h5')
+    parser.add_argument('--dataset-prefix', help='prefix of h5 datasets to be used for scoring (default "rnaseq")',
                         default='rnaseq')
     args = parser.parse_args()
     COV_STR = f'{args.dataset_prefix}_coverage'
     SC_STR = f'{args.dataset_prefix}_spliced_coverage'
     META_STR = f'{args.dataset_prefix}_meta'
     SCORE_STR = f'{args.dataset_prefix}_scores'
-    main(args.species,
-         args.bam,
-         args.h5_data,
-         not args.not_dUTP,
-         args.skip_scoring,
-         )
+    main(args.species, args.h5_data)
+
