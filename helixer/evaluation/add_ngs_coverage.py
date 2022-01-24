@@ -378,7 +378,7 @@ def main(species, h5_data, strandedness):
     # open h5
     h5 = h5py.File(h5_data, 'r+')
     # create evaluation, score, & metadata placeholders if they don't exist
-    # (evaluation/coverage, "/spliced_coverage, scores/*, meta/*)
+    # (evaluation/{prefix}_coverage, "evaluation/{prefix}_spliced_coverage, , meta/*)
 
     nbams = len(H5_BAMS)
     try:
