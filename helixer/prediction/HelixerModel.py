@@ -137,7 +137,8 @@ class HelixerSequence(Sequence):
 
         if self.overlap:
             assert self.mode == "test", "overlapping currently only works for test (predictions & eval)"
-            contiguous_ranges = helixer.core.helpers.get_contiguous_ranges(self.h5_file)
+            # can take [0] below bc we've asserted that test means len(self.h5_files) == 1 above
+            contiguous_ranges = helixer.core.helpers.get_contiguous_ranges(self.h5_files[0])
             self.ol_helper = overlap.OverlapSeqHelper(contiguous_ranges=contiguous_ranges,
                                                       chunk_size=self.chunk_size,
                                                       max_batch_size=self.batch_size,
