@@ -200,7 +200,7 @@ class HelixerSequence(Sequence):
         batch = []
         # batch must have one thing for everything unpacked by __getitem__ (and in order)
         for name in ['data/X', 'data/y', 'data/sample_weights', 'data/transitions', 'data/phases',
-                     'data/predictions', f'{self.coverage_score_dataset_prefix}/by_bp']:
+                     'data/predictions', f'{self.coverage_score_dataset_prefix}_scores/by_bp']:
             if name not in self.data_list_names:
                 batch.append(None)
             else:
