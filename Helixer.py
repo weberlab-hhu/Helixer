@@ -43,6 +43,8 @@ class HelixerParameterParser(ParameterParser):
                                           'quality if overlapping is enabled. Smaller values may lead to better '
                                           'predictions but will take longer. Has to be smaller than --chunk-input-len. '
                                           '(Default is 16038.)')
+        self.pred_group.add_argument('--debug', action='store_true', help='add this to quickly the code runs through'
+                                                                          'without loading/predicting on the full file')
 
         self.post_group = self.parser.add_argument_group("Post processing parameters")
         self.post_group.add_argument('--window-size', type=int, help='')
@@ -57,6 +59,7 @@ class HelixerParameterParser(ParameterParser):
             'lineage': 'land_plant',
             'batch_size': 32,
             'no_overlap': False,
+            'debug': False,
             'overlap_offset': 10692,
             'overlap_core_length': 16038,
             'window_size': 100,
@@ -127,6 +130,8 @@ if __name__ == '__main__':
         ]
         if args.overlap:
             hybrid_model_args.append('--overlap')
+        if args.debug:
+            hybrid_model_args.append('--debug')
         model = HybridModel(cli_args=hybrid_model_args)
         model.run()
 
