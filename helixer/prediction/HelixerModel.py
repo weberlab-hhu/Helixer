@@ -122,6 +122,11 @@ class HelixerSequence(Sequence):
         if self.mode == 'test':
             assert len(self.h5_files) == 1, "predictions and eval should be applied to individual files only"
 
+        chunk_sizes = [h5['data/X'].shape[1] for h5 in self.h5_files]
+        for cs in chunk_sizes[1:]:
+            assert cs == chunk_sizes[0], f'Not all chunk_size match in h5_files: {chunk_sizes}'
+        self.chunk_size = chunk_sizes[0]
+
         self.data_list_names = ['data/X']
         if not self.only_predictions:
             self.data_list_names += ['data/y', 'data/sample_weights']
@@ -185,7 +190,6 @@ class HelixerSequence(Sequence):
             n_seqs = max(1000 // len(self.h5_files), 1)
         else:
             n_seqs = x_dset.shape[0]
-        self.chunk_size = x_dset.shape[1]
 
         # load at most 10000 uncompressed samples at a time in memory
         max_at_once = min(10000, n_seqs)
