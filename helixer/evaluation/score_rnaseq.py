@@ -219,7 +219,7 @@ def main(species, h5_data):
         h5[META_STR].create_group('max_normalized_cov_sc')
 
     # add median coverage in regions annotated as UTR/CDS for slightly more robust scaling
-    median_coverage = get_median_expected_coverage(h5, species)
+    median_coverage = get_median_expected_coverage(h5)
     h5[f'{META_STR}/median_expected_coverage'].attrs.create(name=species, data=median_coverage)
 
     start = 0
@@ -280,9 +280,9 @@ def main(species, h5_data):
         scores_one = np.full(fill_value=-1., shape=[by_out])
         for j in range(by_out):  # todo, can I replace this with some sort of apply?
             for col in range(4):
-                mask = y[j, :, col].astype(np.bool)
+                mask = y[j, :, col].astype(bool)
                 if np.any(mask):
-                    scores_four[j, col] = np.mean(by_bp[j][y[j, :, col].astype(np.bool)])
+                    scores_four[j, col] = np.mean(by_bp[j][y[j, :, col].astype(bool)])
                 else:
                     scores_four[j, col] = 0.
             scores_one[j] = np.sum(current_counts[j] * scores_four[j] / np.sum(current_counts[j]))
@@ -291,18 +291,18 @@ def main(species, h5_data):
         h5[f'{SCORE_STR}/one'][i:(i + by_out)] = scores_one
         if not i % 2000:
             print('reached i={}'.format(i))
-        print('fin, i={}'.format(i), file=sys.stderr)
-        # save maximums as attributes
-        h5[f'{META_STR}/max_normalized_cov_sc'].attrs.create(name=species, data=(max_norm_cov, max_norm_sc))
-        # normalize coverage score by species and category
-        raw_four = h5[f'{SCORE_STR}/four'][start:end]
-        centers = np.sum(raw_four * counts, axis=0) / np.sum(counts, axis=0)
-        centered_four = raw_four - centers
-        # cat_counts = np.sum(counts, axis=0)
-        # weighted_four = centered_four / np.sum(cat_counts) * cat_counts ### make sure works along last axis
-        centered_one = np.sum(centered_four * counts, axis=1) / np.sum(counts, axis=1)
-        h5[f'{SCORE_STR}/four_centered'][start:end] = centered_four
-        h5[f'{SCORE_STR}/one_centered'][start:end] = centered_one
+    print('fin, {}'.format(i + by_out), file=sys.stderr)
+    # save maximums as attributes
+    h5[f'{META_STR}/max_normalized_cov_sc'].attrs.create(name=species, data=(max_norm_cov, max_norm_sc))
+    # normalize coverage score by species and category
+    raw_four = h5[f'{SCORE_STR}/four'][start:end]
+    centers = np.sum(raw_four * counts, axis=0) / np.sum(counts, axis=0)
+    centered_four = raw_four - centers
+    # cat_counts = np.sum(counts, axis=0)
+    # weighted_four = centered_four / np.sum(cat_counts) * cat_counts ### make sure works along last axis
+    centered_one = np.sum(centered_four * counts, axis=1) / np.sum(counts, axis=1)
+    h5[f'{SCORE_STR}/four_centered'][start:end] = centered_four
+    h5[f'{SCORE_STR}/one_centered'][start:end] = centered_one
     h5.close()
 
 
@@ -312,7 +312,8 @@ if __name__ == "__main__":
                                                 'AND with /evaluation/{{prefix}_coverage, {prefix}_spliced_coverage} '
                                                 'to which {prefix}_scores will be added',
                         required=True)
-    parser.add_argument('-s', '--species', help='species name matching that used in creation of geenuff/h5')
+    parser.add_argument('-s', '--species', help='species name matching that used in creation of geenuff/h5',
+                        required=True)
     parser.add_argument('--dataset-prefix', help='prefix of h5 datasets to be used for scoring (default "rnaseq")',
                         default='rnaseq')
     args = parser.parse_args()
