@@ -2,7 +2,7 @@ import sys
 import argparse
 import h5py
 import numpy as np
-from helixer.evaluation import rnaseq
+from scripts import rnaseq
 import logging
 
 
@@ -313,7 +313,8 @@ def main(species, bam, h5_data, d_utp, dont_score):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--h5-data', help='h5 data file (with /data/{X, y, species, seqids, etc...}) '
+    parser.add_argument('-d', '--h5-data', help='h5 data file with /data/{X, y, species, seqids, etc...} '
+                                                'AND with /evaluation/{{prefix}_coverage, {prefix}_spliced_coverage} '
                                                 'to which {prefix}_scores will be added',
                         required=True)
     parser.add_argument('--dataset-prefix', 'prefix of h5 datasets to be used for scoring (default "rnaseq")',

@@ -21,7 +21,7 @@ from ..export.numerify import SequenceNumerifier, AnnotationNumerifier, Stepper,
 from ..export.exporter import HelixerExportController, HelixerFastaToH5Controller
 from ..prediction.Metrics import ConfusionMatrix, ConfusionMatrixGenic
 from helixer.prediction.LSTMModel import LSTMSequence
-from ..evaluation import rnaseq
+from ..evaluation import add_ngs_coverage
 
 TMP_DB = 'testdata/tmp/dummy.sqlite3'
 DUMMYLOCI_DB = 'testdata/dummyloci/dummyloci.sqlite3'
@@ -1075,9 +1075,10 @@ def test_transition_encoding_and_weights():
 def test_contiguous_bits():
     """confirm correct splitting at anything that needs special handling due to padding"""
 
-    h5 = h5py.File(EVAL_H5, 'r')
-    bits_plus, bits_minus = rnaseq.find_contiguous_segments(h5, start_i=0, end_i=h5['data/start_ends'].shape[0],
-                                                            chunk_size=h5['evaluation/coverage'].shape[1])
+    h5 = h5py.File(EVAL_H5, 'r')  # todo update test file to have typical prefix
+    bits_plus, bits_minus = add_ngs_coverage.find_contiguous_segments(h5, start_i=0,
+                                                                      end_i=h5['data/start_ends'].shape[0],
+                                                                      chunk_size=h5['evaluation/coverage'].shape[1])
 
     assert [len(x.start_ends) for x in bits_plus] == [6, 1]
     assert [len(x.start_ends) for x in bits_minus] == [1, 6]
@@ -1105,10 +1106,10 @@ def test_coverage_in_bits():
     start_ends = h5['data/start_ends'][:]
     print(start_ends)
     chunk_size = h5['evaluation/coverage'].shape[1]
-    bits_plus, bits_minus = rnaseq.find_contiguous_segments(h5, start_i=0, end_i=h5['data/start_ends'].shape[0],
-                                                            chunk_size=chunk_size)
-    rnaseq.write_in_bits(coverage, bits_plus, h5['evaluation/coverage'], chunk_size)
-    rnaseq.write_in_bits(rev_coverage, bits_minus, h5['evaluation/coverage'], chunk_size)
+    bits_plus, bits_minus = add_ngs_coverage.find_contiguous_segments(h5, start_i=0, end_i=h5['data/start_ends'].shape[0],
+                                                                      chunk_size=chunk_size)
+    add_ngs_coverage.write_in_bits(coverage, bits_plus, h5['evaluation/coverage'], chunk_size)
+    add_ngs_coverage.write_in_bits(rev_coverage, bits_minus, h5['evaluation/coverage'], chunk_size)
     for i, (start, end) in enumerate(start_ends):
         cov_chunk = h5['evaluation/coverage'][i]
         assert end != start

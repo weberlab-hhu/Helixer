@@ -426,7 +426,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--species', help="species name, matching geenuff db and h5 files", required=True)
     parser.add_argument('-d', '--h5-data', help='h5 data file (with /data/{X, y, species, seqids, etc...}) '
-                                                'to which evaluation coverage will be ADDED!',
+                                                'to which evaluation coverage will be added',
                         required=True)
     parser.add_argument('-b', '--bam', help='sorted (and indexed) bam file. Omit to only score existing coverage.',
                         nargs='+', required=True)
@@ -460,11 +460,10 @@ if __name__ == "__main__":
     for bam in args.bam:
         H5_BAMS[bam] = HTSeq.BAM_Reader(bam)
 
-    # add underscore to prefix as a divider
-    pfx = args.dataset_prefix + '_'
+    pfx = args.dataset_prefix
 
-    BAMFILES_DATASET = f'{pfx}bam_files'
-    NGS_COVERAGE_SETS = [f'{pfx}coverage', f'{pfx}spliced_coverage']
+    BAMFILES_DATASET = f'{pfx}_bam_files'
+    NGS_COVERAGE_SETS = [f'{pfx}_coverage', f'{pfx}_spliced_coverage']
     COVERAGE_COUNTS = {'reads': 0, 'coverage': 0, 'spliced_coverage': 0}
 
     main(args.species,

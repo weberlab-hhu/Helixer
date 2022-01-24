@@ -116,6 +116,7 @@ class HelixerSequence(Sequence):
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
                                  'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
+                                 'coverage_score_dataset_prefix',
                                  'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
 
         print(f'\nStarting to load {self.mode} data into memory..')
@@ -142,7 +143,7 @@ class HelixerSequence(Sequence):
                 if self.transition_weights is not None:
                     self.data_list_names.append('data/transitions')
                 if self.coverage_weights:
-                    self.data_list_names.append('scores/by_bp')
+                    self.data_list_names.append(f'{self.coverage_score_dataset_prefix}_scores/by_bp')
 
         if self.overlap:
             assert self.mode == "test", "overlapping currently only works for test (predictions & eval)"
@@ -154,7 +155,8 @@ class HelixerSequence(Sequence):
                                                       core_length=self.core_length)
 
         if self.input_coverage and not self.only_predictions:
-            self.data_list_names += ['evaluation/coverage', 'evaluation/spliced_coverage']
+            self.data_list_names += [f'evaluation/{self.coverage_score_dataset_prefix}_coverage',
+                                     f'evaluation/{self.coverage_score_dataset_prefix}_spliced_coverage']
 
         self.data_lists = [[] for _ in range(len(self.data_list_names))]
         self.data_dtypes = [h5_file[name].dtype for name in self.data_list_names]
@@ -198,7 +200,7 @@ class HelixerSequence(Sequence):
         batch = []
         # batch must have one thing for everything unpacked by __getitem__ (and in order)
         for name in ['data/X', 'data/y', 'data/sample_weights', 'data/transitions', 'data/phases',
-                     'data/predictions', 'scores/by_bp']:
+                     'data/predictions', f'{self.coverage_score_dataset_prefix}/by_bp']:
             if name not in self.data_list_names:
                 batch.append(None)
             else:
@@ -206,9 +208,11 @@ class HelixerSequence(Sequence):
 
                 # append coverage to X directly, might be clearer elsewhere once working, but this needs little code...
                 if name == 'data/X' and self.input_coverage:
-                    decode_coverage = self.get_batch_of_one_dataset('evaluation/coverage', batch_idx)
+                    decode_coverage = self.get_batch_of_one_dataset(
+                        f'evaluation/{self.coverage_score_dataset_prefix}_coverage', batch_idx)
                     decode_coverage = [self._cov_norm(x.reshape(-1, 1)).astype(np.float16) for x in decode_coverage]
-                    decode_spliced = self.get_batch_of_one_dataset('evaluation/spliced_coverage', batch_idx)
+                    decode_spliced = self.get_batch_of_one_dataset(
+                        f'evaluation/{self.coverage_score_dataset_prefix}_spliced_coverage', batch_idx)
                     decode_spliced = [self._cov_norm(x.reshape(-1, 1)).astype(np.float16) for x in decode_spliced]
                     decoded_list = [np.concatenate((x, y, z), axis=1) for x, y, z in
                                     zip(decoded_list, decode_coverage, decode_spliced)]
@@ -374,6 +378,8 @@ class HelixerModel(ABC):
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
         self.parser.add_argument('--coverage-weights', action='store_true')
         self.parser.add_argument('--coverage-offset', type=float, default=0.0)
+        self.parser.add_argument('--coverage-score-dataset-prefix', default='rnaseq', 
+                                 help="weighting found at {prefix}_scores/by_bp in h5 file, default is 'rnaseq'")
         self.parser.add_argument('--calculate-uncertainty', action='store_true')
         self.parser.add_argument('--no-utrs', action='store_true')
         self.parser.add_argument('--predict-phase', action='store_true')
