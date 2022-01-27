@@ -20,6 +20,7 @@ import numpy as np
 import tensorflow as tf
 from sklearn.utils import shuffle
 from pprint import pprint
+from termcolor import colored
 from terminaltables import AsciiTable
 
 from tensorflow.keras.callbacks import Callback
@@ -83,7 +84,8 @@ class ConfusionMatrixTrain(Callback):
             best_model = load_model(self.save_model_path)
             # double check that we loaded the correct model, can be remove if confirmed this works
             print('\nValidation set again:')
-            _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, best_model, print_to_stdout=True, calc_H=calc_H)
+            _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, best_model, print_to_stdout=True,
+                                                          calc_H=self.calc_H)
             assert val_genic_f1 == self.best_val_genic_f1
 
             training_species = self.train_generator.h5_file.attrs['genomes']
@@ -106,10 +108,10 @@ class PreshuffleCallback(Callback):
 
 
 class HelixerSequence(Sequence):
-    def __init__(self, model, h5_file, mode, batch_size, shuffle):
+    def __init__(self, model, h5_files, mode, batch_size, shuffle):
         assert mode in ['train', 'val', 'test']
         self.model = model
-        self.h5_file = h5_file
+        self.h5_files = h5_files
         self.mode = mode
         self.shuffle = shuffle
         self.batch_size = batch_size
@@ -119,18 +121,13 @@ class HelixerSequence(Sequence):
                                  'coverage_score_dataset_prefix',
                                  'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
 
-        print(f'\nStarting to load {self.mode} data into memory..')
-        x_dset = h5_file['data/X']
-        print(f'X shape: {x_dset.shape}')
-        if not self.only_predictions:
-            y_dset = h5_file['data/y']
-            print(f'y shape: {y_dset.shape}')
+        if self.mode == 'test':
+            assert len(self.h5_files) == 1, "predictions and eval should be applied to individual files only"
 
-        if self.debug:
-            self.n_seqs = 1000
-        else:
-            self.n_seqs = x_dset.shape[0]
-        self.chunk_size = x_dset.shape[1]
+        chunk_sizes = [h5['data/X'].shape[1] for h5 in self.h5_files]
+        for cs in chunk_sizes[1:]:
+            assert cs == chunk_sizes[0], f'Not all chunk_size match in h5_files: {chunk_sizes}'
+        self.chunk_size = chunk_sizes[0]
 
         self.data_list_names = ['data/X']
         if not self.only_predictions:
@@ -147,7 +144,8 @@ class HelixerSequence(Sequence):
 
         if self.overlap:
             assert self.mode == "test", "overlapping currently only works for test (predictions & eval)"
-            contiguous_ranges = helixer.core.helpers.get_contiguous_ranges(self.h5_file)
+            # can take [0] below bc we've asserted that test means len(self.h5_files) == 1 above
+            contiguous_ranges = helixer.core.helpers.get_contiguous_ranges(self.h5_files[0])
             self.ol_helper = overlap.OverlapSeqHelper(contiguous_ranges=contiguous_ranges,
                                                       chunk_size=self.chunk_size,
                                                       max_batch_size=self.batch_size,
@@ -159,25 +157,57 @@ class HelixerSequence(Sequence):
                                      f'evaluation/{self.coverage_score_dataset_prefix}_spliced_coverage']
 
         self.data_lists = [[] for _ in range(len(self.data_list_names))]
-        self.data_dtypes = [h5_file[name].dtype for name in self.data_list_names]
+        self.data_dtypes = [self.h5_files[0][name].dtype for name in self.data_list_names]
 
         self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)  # use BITSHUFFLE
 
+        print(f'\nstarting to load {self.mode} data into memory..')
+        for h5_file in self.h5_files:
+            self._load_one_h5(h5_file)
+
+        for name, data_list in zip(self.data_list_names, self.data_lists):
+            comp_data_size = sum([sys.getsizeof(e) for e in data_list])
+            print(f'Compressed data size of {name} is at least {comp_data_size / 2 ** 30:.4f} GB\n')
+
+        self.n_seqs = len(self.data_lists[0])
+        print(f'setting self.n_seqs to {self.n_seqs}, bc that is len of {self.data_list_names[0]}')
+
+        if self.mode == "test":
+            if self.class_weights is not None:
+                print(f'ignoring the class_weights of {self.class_weights} in mode "test"')
+                self.class_weights = None
+            if self.transition_weights is not None:
+                print(f'ignoring the transition_weights of {self.transition_weights} in mode "test"')
+                self.transition_weights = None
+
+    def _load_one_h5(self, h5_file):
+        print(f'For h5 starting with species = {h5_file["data/species"][0]}:')
+        x_dset = h5_file['data/X']
+        print(f'x shape: {x_dset.shape}')
+        if not self.only_predictions:
+            y_dset = h5_file['data/y']
+            print(f'y shape: {y_dset.shape}')
+
+        if self.debug:
+            # so that total sequences between all files add to ~1000
+            n_seqs = max(1000 // len(self.h5_files), 1)
+        else:
+            n_seqs = x_dset.shape[0]
+
         # load at most 10000 uncompressed samples at a time in memory
+        max_at_once = min(10000, n_seqs)
         for name, data_list in zip(self.data_list_names, self.data_lists):
             start_time_dset = time.time()
-            for offset in range(0, self.n_seqs, 10000):
+            for offset in range(0, n_seqs, max_at_once):
                 if name == 'data/predictions':
-                    data_slice = h5_file[name][0, offset:offset + 10000]  # only use one prediction for now
+                    data_slice = h5_file[name][0, offset:offset + max_at_once]  # only use one prediction for now
                 else:
-                    data_slice = h5_file[name][offset:offset + 10000]
+                    data_slice = h5_file[name][offset:offset + max_at_once]
                 if self.no_utrs and name == 'data/y':
                     HelixerSequence._zero_out_utrs(data_slice)
                 data_list.extend([self.compressor.encode(e) for e in data_slice])
-            print(f'Data loading of {len(data_list)} samples of {name} into memory took '
-                  f'{time.time() - start_time_dset:.2f} secs')
-            comp_data_size = sum([sys.getsizeof(e) for e in data_list])
-            print(f'Compressed data size of {name} is at least {comp_data_size / 2 ** 30:.4f} GB\n')
+            print(f'Data loading of {n_seqs} (total so far {len(data_list)}) samples of {name} '
+                  f'into memory took {time.time() - start_time_dset:.2f} secs')
 
     @staticmethod
     def _zero_out_utrs(y):
@@ -231,7 +261,7 @@ class HelixerSequence(Sequence):
         if self.overlap:
             h5_indices = self.ol_helper.h5_indices_of_batch(batch_idx)
         else:
-            end = min(self.h5_file['data/X'].shape[0], (batch_idx + 1) * self.batch_size)
+            end = min(self.n_seqs, (batch_idx + 1) * self.batch_size)
             h5_indices = np.arange(batch_idx * self.batch_size, end)
 
         return self._decode_one(name, h5_indices)
@@ -321,7 +351,7 @@ class HelixerSequence(Sequence):
 
     @staticmethod
     def _apply_stretch(reshaped_sw_t, stretch):
-        """modifies sample weight shaped transitions so they are a peak instead of a single point"""
+        """modifies sample weight shaped transitions so that they are a peak instead of a single point"""
         reshaped_sw_t = np.array(reshaped_sw_t)
         dilated_rf = np.ones(np.shape(reshaped_sw_t))
 
@@ -356,7 +386,9 @@ class HelixerSequence(Sequence):
 
 
 class HelixerModel(ABC):
-    def __init__(self):
+    def __init__(self, cli_args=None):
+        self.cli_args = cli_args  # if cli_args is None, the parameters from sys.argv will be used
+
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('-d', '--data-dir', type=str, default='')
         self.parser.add_argument('-s', '--save-model-path', type=str, default='./best_model.h5')
@@ -372,35 +404,40 @@ class HelixerModel(ABC):
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
         self.parser.add_argument('--weight-decay', type=float, default=3.5e-5)
         self.parser.add_argument('--class-weights', type=str, default='None')
-        self.parser.add_argument('--input-coverage', action='store_true')
-        self.parser.add_argument('--coverage-norm', default=None)
+        self.parser.add_argument('--input-coverage', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
+        self.parser.add_argument('--coverage-norm', default=None, help=argparse.SUPPRESS)
         self.parser.add_argument('--transition-weights', type=str, default='None')
-        self.parser.add_argument('--stretch-transition-weights', type=int, default=0)
+        self.parser.add_argument('--stretch-transition-weights', type=int, default=0, help=argparse.SUPPRESS)  # bc no clear effect on result quality
         self.parser.add_argument('--coverage-weights', action='store_true')
         self.parser.add_argument('--coverage-offset', type=float, default=0.0)
         self.parser.add_argument('--coverage-score-dataset-prefix', default='rnaseq', 
                                  help="weighting found at {prefix}_scores/by_bp in h5 file, default is 'rnaseq'")
         self.parser.add_argument('--calculate-uncertainty', action='store_true')
-        self.parser.add_argument('--no-utrs', action='store_true')
+        self.parser.add_argument('--no-utrs', action='store_true', help=argparse.SUPPRESS)  # is this still needed?
         self.parser.add_argument('--predict-phase', action='store_true')
-        self.parser.add_argument('--load-predictions', action='store_true')
+        self.parser.add_argument('--load-predictions', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
         self.parser.add_argument('--resume-training', action='store_true')
         # testing / predicting
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
         self.parser.add_argument('-t', '--test-data', type=str, default='')
         self.parser.add_argument('-p', '--prediction-output-path', type=str, default='predictions.h5')
+        self.parser.add_argument('--compression', default='gzip', help='compression used for datasets in predictions '
+                                                                       'h5 file. One of "lzf" or "gzip" (default)')
         self.parser.add_argument('--eval', action='store_true')
         self.parser.add_argument('--overlap', action="store_true",
                                  help="will improve prediction quality at 'chunk' ends by creating and overlapping "
                                       "sliding-window predictions (with proportional increase in time usage)")
-        self.parser.add_argument('--overlap-offset', type=int, default=2500)
-        self.parser.add_argument('--core-length', type=int, default=10000)
+        self.parser.add_argument('--overlap-offset', type=int, default=10692,
+                                 help="distance to 'step' between predicting subsequences when overlapping")
+        self.parser.add_argument('--core-length', type=int, default=16038,
+                                 help="length of 'core' subsequence to retain before overlapping. The ends beyond this"
+                                      "region will be cropped.")
         # resources
         self.parser.add_argument('--float-precision', type=str, default='float32')
         self.parser.add_argument('--cpus', type=int, default=8)
         self.parser.add_argument('--gpu-id', type=int, default=-1)
         self.parser.add_argument('--workers', type=int, default=1,
-                                 help='Probably should be the same as the number of GPUs')
+                                 help='consider setting to match the number of GPUs')
         # misc flags
         self.parser.add_argument('--save-every-epoch', action='store_true')
         self.parser.add_argument('--nni', action='store_true')
@@ -408,7 +445,10 @@ class HelixerModel(ABC):
         self.parser.add_argument('--debug', action='store_true')
 
     def parse_args(self):
-        args = vars(self.parser.parse_args())
+        """Parses the arguments either from the command line via argparse by using self.parser or
+        takes a list of cli arguments from self.cli_args. This can be used to invoke a HelixerModel from
+        another script."""
+        args = vars(self.parser.parse_args(args=self.cli_args))
         self.__dict__.update(args)
 
         if self.nni:
@@ -424,9 +464,8 @@ class HelixerModel(ABC):
                     else:
                         raise AssertionError(f'Parameter from nni: "{key}" does not match processed arguments')
 
-
             # cast int params to int as we may get them as float
-            hyperopt_args = {name:(int(value) if isinstance(self.parser.get_default(name), int) else value)
+            hyperopt_args = {name: (int(value) if isinstance(self.parser.get_default(name), int) else value)
                              for name, value in hyperopt_args.items()}
             # add args to class name space
             self.__dict__.update(hyperopt_args)
@@ -444,7 +483,6 @@ class HelixerModel(ABC):
         assert not (not self.testing and self.test_data)
         assert not (self.resume_training and (not self.load_model_path or not self.data_dir))
 
-
         self.class_weights = eval(self.class_weights)
         if type(self.class_weights) is list:
             self.class_weights = np.array(self.class_weights, dtype=np.float32)
@@ -454,14 +492,14 @@ class HelixerModel(ABC):
             self.transition_weights = np.array(self.transition_weights, dtype = np.float32)
 
         if self.verbose:
-            print()
+            print(colored('HelixerModel config: ', 'yellow'))
             pprint(args)
 
     def generate_callbacks(self, train_generator):
         callbacks = [ConfusionMatrixTrain(self.save_model_path, train_generator, self.gen_validation_data(),
                                           self.large_eval_folder, self.patience, calc_H=self.calculate_uncertainty,
-                                          report_to_nni=self.nni)]
-        callbacks.append(PreshuffleCallback(train_generator))
+                                          report_to_nni=self.nni),
+                     PreshuffleCallback(train_generator)]
         if self.save_every_epoch:
             callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
         return callbacks
@@ -473,21 +511,21 @@ class HelixerModel(ABC):
 
         K.set_floatx(self.float_precision)
         if self.gpu_id > -1:
-            tf.config.set_visible_devices([gpu_devices[self.gpu_id]],'GPU')
+            tf.config.set_visible_devices([gpu_devices[self.gpu_id]], 'GPU')
 
     def gen_training_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_file=self.h5_train, mode='train', batch_size=self.batch_size,
+        return SequenceCls(model=self, h5_files=self.h5_trains, mode='train', batch_size=self.batch_size,
                            shuffle=True)
 
     def gen_validation_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_file=self.h5_val, mode='val', batch_size=self.val_test_batch_size,
+        return SequenceCls(model=self, h5_files=self.h5_vals, mode='val', batch_size=self.val_test_batch_size,
                            shuffle=False)
 
     def gen_test_data(self):
         SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_file=self.h5_test, mode='test', batch_size=self.val_test_batch_size,
+        return SequenceCls(model=self, h5_files=self.h5_tests, mode='test', batch_size=self.val_test_batch_size,
                            shuffle=False)
 
     @staticmethod
@@ -520,7 +558,7 @@ class HelixerModel(ABC):
             species_name = os.path.basename(eval_file_name).split('.')[0]
             print(f'\nEvaluating with a sample of {species_name} ({i + 1}/{len(eval_file_names)})')
 
-            # possibly adjust batch size based on sample lenght, which could be flexible
+            # possibly adjust batch size based on sample length, which could be flexible
             # assume the given batch size is for 20k length
             sample_len = h5_eval['data/X'].shape[1]
             adjusted_batch_size = int(generator.batch_size * (20000 / sample_len))
@@ -561,63 +599,85 @@ class HelixerModel(ABC):
     def compile_model(self, model):
         pass
 
-    def plot_model(self, model):
+    @staticmethod
+    def plot_model(model):
         from tensorflow.keras.utils import plot_model
         plot_model(model, to_file='model.png')
         print('Plotted to model.png')
         sys.exit()
 
-    def open_data_files(self):
-        def get_n_correct_seqs(h5_file):
-            if 'err_samples' in h5_file['/data'].keys():
-                err_samples = np.array(h5_file['/data/err_samples'])
-                n_correct = np.count_nonzero(err_samples == False)
-                if n_correct == 0:
-                    print('WARNING: no fully correct sample found')
-            else:
-                print('No err_samples dataset found, correct samples will be set to 0')
-                n_correct = 0
-            return n_correct
+    @staticmethod
+    def sum_shapes(datasets):
+        shapes = [ds.shape for ds in datasets]
+        return [sum(x[0] for x in shapes)] + list(shapes[0][1:])
 
-        def get_n_intergenic_seqs(h5_file):
-            if 'fully_intergenic_samples' in h5_file['/data'].keys():
-                ic_samples = np.array(h5_file['/data/fully_intergenic_samples'])
-                n_fully_ig = np.count_nonzero(ic_samples == True)
-                if n_fully_ig == 0:
-                    print('WARNING: no fully intergenic samples found')
-            else:
-                print('No fully_intergenic_samples dataset found, fully intergenic samples will be set to 0')
-                n_fully_ig = 0
-            return n_fully_ig
+    def open_data_files(self):
+        def get_n_correct_seqs(h5_files):
+            sum_n_correct = 0
+            for h5_file in h5_files:
+                if 'err_samples' in h5_file['/data'].keys():
+                    err_samples = np.array(h5_file['/data/err_samples'])
+                    n_correct = np.count_nonzero(err_samples == False)
+                    if n_correct == 0:
+                        print('WARNING: no fully correct sample found')
+                else:
+                    print('No err_samples dataset found, correct samples will be set to 0')
+                    n_correct = 0
+                sum_n_correct += n_correct
+            return sum_n_correct
+
+        def get_n_intergenic_seqs(h5_files):
+            sum_n_fully_ig = 0
+            for h5_file in h5_files:
+                if 'fully_intergenic_samples' in h5_file['/data'].keys():
+                    ic_samples = np.array(h5_file['/data/fully_intergenic_samples'])
+                    n_fully_ig = np.count_nonzero(ic_samples == True)
+                    if n_fully_ig == 0:
+                        print('WARNING: no fully intergenic samples found')
+                else:
+                    print('No fully_intergenic_samples dataset found, fully intergenic samples will be set to 0')
+                    n_fully_ig = 0
+                sum_n_fully_ig += n_fully_ig
+            return sum_n_fully_ig
 
         if not self.testing:
-            self.h5_train = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r')
-            self.h5_val = h5py.File(os.path.join(self.data_dir, 'validation_data.h5'), 'r')
-            self.shape_train = self.h5_train['/data/X'].shape
-            self.shape_val = self.h5_val['/data/X'].shape
+            self.h5_trains = [h5py.File(f, 'r') for f in glob.glob(os.path.join(self.data_dir, 'training_data*h5'))]
+            self.h5_vals = [h5py.File(f, 'r') for f in glob.glob(os.path.join(self.data_dir, 'validation_data*h5'))]
+            try:
+                self.shape_train = self.sum_shapes([h5['/data/X'] for h5 in self.h5_trains])
+            except IndexError as e:
+                print('debugging info: self.h5_trains = {}, self.data_dir = {}'.format(self.h5_trains, self.data_dir),
+                      file=sys.stderr)
+                raise e
+            try:
+                self.shape_val = self.sum_shapes([h5['/data/X'] for h5 in self.h5_vals])
+            except IndexError as e:
+                print('debugging info: self.h5_vals = {}, self.data_dir = {}'.format(self.h5_vals, self.data_dir),
+                      file=sys.stderr)
+                raise e
 
-            n_train_correct_seqs = get_n_correct_seqs(self.h5_train)
-            n_val_correct_seqs = get_n_correct_seqs(self.h5_val)
+            n_train_correct_seqs = get_n_correct_seqs(self.h5_trains)
+            n_val_correct_seqs = get_n_correct_seqs(self.h5_vals)
 
             n_train_seqs = self.shape_train[0]
             n_val_seqs = self.shape_val[0]  # always validate on all
 
-            n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_train)
-            n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_val)
+            n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_trains)
+            n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_vals)
         else:
-            self.h5_test = h5py.File(self.test_data, 'r')
-            self.shape_test = self.h5_test['/data/X'].shape
+            self.h5_tests = [h5py.File(self.test_data, 'r')]  # list for consistency with train/val
+            self.shape_test = self.h5_tests[0]['/data/X'].shape
 
-            n_test_correct_seqs = get_n_correct_seqs(self.h5_test)
+            n_test_correct_seqs = get_n_correct_seqs(self.h5_tests)
             n_test_seqs_with_intergenic = self.shape_test[0]
-            n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_test)
+            n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_tests)
 
         if self.verbose:
             print('\nData config: ')
             if not self.testing:
-                print(dict(self.h5_train.attrs))
-                print('\nTraining data shape: {}'.format(self.shape_train[:2]))
-                print('Validation data shape: {}'.format(self.shape_val[:2]))
+                print([dict(x.attrs) for x in self.h5_trains])
+                print('\nTraining data/X shape: {}'.format(self.shape_train[:2]))
+                print('Validation data/X shape: {}'.format(self.shape_val[:2]))
                 print('\nTotal est. training sequences: {}'.format(n_train_seqs))
                 print('Total est. val sequences: {}'.format(n_val_seqs))
                 print('\nEst. intergenic train/val seqs: {:.2f}% / {:.2f}%'.format(
@@ -627,7 +687,7 @@ class HelixerModel(ABC):
                     n_train_correct_seqs / self.shape_train[0] * 100,
                     n_val_correct_seqs / self.shape_val[0] * 100))
             else:
-                print(dict(self.h5_test.attrs))
+                print([dict(x.attrs) for x in self.h5_tests])
                 print('\nTest data shape: {}'.format(self.shape_test[:2]))
                 print('\nIntergenic test seqs: {:.2f}%'.format(
                     n_intergenic_test_seqs / n_test_seqs_with_intergenic * 100))
@@ -689,7 +749,7 @@ class HelixerModel(ABC):
                                             maxshape=(None,) + pred_dset.shape[1:],
                                             chunks=(1,) + pred_dset.shape[1:],
                                             dtype='float16',
-                                            compression='lzf',
+                                            compression=self.compression,
                                             shuffle=True)
                 else:
                     old_len = pred_out[dset_name].shape[0]
@@ -703,7 +763,8 @@ class HelixerModel(ABC):
         pred_out.attrs['test_data_path'] = self.test_data
         pred_out.attrs['model_path'] = self.load_model_path
         pred_out.attrs['timestamp'] = str(datetime.datetime.now())
-        pred_out.attrs['model_md5sum'] = self.loaded_model_hash
+        if hasattr(self, 'loaded_model_hash'):
+            pred_out.attrs['model_md5sum'] = self.loaded_model_hash
         pred_out.close()
         h5_model.close()
 
@@ -780,4 +841,5 @@ class HelixerModel(ABC):
                 if os.path.isfile(self.prediction_output_path):
                     print(f'{self.prediction_output_path} already exists and will be overwritten.')
                 self._make_predictions(model)
-            self.h5_test.close()
+            for h5_test in self.h5_tests:
+                h5_test.close()

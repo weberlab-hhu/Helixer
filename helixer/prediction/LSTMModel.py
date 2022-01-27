@@ -7,11 +7,8 @@ import numpy as np
 
 from keras_layer_normalization import LayerNormalization
 
-import tensorflow as tf
-
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, Dropout, Reshape, Activation,
-                          concatenate, Input)
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import (LSTM, Dense, Bidirectional, Dropout, Reshape, Activation, Input)
 
 from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 
@@ -19,8 +16,6 @@ from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 class LSTMSequence(HelixerSequence):
     def __init__(self, model, h5_file, mode, batch_size, shuffle):
         super().__init__(model, h5_file, mode, batch_size, shuffle)
-        if self.class_weights is not None:
-            assert not mode == 'test'  # only use class weights during training and validation
 
     def __getitem__(self, idx):
         X, y, sw, transitions, _, coverage_scores = self._get_batch_data(idx)

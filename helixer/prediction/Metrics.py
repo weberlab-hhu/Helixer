@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import os
 import csv
@@ -198,7 +200,7 @@ class ConfusionMatrixGenic(ConfusionMatrix):
         return scores
 
 
-class Metrics():
+class Metrics:
 
     def __init__(self, generator, print_to_stdout=True, skip_uncertainty=True):
         np.set_printoptions(suppress=True)  # do not use scientific notation for the print out
@@ -245,7 +247,7 @@ class Metrics():
                     X, y_true, sw = inputs
                     y_pred = model.predict_on_batch(X)
             else:
-                print('Unknown inputs from keras sequence')
+                print(f'Unknown inputs from keras sequence: {inputs}', file=sys.stderr)
                 exit()
 
             data = {'genic_base_wise': [self.cm_genic, (y_true, y_pred)]}
@@ -254,9 +256,10 @@ class Metrics():
 
             all_scores = {}
             for _, (cm, (y_true, y_pred)) in data.items():
+                sw_copy = sw.copy()
                 if self.generator.overlap:
-                    y_true, y_pred, sw = self._overlap_all_data(batch_idx, y_true, y_pred, sw)
-                cm.count_and_calculate_one_batch(y_true, y_pred, sw)
+                    y_true, y_pred, sw_copy = self._overlap_all_data(batch_idx, y_true, y_pred, sw_copy)
+                cm.count_and_calculate_one_batch(y_true, y_pred, sw_copy)
 
         # data contains cms + metric
         for metric_name, (cm, (_, _)) in data.items():

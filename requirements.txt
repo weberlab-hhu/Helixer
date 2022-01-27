@@ -1,9 +1,9 @@
 sqlalchemy==1.3.22
-tensorflow==2.4.1
+tensorflow>=2.6.2
 tensorflow_addons
 nni
 seaborn
-Keras==2.4.3
+Keras
 keras_layer_normalization
 terminaltables
 HTSeq
