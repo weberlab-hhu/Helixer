@@ -34,21 +34,12 @@ from helixer.prediction.Metrics import Metrics
 from helixer.core import overlap
 
 
-class SaveEveryEpoch(Callback):
-    def __init__(self, output_dir):
-        super(SaveEveryEpoch, self).__init__()
-        self.output_dir = output_dir
-
-    def on_epoch_end(self, epoch, _):
-        path = os.path.join(self.output_dir, f'model{epoch}.h5')
-        self.model.save(path, save_format='h5')
-        print(f'saved model at {path}')
-
-
 class ConfusionMatrixTrain(Callback):
     def __init__(self, save_model_path, train_generator, val_generator, large_eval_folder, patience, calc_H=False,
-                 report_to_nni=False):
+                 report_to_nni=False, check_every_nth_batch=1_000_000, save_every_check=False):
         self.save_model_path = save_model_path
+        self.save_dir = os.path.dirname(save_model_path)
+        self.save_every_check = save_every_check
         self.train_generator = train_generator
         self.val_generator = val_generator
         self.large_eval_folder = large_eval_folder
@@ -56,13 +47,25 @@ class ConfusionMatrixTrain(Callback):
         self.calc_H = calc_H
         self.report_to_nni = report_to_nni
         self.best_val_genic_f1 = 0.0
-        self.epochs_without_improvement = 0
+        self.checks_without_improvement = 0
+        self.check_every_nth_batch = check_every_nth_batch  # high default for ~ 1 / epoch
+        self.epoch = 0
+        print(self.save_model_path, 'SAVE MODEL PATH')
 
     def on_epoch_begin(self, epoch, logs=None):
         self.epoch_start = time.time()
 
     def on_epoch_end(self, epoch, logs=None):
         print(f'training took {(time.time() - self.epoch_start) / 60:.2f}m')
+        self.check_in()
+        self.epoch += 1
+
+    def on_train_batch_end(self, batch, logs=None):
+        if not (batch + 1) % self.check_every_nth_batch:
+            print(f'\nvalidation and checkpoint at batch {batch}')
+            self.check_in(batch)
+
+    def check_in(self, batch=None):
         _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, self.model, calc_H=self.calc_H)
         if self.report_to_nni:
             nni.report_intermediate_result(val_genic_f1)
@@ -71,11 +74,19 @@ class ConfusionMatrixTrain(Callback):
             self.model.save(self.save_model_path, save_format='h5')
             print('saved new best model with genic f1 of {} at {}'.format(self.best_val_genic_f1,
                                                                           self.save_model_path))
-            self.epochs_without_improvement = 0
+            self.checks_without_improvement = 0
         else:
-            self.epochs_without_improvement += 1
-            if self.epochs_without_improvement >= self.patience:
+            self.checks_without_improvement += 1
+            if self.checks_without_improvement >= self.patience:
                 self.model.stop_training = True
+        if batch is None:
+            b_str = 'epoch_end'
+        else:
+            b_str = f'b{batch:06}'
+        if self.save_every_check:
+            path = os.path.join(self.save_dir, f'model_e{self.epoch}_{b_str}.h5')
+            self.model.save(path, save_format='h5')
+            print(f'saved model at {path}')
 
     def on_train_end(self, logs=None):
         if os.path.isdir(self.large_eval_folder):
@@ -394,6 +405,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--val-test-batch-size', type=int, default=32)
         self.parser.add_argument('--loss', type=str, default='')
         self.parser.add_argument('--patience', type=int, default=3)
+        self.parser.add_argument('--check-every-nth-batch', type=int, default=1_000_000)
         self.parser.add_argument('--optimizer', type=str, default='adamw')
         self.parser.add_argument('--clip-norm', type=float, default=3.0)
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
@@ -432,7 +444,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--workers', type=int, default=1,
                                  help='consider setting to match the number of GPUs')
         # misc flags
-        self.parser.add_argument('--save-every-epoch', action='store_true')
+        self.parser.add_argument('--save-every-check', action='store_true')
         self.parser.add_argument('--nni', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
         self.parser.add_argument('--debug', action='store_true')
@@ -491,10 +503,9 @@ class HelixerModel(ABC):
     def generate_callbacks(self, train_generator):
         callbacks = [ConfusionMatrixTrain(self.save_model_path, train_generator, self.gen_validation_data(),
                                           self.large_eval_folder, self.patience, calc_H=self.calculate_uncertainty,
-                                          report_to_nni=self.nni),
+                                          report_to_nni=self.nni, check_every_nth_batch=self.check_every_nth_batch,
+                                          save_every_check=self.save_every_check),
                      PreshuffleCallback(train_generator)]
-        if self.save_every_epoch:
-            callbacks.append(SaveEveryEpoch(os.path.dirname(self.save_model_path)))
         return callbacks
 
     def set_resources(self):

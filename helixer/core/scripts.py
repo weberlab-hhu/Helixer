@@ -65,7 +65,7 @@ class ParameterParser(ABC):
         args = self.load_and_merge_parameters(args)
         self.check_args(args)
 
-        print(colored('helixer.py config: ', 'yellow'))
+        print(colored('Helixer.py config: ', 'yellow'))
         pprint(vars(args))
         print()
         return args

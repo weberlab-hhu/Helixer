@@ -72,6 +72,17 @@ cd training
 $hppath/helixer/prediction/HybridModel.py -d $wdir/h5s/train --class-weights "[0.7, 1.6, 1.2, 1.2]" \
   --transition-weights "[1, 12, 3, 1, 12, 3]" --predict-phase -e 5 --learning-rate 1e-2
 
+## TUNING
+echo_both "------ TUNING ------"
+
+cd $wdir
+mkdir tuning
+cd tuning 
+# load and tune, also with some param changes
+$hppath/helixer/prediction/HybridModel.py -d $wdir/h5s/train --class-weights "[0.7, 1.6, 1.2, 1.2]" \
+  --transition-weights "[1, 12, 3, 1, 12, 3]" --predict-phase -e 2 --learning-rate 1e-2 --load-model-path $wdir/training/best_model.h5 \
+  --patience 10 --check-every-nth-batch 150 --resume-training
+
 ## EVAL
 cd $wdir
 mkdir inference
@@ -79,19 +90,19 @@ cd inference
 echo_both "------ EVAL -------"
 echo_both "- eval vanilla - "
 $hppath/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --eval \
-  --load-model-path ../training/best_model.h5
+  --load-model-path ../tuning/best_model.h5
 echo_both "- eval overlap - "
 $hppath/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --eval --overlap \
-  --load-model-path ../training/best_model.h5
+  --load-model-path ../tuning/best_model.h5
 
 ## PREDICT
 echo_both "------ PREDICT ------"
 echo_both "- pred vanilla -"
 $hppath/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase \
-  --prediction-output-path predictions_retrained.h5 --load-model-path ../training/best_model.h5
+  --prediction-output-path predictions_retrained.h5 --load-model-path ../tuning/best_model.h5
 echo_both "- pred overlap -"
 $hppath/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --overlap \
- --prediction-output-path predictions_retrained_overlap.h5 --load-model-path ../training/best_model.h5
+ --prediction-output-path predictions_retrained_overlap.h5 --load-model-path ../tuning/best_model.h5
 
 ## HELIXER POST
 cd $wdir
