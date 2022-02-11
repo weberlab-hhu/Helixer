@@ -4,7 +4,7 @@
 Gene calling with Deep Neural Networks.
 
 ## Disclaimer
-This software undergoing active testing and development.
+This software is undergoing active testing and development.
 Build on it at your own risk.
 
 ## Goal
