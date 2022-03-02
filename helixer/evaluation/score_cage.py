@@ -53,8 +53,10 @@ def get_utr_positions(file, start=0, end="max", stepsize=1000):
             whole_utrs.append((utr_positions, individual_seqid, strand, x+i))
     return whole_utrs
 
+
 # identifies positions of cage peaks on the chunk
-def get_cage_peak(file,threshold, start=0, end="max",stepsize=1000):
+def get_cage_peak(file, threshold=2, start=0, end="max",stepsize=1000):
+
     centered = []
     if end == "max":
         end = file['data/y'].shape[0]
@@ -456,9 +458,9 @@ def main(species, h5_data):
         i_rel = i - start
         y = h5['data/y'][i:(i + by_out)]
         utr = get_utr_positions(h5, start=i, end=i + by, stepsize=by_out)
-        peaks = get_cage_peak(h5, 2, start=i, end=i + by, stepsize=by_out)
+        peaks = get_cage_peak(h5, threshold=threshold, start=i, end=i + by, stepsize=by_out)
         peaks_trees = to_trees(peaks)
-        dist = get_distance(peaks_trees, utr, 500) # todo: make 500 a parameter
+        dist = get_distance(peaks_trees, utr, max_distance)
         datay = y.reshape([-1, 4])
         _, chunk_size, n_cats = y.shape
         start_rel = (i * chunk_size)  # relative start of each by chunk_of_chunks in order to correctly add the score
@@ -469,9 +471,9 @@ def main(species, h5_data):
         # but scoring assumes shape [n_basepairs], so they must be summed and flattened
         coverage, spliced_coverage = sum_last_and_flatten(coverage), sum_last_and_flatten(spliced_coverage)
 
-        by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size])
+        by_bp = np.full(fill_value=1., shape=[by_out * chunk_size])
         # print(by_bp)
-        norm_cov_by_bp = np.full(fill_value=-1., shape=[by_out * chunk_size, 2])  # 2 for [cov, sc]
+        norm_cov_by_bp = np.full(fill_value=1., shape=[by_out * chunk_size, 2])  # 2 for [cov, sc]
         score, pos = get_score(datay, dist, coverage, spliced_coverage)  # actual scoring happens for by chunk of chunks
         # loop to add positions and scoring to the by_bp class in the h5file
         for scorer in scorers:
@@ -538,11 +540,17 @@ if __name__ == "__main__":
                         required=True)
     parser.add_argument('-s', '--species', help='species name matching that used in creation of geenuff/h5',
                         required=True)
-    parser.add_argument('--dataset-prefix', help='prefix of h5 datasets to be used for scoring (default "rnaseq")',
+    parser.add_argument('--dataset-prefix', help='prefix of h5 datasets to be used for scoring (default "cage")',
                         default='cage')
+    parser.add_argument('--threshold', dest='threshold', help='minimal coverage for cage peaks to get detected (default = 2)',
+                        default=2)
+    parser.add_argument('--max-distance', dest='distance', help='maximal distance between CAGE-peak and annotated UTR (default = 500)',
+                        default=500)
     args = parser.parse_args()
     COV_STR = f'{args.dataset_prefix}_coverage'
     SC_STR = f'{args.dataset_prefix}_spliced_coverage'
     META_STR = f'{args.dataset_prefix}_meta'
     SCORE_STR = f'{args.dataset_prefix}_scores'
+    threshold = int(args.threshold)
+    max_distance = int(args.distance)
     main(args.species, args.h5_data)
