@@ -223,12 +223,13 @@ def get_peak_from_tree(s):
     for x in s:
         start = x.begin
         end = x.end
-        return (start, end)
+        height = x[2][1]
+        return (start, end), height
 
 
 # function to score bp between peak and UTR only distance is really used rn, the positions that need to be
 # weighted and the score are returned
-def get_score(datay, distance, cov, sc):
+def get_score( distance, max_distance):
     # Naive attempt at scoring the coverage based on the distance it has to an annotated cage peak
     # height of the peak is currently not a factor, thinking of simply multiplying the score by a factor
     # based on the height
@@ -240,8 +241,8 @@ def get_score(datay, distance, cov, sc):
     positions = []
     for x in distance:
         utr_pos = x[2][0]
-        peak_pos = get_peak_from_tree(x[0])
-        shift, slope = find_stretch(500)
+        peak_pos, peak_height = get_peak_from_tree(x[0])
+        shift, slope = find_stretch(max_distance)
         if peak_pos[0] > utr_pos:
             pos = (utr_pos, peak_pos[1])
             score = sigmoid(x[1], shift, slope)
@@ -509,18 +510,18 @@ def main(species, h5_data):
             # is it a problem if this is reached?
             print('reached i={}'.format(i))
         # or this?
-        print('fin, {}'.format(i + by_out), file=sys.stderr)
-        # save maximums as attributes
-        h5[f'{META_STR}/max_normalized_cov_sc'].attrs.create(name=species, data=(max_norm_cov, max_norm_sc))
-        # normalize coverage score by species and category
-        raw_four = h5[f'{SCORE_STR}/four'][start:end]
-        centers = np.sum(raw_four * counts, axis=0) / np.sum(counts, axis=0)
-        centered_four = raw_four - centers
-        # cat_counts = np.sum(counts, axis=0)
-        # weighted_four = centered_four / np.sum(cat_counts) * cat_counts ### make sure works along last axis
-        centered_one = np.sum(centered_four * counts, axis=1) / np.sum(counts, axis=1)
-        h5[f'{SCORE_STR}/four_centered'][start:end] = centered_four
-        h5[f'{SCORE_STR}/one_centered'][start:end] = centered_one
+    print('fin, {}'.format(i + by_out), file=sys.stderr)
+    # save maximums as attributes
+    h5[f'{META_STR}/max_normalized_cov_sc'].attrs.create(name=species, data=(max_norm_cov, max_norm_sc))
+    # normalize coverage score by species and category
+    raw_four = h5[f'{SCORE_STR}/four'][start:end]
+    centers = np.sum(raw_four * counts, axis=0) / np.sum(counts, axis=0)
+    centered_four = raw_four - centers
+    # cat_counts = np.sum(counts, axis=0)
+    # weighted_four = centered_four / np.sum(cat_counts) * cat_counts ### make sure works along last axis
+    centered_one = np.sum(centered_four * counts, axis=1) / np.sum(counts, axis=1)
+    h5[f'{SCORE_STR}/four_centered'][start:end] = centered_four
+    h5[f'{SCORE_STR}/one_centered'][start:end] = centered_one
     h5.close()
 
 if __name__ == "__main__":
