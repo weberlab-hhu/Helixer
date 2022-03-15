@@ -174,7 +174,7 @@ def main(species, h5):
     peaks = to_trees(peaks)
     print("Calculating distance ...")
     distance = get_distance(positions,peaks)
-    print(f'{species}, {distance}')
+    print(f'{species}, {statistics.median(distance)}')
 
 
 if __name__ == "__main__":
