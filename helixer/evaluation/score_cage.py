@@ -107,7 +107,7 @@ def get_cage_peak(file, threshold=3, start=0, end="max",stepsize=1000):
             # unfortunately no solution without a loop, in order to combine start and end values in tuples
             try:
                 for y in range(len(starts)):
-                     peaks.append(((starts[y] , ends[y]), individual_seqid, strand, get_max_height(starts[y],ends[y],
+                     peaks.append(((starts[y] , ends[y]), individual_seqid, strand, get_median_height(starts[y],ends[y],
                                                                                             start,individual_chunk)))
             except UnboundLocalError:
                     print("No peaks")
