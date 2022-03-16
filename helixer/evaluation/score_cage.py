@@ -17,7 +17,7 @@ from add_ngs_coverage import add_empty_cov_meta
 
 
 # identifies start of 5'UTRs according to reference
-def get_utr_positions(file, start=0, end="max", stepsize=1000): 
+def get_utr_positions(file, start=0, end="max", stepsize=1000) :
     # function to return list of tuples (utr position, seqid, strand, chunk) for each annotated 5' UTR
     whole_utrs = []
     if end == "max":
@@ -61,7 +61,7 @@ def get_utr_positions(file, start=0, end="max", stepsize=1000):
 
 
 # identifies positions of cage peaks on the chunk
-def get_cage_peak(file, threshold=3, start=0, end="max",stepsize=1000): 
+def get_cage_peak(file, threshold=3, start=0, end="max",stepsize=1000):
     # function to return list of tuples containing ((start of peak, end of peak), seqid, strand, height of peak) of
     # peaks larger than THRESHOLD
     peaks = []
@@ -115,7 +115,7 @@ def get_cage_peak(file, threshold=3, start=0, end="max",stepsize=1000):
     return peaks
 
 
-def get_median_height(starts,ends,start,chunk): 
+def get_median_height(starts,ends,start,chunk):
     # function to return median height of all peaks in a specified area
     raw_start = starts - start # determines start of peak on the individual chunk
     raw_end = ends - start # determines end of peak on the individual chunk
@@ -123,12 +123,10 @@ def get_median_height(starts,ends,start,chunk):
         raw_end += 1
     median_height = chunk[ :, raw_start:raw_end] # selects coverage of bp between raw_start and raw_end
     median_height = median_height[median_height > 0] # positive coverage is selected
-    print(median_height.shape)
-    print(median_height)
     median_height = np.median(median_height)
     return median_height
 
-def to_trees(centered_peaks): 
+def to_trees(centered_peaks):
     # function to store all peaks determined by get_cage_peak within Intervaltrees stored within a dictionary separated
     # based on the peaks strand and seqid
     trees = {}
@@ -154,7 +152,7 @@ def to_trees(centered_peaks):
     return trees
 
 
-def get_distance(trees, utrs, lim): 
+def get_distance(trees, utrs, lim):
     # function to determine the distance between annotated 5' UTRs and CAGE peaks within LIM basepairs, returns a list
     # of tuples containing (intervall tree object (? unsure of type of object) of overlaping cage-peaks, their distance,
     # tuple returned by get_utrs for the particular UTR these peaks are associated with)
@@ -196,7 +194,7 @@ def get_distance(trees, utrs, lim):
             i += 1
     return distances
 
-def add_empty_score_datasets(h5): 
+def add_empty_score_datasets(h5):
     # function to add necessary dataset to the input h5 data
     length = h5['data/X'].shape[0]
     chunk_size = h5['data/X'].shape[1]
@@ -212,7 +210,7 @@ def add_empty_score_datasets(h5):
                           fillvalue=-1)
 
 
-def sigmoid(x, width=1, shift=0, span=1, neg=False): 
+def sigmoid(x, width=1, shift=0, span=1, neg=False):
     # function to return the sigmoid of input value with additional parameters in order to fully control the behavior of
     # the sigmoid function, neg flag determines if the sigmoid function is inverted or not
     if neg:
@@ -221,7 +219,7 @@ def sigmoid(x, width=1, shift=0, span=1, neg=False):
         f = 1 / (span + np.exp(((x / width) - shift)))
     return f
 
-def find_stretch(cut_off=500): 
+def find_stretch(cut_off=500):
     # method to find shift and slope combination that ensures sigmoid(0) > 0.99 and sigmoid(cut_off) < 0.01 as well as
     # 0.45 < sigmoid(x/2) < 0.55 in order to ensure the score scales properly with distance
 
@@ -239,7 +237,7 @@ def find_stretch(cut_off=500):
             return shift, slope
     return 0, 1 # if no shift, slope combination can be determined normal sigmoid is used
 
-def get_peak_from_tree(s): 
+def get_peak_from_tree(s):
     # function to return start position of a peak, its end position and its height from the data stored in an interval
     # tree
     for x in s:
@@ -249,7 +247,7 @@ def get_peak_from_tree(s):
         return (start, end), height
 
 
-def get_average_cov(h5): 
+def get_average_cov(h5):
     # function to return the average of all positive coverage per bp by calculating
     # (sum of all positive coverage)/(number of bp with positive coverage)
     start = 0
@@ -274,7 +272,7 @@ def get_average_cov(h5):
     return int(round(sum_chunks / l))  # needs to be int otherwise type error later on
 
 
-def get_score( distance, max_distance, average_positive_coverage): 
+def get_score(distance, max_distance, average_positive_coverage):
     # function to return are score associated with a position on a chunk based on the distance of CAGE-peaks to annotated
     # UTRs
     scores = []
@@ -344,6 +342,15 @@ class Scorer:
         return score
 
     def score(self, datay, coverage, spliced_coverage):
+        # sets all coverage below the threshold to 0 in order to not score peaks below the threshold
+        cov_shape = np.shape(coverage)
+        sc_shape = np.shape(spliced_coverage)
+        threshold_array = np.full((cov_shape), threshold)
+        coverage = coverage - threshold_array
+        threshold_array = np.full((sc_shape), threshold)
+        spliced_coverage = spliced_coverage - threshold_array
+        coverage[coverage < 0] = 0
+        spliced_coverage[spliced_coverage < 0] = 0
         if self.column is not None:
             mask = datay[:, self.column].astype(bool)
         else:
@@ -520,7 +527,6 @@ def main(species, h5_data):
         else:
             by_out = by
         i_rel = i - start
-        print(f'scoring {i}:{(i + by)}')
         y = h5['data/y'][i:(i + by_out)]
         utr = get_utr_positions(h5, start=i, end=i + by, stepsize=by_out)
         peaks = get_cage_peak(h5, threshold=threshold, start=i, end=i + by, stepsize=by_out)
@@ -538,7 +544,7 @@ def main(species, h5_data):
 
         by_bp = np.full(fill_value=1., shape=[by_out * chunk_size])
         norm_cov_by_bp = np.full(fill_value=1., shape=[by_out * chunk_size, 2])  # 2 for [cov, sc]
-        score, pos = get_score(datay, dist, coverage, spliced_coverage)  # actual scoring happens for BY chunk of chunks
+        score, pos = get_score(dist, max_distance, average_positive_coverage )  # actual scoring happens for BY chunk of chunks
         # loop to add positions and scoring to the by_bp class in the h5file
         for scorer in scorers:
             raw_score, mask = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
