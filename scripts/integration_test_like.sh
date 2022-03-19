@@ -24,21 +24,21 @@ mkdir -p test/input
 cd test/input
 wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/gff3/arabidopsis_lyrata/Arabidopsis_lyrata.v.1.0.47.chromosome.8.gff3.gz
 wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/fasta/arabidopsis_lyrata/dna/Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa.gz
-gunzip *
+#gunzip *
 # val
 cd $wdir/datain
 mkdir -p validation/input
 cd validation/input
 wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/gff3/arabidopsis_lyrata/Arabidopsis_lyrata.v.1.0.47.chromosome.7.gff3.gz
 wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/fasta/arabidopsis_lyrata/dna/Arabidopsis_lyrata.v.1.0.dna.chromosome.7.fa.gz
-gunzip *
+#gunzip *
 # train
 cd $wdir/datain
 mkdir -p training/input
 cd training/input
 wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/gff3/arabidopsis_lyrata/Arabidopsis_lyrata.v.1.0.47.chromosome.1.gff3.gz
 wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/fasta/arabidopsis_lyrata/dna/Arabidopsis_lyrata.v.1.0.dna.chromosome.1.fa.gz
-gunzip *
+gunzip *  # unpack just one of the three so that both w/ and w/o is tested for opening
 
 ## DATA PRE-PROCESSING
 echo_both "------ DATA PRE-PROCESSING ------"
@@ -119,7 +119,7 @@ wget https://uni-duesseldorf.sciebo.de/s/4NqBSieS9Tue3J3/download
 mv download models/land_plant.h5
 
 mkdir Helixer_py
-Helixer.py --lineage land_plant --fasta-path $wdir/datain/test/input/*.fa  \
+Helixer.py --lineage land_plant --fasta-path $wdir/datain/test/input/*.fa.gz  \
   --species Arabidopsis_lyrata --gff-output-path Helixer_py/Arabidopsis_lyrata_chromosome8_helixer.gff3
 
 ## todo, test other major functionality
