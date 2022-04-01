@@ -202,19 +202,29 @@ class HelixerSequence(Sequence):
         else:
             n_seqs = x_dset.shape[0]
 
+        if self.mode == "train" or self.mode == 'val':
+            mask = np.logical_and(h5_file['data/is_annotated'],
+                                  h5_file['data/err_samples'])
+            n_masked = x_dset.shape[0] - np.sum(mask)
+            print(f'\nmasking {n_masked} completely un-annotated or completely erroneous sequences')
+                
+        else:
+            mask = np.ones(h5_file['data/is_annotated'].shape[0], dtype=bool)
+
         # load at most 10000 uncompressed samples at a time in memory
         max_at_once = min(10000, n_seqs)
         for name, data_list in zip(self.data_list_names, self.data_lists):
             start_time_dset = time.time()
             for offset in range(0, n_seqs, max_at_once):
+                step_mask = mask[offset:offset + max_at_once]
                 if name == 'data/predictions':
-                    data_slice = h5_file[name][0, offset:offset + max_at_once]  # only use one prediction for now
+                    data_slice = h5_file[name][0, offset:offset + max_at_once][step_mask]  # only use one prediction for now
                 else:
-                    data_slice = h5_file[name][offset:offset + max_at_once]
+                    data_slice = h5_file[name][offset:offset + max_at_once][step_mask]
                 if self.no_utrs and name == 'data/y':
                     HelixerSequence._zero_out_utrs(data_slice)
                 data_list.extend([self.compressor.encode(e) for e in data_slice])
-            print(f'Data loading of {n_seqs} (total so far {len(data_list)}) samples of {name} '
+            print(f'Data loading of {n_seqs - n_masked} (total so far {len(data_list)}) samples of {name} '
                   f'into memory took {time.time() - start_time_dset:.2f} secs')
 
     @staticmethod
