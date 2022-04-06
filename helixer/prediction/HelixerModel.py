@@ -210,6 +210,7 @@ class HelixerSequence(Sequence):
                 
         else:
             mask = np.ones(h5_file['data/X'].shape[0], dtype=bool)
+            n_masked = 0
 
         # load at most 10000 uncompressed samples at a time in memory
         max_at_once = min(10000, n_seqs)
