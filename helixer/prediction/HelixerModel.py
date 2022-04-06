@@ -209,7 +209,7 @@ class HelixerSequence(Sequence):
             print(f'\nmasking {n_masked} completely un-annotated or completely erroneous sequences')
                 
         else:
-            mask = np.ones(h5_file['data/is_annotated'].shape[0], dtype=bool)
+            mask = np.ones(h5_file['data/X'].shape[0], dtype=bool)
 
         # load at most 10000 uncompressed samples at a time in memory
         max_at_once = min(10000, n_seqs)
