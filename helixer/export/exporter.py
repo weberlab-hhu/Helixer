@@ -1,24 +1,17 @@
 import os
 import time
 import h5py
-import glob
 import numpy as np
-import random
 import sqlite3
 import datetime
 import subprocess
 import pkg_resources
-from multiprocessing.pool import ThreadPool
-from sklearn.model_selection import train_test_split
 
 import geenuff
 import helixer
 from geenuff.applications.exporter import GeenuffExportController
 from geenuff.applications.importer import FastaImporter
 from .numerify import CoordNumerifier
-from ..core.helpers import get_sp_seq_ranges, file_stem
-
-from collections import defaultdict
 
 
 class HelixerExportControllerBase(object):
@@ -192,9 +185,9 @@ class HelixerExportController(HelixerExportControllerBase):
 
             yield coord_data, coord, masked_bases_perc, ig_bases_perc, h5_coord
 
-    def export(self, chunk_size, one_hot=True, all_transcripts=False, write_by=10_000_000_000,
+    def export(self, chunk_size, one_hot=True, longest_only=True, write_by=10_000_000_000,
                modes=('X', 'y', 'anno_meta', 'transitions'), compression='gzip', multiprocess=True):
-        coords_features = self.exporter.genome_query(all_transcripts=all_transcripts)
+        coords_features = self.exporter.genome_query(longest_only=longest_only)
         print(f'\n{len(coords_features)} coordinates chosen to numerify')
         if self.match_existing:
             # resort coordinates to match existing
