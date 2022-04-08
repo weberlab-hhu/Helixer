@@ -842,7 +842,7 @@ def test_gene_lengths():
     # first coord plus strand (test cases 1-3)
     assert np.array_equal(gl[0][:400], np.full((400,), 400, dtype=np.uint32))
     assert np.array_equal(gl[0][400:1199], np.full((1199 - 400,), 0, dtype=np.uint32))
-    assert np.array_equal(gl[0][1199:1400], np.full((1400 - 1199,), 201, dtype=np.uint32))
+    assert np.array_equal(gl[0][1199:1400], np.full((1400 - 1199,), 0, dtype=np.uint32))  # no gene length for non-coding (by default)
 
     # second coord plus strand (test cases 5-6)
     assert np.array_equal(gl[2][:300], np.full((300,), 300, dtype=np.uint32))
