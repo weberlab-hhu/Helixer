@@ -116,7 +116,7 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
             start_time = time.time()
             coord = HelixerFastaToH5Controller.CoordinateSurrogate(seqid, seq)
             n_chunks = HelixerExportControllerBase.calc_n_chunks(coord.length, chunk_size)
-            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species, multiprocess=multiprocess)
+            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species, use_multiprocess=multiprocess)
             for j, data in enumerate(data_gen):
                 n_samples = len(data[0].matrix)
                 h5_coords = (j * n_samples, (j + 1) * n_samples)
@@ -164,7 +164,7 @@ class HelixerExportController(HelixerExportControllerBase):
     def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, write_by, modes, multiprocess):
         """filtering and stats"""
         coord_data_gen = CoordNumerifier.numerify(coord, coord_features, chunk_size, one_hot,
-                                                  write_by=write_by, mode=modes, multiprocess=multiprocess)
+                                                  write_by=write_by, mode=modes, use_multiprocess=multiprocess)
         # the following will all be used to calculated a percentage, which is yielded but ignored until the end
         n_chunks = n_bases = n_ig_bases = n_masked_bases = 0
 

@@ -93,14 +93,14 @@ class Numerifier(ABC):
 
 
 class SequenceNumerifier(Numerifier):
-    def __init__(self, coord, max_len, start=0, end=None, multiprocess=True):
-        self.multiprocess = multiprocess
+    def __init__(self, coord, max_len, start=0, end=None, use_multiprocess=True):
+        self.use_multiprocess = use_multiprocess
         super().__init__(n_cols=4, coord=coord, max_len=max_len, dtype=np.float16, start=start, end=end)
 
     def coord_to_matrices(self):
         """Does not alter the error mask unlike in AnnotationNumerifier"""
         def numerify(seq_part):
-            matrix_part= np.zeros((len(seq_part), self.n_cols,), self.dtype)
+            matrix_part = np.zeros((len(seq_part), self.n_cols,), self.dtype)
             for i, bp in enumerate(seq_part):
                 matrix_part[i] = AMBIGUITY_DECODE[bp]
             return matrix_part
@@ -109,7 +109,7 @@ class SequenceNumerifier(Numerifier):
         start_time = time.time()
         seq = self.coord.sequence[self.start:self.end]
         seq_len = len(seq)  # can be slow
-        if seq_len < int(1e6) or not self.multiprocess:
+        if seq_len < int(1e6) or not self.use_multiprocess:
             # numerify short sequences sequencially
             self._zero_matrix()
             for i, bp in enumerate(seq):
@@ -345,11 +345,11 @@ class CoordNumerifier(object):
         return res
 
     @staticmethod
-    def numerify_only_fasta(coord, max_len, genome, one_hot=True, multiprocess=False):
+    def numerify_only_fasta(coord, max_len, genome, one_hot=True, use_multiprocess=False):
         """Extra function to just export the FASTA sequence to avoid littering other functions with many
         if statements. Bypasses super chunk writing as it is probably not needed for only the sequence"""
         seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=0, end=None,
-                                            multiprocess=multiprocess)
+                                            use_multiprocess=use_multiprocess)
         xb = seq_numerifier.coord_to_matrices()
         for strand in ['plus', 'minus']:
             x = CoordNumerifier.pad(xb[strand], max_len)
@@ -360,26 +360,27 @@ class CoordNumerifier(object):
 
     @staticmethod
     def numerify(coord, coord_features, max_len, one_hot=True, mode=('X', 'y', 'anno_meta', 'transitions'),
-                 write_by=5000000, multiprocess=True):
+                 write_by=5000000, use_multiprocess=True):
         assert isinstance(max_len, int) and max_len > 0, 'what is {} of type {}'.format(max_len, type(max_len))
         coord_features = sorted(coord_features, key=lambda f: min(f.start, f.end))  # sort by ~ +strand start
         split_finder = SplitFinder(features=coord_features, write_by=write_by, coord_length=coord.length,
                                    chunk_size=max_len)
         for f_set, bp_coord, h5_coord in split_finder.feature_n_coord_gen():
             for strand_res in CoordNumerifier._numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len,
-                                                                          one_hot, coord_features, mode, multiprocess):
+                                                                          one_hot, coord_features, mode,
+                                                                          use_multiprocess):
                 yield strand_res
 
     @staticmethod
     def _numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len, one_hot, coord_features, mode,
-                                    multiprocess):
+                                    use_multiprocess):
         export_x = 'X' in mode
         start, end = bp_coord
 
         anno_numerifier = AnnotationNumerifier(coord=coord, features=f_set, max_len=max_len,
                                                one_hot=one_hot, start=start, end=end)
         seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=start, end=end,
-                                            multiprocess=multiprocess)
+                                            use_multiprocess=use_multiprocess)
 
         # everything with _b below is for "both strands" and is {"plus": +_np_array, "minus": -_np_array }
         # todo, make mode more elegant / extensible
