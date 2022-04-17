@@ -1,24 +1,17 @@
 import os
 import time
 import h5py
-import glob
 import numpy as np
-import random
 import sqlite3
 import datetime
 import subprocess
 import pkg_resources
-from multiprocessing.pool import ThreadPool
-from sklearn.model_selection import train_test_split
 
 import geenuff
 import helixer
 from geenuff.applications.exporter import GeenuffExportController
 from geenuff.applications.importer import FastaImporter
 from .numerify import CoordNumerifier
-from ..core.helpers import get_sp_seq_ranges, file_stem
-
-from collections import defaultdict
 
 
 class HelixerExportControllerBase(object):
@@ -123,7 +116,7 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
             start_time = time.time()
             coord = HelixerFastaToH5Controller.CoordinateSurrogate(seqid, seq)
             n_chunks = HelixerExportControllerBase.calc_n_chunks(coord.length, chunk_size)
-            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species, multiprocess=multiprocess)
+            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species, use_multiprocess=multiprocess)
             for j, data in enumerate(data_gen):
                 n_samples = len(data[0].matrix)
                 h5_coords = (j * n_samples, (j + 1) * n_samples)
@@ -171,7 +164,7 @@ class HelixerExportController(HelixerExportControllerBase):
     def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, write_by, modes, multiprocess):
         """filtering and stats"""
         coord_data_gen = CoordNumerifier.numerify(coord, coord_features, chunk_size, one_hot,
-                                                  write_by=write_by, mode=modes, multiprocess=multiprocess)
+                                                  write_by=write_by, mode=modes, use_multiprocess=multiprocess)
         # the following will all be used to calculated a percentage, which is yielded but ignored until the end
         n_chunks = n_bases = n_ig_bases = n_masked_bases = 0
 
@@ -192,9 +185,9 @@ class HelixerExportController(HelixerExportControllerBase):
 
             yield coord_data, coord, masked_bases_perc, ig_bases_perc, h5_coord
 
-    def export(self, chunk_size, one_hot=True, all_transcripts=False, write_by=10_000_000_000,
+    def export(self, chunk_size, one_hot=True, longest_only=True, write_by=10_000_000_000,
                modes=('X', 'y', 'anno_meta', 'transitions'), compression='gzip', multiprocess=True):
-        coords_features = self.exporter.genome_query(all_transcripts=all_transcripts)
+        coords_features = self.exporter.genome_query(longest_only=longest_only)
         print(f'\n{len(coords_features)} coordinates chosen to numerify')
         if self.match_existing:
             # resort coordinates to match existing

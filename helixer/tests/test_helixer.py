@@ -311,7 +311,7 @@ def test_minus_strand_numerify():
 def test_coord_numerifier_and_h5_gen_plus_strand():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=400, one_hot=False, all_transcripts=True)
+    controller.export(chunk_size=400, one_hot=False, longest_only=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     x = f['/data/X'][:]
@@ -358,7 +358,7 @@ def test_coord_numerifier_and_h5_gen_minus_strand():
     """Tests numerification of test case 8 on coordinate 2"""
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=200, one_hot=False, all_transcripts=True)
+    controller.export(chunk_size=200, one_hot=False, longest_only=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     x = f['/data/X'][:]
@@ -822,7 +822,7 @@ def test_gene_lengths():
     """Tests the '/data/gene_lengths' array"""
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=5000, one_hot=True, all_transcripts=True)
+    controller.export(chunk_size=5000, one_hot=True, longest_only=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     gl = f['/data/gene_lengths']
@@ -842,7 +842,7 @@ def test_gene_lengths():
     # first coord plus strand (test cases 1-3)
     assert np.array_equal(gl[0][:400], np.full((400,), 400, dtype=np.uint32))
     assert np.array_equal(gl[0][400:1199], np.full((1199 - 400,), 0, dtype=np.uint32))
-    assert np.array_equal(gl[0][1199:1400], np.full((1400 - 1199,), 201, dtype=np.uint32))
+    assert np.array_equal(gl[0][1199:1400], np.full((1400 - 1199,), 0, dtype=np.uint32))  # no gene length for non-coding (by default)
 
     # second coord plus strand (test cases 5-6)
     assert np.array_equal(gl[2][:300], np.full((300,), 300, dtype=np.uint32))
@@ -863,7 +863,7 @@ def test_gene_lengths():
 
 def test_seqids_start_ends():
     _, controller, _ = setup_dummyloci()
-    controller.export(chunk_size=400, one_hot=False, all_transcripts=True)
+    controller.export(chunk_size=400, one_hot=False, longest_only=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     seqids = f['/data/seqids'][:]
@@ -903,7 +903,7 @@ def test_phases():
 
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=5000, one_hot=True, all_transcripts=False)
+    controller.export(chunk_size=5000, one_hot=True, longest_only=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     ph = f['/data/phases'][:]
@@ -1147,7 +1147,7 @@ def test_super_chunking4write():
     """Tests that the exact same h5 is produced, regardless of how many super-chunks it is written in"""
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    n_writing_chunks = controller.export(chunk_size=500, one_hot=True, all_transcripts=True,
+    n_writing_chunks = controller.export(chunk_size=500, one_hot=True, longest_only=False,
                                          write_by=10_000_000_000)  # write by left large enough to yield just once
 
     f = h5py.File(H5_OUT_FILE, 'r')
@@ -1162,7 +1162,7 @@ def test_super_chunking4write():
     assert n_writing_chunks == 6  # 2 per coordinate
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    n_writing_chunks = controller.export(chunk_size=500,  all_transcripts=True,
+    n_writing_chunks = controller.export(chunk_size=500, longest_only=False,
                                          write_by=1000)  # write by should result in multiple super-chunks
 
     f = h5py.File(H5_OUT_FILE, 'r')
@@ -1188,7 +1188,7 @@ def test_super_chunking4write():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     with pytest.raises(ValueError):
-        controller.export(chunk_size=500, one_hot=True, all_transcripts=True,
+        controller.export(chunk_size=500, one_hot=True, longest_only=False,
                           write_by=1001)  # write by should result in multiple super-chunks
 
 
@@ -1196,7 +1196,7 @@ def test_rangefinder():
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
     n_writing_chunks = controller.export(chunk_size=500, one_hot=True,
-                                         all_transcripts=True, write_by=10_000_000_000)
+                                         longest_only=False, write_by=10_000_000_000)
     f = h5py.File(H5_OUT_FILE, 'r')
     sp_seqid_ranges = helpers.get_sp_seq_ranges(f)
     seqid_ranges = {b'1': [0, 8], b'2': [8, 16], b'3': [16, 18]}
@@ -1434,7 +1434,7 @@ def test_direct_fasta_export():
 
     _, geenuff_controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    geenuff_controller.export(chunk_size=400, one_hot=False, all_transcripts=True)
+    geenuff_controller.export(chunk_size=400, one_hot=False, longest_only=False)
 
     h5_fasta = h5py.File(FASTA_OUT_FILE, 'r')
     h5_db = h5py.File(H5_OUT_FILE, 'r')
