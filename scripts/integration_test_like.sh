@@ -1,6 +1,8 @@
 #!/bin/bash
 # runs all the major modes such as training/inference += weighting, overlapping, etc; does not (yet) check results
 # create directory for all files
+export helixer_path=`echo $0 | sed 's@scripts/integration_test_like.sh@@g'`
+
 wdir=integration_test_like_working_dir
 mkdir $wdir
 # cache full path for simplicity
@@ -69,7 +71,7 @@ cd $wdir
 mkdir training
 cd training
 # very short training with fancier parameters called
-$hppath/helixer/prediction/HybridModel.py -d $wdir/h5s/train --class-weights "[0.7, 1.6, 1.2, 1.2]" \
+$helixer_path/helixer/prediction/HybridModel.py -d $wdir/h5s/train --class-weights "[0.7, 1.6, 1.2, 1.2]" \
   --transition-weights "[1, 12, 3, 1, 12, 3]" --predict-phase -e 5 --learning-rate 1e-2
 
 ## TUNING
@@ -79,7 +81,7 @@ cd $wdir
 mkdir tuning
 cd tuning 
 # load and tune, also with some param changes
-$hppath/helixer/prediction/HybridModel.py -d $wdir/h5s/train --class-weights "[0.7, 1.6, 1.2, 1.2]" \
+$helixer_path/helixer/prediction/HybridModel.py -d $wdir/h5s/train --class-weights "[0.7, 1.6, 1.2, 1.2]" \
   --transition-weights "[1, 12, 3, 1, 12, 3]" --predict-phase -e 2 --learning-rate 1e-2 --load-model-path $wdir/training/best_model.h5 \
   --patience 10 --check-every-nth-batch 150 --resume-training
 
@@ -89,19 +91,19 @@ mkdir inference
 cd inference
 echo_both "------ EVAL -------"
 echo_both "- eval vanilla - "
-$hppath/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --eval \
+$helixer_path/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --eval \
   --load-model-path ../tuning/best_model.h5
 echo_both "- eval overlap - "
-$hppath/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --eval --overlap \
+$helixer_path/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --eval --overlap \
   --load-model-path ../tuning/best_model.h5
 
 ## PREDICT
 echo_both "------ PREDICT ------"
 echo_both "- pred vanilla -"
-$hppath/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase \
+$helixer_path/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase \
   --prediction-output-path predictions_retrained.h5 --load-model-path ../tuning/best_model.h5
 echo_both "- pred overlap -"
-$hppath/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --overlap \
+$helixer_path/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --overlap \
  --prediction-output-path predictions_retrained_overlap.h5 --load-model-path ../tuning/best_model.h5
 
 ## HELIXER POST
