@@ -22,7 +22,7 @@ def phase_from_dataset_name(ds_name):
                          "dataset".format(ds_name))
 
 
-def main(h5_file, preds_file=None, predictions_dataset='predictions', ground_truth_dataset='data/y'):
+def main(h5_file, preds_file=None, predictions_dataset='data/y', ground_truth_dataset='data/y'):
     h5_data = h5py.File(h5_file, 'r')
     if preds_file is not None:
         h5_pred = h5py.File(preds_file, 'r')
