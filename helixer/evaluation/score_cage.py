@@ -586,7 +586,7 @@ def main(species: str, h5_data: h5py._hl.files.File):
     end = 5000# h5['data/X'].shape[0]
     counts = np.zeros(shape=(end - start, 4))
     # loop to iterate over BY chunks at once and score them
-    print(f'starting to score {start}:{end} in {species}')
+    print(f'starting to score {start}:{end} in {species}; threshold: {threshold}; max_distance: {max_distance}')
     # for loop to iterate over input h5 file BY chunks at a time
     for i in range(start, end, by):
         if i + by > end:
