@@ -40,11 +40,20 @@ def gen_tables(filein):
 
 
 def main(filein, dirout):
+    i = 0
+    x = 0
+    prefixes = ["genic_CM_", "phase_CM_", "phase_with_intersect_CM_"]
     if not os.path.exists(dirout):
         os.mkdir(dirout)
     for table in gen_tables(filein):
+        i += 1
+        if i % 3 != 0:
+            pass
+        else:
+            x += 1
+            pfx = prefixes[x]
         header, tab = parse_table(table)
-        fileout = '{}/{}.csv'.format(dirout, header)
+        fileout = '{}/{}{}.csv'.format(dirout, pfx, header)
         with open(fileout, 'w') as f:
             f.write(tab)
 
