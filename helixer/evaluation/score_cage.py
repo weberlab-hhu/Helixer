@@ -9,6 +9,7 @@ import sys
 import argparse
 import logging
 from add_ngs_coverage import add_empty_cov_meta
+<<<<<<< HEAD
 """
 ########################################################################################################################
 # Python script to automatically score each bp within a h5 file based on available CAGE data and the distance of the   #
@@ -21,6 +22,20 @@ def get_utr_positions(file: h5py._hl.files.File, start: int = 0, end: int = None
     """Function to return list of tuples (utr position, seqid, strand, chunk) for each annotated 5' UTR."""
     whole_utrs = []
     if end is None:
+=======
+
+########################################################################################################################
+# Python script to automatically score each bp within an h5 file based on available CAGE data and the distance of the  #
+# CAGE peaks to the annotated UTRs (if within a certain distance) or based on the coverage (if outside that distance). #
+########################################################################################################################
+
+
+# identifies start of 5'UTRs according to reference
+def get_utr_positions(file, start=0, end="max", stepsize=1000) :
+    # function to return list of tuples (utr position, seqid, strand, chunk) for each annotated 5' UTR
+    whole_utrs = []
+    if end == "max":
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
         end = file['data/y'].shape[0]
     else:
         end = end
@@ -30,24 +45,42 @@ def get_utr_positions(file: h5py._hl.files.File, start: int = 0, end: int = None
         seqid = file['data/seqids'][i:(i+stepsize)].T
         start_ends = file['data/start_ends'][i:(i+stepsize)].T
         # loop to go over each individual chunk of the stepsize chunks loaded at once
+<<<<<<< HEAD
         for x in range(0, chunk.shape[2]):
             # todo: define individual function performing the steps on individual chunk
             individual_chunk = chunk[:, :, x]
             individual_seqid = seqid[x]
             individual_start_ends = start_ends[:, x]
+=======
+        for x in range(0,chunk.shape[2]):
+            individual_chunk = chunk[:,:,x]
+            individual_seqid = seqid[x]
+            individual_start_ends = start_ends[:,x]
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
             start = individual_start_ends[0]
             end = individual_start_ends[1]
             strand = end - start
             # the strand is determined
+<<<<<<< HEAD
             if strand < 0:
+=======
+            if  strand < 0:
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
                 strand = -1
             else:
                 strand = 1
             # dimensions of the array are reduced, to only catch shifts from IG to UTR and only capture 5' UTRs
+<<<<<<< HEAD
             individual_chunk = individual_chunk[0:1, :]
             # whole array is shifted by 1 to the right
             shifted_array = individual_chunk[0:1, :-1]
             individual_chunk = individual_chunk[0:1, 1:]
+=======
+            individual_chunk = individual_chunk[0:1,:]
+            # whole array is shifted by 1 to the right
+            shifted_array = individual_chunk[0:1,:-1]
+            individual_chunk = individual_chunk[0:1,1:]
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
             # difference between the array will have a -1 at each transition from IG to UTR
             utr_positions = np.subtract(individual_chunk, shifted_array)
             utr_positions = np.where(utr_positions == -1)
@@ -61,11 +94,20 @@ def get_utr_positions(file: h5py._hl.files.File, start: int = 0, end: int = None
     return whole_utrs
 
 
+<<<<<<< HEAD
 def get_cage_peak(file: h5py._hl.files.File, threshold: int = 3, start: int = 0, end: int = None, stepsize: int = 1000):
     """Function to return list of tuples containing ((start of peak, end of peak), seqid, strand, height of peak) of
     peaks larger than THRESHOLD."""
     peaks = []
     if end is None:
+=======
+# identifies positions of cage peaks on the chunk
+def get_cage_peak(file, threshold=3, start=0, end="max",stepsize=1000):
+    # function to return list of tuples containing ((start of peak, end of peak), seqid, strand, height of peak) of
+    # peaks larger than THRESHOLD
+    peaks = []
+    if end == "max":
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
         end = file['data/y'].shape[0]
     else:
         end = end
@@ -75,15 +117,23 @@ def get_cage_peak(file: h5py._hl.files.File, threshold: int = 3, start: int = 0,
         seqid = file['data/seqids'][i:(i+stepsize)].T
         start_ends = file['data/start_ends'][i:(i+stepsize)].T
         # loop to go over each individual chunk of the stepsize chunks loaded at once
+<<<<<<< HEAD
         for x in range(0, chunk.shape[2]):
             # todo: define individual function performing the steps on individual chunk
             individual_chunk = chunk[:, :, x]
             individual_seqid = seqid[x]
             individual_start_ends = start_ends[:, x]
+=======
+        for x in range(0,chunk.shape[2]):
+            individual_chunk = chunk[:,:,x]
+            individual_seqid = seqid[x]
+            individual_start_ends = start_ends[:,x]
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
             start = individual_start_ends[0]
             end = individual_start_ends[1]
             strand = end - start
             # the strand is determined
+<<<<<<< HEAD
             if strand < 0:
                 strand = -1
             else:
@@ -104,11 +154,33 @@ def get_cage_peak(file: h5py._hl.files.File, threshold: int = 3, start: int = 0,
             ends = np.take(peak_positions, peak_indices)  # end positions of the peaks
             start_indices = peak_indices + 1  # same procedure for the start values
             start_indices = np.insert(start_indices, 0, 0)  # here the first one needs to be added
+=======
+            if  strand < 0:
+                strand = -1
+            else:
+                strand = 1
+            chunk_shape = np.shape(individual_chunk) # shape of the input array
+            threshold_array = np.full((chunk_shape) , threshold) # creates an array filled with the threshold value of
+            # the same shape as input
+            # todo: find ways to determine that threshold
+            peak_positions = np.subtract(individual_chunk, threshold_array)
+            peak_positions = np.where(peak_positions > 0) # only values greater than the threshold will result in positiv value
+            peak_positions = peak_positions[1] + start # reducing the dimension of the array
+            peak_indices = np.where(np.diff(peak_positions) != 1) # selecting only indices of values apart more than 1
+            if len(peak_positions) == 0:
+                continue
+            peak_indices = np.append(peak_indices, len(peak_positions) -1) # does not catch the last index therefore
+                                                                           # its added here
+            ends = np.take(peak_positions, peak_indices) # end positions of the peaks
+            start_indices = peak_indices + 1 # same procedure for the start values
+            start_indices = np.insert(start_indices, 0, 0) # here the first one needs to be added
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
             start_indices = np.delete(start_indices, -1)
             starts = np.take(peak_positions, start_indices)
             # unfortunately no solution without a loop, in order to combine start and end values in tuples
             try:
                 for y in range(len(starts)):
+<<<<<<< HEAD
                     peaks.append(((starts[y], ends[y]), individual_seqid, strand, get_median_height(starts[y], ends[y],
                                                                                                     start,
                                                                                                     individual_chunk)))
@@ -294,6 +366,97 @@ def get_score(overlap, distance, utr, average_positive_coverage, pain=False, sco
 
 def add_empty_score_datasets(h5: h5py._hl.files.File):
     """Function to add necessary dataset to the input h5 data."""
+=======
+                     peaks.append(((starts[y] , ends[y]), individual_seqid, strand, get_median_height(starts[y],ends[y],
+                                                                                            start,individual_chunk)))
+            except UnboundLocalError:
+                    print("No peaks")
+                    return peaks
+    return peaks
+
+
+def get_median_height(starts,ends,start,chunk):
+    # function to return median height of all peaks in a specified area
+    raw_start = starts - start # determines start of peak on the individual chunk
+    raw_end = ends - start # determines end of peak on the individual chunk
+    if raw_start ==  raw_end:
+        raw_end += 1
+    median_height = chunk[ :, raw_start:raw_end] # selects coverage of bp between raw_start and raw_end
+    median_height = median_height[median_height > 0] # positive coverage is selected
+    median_height = np.median(median_height)
+    return median_height
+
+def to_trees(centered_peaks):
+    # function to store all peaks determined by get_cage_peak within Intervaltrees stored within a dictionary separated
+    # based on the peaks strand and seqid
+    trees = {}
+    not_null = 0
+    # for loop through all peaks
+    for x in centered_peaks:
+        if x[0][0] == x[0][1]:
+            not_null = 1
+        # if a combination of seqid and strand has not been encountered yet its added to the dict accompanied
+        # by an intervalltree representing a cage peak
+        if "{},{}".format(x[1], x[2]) not in trees.keys():
+                peaks = ivt.IntervalTree()
+                trees.setdefault(("{},{}".format(x[1], x[2])), peaks)
+                peaks[x[0][0]:x[0][1] + not_null ] = (x[0], x[-1])
+        # if the combination already exists the corresponing peak is added to the intervalltree at that position
+        else:
+            peaks[x[0][0]:x[0][1] + not_null] = (x[0], x[-1])
+            trees["{},{}".format(x[1], x[2])] = peaks
+        not_null = 0
+        # peaks = trees[(seqid, strand)]
+        # adding an intervall at the position of the peak to the intervaltree
+    # returns the dictionary full of intervaltrees
+    return trees
+
+
+def get_distance(trees, utrs, lim):
+    # function to determine the distance between annotated 5' UTRs and CAGE peaks within LIM basepairs, returns a list
+    # of tuples containing (intervall tree object (? unsure of type of object) of overlaping cage-peaks, their distance,
+    # tuple returned by get_utrs for the particular UTR these peaks are associated with)
+    overlap = []
+    distances = []
+    # check to see if UTRs and/or peaks exist within the lists submitted to the function
+    if len(utrs) == 0 or len(trees) == 0:
+        print("No UTRs or peaks")
+        return overlap, i
+    # loop iterating over list of UTRs
+    for x in (utrs):
+        i = 0
+        key = "{},{}".format(x[1], x[2])  # key based on the UTRs seqid and strand is created
+        try:
+            peaks = trees[key]
+        # if there is a KeyError the iteration of the loop is skipped, there must be no peaks for that seqid
+        # and/or strand
+        except KeyError:
+            continue
+        while len(overlap) == 0 and i <= lim:
+            # takes peaks for this seqid strand pair and checks if any of the peaks are within an interval around
+            # the TSS, if none are found the interval is increased by 1 up to a maximum of LIM
+            # this increasing value is the distance to the UTR, however, this will only reflect the distance to
+            # the edge of the peak, the center might be a couple bp further away from the UTR depending on how
+            # wide the peak might be.
+            overlap = peaks.overlap(x[0] - i, x[0] + i + 1)
+            # if there is overlap and the distance is 0 that means there must be a peak around the TSS
+            if i == 0 and len(overlap) != 0:
+                distances.append((overlap, i, x))
+                overlap = []
+                break
+
+            # if there is overlap and the distance is > 0 that means there must be a peak > 0 bp away from the TSS
+            elif i != 0 and len(overlap) != 0:
+                # bp between peak and UTR need to be scored based on the distance and the peak height
+                distances.append((overlap, i, x))
+                overlap = []
+                break
+            i += 1
+    return distances
+
+def add_empty_score_datasets(h5):
+    # function to add necessary dataset to the input h5 data
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
     length = h5['data/X'].shape[0]
     chunk_size = h5['data/X'].shape[1]
     h5.create_group(SCORE_STR)
@@ -308,6 +471,7 @@ def add_empty_score_datasets(h5: h5py._hl.files.File):
                           fillvalue=-1)
 
 
+<<<<<<< HEAD
 def sigmoid(x: float, shift: int = 0, slope: int = 1, neg: bool = False):
     """Function to return the sigmoid of input value with additional parameters in order to fully control the behavior
     of the sigmoid function, neg flag determines if the sigmoid function is inverted or not. """
@@ -335,10 +499,42 @@ def linear_scoring(distance):
 def get_peak_from_tree(s: ivt.interval.Interval):
     """Function to return start position of a peak, its end position and its height from the data stored in an
     interval."""
+=======
+def sigmoid(x, width=1, shift=0, span=1, neg=False):
+    # function to return the sigmoid of input value with additional parameters in order to fully control the behavior of
+    # the sigmoid function, neg flag determines if the sigmoid function is inverted or not
+    if neg:
+        f = 1 / (span + np.exp(-((x / width) - shift)))
+    else:
+        f = 1 / (span + np.exp(((x / width) - shift)))
+    return f
+
+def find_stretch(cut_off=500):
+    # method to find shift and slope combination that ensures sigmoid(0) > 0.99 and sigmoid(cut_off) < 0.01 as well as
+    # 0.45 < sigmoid(x/2) < 0.55 in order to ensure the score scales properly with distance
+
+    # for loop to try different values for shift
+    for shift in range(0, cut_off):
+        zero = sigmoid(0,1,shift)
+        if zero > 0.99:
+            break
+    # for loop to try different values for slope
+    for slope in range(1, cut_off):
+        zero = sigmoid(0,slope,shift)
+        co = sigmoid(cut_off,slope,shift)
+        mid = sigmoid(cut_off/2,slope,shift)
+        if zero > 0.99 and co < 0.01 and 0.45 <= mid <= 0.55:
+            return shift, slope
+    return 0, 1 # if no shift, slope combination can be determined normal sigmoid is used
+
+def get_peak_from_tree(s):
+    # function to return start position of a peak, its end position and its height from the data stored in an interval
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
     # tree
     for x in s:
         start = x.begin
         end = x.end
+<<<<<<< HEAD
         return start, end
 
 
@@ -350,6 +546,21 @@ def get_average_cov(h5: h5py._hl.files.File):
     by = 1000
     sum_chunks = 0
     length_chunks = 0
+=======
+        height = x[2][1]
+        return (start, end), height
+
+
+def get_average_cov(h5):
+    # function to return the average of all positive coverage per bp by calculating
+    # (sum of all positive coverage)/(number of bp with positive coverage)
+    start = 0
+    end = h5['data/X'].shape[0]
+    by = 500
+    sum_chunks = 0
+    len_chunks = 0
+    l = 0
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
     # loop to iterate over BY chunks at once
     for i in range(start, end, by):
         chunks = h5['evaluation/cage_coverage'][i:(i + by)]
@@ -360,6 +571,7 @@ def get_average_cov(h5: h5py._hl.files.File):
             return None
 
         sum_chunks += np.sum(cov_chunks)  # sum of all positive coverage over BY chunks
+<<<<<<< HEAD
         len_chunks = np.shape(cov_chunks)  # len of BY flattened chunks
         length_chunks += len_chunks[0]  # sum of length of all chunks
     return int(round(sum_chunks / length_chunks))  # needs to be int otherwise type error later on
@@ -378,10 +590,62 @@ def find_largest_peak(overlap):
             max_height = height
             max_peak = peak
     return max_peak
+=======
+        len_chunks = np.shape(cov_chunks)  # len of BY flattend chunks
+        l += len_chunks[0]  # sum of length of all chunks
+    average_positive_cov = sum_chunks / l
+    return int(round(sum_chunks / l))  # needs to be int otherwise type error later on
+
+
+def get_score(distance, max_distance, average_positive_coverage):
+    # function to return are score associated with a position on a chunk based on the distance of CAGE-peaks to annotated
+    # UTRs
+    scores = []
+    positions = []
+    # for loop to iterate over list of tuples contaiing different cage peaks overlapping with 5' UTRs within a certain
+    # inverval
+    for x in distance:
+        utr_pos = x[2][0]
+        peak_pos, peak_height = get_peak_from_tree(x[0])
+        shift, slope = find_stretch(max_distance)
+        shift_height, slope_height = find_stretch(average_positive_coverage)
+        # differentiating various cases of positioning of the CAGE-peak in relation to the UTR
+        # todo: integrate peak height into this
+        # peak starts after UTR
+        if peak_pos[0] > utr_pos:
+            pos = (utr_pos, peak_pos[1])
+            score = sigmoid(x[1], shift, slope)
+            score = score * (sigmoid(peak_height, shift=shift_height, width=slope_height, neg=False))
+            # using sigmoid function between 0 and 1 with decreasing values as peak height increases to downweigh even
+            # more if it is a tall peak and does not align with the UTR
+            scores.append(score)
+            positions.append(pos)
+        # peak ends before utr
+        elif peak_pos[1] < utr_pos:
+            pos = (peak_pos[0], utr_pos)
+            score = sigmoid(x[1], shift, slope)
+            scores.append(score)
+            score = score * (sigmoid(peak_height, shift=shift_height, width=slope_height, neg=False))
+            # using sigmoid function between 0 and 1 with decreasing values as peak height increases to downweigh even
+            # more if it is a tall peak and does not align with the UTR
+            positions.append(pos)
+        # peak around peak
+        elif peak_pos[0] <= utr_pos <= peak_pos[1]:
+            pos = (peak_pos[0], peak_pos[1])
+            score = 1
+            score = score * (sigmoid(peak_height, shift=shift_height, width=slope_height, neg=True) + 1)
+            # using sigmoid function between 1 and 2 with increasing values as peak height increases to upweigh
+            # UTRs aligning with tall CAGE peaks
+            scores.append(score)
+            positions.append(pos)
+
+    return scores, positions
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
 
 # different scorers copied form score_rnaseq.py in order to score CAGE-peaks within IG for example, however, results
 # in Peaks being scored based on their coverage and not based on their distance, for peaks in IG and Introns for example
 # todo: find a distance based way of scoring for those peaks too?
+<<<<<<< HEAD
 
 
 class Scorer:
@@ -390,6 +654,13 @@ class Scorer:
         self.scale_to = 2.6  # why 2.6?
         self.column = column  # is this the axis?
         self.median_cov = median_cov  # usually 1
+=======
+class Scorer:
+    def __init__(self, median_cov, column, sigmoid=True):
+        self.scale_to = 2.6
+        self.column = column # is this the axis?
+        self.median_cov = median_cov # usually 1 
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
         self.final_scale = self.scale_pos_half
         self.run_sigmoid = sigmoid
 
@@ -407,14 +678,28 @@ class Scorer:
     def scale_nada(score):
         return score
 
+<<<<<<< HEAD
     def score(self, datay: np.array, coverage: np.array, spliced_coverage: np.array,
               average_positive_coverage: int):
         """Function to calculate a per bp score based on coverage of that bp, also implements threshold check."""
+=======
+    def score(self, datay, coverage, spliced_coverage):
+        # sets all coverage below the threshold to 0 in order to not score peaks below the threshold
+        cov_shape = np.shape(coverage)
+        sc_shape = np.shape(spliced_coverage)
+        threshold_array = np.full((cov_shape), threshold)
+        coverage = coverage - threshold_array
+        threshold_array = np.full((sc_shape), threshold)
+        spliced_coverage = spliced_coverage - threshold_array
+        coverage[coverage < 0] = 0
+        spliced_coverage[spliced_coverage < 0] = 0
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
         if self.column is not None:
             mask = datay[:, self.column].astype(bool)
         else:
             # this will effectively mask padding only
             mask = np.sum(datay, axis=1).astype(bool)
+<<<<<<< HEAD
         # selects only those bp where there is coverage for that particular class (column) ?
 
         # sets all coverage below the threshold to 0 in order to not score peaks below the threshold
@@ -452,6 +737,20 @@ class Scorer:
             # print(f'score at final_scale:{score}')
         else:
             score = np.array([])
+=======
+        cov = coverage[mask]
+        sc = spliced_coverage[mask]
+        if cov.shape[0]:
+            pre_score = self._pre_score(cov, sc)
+            if self.run_sigmoid:
+                score = self.sigmoid(pre_score)
+            else:
+                score = pre_score
+            score = self.final_scale(score)
+        else:
+            score = np.array([])
+
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
         return score, mask  # todo, maybe full score can be used _with_ and mask not returned??
 
     def _pre_score(self, cov, sc):
@@ -467,7 +766,31 @@ class Scorer:
         # sigmoid
         return 1 / (1 + np.exp(-x))
 
+<<<<<<< HEAD
 # todo: find out if this is needed or not
+=======
+class ScorerIntergenic(Scorer):
+    def __init__(self, median_cov, column):
+        super().__init__(median_cov, column=column)
+        self.final_scale = self.scale_neg_half
+
+    def _pre_score(self, cov, sc):
+        x = np.log(cov + sc + 1)
+        # normalize (different .bams have different coverage)
+        x = x * self.scale_to / np.log(self.median_cov + 1) * -1
+        return x
+
+
+class ScorerIntron(Scorer):
+    def __init__(self, median_cov, column):
+        super().__init__(median_cov, column=column)
+        self.final_scale = self.scale_neg_half
+
+    def _pre_score(self, cov, sc):
+        x = np.log(cov + sc + 1)
+        x = x * self.scale_to / np.log(self.median_cov + 1) * -1
+        return x
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
 
 
 class NormScorer(Scorer):
@@ -488,6 +811,7 @@ class NormScoreSplicedCoverage(NormScorer):
         return x / np.log10(self.median_cov + 1)
 
 
+<<<<<<< HEAD
 def get_median_expected_coverage(h5, max_expected: int = 1000):
     """Function to calculate median expected coverage over the whole h5 file"""
     # this will fail unless max_expected is higher than the median
@@ -496,6 +820,14 @@ def get_median_expected_coverage(h5, max_expected: int = 1000):
     bins = list(range(max_expected)) + [np.inf]
     by = 1000
     median = None
+=======
+def get_median_expected_coverage(h5, max_expected=1000):
+    # this will fail unless max_expected is higher than the median
+    # but since we're expecting a median around say 5-20... should be OK
+    start, end = 0, h5['data/X'].shape[0]
+    bins = list(range(max_expected)) + [np.inf]
+    by = 1000
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
     histo = np.zeros(shape=[len(bins) - 1])
     for i in range(start, end, by):
         counts, _ = histo_expected_coverage(h5, start_i=i, end_i=min(i + by, end), bins=bins)
@@ -522,7 +854,10 @@ def get_median_expected_coverage(h5, max_expected: int = 1000):
 
 
 def histo_expected_coverage(h5, start_i, end_i, bins):
+<<<<<<< HEAD
     """Function to calculate coverage on individual chunk level"""
+=======
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
     masked_cov = h5[f'evaluation/{COV_STR}'][start_i:end_i][
         np.logical_or(h5['data/y'][start_i:end_i, :, 1], h5['data/y'][start_i:end_i, :, 2])
     ]
@@ -532,11 +867,18 @@ def histo_expected_coverage(h5, start_i, end_i, bins):
 
 # most of the functions and ways things are done are copied from Helixer/helixer/evaluation/score_rnaseq.py script
 def sum_last_and_flatten(x):
+<<<<<<< HEAD
     """Function to sum array along last axis and then flatten the summed array"""
     return np.sum(x, axis=-1).ravel()
 
 
 def main(species: str, h5_data: h5py._hl.files.File):
+=======
+    return np.sum(x, axis=-1).ravel()
+
+
+def main(species, h5_data):
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
     # open h5
     h5 = h5py.File(h5_data, 'r+')
     # create evaluation, score, & metadata placeholders if they don't exist
@@ -571,22 +913,40 @@ def main(species: str, h5_data: h5py._hl.files.File):
     average_positive_coverage = get_average_cov(h5)
     h5[f'{META_STR}/median_expected_coverage'].attrs.create(name=species, data=median_coverage)
     mec = int(h5[f'{META_STR}/median_expected_coverage'].attrs[species])
+<<<<<<< HEAD
 
     # can I remove normscorer etc. ?
     norm_cov_scorer = NormScoreCoverage(column=None, median_cov=mec)
     norm_sc_scorer = NormScoreSplicedCoverage(column=None, median_cov=mec)
     norm_scorers = [norm_cov_scorer, norm_sc_scorer]  # calculate normalized coverage more than "scoring" perse
+=======
+    ig_scorer = ScorerIntergenic(column=0, median_cov=mec)
+    intron_scorer = ScorerIntron(column=3, median_cov=mec)
+    # todo: find way to implement threshold for scoreres
+    scorers = [ig_scorer, intron_scorer]
+    norm_cov_scorer = NormScoreCoverage(column=None, median_cov=mec)
+    norm_sc_scorer = NormScoreSplicedCoverage(column=None, median_cov=mec)
+    norm_scorers = [norm_cov_scorer, norm_sc_scorer]  # calculate normalized coverage more than "scoring" persay
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
     max_norm_cov = 0
     max_norm_sc = 0
 
     i = 0
     by = stepsize
+<<<<<<< HEAD
     by_out = 0
     start = 0
     end = 5000# h5['data/X'].shape[0]
     counts = np.zeros(shape=(end - start, 4))
     # loop to iterate over BY chunks at once and score them
     print(f'starting to score {start}:{end} in {species}; threshold: {threshold}; max_distance: {max_distance}')
+=======
+    start = 0
+    end = h5['data/X'].shape[0]
+    counts = np.zeros(shape=(end - start, 4))
+    # loop to iterate over BY chunks at once and score them
+    print(f'starting to score {start}:{end} in {species}')
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
     # for loop to iterate over input h5 file BY chunks at a time
     for i in range(start, end, by):
         if i + by > end:
@@ -596,16 +956,23 @@ def main(species: str, h5_data: h5py._hl.files.File):
         i_rel = i - start
         y = h5['data/y'][i:(i + by_out)]
         utr = get_utr_positions(h5, start=i, end=i + by, stepsize=by_out)
+<<<<<<< HEAD
         utr_trees = to_trees(utr, utr=True)
         peaks = get_cage_peak(h5, threshold=threshold, start=i, end=i + by, stepsize=by_out)
         peaks_trees = to_trees(peaks)
         # utr_trees, peak_trees = get_positions(h5, start=i, end=i + by, stepsize=by_out, threshold=threshold)
+=======
+        peaks = get_cage_peak(h5, threshold=threshold, start=i, end=i + by, stepsize=by_out)
+        peaks_trees = to_trees(peaks)
+        dist = get_distance(peaks_trees, utr, max_distance)
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
         datay = y.reshape([-1, 4])
         _, chunk_size, n_cats = y.shape
         start_rel = (i * chunk_size)  # relative start of each by chunk_of_chunks in order to correctly add the score
         # different coverages not used as much as in the RNAseq script
         coverage = h5[f'evaluation/{COV_STR}'][i:(i + by_out)]
         spliced_coverage = h5[f'evaluation/{SC_STR}'][i:(i + by_out)]
+<<<<<<< HEAD
         number_of_files = coverage.shape[-1]
         # coverage and spliced_coverage will initially have dimensions [n_chunks, chunk_size, n_bams]
         # but scoring assumes shape [n_basepairs], so they must be summed and flattened
@@ -631,13 +998,44 @@ def main(species: str, h5_data: h5py._hl.files.File):
         by_bp = by_bp.reshape([by_out, chunk_size])  # reshaped so it fits the chunk structure again
 
         # normcov and other groups, not as important for scoring
+=======
+        # coverage and spliced_coverage will initially have dimensions [n_chunks, chunk_size, n_bams]
+        # but scoring assumes shape [n_basepairs], so they must be summed and flattened
+        coverage, spliced_coverage = sum_last_and_flatten(coverage), sum_last_and_flatten(spliced_coverage)
+
+        by_bp = np.full(fill_value=1., shape=[by_out * chunk_size])
+        norm_cov_by_bp = np.full(fill_value=1., shape=[by_out * chunk_size, 2])  # 2 for [cov, sc]
+        score, pos = get_score(dist, max_distance, average_positive_coverage )  # actual scoring happens for BY chunk of chunks
+        # loop to add positions and scoring to the by_bp class in the h5file
+        for scorer in scorers:
+            raw_score, mask = scorer.score(datay=datay, coverage=coverage, spliced_coverage=spliced_coverage)
+            if raw_score.size > 0:
+                by_bp[mask] = raw_score
+        for index_asif, norm_scorer in enumerate(norm_scorers):
+            raw_score, mask = norm_scorer.score(datay=datay, coverage=coverage,
+                                                spliced_coverage=spliced_coverage)
+            if raw_score.size > 0:
+                norm_cov_by_bp[mask, index_asif] = raw_score
+        # adding of scores calculated by get_score() at positions pos
+        if len(pos) > 0:
+            for e, x in enumerate(pos):
+                pos_start = x[0]
+                pos_end = x[1]
+                by_bp[pos_start - start_rel:pos_end - start_rel] = score[e]  # adding to flat array size of by chunks
+        del coverage, spliced_coverage
+        by_bp = by_bp.reshape([by_out, chunk_size])  # reshaped so it fits the chunk structure again
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
         norm_cov_by_bp = norm_cov_by_bp.reshape([by_out, chunk_size, 2])  # don't know what happens with norm_cov
         h5[f'{SCORE_STR}/by_bp'][i:(i + by_out)] = by_bp
         h5[f'{SCORE_STR}/norm_cov_by_bp'][i:(i + by_out)] = norm_cov_by_bp
         max_norm_cov = max(max_norm_cov, np.max(norm_cov_by_bp[:, 0]))
         max_norm_sc = max(max_norm_sc, np.max(norm_cov_by_bp[:, 1]))
 
+<<<<<<< HEAD
         # additional scoring again I don't know what exactly these scores do, copied from score_rnaseq.py
+=======
+        # additional scoring again idk what exactly these scores do, copied from score_rnaseq.py
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
         current_counts = np.sum(h5['data/y'][i:(i + by_out)], axis=1)
         scores_four = np.full(fill_value=-1., shape=[by_out, 4])
         scores_one = np.full(fill_value=-1., shape=[by_out])
@@ -669,13 +1067,17 @@ def main(species: str, h5_data: h5py._hl.files.File):
     h5[f'{SCORE_STR}/one_centered'][start:end] = centered_one
     h5.close()
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--h5-data', help='h5 data file with /data/{X, y, species, seqids, etc...} '
                                                 'AND with /evaluation/{{prefix}_coverage, {prefix}_spliced_coverage} '
                                                 'to which {prefix}_scores will be added',
                         required=True)
+<<<<<<< HEAD
     parser.add_argument('-s', '--species',
                         help='species name matching that used in creation of geenuff/h5',
                         required=True)
@@ -692,6 +1094,18 @@ if __name__ == "__main__":
                         help='number of chunks that is read in at once (default = 500)',
                         default=500)
 
+=======
+    parser.add_argument('-s', '--species', help='species name matching that used in creation of geenuff/h5',
+                        required=True)
+    parser.add_argument('--dataset-prefix', help='prefix of h5 datasets to be used for scoring (default "cage")',
+                        default='cage')
+    parser.add_argument('--threshold', dest='threshold', help='minimal coverage for cage peaks to get detected (default = 3)',
+                        default=3)
+    parser.add_argument('--max-distance', dest='distance', help='maximal distance between CAGE-peak and annotated UTR (default = 500)',
+                        default=500)
+    parser.add_argument('--stepsize', dest='stepsize', help='number of chunks that is read in at once (default = 500)', 
+                        default=500)
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
     args = parser.parse_args()
     COV_STR = f'{args.dataset_prefix}_coverage'
     SC_STR = f'{args.dataset_prefix}_spliced_coverage'

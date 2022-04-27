@@ -9,9 +9,16 @@ import argparse
 
 
 # identifies start of 5'UTRs according to reference
+<<<<<<< HEAD
 def get_utr_positions(file, start=0, end=None, stepsize=1000):
     whole_utrs = []
     if end is None:
+=======
+def get_utr_positions(file, start=0, end="max", stepsize=1000):
+    # function to return list of tuples (utr position, seqid, strand, chunk) for each annotated 5' UTR
+    whole_utrs = []
+    if end == "max":
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
         end = file['data/y'].shape[0]
     else:
         end = end
@@ -22,7 +29,10 @@ def get_utr_positions(file, start=0, end=None, stepsize=1000):
         start_ends = file['data/start_ends'][i:(i + stepsize)].T
         # loop to go over each individual loop of the stepsize chunks loaded at once
         for x in range(0, chunk.shape[2]):
+<<<<<<< HEAD
             # todo: find function that handles individual chunks
+=======
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
             individual_chunk = chunk[:, :, x]
             individual_seqid = seqid[x]
             individual_start_ends = start_ends[:, x]
@@ -53,6 +63,11 @@ def get_utr_positions(file, start=0, end=None, stepsize=1000):
 
 # method to calculate the distance between CAGE peaks and UTRs, will select the shortest distance
 def get_distance(whole_utrs, trees, max_distance=100000):
+<<<<<<< HEAD
+=======
+    # function to calculate distance between CAGE peaks and UTRs within MAX_DISTANCE form the UTR, will select the
+    # shortest distance
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
     minimal_distances = []
     # if a chunk had no UTRs or no peaks, an empty list is returned
     if len(whole_utrs) == 0 or len(trees) == 0:
@@ -84,11 +99,19 @@ def get_distance(whole_utrs, trees, max_distance=100000):
 
 
 # identifies positions of cage peaks on the chunk
+<<<<<<< HEAD
 def get_cage_peak(file, threshold=2, start=0, end=None, stepsize=1000):
 
     # can this be done more efficient?
     centered = []
     if end is None:
+=======
+def get_cage_peak(file, threshold=2, start=0, end="max", stepsize=1000):
+    # function to return list of tuples containing (center of peak, seqid, strand) of
+    # peaks larger than THRESHOLD
+    centered = []
+    if end == "max":
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
         end = file['data/y'].shape[0]
     else:
         end = end
@@ -139,8 +162,14 @@ def get_cage_peak(file, threshold=2, start=0, end=None, stepsize=1000):
     return centered
 
 
+<<<<<<< HEAD
 # method to create a dictionary filled with peaks separated by strand and  seqid
 def to_trees(centered_peaks):
+=======
+def to_trees(centered_peaks):
+    # function to store all peaks determined by get_cage_peak within Intervaltrees stored within a dictionary separated
+    # based on the peaks strand and seqid
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
     trees = {}
     # for loop through all peaks
     for x in centered_peaks:
@@ -160,7 +189,10 @@ def to_trees(centered_peaks):
     # returns the dictionary full of intervaltrees
     return trees
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
 def main(species, h5):
     # open h5
     h5 = h5py.File(h5, mode='r')
@@ -172,8 +204,12 @@ def main(species, h5):
     peaks = to_trees(peaks)
     print("Calculating distance ...")
     distance = get_distance(positions,peaks)
+<<<<<<< HEAD
     print(species)
     print(statistics.median(distance))
+=======
+    print(f'{species}, {statistics.median(distance)}')
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
 
 
 if __name__ == "__main__":
@@ -184,12 +220,21 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--species', help='species name matching that used in creation of geenuff/h5',
                         required=True)
     parser.add_argument('--threshold', dest='threshold',
+<<<<<<< HEAD
                         help='minimal coverage for cage peaks to get detected (default = 2)',
                         default=2)
+=======
+                        help='minimal coverage for cage peaks to get detected (default = 3)',
+                        default=3)
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
     parser.add_argument('--max-distance', dest='distance',
                         help='maximal distance between CAGE-peak and annotated UTR (default = 100000)',
                         default=100000)
     args = parser.parse_args()
     threshold = int(args.threshold)
     max_distance = int(args.distance)
+<<<<<<< HEAD
     main(args.species, args.h5_data)
+=======
+    main(args.species, args.h5_data)
+>>>>>>> 1130c9a18138a99c21499b7b08d1670bbd87b140
