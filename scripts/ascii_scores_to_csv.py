@@ -14,6 +14,7 @@ def parse_table(splittable):
     header = splittable[0]
     header = re.sub('\+|-', '', header)
     for line in splittable[1:]:
+        line = strip_logging_prefix(line)
         if not line.startswith('+'):
             line = line.replace(' ', '')
             line = re.sub('\|', ',', line)
@@ -21,6 +22,10 @@ def parse_table(splittable):
             out.append(line)
 
     return header, '\n'.join(out)
+
+
+def strip_logging_prefix(line):
+    return re.sub('.*PRINT ', '', line)
 
 
 def gen_tables(filein):
@@ -40,10 +45,16 @@ def gen_tables(filein):
 
 
 def main(filein, dirout):
+    seen = set()
     if not os.path.exists(dirout):
         os.mkdir(dirout)
     for table in gen_tables(filein):
         header, tab = parse_table(table)
+        # force unique headers / output file names
+        if header in seen:
+            header += '_'
+        seen.add(header)
+
         fileout = '{}/{}.csv'.format(dirout, header)
         with open(fileout, 'w') as f:
             f.write(tab)

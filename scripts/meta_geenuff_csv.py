@@ -44,8 +44,8 @@ class GeenuffLengthAdder(Adder):
 
 
 @click.command()
-@click.option('--base-dir', help='data dir with usual proj structure, i.e. {Species}/meta_collection/geenuff folders')
-@click.option('--defaults-on-err/--no-defaults-on-err',
+@click.option('--base-dir', help='data dir with usual proj structure, i.e. {Species}/meta_collection/geenuff folders', required=True)
+@click.option('--defaults-on-err/--no-defaults-on-err', default=True,
               help='to fill in default values or to crash when s.t. is missing')
 def main(base_dir, defaults_on_err):
     adders = []
