@@ -14,7 +14,6 @@ def parse_table(splittable):
     header = splittable[0]
     header = re.sub('\+|-', '', header)
     for line in splittable[1:]:
-        line = strip_logging_prefix(line)
         if not line.startswith('+'):
             line = line.replace(' ', '')
             line = re.sub('\|', ',', line)
@@ -32,6 +31,7 @@ def gen_tables(filein):
     out = []
     with open(filein) as f:
         for line in f:
+            line = strip_logging_prefix(line)
             line = line.rstrip()
             if line.startswith('|') or line.startswith('+'):
                 out.append(line)
