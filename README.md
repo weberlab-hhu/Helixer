@@ -18,6 +18,8 @@ Train one model for a wide variety of genomes.
 > Coming soon: docker and singularity containers. 
 > 
 > Until then: see the full install-process below
+>
+> If you're a project member please see docs/dev_install.md
 
 ### Get the code
 First, download and checkout the latest release
