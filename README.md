@@ -84,8 +84,9 @@ Setup according to included instructions and
 further add the compiled `helixer_post_bin` to 
 your system PATH. 
 
-### Most python dependencies 
+### Most python dependencies of Helixer
 ```shell script
+# from the Helixer directory
 pip install -r requirements.txt
 ```
 
