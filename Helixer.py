@@ -12,7 +12,7 @@ from helixer.export.exporter import HelixerExportController, HelixerFastaToH5Con
 
 
 class HelixerParameterParser(ParameterParser):
-    def __init__(self, config_file_path=''):
+    def __init__(self, script_dir, config_file_path=''):
         super().__init__(config_file_path)
         self.io_group.add_argument('--fasta-path', type=str, required=True, help='FASTA input file.')
         self.io_group.add_argument('--gff-output-path', type=str, required=True, help='Output GFF file path.')
@@ -68,9 +68,10 @@ class HelixerParameterParser(ParameterParser):
             'min_coding_length': 100,
         }
         self.defaults = {**self.defaults, **helixer_defaults}
+        self.script_dir = script_dir
 
     def check_args(self, args):
-        self.model_filepath = os.path.join('models', f'{args.lineage}.h5')
+        self.model_filepath =  os.path.join(self.script_dir, 'models', f'{args.lineage}.h5')
         assert os.path.isfile(self.model_filepath), f'{self.model_filepath} does not exists'
 
         # check if model timestep width fits the subsequence length (has to be evenly divisible)
@@ -97,7 +98,8 @@ class HelixerParameterParser(ParameterParser):
 
 if __name__ == '__main__':
     start_time = time.time()
-    pp = HelixerParameterParser('config/helixer_config.yaml')
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    pp = HelixerParameterParser(script_dir, os.path.join(script_dir, 'config', 'helixer_config.yaml'))
     args = pp.get_args()
     args.overlap = not args.no_overlap  # minor overlapping is a far better default for inference. Thus, this hack.
     print(colored('Helixer.py config loaded. Starting FASTA to H5 conversion.', 'green'))
@@ -116,8 +118,7 @@ if __name__ == '__main__':
         msg = 'FASTA to H5 conversion done. Starting neural network prediction ' + msg + ' overlapping.'
         print(colored(msg, 'green'))
         # hard coded model dir path, probably not optimal
-        model_filepath = os.path.join('models', f'{args.lineage}.h5')
-        assert os.path.isfile(model_filepath), f'{model_filepath} does not exists'
+        model_filepath =  os.path.join(script_dir, 'models', f'{args.lineage}.h5')
 
         hybrid_model_args = [
             '--verbose',
