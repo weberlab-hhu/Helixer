@@ -340,7 +340,7 @@ def pad_cov_right(short_arr, length, fill_value=-1.):
     return out
 
 
-def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_final_dimension):
+def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_final_dimension, threads=8):
     """calculates coverage for a coordinate from bam, saves to h5, returns counts for aggregating"""
     b_seqid, start_i, end_i = coord
     seqid = b_seqid.decode('utf-8')
@@ -354,8 +354,13 @@ def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_
     # todo, guarnatee order?
     mapargs = zip([seqid] * nbams, H5_BAMS.keys(), [strandedness] * nbams)
 
-    with Pool(8) as p:
-        coverage_out = p.map(cov_by_chrom, mapargs)
+    if threads > 1:
+        with Pool(threads) as p:
+            coverage_out = p.map(cov_by_chrom, mapargs)
+    else:
+        coverage_out = []
+        for marg in mapargs:
+            coverage_out.append(cov_by_chrom(marg))
 
     for i, cov_sample in enumerate(coverage_out):
         cov_array, spliced_array, length, counts, memmap_dirs = cov_sample
@@ -375,7 +380,7 @@ def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_
     return counts
 
 
-def main(species, h5_data, strandedness, prefix):
+def main(species, h5_data, strandedness, prefix, threads):
     # open h5
     h5 = h5py.File(h5_data, 'r+')
     # create evaluation, score, & metadata placeholders if they don't exist
@@ -418,7 +423,8 @@ def main(species, h5_data, strandedness, prefix):
         print(coord, file=sys.stderr)
         cage_coverage_from_coord_to_h5(
             coord, h5, strandedness=strandedness,
-            chunk_size=chunk_size, old_final_dimension=old_final_dimension)
+            chunk_size=chunk_size, old_final_dimension=old_final_dimension,
+            threads=threads)
 
     h5.close()
 
@@ -442,6 +448,8 @@ if __name__ == "__main__":
                         help='second strand is sense strand, e.g. reads ARE from a typical dUTP protocol')
     parser.add_argument('--unstranded', action='store_true',
                         help='reads are not stranded, final "strand" will simply arbitrarily match read strand')
+    parser.add_argument('--threads', default=8, help="how many threads, set to a value <= 1 to not use multiprocessing",
+                        type=int)
     args = parser.parse_args()
 
     if args.first_read_is_sense_strand:
@@ -469,4 +477,5 @@ if __name__ == "__main__":
     main(args.species,
          args.h5_data,
          strandedness,
-         pfx)
+         pfx,
+         args.threads)
