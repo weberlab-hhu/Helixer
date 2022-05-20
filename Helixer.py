@@ -7,8 +7,9 @@ import subprocess
 from termcolor import colored
 
 from helixer.core.scripts import ParameterParser
+from helixer.core.data import lineage_model, fetch_and_organize_models
 from helixer.prediction.HybridModel import HybridModel
-from helixer.export.exporter import HelixerExportController, HelixerFastaToH5Controller
+from helixer.export.exporter import HelixerFastaToH5Controller
 
 
 class HelixerParameterParser(ParameterParser):
@@ -70,8 +71,6 @@ class HelixerParameterParser(ParameterParser):
         self.defaults = {**self.defaults, **helixer_defaults}
 
     def check_args(self, args):
-        self.model_filepath = os.path.join('models', f'{args.lineage}.h5')
-        assert os.path.isfile(self.model_filepath), f'{self.model_filepath} does not exists'
 
         # check if model timestep width fits the subsequence length (has to be evenly divisible)
         with h5py.File(self.model_filepath, 'r') as model:
@@ -115,9 +114,12 @@ if __name__ == '__main__':
         msg = 'with' if args.overlap else 'without'
         msg = 'FASTA to H5 conversion done. Starting neural network prediction ' + msg + ' overlapping.'
         print(colored(msg, 'green'))
-        # hard coded model dir path, probably not optimal
-        model_filepath = os.path.join('models', f'{args.lineage}.h5')
-        assert os.path.isfile(model_filepath), f'{model_filepath} does not exists'
+
+        # find model from user data directory for Helixer
+        model_filepath = lineage_model(args.lineage)
+        if not os.path.isfile(model_filepath):
+            fetch_and_organize_models()
+        assert os.path.isfile(model_filepath), f'{model_filepath} does not exists; even after auto download'
 
         hybrid_model_args = [
             '--verbose',
@@ -149,5 +151,5 @@ if __name__ == '__main__':
                           f'in {run_time / (60 * 60):.2f} hours. '
                           f'GFF file written to {args.gff_output_path}.', 'green'))
         else:
-            print(colored('\nAn error occured during post processing. Exiting.', 'red'))
+            print(colored('\nAn error occurred during post processing. Exiting.', 'red'))
 

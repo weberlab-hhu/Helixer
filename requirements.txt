@@ -13,5 +13,6 @@ h5py
 multiprocess
 git+https://github.com/janinamass/dustdas@master
 numcodecs
+appdirs
 # for testing only
 pytest
