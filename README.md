@@ -4,7 +4,7 @@
 Gene calling with Deep Neural Networks.
 
 ## Disclaimer
-This software undergoing active testing and development.
+This software is undergoing active testing and development.
 Build on it at your own risk.
 
 ## Goal
@@ -84,8 +84,9 @@ Setup according to included instructions and
 further add the compiled `helixer_post_bin` to 
 your system PATH. 
 
-### Most python dependencies 
+### Most python dependencies of Helixer
 ```shell script
+# from the Helixer directory
 pip install -r requirements.txt
 ```
 
