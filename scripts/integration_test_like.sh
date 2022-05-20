@@ -1,8 +1,6 @@
 #!/bin/bash
 # runs all the major modes such as training/inference += weighting, overlapping, etc; does not (yet) check results
 # create directory for all files
-export helixer_path=`echo $0 | sed 's@scripts/integration_test_like.sh@@g'`
-
 wdir=integration_test_like_working_dir
 mkdir $wdir
 # cache full path for simplicity
@@ -71,7 +69,7 @@ cd $wdir
 mkdir training
 cd training
 # very short training with fancier parameters called
-$helixer_path/helixer/prediction/HybridModel.py -d $wdir/h5s/train --class-weights "[0.7, 1.6, 1.2, 1.2]" \
+HybridModel.py -d $wdir/h5s/train --class-weights "[0.7, 1.6, 1.2, 1.2]" \
   --transition-weights "[1, 12, 3, 1, 12, 3]" --predict-phase -e 5 --learning-rate 1e-2
 
 ## TUNING
@@ -81,7 +79,7 @@ cd $wdir
 mkdir tuning
 cd tuning 
 # load and tune, also with some param changes
-$helixer_path/helixer/prediction/HybridModel.py -d $wdir/h5s/train --class-weights "[0.7, 1.6, 1.2, 1.2]" \
+HybridModel.py -d $wdir/h5s/train --class-weights "[0.7, 1.6, 1.2, 1.2]" \
   --transition-weights "[1, 12, 3, 1, 12, 3]" --predict-phase -e 2 --learning-rate 1e-2 --load-model-path $wdir/training/best_model.h5 \
   --patience 10 --check-every-nth-batch 150 --resume-training
 
@@ -91,19 +89,19 @@ mkdir inference
 cd inference
 echo_both "------ EVAL -------"
 echo_both "- eval vanilla - "
-$helixer_path/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --eval \
+HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --eval \
   --load-model-path ../tuning/best_model.h5
 echo_both "- eval overlap - "
-$helixer_path/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --eval --overlap \
+HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --eval --overlap \
   --load-model-path ../tuning/best_model.h5
 
 ## PREDICT
 echo_both "------ PREDICT ------"
 echo_both "- pred vanilla -"
-$helixer_path/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase \
+HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase \
   --prediction-output-path predictions_retrained.h5 --load-model-path ../tuning/best_model.h5
 echo_both "- pred overlap -"
-$helixer_path/helixer/prediction/HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --overlap \
+HybridModel.py --test-data $wdir/h5s/test/test_data.h5 --predict-phase --overlap \
  --prediction-output-path predictions_retrained_overlap.h5 --load-model-path ../tuning/best_model.h5
 
 ## HELIXER POST
@@ -116,9 +114,6 @@ helixer_post_bin $wdir/h5s/test/test_data.h5 $wdir/inference/predictions_retrain
 # not sure this will work w/o being in exactly the Helixer repository, but it will need to
 echo_both "------ Helixer.py ------"
 cd $wdir
-mkdir models
-wget https://uni-duesseldorf.sciebo.de/s/4NqBSieS9Tue3J3/download
-mv download models/land_plant.h5
 
 mkdir Helixer_py
 Helixer.py --lineage land_plant --fasta-path $wdir/datain/test/input/*.fa.gz  \

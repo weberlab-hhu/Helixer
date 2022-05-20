@@ -111,13 +111,8 @@ architecture. For now a preliminary land plant model is available and
 will be used for the rest of the example. 
 
 #### Acquire models
+The latest model(s) will be acquired automatically.
 
-```bash
-# current code assumes exact directory structure
-mkdir models
-wget https://uni-duesseldorf.sciebo.de/s/4NqBSieS9Tue3J3/download
-mv download models/land_plant.h5
-```
 Info on the downloaded model (and any new releases) can be found here:
 https://uni-duesseldorf.sciebo.de/s/lQTB7HYISW71Wi0
 
@@ -139,7 +134,10 @@ usage information, if necessary.
 ```bash
 # example broken into individual steps
 fasta2h5.py --species Arabidopsis_lyrata --h5-output-path Arabidopsis_lyrata.h5 --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa
-helixer/prediction/HybridModel.py --load-model-path models/land_plant.h5 --test-data Arabidopsis_lyrata.h5 --overlap --val-test-batch-size 32 -v
+# the exact location ($HOME/.local/share/) of the model comes from appdirs
+# the model was downloaded when Helixer.py was called above
+# this example code is for _linux_ and will need to be modified for other OSs
+HybridModel.py --load-model-path $HOME/.local/share/Helixer/models/land_plant.h5 --test-data Arabidopsis_lyrata.h5 --overlap --val-test-batch-size 32 -v
 helixer_post_bin Arabidopsis_lyrata.h5 predictions.h5 100 0.1 0.8 60 Arabidopsis_lyrata_chromosome8_helixer.gff3
 ```
 

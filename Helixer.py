@@ -72,8 +72,15 @@ class HelixerParameterParser(ParameterParser):
 
     def check_args(self, args):
 
+        # find model from user data directory for Helixer
+        model_filepath = lineage_model(args.lineage)
+        if not os.path.isfile(model_filepath):
+            fetch_and_organize_models()
+        assert os.path.isfile(model_filepath), f'{model_filepath} does not exists; even after auto download'
+        args.model_filepath = model_filepath
+
         # check if model timestep width fits the subsequence length (has to be evenly divisible)
-        with h5py.File(self.model_filepath, 'r') as model:
+        with h5py.File(args.model_filepath, 'r') as model:
             # todo, safer way to find this
             try:
                 timestep_width = model['/model_weights/dense_1/dense_1/bias:0'].shape[0] // 8
@@ -115,15 +122,9 @@ if __name__ == '__main__':
         msg = 'FASTA to H5 conversion done. Starting neural network prediction ' + msg + ' overlapping.'
         print(colored(msg, 'green'))
 
-        # find model from user data directory for Helixer
-        model_filepath = lineage_model(args.lineage)
-        if not os.path.isfile(model_filepath):
-            fetch_and_organize_models()
-        assert os.path.isfile(model_filepath), f'{model_filepath} does not exists; even after auto download'
-
         hybrid_model_args = [
             '--verbose',
-            '--load-model-path', model_filepath,
+            '--load-model-path', args.model_filepath,
             '--test-data', tmp_genome_h5_path,
             '--prediction-output-path', tmp_pred_h5_path,
             '--val-test-batch-size', str(args.batch_size),

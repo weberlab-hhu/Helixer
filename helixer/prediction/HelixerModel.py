@@ -407,7 +407,7 @@ class HelixerModel(ABC):
         self.cli_args = cli_args  # if cli_args is None, the parameters from sys.argv will be used
 
         self.parser = argparse.ArgumentParser()
-        self.parser.add_argument('-d', '--data-dir', type=str, required=True)
+        self.parser.add_argument('-d', '--data-dir', type=str, default=None)
         self.parser.add_argument('-s', '--save-model-path', type=str, default='./best_model.h5')
         self.parser.add_argument('--large-eval-folder', type=str, default='')
         # training params
@@ -496,16 +496,27 @@ class HelixerModel(ABC):
 
         self.testing = bool(self.load_model_path and not self.resume_training)
         self.only_predictions = (self.testing and not self.eval)  # do only load X in this case
+
+        if not self.testing:
+            assert self.data_dir is not None, '--data-dir required for training'
+
         assert not (not self.testing and self.test_data)
         assert not (self.resume_training and (not self.load_model_path or not self.data_dir))
 
         self.class_weights = eval(self.class_weights)
+        if not isinstance(self.class_weights, (list, np.ndarray, type(None))):
+            raise ValueError(f'--class-weights evaluated to {self.class_weights} of type {type(self.class_weights)}; '
+                             f'this commonly means you need to remove nested quotes if not starting with nni')
         if type(self.class_weights) is list:
             self.class_weights = np.array(self.class_weights, dtype=np.float32)
 
         self.transition_weights = eval(self.transition_weights)
+        if not isinstance(self.transition_weights, (list, np.ndarray, type(None))):
+            raise ValueError(f'--transition-weights evaluated to {self.transition_weights} '
+                             f'of type {type(self.transition_weights)}; '
+                             f'this commonly means you need to remove nested quotes if not starting with nni')
         if type(self.transition_weights) is list:
-            self.transition_weights = np.array(self.transition_weights, dtype = np.float32)
+            self.transition_weights = np.array(self.transition_weights, dtype=np.float32)
 
         if self.verbose:
             print(colored('HelixerModel config: ', 'yellow'))

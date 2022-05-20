@@ -20,6 +20,9 @@ def fetch_and_organize_models():
     if not os.path.exists(model_path):
         os.makedirs(model_path)
     # land plant, best current model
+    lp_path = os.path.join(model_path, 'land_plant')
+    if not os.path.exists(lp_path):
+        os.makedirs(lp_path)
     url = 'https://uni-duesseldorf.sciebo.de/s/4NqBSieS9Tue3J3/download'
     r = requests.get(url, allow_redirects=True)
     open(os.path.join(model_path, 'land_plant', 'land_plant.h5'), 'wb').write(r.content)
