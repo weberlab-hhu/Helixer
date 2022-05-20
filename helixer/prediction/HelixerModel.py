@@ -407,7 +407,7 @@ class HelixerModel(ABC):
         self.cli_args = cli_args  # if cli_args is None, the parameters from sys.argv will be used
 
         self.parser = argparse.ArgumentParser()
-        self.parser.add_argument('-d', '--data-dir', type=str, default='')
+        self.parser.add_argument('-d', '--data-dir', type=str, required=True)
         self.parser.add_argument('-s', '--save-model-path', type=str, default='./best_model.h5')
         self.parser.add_argument('--large-eval-folder', type=str, default='')
         # training params

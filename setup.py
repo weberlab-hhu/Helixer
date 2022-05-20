@@ -8,6 +8,6 @@ setup(
    package_data={'helixer': ['testdata/*.fa', 'testdata/*.gff']},
    install_requires=["geenuff @ https://github.com/weberlab-hhu/GeenuFF/archive/refs/heads/main.zip"],
    dependency_links=["https://github.com/weberlab-hhu/GeenuFF/archive/refs/heads/main.zip#egg=geenuff"],
-   scripts=["Helixer.py", "fasta2h5.py", "geenuff2h5.py"],
+   scripts=["Helixer.py", "fasta2h5.py", "geenuff2h5.py", "helixer/prediction/HybridModel.py"],
    zip_safe=False,
 )
