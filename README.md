@@ -13,12 +13,10 @@ That is, to perform "gene calling" and identify
 which base pairs in a genome belong to the UTR/CDS/Intron of genes. 
 Train one model for a wide variety of genomes.
 
-## Install 
+## Docker / Singularity
+See https://github.com/gglyptodon/helixer-docker
 
-> Coming soon: docker and singularity containers. 
-> 
-> Until then: see the full install-process below
->
+## Install 
 > If you're a project member please see docs/dev_install.md
 
 ### Get the code
