@@ -15,8 +15,9 @@ def plot_(data, title):
     plt.figure(figsize=(10, 10))
     ax = sns.barplot(x="species", y="score", hue="method", data=data, ci=None)
     ax.set_title(title)
+    ax.set(ylim=(0, 1))
     for x in range(len(ax.containers)):
-        ax.bar_label(ax.containers[x])
+        ax.bar_label(ax.containers[x], fmt='%4.2f')
 
 
 def get_UTR_F1(file):
@@ -28,10 +29,13 @@ def get_UTR_F1(file):
     m_array = m_array[:, 1:]
     # convert to float
     m_array = m_array.astype('float')
+    F1_IG = m_array[0, -1]
     F1_UTR = m_array[1, -1]
-    if F1_UTR == None:
+    F1_exon = m_array[2, -1]
+    F1_intron = m_array[3, -1]
+    if F1_UTR is None or F1_IG is None or F1_exon is None or F1_intron is None:
         return 0
-    return F1_UTR
+    return [F1_IG, F1_UTR, F1_exon, F1_intron]
 
 
 def mk_csv(rows, new_file):
@@ -43,7 +47,7 @@ def mk_csv(rows, new_file):
         writer.writerow(header)
         writer.writerows(rows)
 
-def main(methods, species, title, output):
+def main(methods, species, title, output, _class):
     rows = []
     new_file = True
     # output_path determines where this figure will be saved
@@ -52,8 +56,8 @@ def main(methods, species, title, output):
     for sp in species:
         for method in methods:
             file = f'/mnt/data/kevin/FANTOM_Data/test_data_FANTOM5/visual/cms/cvs/{method}/{sp}/genic_CM_F1_summary.csv'
-            F1_UTR = get_UTR_F1(file)
-            row = [sp, F1_UTR, method]
+            F1_scores = get_UTR_F1(file)
+            row = [sp, F1_scores[_class], method]
             rows.append(row)
 
     mk_csv(rows, new_file)
@@ -78,5 +82,24 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--title',
                             help='title for the figure',
                             default=None)
+    parser.add_argument('--utr', action='store_true',
+                            help='class to compare, in this case F1 score for UTRs')
+    parser.add_argument('--ig', action='store_true',
+                            help='class to compare, in this case F1 score for IG')
+    parser.add_argument('--exon', action='store_true',
+                            help='class to compare, in this case F1 score for exon')
+    parser.add_argument('--intron', action='store_true',
+                            help='class to compare, in this case F1 score for intron')
     args = parser.parse_args()
-    main(args.methods, args.species, args.title, args.output)
+    if args.ig:
+        _class = 0
+    elif args.utr:
+        _class = 1
+    elif args.exon:
+        _class = 2
+    elif args.intron:
+        _class = 3
+    else:
+        print("Exactly one of [--ig, --utr, --exon, --intron must be set")
+        sys.exit(1)
+    main(args.methods, args.species, args.title, args.output, _class)
