@@ -2,7 +2,7 @@
 
 For the latest but not-remotely stable version of the code,
 i.e. mostly for team members/collaborators, you will want to 
-perform a develoment install. 
+perform a development install. 
 
 ## setup virtual environmnet 
 
@@ -17,7 +17,7 @@ source venv/bin/activate
 
 ## clone and dev install repositories
 
-First `cd` into the directory where you wan't the repositories, then
+First `cd` into the directory where you want the repositories, then
 
 ```
 # GeenuFF (for data management)
@@ -28,11 +28,17 @@ pip install -r requirements.txt
 pip install -e . 
 cd ..
 
-# HelixerPrep (all things DL)
-git clone https://github.com/weberlab-hhu/HelixerPrep.git
-cd HelixerPrep/
+# Helixer (all things DL)
+git clone https://github.com/weberlab-hhu/Helixer.git
+cd Helixer/
 git checkout dev
 pip install -r requirements.txt
+pip install -e .
+
+# finally, force installation of Geenuff to be 
+# the manual one, not the lastest from github main when 
+# Helixer was installed
+cd ../GeenuFF
 pip install -e .
 ```
 
