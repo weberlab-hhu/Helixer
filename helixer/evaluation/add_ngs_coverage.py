@@ -216,9 +216,11 @@ def add_empty_ngs_datasets(h5, n):
         h5.create_dataset('evaluation/' + key,
                           shape=(length, chunk_len, n),
                           maxshape=(None, chunk_len, None),
+                          chunks=(1, chunk_len, 1),
                           dtype="int",
                           compression="lzf",
-                          fillvalue=-1)
+                          fillvalue=-1,
+                          shuffle=True)
 
 
 def add_empty_cov_meta(h5, n):
