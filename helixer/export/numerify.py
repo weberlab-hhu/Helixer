@@ -284,18 +284,31 @@ class AnnotationNumerifier(Numerifier):
         return one_hot4_matrix
 
     def _encode_transitions(self):
-        add = np.array([[0, 0, 0]])
-        shifted_feature_matrix = np.vstack((self.matrix[1:], add))
+        # self.matrix has base-wise binary encoding of [geenuff_transcript, geenuff_cds, geenuff_intron]
+        # shift by one and subtract to get transitions out
+        diffs = self.matrix - np.roll(self.matrix, shift=-1, axis=0)  # roll is fine, bc last position is never used
+        diffs = diffs[:-1]
 
-        y_is_transition = np.logical_xor(self.matrix[:-1], shifted_feature_matrix[:-1]).astype(np.int8)
-        y_direction_zero_to_one = np.logical_and(y_is_transition, self.matrix[1:]).astype(np.int8)
-        y_direction_one_to_zero = np.logical_and(y_is_transition, self.matrix[:-1]).astype(np.int8)
-        stack = np.hstack((y_direction_zero_to_one, y_direction_one_to_zero))
+        # where there's -1, a feature has started
+        f_starts = np.zeros(diffs.shape).astype(np.int8)
+        f_starts[diffs < 0] = 1
 
-        add2 = np.array([[0, 0, 0, 0, 0, 0]])
-        shape_stack = np.insert(stack, 0, add2, axis=0).astype(np.int8)
-        shape_end_stack = np.insert(stack, len(stack), add2, axis=0).astype(np.int8)
-        binary_transitions = np.logical_or(shape_stack, shape_end_stack).astype(np.int8)
+        # where there's 1, a feature has ended
+        f_ends = np.zeros(diffs.shape).astype(np.int8)
+        f_ends[diffs > 0] = 1
+
+        # stack has all positions _before_ a transition marked with 1
+        stack = np.hstack((f_starts, f_ends))
+
+        # we however want both before and at the position of transitions ot be marked
+        # so that the transition weight will be set on the last bp of the preceding
+        # class and the first bp of the new class
+
+        # restore original shape
+        stack = np.insert(stack, len(stack), [[0, 0, 0, 0, 0, 0]], axis=0)
+
+        # add before and after transitions to get both in on array
+        binary_transitions = stack + np.roll(stack, shift=1, axis=0)
         return binary_transitions  # 6 columns, one for each switch (+TR, +CDS, +In, -TR, -CDS, -In)
 
 

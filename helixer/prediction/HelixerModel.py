@@ -352,19 +352,23 @@ class HelixerSequence(Sequence):
     def compress_tw(self, transitions):
         return self._squish_tw_to_sw(transitions, self.transition_weights, self.stretch_transition_weights)
 
-    # todo, make the following more generic? or naming more consistent?
     @staticmethod
-    def _squish_tw_to_sw(transitions, tw, stretch):
-        sw_t = [np.any((transitions[:, :, :, col] == 1), axis=2) for col in range(6)]
-        sw_t = np.stack(sw_t, axis=2).astype(np.int8)
-        sw_t = np.multiply(sw_t, tw)
+    def _squish_tw_to_sw(transitions, transition_weights, stretch):
+        # basically completes a max pool of transitions, from their pre-timestep pooled form
+        max_pooled_trns = np.max(transitions, axis=2).astype(np.int8)
 
-        sw_t = np.sum(sw_t, axis=2)
-        where_are_ones = np.where(sw_t == 0)
-        sw_t[where_are_ones[0], where_are_ones[1]] = 1
+        # multiply by weights, and sum classes
+        pooled_weighted_trns = np.multiply(max_pooled_trns, transition_weights)
+        summed_trns = np.sum(pooled_weighted_trns, axis=2)
+
+        # replace 0's (where weighting shouldn't change) with 1's as this will be multiplied later
+        summed_trns[summed_trns == 0] = 1
+
+        # maybe stretch transitions to upweight surrounding region somewhat (DEPRECATED bc performance was equivalent)
         if stretch != 0:
-            sw_t = HelixerSequence._apply_stretch(sw_t, stretch)
-        return sw_t
+            summed_trns = HelixerSequence._apply_stretch(summed_trns, stretch)
+
+        return summed_trns
 
     @staticmethod
     def _apply_stretch(reshaped_sw_t, stretch):
