@@ -62,6 +62,7 @@ class HelixerParameterParser(ParameterParser):
 
         helixer_defaults = {
             'fasta_path': '',
+            'temporary_dir': None,
             'species': '',
             'subsequence_length': 21384,
             'lineage': 'land_plant',
