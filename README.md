@@ -64,7 +64,8 @@ https://uni-duesseldorf.sciebo.de/s/lQTB7HYISW71Wi0
 with the same species as the paper is now available; as well as
 a still-under-validation, but putatively new best land_plant model
 (land_plant_v0.3_a_0100). Until 'release' these models can be
-downloaded manually, and used by setting `--model-filepath <path/to/model.h5>',
+downloaded manually from the link above, and used by setting 
+`--model-filepath <path/to/model.h5>'`,
 to override the lineage default for `Helixer.py`. 
 
 #### Run on target genome
