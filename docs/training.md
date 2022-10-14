@@ -11,7 +11,7 @@ and then to make gene predictions with Helixer.
 #### Pre-processing w/ GeenuFF
 >Note: you will be able to skip working with GeenuFF if
 > only wish to predict, and not train. See instead the
-> --direct-fasta-to-h5-path parameter of Helixer/export.py
+> fasta2h5.py script.
 
 First we will need to pre-process the data (Fasta & GFF3 files)
 using GeenuFF. This provides a more biologically-realistic
@@ -45,7 +45,7 @@ mkdir -p example/h5s
 for species in `ls $data_at`
 do
   mkdir example/h5s/$species
-  python export.py --input-db-path $data_at/$species/output/$species.sqlite3 \
+  python geenuff2h5.py --input-db-path $data_at/$species/output/$species.sqlite3 \
     --output-path example/h5s/$species/test_data.h5
 done
 ```
@@ -58,7 +58,7 @@ testing / predicting / etc.
 # The training script requires two files in one folder named
 # training_data.h5 and validation_data.h5
 #
-# while we would need to merge multiple datasets to create our
+# while we would need to include multiple datasets to create our
 # training_data.h5 and validation_data.h5 normally, for this as-simple-
 # as-possible example we will point to one species each with symlinks
 mkdir example/train
@@ -86,6 +86,35 @@ example
     ├── training_data.h5 -> ../h5s/Chlamydomonas_reinhardtii/test_data.h5
     └── validation_data.h5 -> ../h5s/Cyanidioschyzon_merolae/test_data.h5
 ```
+> **Side note: Including multiple species in datasets.**
+> 
+> In order for the model to generalize accross species, it's of course
+> important to train it on _multiple_ training species, and also to
+> validate it on _multiple_ validation species.
+>
+> All files matching `training_data*h5` and `validation_data*h5` (bash wildcard),
+> that are found in the directory supplied to `--data-dir` below will be used
+> for training, and validation, respectively.
+>
+> So you could, for instance, include multiple species with naming such
+> as that shown below:
+>
+> ```
+> train
+> ├── training_data.species_01.h5
+> ├── training_data.species_02.h5
+> ├── training_data.species_03.h5
+> ├── training_data.species_04.h5
+> ├── validation_data.species_05.h5
+> ├── validation_data.species_06.h5
+> ├── validation_data.species_07.h5
+> ├── validation_data.species_08.h5
+> └── validation_data.species_09.h5
+> ```
+>
+> Of course, using the actual species names or identifiers instead
+> of 'species\_01' ... 'species\_09' would be highly encouraged
+> for organizational purposes.
 
 ### Model training
 Now we use the datasets in `example/train/` to train a model with our 
