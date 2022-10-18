@@ -83,13 +83,14 @@ class HelixerParameterParser(ParameterParser):
 
         # find model from user data directory for Helixer
         model_filepath = lineage_model(args.lineage)
-        if not os.path.isfile(model_filepath):
-            fetch_and_organize_models()
 
         if args.model_filepath is not None:
             print(f'overriding the lineage based model {model_filepath}, '
                   f'with the manually specified {args.model_filepath}', file=sys.stderr)
             model_filepath = args.model_filepath
+
+        if not os.path.isfile(model_filepath):
+            fetch_and_organize_models()
 
         assert os.path.isfile(model_filepath), f'{model_filepath} does not exists; even after auto download'
 
