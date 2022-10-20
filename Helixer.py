@@ -1,5 +1,7 @@
 #! /usr/bin/env python3
+import argparse
 import os
+import sys
 import time
 import h5py
 import tempfile
@@ -18,6 +20,8 @@ class HelixerParameterParser(ParameterParser):
         self.io_group.add_argument('--fasta-path', type=str, required=True, help='FASTA input file.')
         self.io_group.add_argument('--gff-output-path', type=str, required=True, help='Output GFF file path.')
         self.io_group.add_argument('--species', type=str, help='Species name.')
+        self.io_group.add_argument('--temporary-dir', type=str,
+                                   help='use supplied (instead of system default) for temporary directory')
 
         self.data_group.add_argument('--subsequence-length', type=int,
                                      help='How to slice the genomic sequence. Set moderately longer than length of '
@@ -25,7 +29,10 @@ class HelixerParameterParser(ParameterParser):
                                           'timestep width of the used model, which is typically 9. (Default is 21384.)')
         self.data_group.add_argument('--lineage', type=str, choices=['vertebrate', 'land_plant', 'fungi'],
                                      help='What model to use for the annotation. (Default is "land_plant".)')
-
+        self.data_group.add_argument('--model-filepath', help=argparse.SUPPRESS,
+                                     #help='set this to override the default model for any given '
+                                     #                         'lineage and instead take a specific model',
+                                     type=str)
         self.pred_group = self.parser.add_argument_group("Prediction parameters")
         self.pred_group.add_argument('--batch-size', type=int,
                                      help='The batch size for the raw predictions in TensorFlow. Should be as large as '
@@ -55,9 +62,11 @@ class HelixerParameterParser(ParameterParser):
 
         helixer_defaults = {
             'fasta_path': '',
+            'temporary_dir': None,
             'species': '',
             'subsequence_length': 21384,
             'lineage': 'land_plant',
+            'model_filepath': None,
             'batch_size': 32,
             'no_overlap': False,
             'debug': False,
@@ -74,9 +83,17 @@ class HelixerParameterParser(ParameterParser):
 
         # find model from user data directory for Helixer
         model_filepath = lineage_model(args.lineage)
+
+        if args.model_filepath is not None:
+            print(f'overriding the lineage based model {model_filepath}, '
+                  f'with the manually specified {args.model_filepath}', file=sys.stderr)
+            model_filepath = args.model_filepath
+
         if not os.path.isfile(model_filepath):
             fetch_and_organize_models()
+
         assert os.path.isfile(model_filepath), f'{model_filepath} does not exists; even after auto download'
+
         args.model_filepath = model_filepath
 
         # check if model timestep width fits the subsequence length (has to be evenly divisible)
@@ -100,6 +117,15 @@ class HelixerParameterParser(ParameterParser):
             msg = '--overlap-core-length has to be smaller than --subseqeunce-length'
             assert args.subsequence_length > args.overlap_core_length, msg
 
+        # check if custom temporary dir actually exists
+        if args.temporary_dir is not None:
+            try:
+                os.listdir(args.temporary_dir)
+            except Exception as e:
+                print('base temporary directory (--temporary-dir argument) must exist.',
+                      file=sys.stderr)
+                raise e
+
 
 if __name__ == '__main__':
     start_time = time.time()
@@ -109,7 +135,7 @@ if __name__ == '__main__':
     print(colored('Helixer.py config loaded. Starting FASTA to H5 conversion.', 'green'))
 
     # generate the .h5 file in a temp dir, which is then deleted
-    with tempfile.TemporaryDirectory() as tmp_dirname:
+    with tempfile.TemporaryDirectory(dir=args.temporary_dir) as tmp_dirname:
         tmp_genome_h5_path = os.path.join(tmp_dirname, f'tmp_species_{args.species}.h5')
         tmp_pred_h5_path = os.path.join(tmp_dirname, f'tmp_predictions_{args.species}.h5')
 

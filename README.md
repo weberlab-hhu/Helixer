@@ -35,7 +35,7 @@ See https://github.com/gglyptodon/helixer-docker
 > Additionally, please see notes on usage, which will differ
 > slightly from the example below. 
 
-### Manual
+### Manual installation
 Please see [full installation instructions](docs/manual_install.md)
 
 #### contributors & team members
@@ -60,12 +60,20 @@ The latest model(s) will be acquired automatically.
 Info on the downloaded model (and any new releases) can be found here:
 https://uni-duesseldorf.sciebo.de/s/lQTB7HYISW71Wi0
 
+>Note: a baseline vertebrate model (vertebrate_v0.3_m0100) trained
+with the same species as the paper is now available; as well as
+a still-under-validation, but putatively new best land_plant model
+(land_plant_v0.3_a_0100). Until 'release' these models can be
+downloaded manually from the link above, and used by setting 
+`--model-filepath <path/to/model.h5>'`,
+to override the lineage default for `Helixer.py`. 
+
 #### Run on target genome
 ```bash
 # download an example chromosome
 wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/fasta/arabidopsis_lyrata/dna/Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa.gz
 gunzip Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa.gz
-# run all Helixer componets from fa to gff3
+# run all Helixer components from fa to gff3
 Helixer.py --lineage land_plant --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa  \
   --species Arabidopsis_lyrata --gff-output-path Arabidopsis_lyrata_chromosome8_helixer.gff3
 ```
@@ -84,6 +92,13 @@ fasta2h5.py --species Arabidopsis_lyrata --h5-output-path Arabidopsis_lyrata.h5 
 HybridModel.py --load-model-path $HOME/.local/share/Helixer/models/land_plant.h5 --test-data Arabidopsis_lyrata.h5 --overlap --val-test-batch-size 32 -v
 helixer_post_bin Arabidopsis_lyrata.h5 predictions.h5 100 0.1 0.8 60 Arabidopsis_lyrata_chromosome8_helixer.gff3
 ```
+
+**Output:** The main output of the above commands is the gff3 file (Arabidopsis_lyrata_chromosome8_helixer.gff3)
+which contains the predicted genic structure (where the exons, introns, and coding regions are
+for every predicted gene in the genome). You can find more about the format 
+[here](https://github.com/The-Sequence-Ontology/Specifications/blob/master/gff3.md),
+and you can readily derive other formats, such as a fasta file of the proteome, using
+a standard parser, for instance [gffread](https://github.com/gpertea/gffread).
 
 #### Citation
 
