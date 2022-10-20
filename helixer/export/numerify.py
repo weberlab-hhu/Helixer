@@ -358,18 +358,24 @@ class CoordNumerifier(object):
         return res
 
     @staticmethod
-    def numerify_only_fasta(coord, max_len, genome, one_hot=True, use_multiprocess=False):
-        """Extra function to just export the FASTA sequence to avoid littering other functions with many
-        if statements. Bypasses super chunk writing as it is probably not needed for only the sequence"""
-        seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=0, end=None,
-                                            use_multiprocess=use_multiprocess)
-        xb = seq_numerifier.coord_to_matrices()
-        for strand in ['plus', 'minus']:
-            x = CoordNumerifier.pad(xb[strand], max_len)
-            start_ends = CoordNumerifier.start_ends(seq_numerifier, strand)
-            out = [MatAndInfo('X', x, 'float16')]
-            out.extend(CoordNumerifier.seq_matinfos(coord, genome, start_ends, len(x)))
-            yield tuple(out)
+    def numerify_only_fasta(coord, max_len, genome, one_hot=True, use_multiprocess=False, write_by=5000000):
+        """export the FASTA sequence only"""
+        # passing empty features causes SplitFinder to consider noting more than splitting
+        # to max length of write_by and end of sequence handling.
+        split_finder = SplitFinder(features=(), write_by=write_by, coord_length=coord.length,
+                                   chunk_size=max_len)
+        for _, bp_coord, h5_coord in split_finder.feature_n_coord_gen():
+            start, end = bp_coord
+            seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=start, end=end,
+                                                use_multiprocess=use_multiprocess)
+            xb = seq_numerifier.coord_to_matrices()
+            for strand in ['plus', 'minus']:
+                x = CoordNumerifier.pad(xb[strand], max_len)
+                start_ends = CoordNumerifier.start_ends(seq_numerifier, strand)
+                start_ends += start
+                out = [MatAndInfo('X', x, 'float16')]
+                out.extend(CoordNumerifier.seq_matinfos(coord, genome, start_ends, len(x)))
+                yield tuple(out), h5_coord[strand]
 
     @staticmethod
     def numerify(coord, coord_features, max_len, one_hot=True, mode=('X', 'y', 'anno_meta', 'transitions'),
@@ -444,12 +450,14 @@ class CoordNumerifier(object):
             yield out, h5_coord[strand]
 
 
-# todo, consider moving to seperate splitting file or exporter...?
+# todo, consider moving to separate splitting file or exporter...?
 class SplitFinder:
     def __init__(self, features, write_by, coord_length, chunk_size):
         if write_by % chunk_size:
-            raise ValueError("number of bp to write at once 'write_by' ({}) must be a multiple of "
-                             "'chunk_size' ({})".format(write_by, chunk_size))
+            old_write_by = write_by
+            write_by = chunk_size * (write_by // chunk_size)
+            logging.info(f'parameter "write_by" changed from {old_write_by} to {write_by} to be a multiple'
+                         f'of "subsequence length" {chunk_size}')
         self.features = features
         self.write_by = write_by  # target writing this many bp to the h5 file at once
         self.coord_length = coord_length
@@ -548,7 +556,7 @@ class SplitFinder:
         """mark all possible splits where there is a transition, so splitting there would change the numerify results"""
         tr_mask = set()
         for feature in self.features:
-            # avoid splitting exactly at transitions, as transitions are dected by
+            # avoid splitting exactly at transitions, as transitions are detected by
             # state change (of binary encoding) and you can't detect state-change
             # if you split at it
             f_start, f_end = self._plus_strand_transitions(feature)

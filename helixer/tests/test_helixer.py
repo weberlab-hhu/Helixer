@@ -1187,9 +1187,11 @@ def test_super_chunking4write():
     # finally, make sure it fails on invalid write_by val
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    with pytest.raises(ValueError):
-        controller.export(chunk_size=500, one_hot=True, longest_only=False,
-                          write_by=1001)  # write by should result in multiple super-chunks
+    # this should now run through as before, as write_by should auto-truncate
+    # to a valid value
+    controller.export(chunk_size=500, one_hot=True, longest_only=False,
+                      write_by=1001)  # write by should result in multiple super-chunks
+    assert n_writing_chunks == 10
 
 
 def test_rangefinder():

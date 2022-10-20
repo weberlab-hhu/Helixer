@@ -98,7 +98,7 @@ class HelixerExportControllerBase(object):
 class HelixerFastaToH5Controller(HelixerExportControllerBase):
 
     class CoordinateSurrogate(object):
-        """Mimics some functionatity of the Coordinate orm class, so we can go directly from FASTA to H5"""
+        """Mimics some functionality of the Coordinate orm class, so we can go directly from FASTA to H5"""
         def __init__(self, seqid, seq):
             self.seqid = seqid
             self.sequence = seq
@@ -117,9 +117,8 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
             coord = HelixerFastaToH5Controller.CoordinateSurrogate(seqid, seq)
             n_chunks = HelixerExportControllerBase.calc_n_chunks(coord.length, chunk_size)
             data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species, use_multiprocess=multiprocess)
-            for j, data in enumerate(data_gen):
-                n_samples = len(data[0].matrix)
-                h5_coords = (j * n_samples, (j + 1) * n_samples)
+            for j, strand_res in enumerate(data_gen):
+                data, h5_coords = strand_res
                 self._save_data(data, h5_coords=h5_coords, n_chunks=n_chunks,
                                 first_round_for_coordinate=(j == 0), compression=compression)
             print(f'{i + 1} Numerified {coord} in {time.time() - start_time:.2f} secs', end='\n\n')
@@ -197,7 +196,7 @@ class HelixerExportController(HelixerExportControllerBase):
 
             coord_info = self._coord_info(coords_features)  # seqid info of the current data
             # the following assumes order preserving dict, which is the case since python 3.6
-            coords_features = {coord_info[seqid]:coords_features[coord_info[seqid]] for seqid in unique_seqids}
+            coords_features = {coord_info[seqid]: coords_features[coord_info[seqid]] for seqid in unique_seqids}
 
         n_coords_done = 1
         n_writing_chunks = 0
