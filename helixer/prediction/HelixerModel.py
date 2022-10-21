@@ -212,8 +212,8 @@ class HelixerSequence(Sequence):
             mask = np.ones(h5_file['data/X'].shape[0], dtype=bool)
             n_masked = 0
 
-        # load at most 10000 uncompressed samples at a time in memory
-        max_at_once = min(10000, n_seqs)
+        # load at most 2000 uncompressed samples at a time in memory
+        max_at_once = min(2000, n_seqs)
         for name, data_list in zip(self.data_list_names, self.data_lists):
             start_time_dset = time.time()
             for offset in range(0, n_seqs, max_at_once):

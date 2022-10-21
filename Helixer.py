@@ -127,7 +127,7 @@ class HelixerParameterParser(ParameterParser):
                 raise e
 
 
-if __name__ == '__main__':
+def main():
     start_time = time.time()
     pp = HelixerParameterParser('config/helixer_config.yaml')
     args = pp.get_args()
@@ -180,3 +180,6 @@ if __name__ == '__main__':
         else:
             print(colored('\nAn error occurred during post processing. Exiting.', 'red'))
 
+
+if __name__ == '__main__':
+    main()
