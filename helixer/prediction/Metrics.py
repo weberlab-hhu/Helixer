@@ -29,7 +29,7 @@ class ConfusionMatrix:
     @staticmethod
     def _remove_masked_bases(y_true, y_pred, sw):
         """Remove bases marked as errors, should also remove zero padding"""
-        sw = sw.astype(np.bool)
+        sw = sw.astype(bool)
         y_true = y_true[sw]
         y_pred = y_pred[sw]
         return y_true, y_pred

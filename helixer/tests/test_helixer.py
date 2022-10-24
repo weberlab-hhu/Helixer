@@ -441,7 +441,7 @@ def test_numerify_with_end_neg1():
         return np.zeros([1000, 3], dtype=np.float32)
 
     def masks1():
-        return np.ones((1000,), dtype=np.int)
+        return np.ones((1000,), dtype=int)
 
     controller = ImportController(database_path='sqlite:///:memory:', config={})
     controller.add_genome('testdata/edges.fa', 'testdata/edges.gff',
@@ -929,9 +929,9 @@ def test_phases():
 
     for i, region in enumerate(cds_regions_plus):
         phase = 0 if i != 3 else 1  # the 4th cds region has phase 1
-        check_phase_in_cds(ph[region], y[region][..., 3].astype(np.bool), True, phase)
+        check_phase_in_cds(ph[region], y[region][..., 3].astype(bool), True, phase)
     for region in cds_regions_minus:
-        check_phase_in_cds(ph[region], y[region][..., 3].astype(np.bool), False)
+        check_phase_in_cds(ph[region], y[region][..., 3].astype(bool), False)
 
     # check if number of bases in phase encoding that are non-default matches number of cds bases
     total_cds_len = 0

@@ -424,7 +424,7 @@ class CoordNumerifier(object):
                 is_annotated = [0] * len(y)
             else:
                 is_annotated = [1] * len(y)
-            is_annotated = np.array(is_annotated, dtype=np.bool)
+            is_annotated = np.array(is_annotated, dtype=bool)
 
             # additional derived matrices
             err_samples = np.any(sample_weights, axis=1)
