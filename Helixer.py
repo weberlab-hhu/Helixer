@@ -9,7 +9,7 @@ import subprocess
 from termcolor import colored
 
 from helixer.core.scripts import ParameterParser
-from helixer.core.data import lineage_model, fetch_and_organize_models
+from helixer.core.data import prioritized_models, report_if_current_not_best, identify_current, MODEL_PATH
 from helixer.prediction.HybridModel import HybridModel
 from helixer.export.exporter import HelixerFastaToH5Controller
 
@@ -79,20 +79,25 @@ class HelixerParameterParser(ParameterParser):
         }
         self.defaults = {**self.defaults, **helixer_defaults}
 
+    @staticmethod
+    def check_for_lineage_model(lineage):
+        # which models are available?
+        priorty_ms = prioritized_models(lineage)
+        # which model is already downloaded / will be used?
+        current_model = identify_current(lineage, priorty_ms)
+        # provide feedback if not up to date, error out if missing
+        report_if_current_not_best(priorty_ms, current_model)
+
+        return os.path.join(MODEL_PATH, lineage, current_model)
+
     def check_args(self, args):
 
-        # find model from user data directory for Helixer
-        model_filepath = lineage_model(args.lineage)
-
         if args.model_filepath is not None:
-            print(f'overriding the lineage based model {model_filepath}, '
+            print(f'overriding the lineage based model, '
                   f'with the manually specified {args.model_filepath}', file=sys.stderr)
             model_filepath = args.model_filepath
-
-        if not os.path.isfile(model_filepath):
-            fetch_and_organize_models()
-
-        assert os.path.isfile(model_filepath), f'{model_filepath} does not exists; even after auto download'
+        else:
+            model_filepath = self.check_for_lineage_model(args.lineage)
 
         args.model_filepath = model_filepath
 
@@ -114,7 +119,7 @@ class HelixerParameterParser(ParameterParser):
         if not args.no_overlap:
             msg = '--overlap-offset has to evenly divide --subsequence-length'
             assert args.subsequence_length % args.overlap_offset == 0, msg
-            msg = '--overlap-core-length has to be smaller than --subseqeunce-length'
+            msg = '--overlap-core-length has to be smaller than --subsequence-length'
             assert args.subsequence_length > args.overlap_core_length, msg
 
         # check if custom temporary dir actually exists

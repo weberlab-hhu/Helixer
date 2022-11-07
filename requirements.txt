@@ -16,3 +16,4 @@ numcodecs
 appdirs
 # for testing only
 pytest
+requests
