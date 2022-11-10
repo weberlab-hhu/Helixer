@@ -70,8 +70,8 @@ for i in range(n_seqs):
 
 # also save some model attrs
 h5_ensembled.attrs['timestamp'] = str(datetime.datetime.now())
-h5_ensembled.attrs['model_md5sums'] = ','.join([dset.attrs['model_md5sum'] for dset in h5_pred_files])
-h5_ensembled.attrs['model_paths'] = ','.join([dset.attrs['model_path'] for dset in h5_pred_files])
-h5_ensembled.attrs['test_data_paths'] = ','.join([dset.attrs['test_data_path'] for dset in h5_pred_files])
+h5_ensembled.attrs['model_md5sum'] = ','.join([dset.attrs['model_md5sum'] for dset in h5_pred_files])
+h5_ensembled.attrs['model_path'] = ','.join([dset.attrs['model_path'] for dset in h5_pred_files])
+h5_ensembled.attrs['test_data_path'] = ','.join([dset.attrs['test_data_path'] for dset in h5_pred_files])
 
 h5_ensembled.close()
