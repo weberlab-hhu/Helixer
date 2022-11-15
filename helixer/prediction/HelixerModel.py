@@ -856,7 +856,10 @@ class HelixerModel(ABC):
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
 
-            model = load_model(self.load_model_path)
+            strategy = tf.distribute.MirroredStrategy()
+            print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
+            with strategy.scope():
+                model = load_model(self.load_model_path)
             self._print_model_info(model)
 
             if self.eval:
