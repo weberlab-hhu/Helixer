@@ -249,7 +249,7 @@ class AnnotationNumerifier(Numerifier):
             # generate for full codons, truncate later if mismatched_ending_phase error
             phase_base = np.array([1, 3, 2], dtype=np.int8)
             if cds_feature.phase != 0:
-                phase_base = np.roll(phase_base, 3 - cds_feature.phase)
+                phase_base = np.roll(phase_base, cds_feature.phase)
             cds_phase = np.tile(phase_base, int(np.ceil(cds_len / 3)))
             if not is_plus_strand:
                 cds_phase = cds_phase[::-1]
