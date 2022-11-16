@@ -889,17 +889,24 @@ def test_seqids_start_ends():
 
 def test_phases():
     """Tests the output of phase, which should be encoded for every cds base"""
+    def next_phase(p):
+        p -= 1
+        if p < 0:
+            p = 2
+        return p
+
     def check_phase_in_cds(phases, introns, is_plus, phase=0):
         assert np.all(phases[introns][:, 0] == 1)  # if there is no phase in introns
-        coding_phases = phases[~introns]
-        # a bit dumb but fool proof way to test phase encoding, different from phase generation
-        for i, phase_enc in enumerate(coding_phases):
-            if (i + phase) % 3 == 0:
-                assert phase_enc[1] == 1
-            elif (i + phase) % 3 == 1:
-                assert phase_enc[3] == 1
-            elif (i + phase) % 3 == 2:
-                assert phase_enc[2] == 1
+        # take from 1 here, and remove introns, so that the phase can be literally interpreted
+        # i.e. index 0 is phase 0, 1 is 1, 2 is 2
+        coding_phases = phases[~introns, 1:]
+        # phase is defined as how many bp do you need to remove from the start of the sequence, until
+        # you're back at phase 0 / a codon start. So basically it goes 0, 2, 1, 0, 2, 1, 0, 2, 1, 0 ...
+        # Naive test following that pattern.
+        rolling_phase = phase
+        for phase_enc in coding_phases:
+            assert phase_enc[rolling_phase] == 1
+            rolling_phase = next_phase(rolling_phase)
 
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
@@ -928,7 +935,7 @@ def test_phases():
     ]
 
     for i, region in enumerate(cds_regions_plus):
-        phase = 0 if i != 3 else 1  # the 4th cds region has phase 1
+        phase = 0 if i != 3 else 1  # the 4th cds region has phase 1 (this should be 'test case 6'?)
         check_phase_in_cds(ph[region], y[region][..., 3].astype(bool), True, phase)
     for region in cds_regions_minus:
         check_phase_in_cds(ph[region], y[region][..., 3].astype(bool), False)
