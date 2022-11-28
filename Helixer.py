@@ -29,9 +29,9 @@ class HelixerParameterParser(ParameterParser):
                                           'timestep width of the used model, which is typically 9. (Default is 21384.)')
         self.data_group.add_argument('--lineage', type=str, choices=['vertebrate', 'land_plant', 'fungi'],
                                      help='What model to use for the annotation. (Default is "land_plant".)')
-        self.data_group.add_argument('--model-filepath', help=argparse.SUPPRESS,
-                                     #help='set this to override the default model for any given '
-                                     #                         'lineage and instead take a specific model',
+        self.data_group.add_argument('--model-filepath',
+                                     help='set this to override the default model for any given '
+                                          'lineage and instead take a specific model',
                                      type=str)
         self.pred_group = self.parser.add_argument_group("Prediction parameters")
         self.pred_group.add_argument('--batch-size', type=int,
