@@ -1,5 +1,4 @@
 #! /usr/bin/env python3
-import numpy as np
 import tensorflow as tf
 
 from tensorflow.keras.models import Model
@@ -13,58 +12,7 @@ class HybridSequence(HelixerSequence):
         super().__init__(model, h5_files, mode, batch_size, shuffle)
 
     def __getitem__(self, idx):
-        X, y, sw, transitions, phases, _, coverage_scores = self._get_batch_data(idx)
-        pool_size = self.model.pool_size
-
-        if pool_size > 1:
-            if X.shape[1] % pool_size != 0:
-                # clip to maximum size possible with the pooling length
-                overhang = X.shape[1] % pool_size
-                X = X[:, :-overhang]
-                if not self.only_predictions:
-                    y = y[:, :-overhang]
-                    sw = sw[:, :-overhang]
-                    if self.predict_phase:
-                        phases = phases[:, :-overhang]
-                    if self.mode == 'train' and self.transition_weights is not None:
-                        transitions = transitions[:, :-overhang]
-
-            if not self.only_predictions:
-                y = self._mk_timestep_pools_class_last(y)
-                sw = sw.reshape((sw.shape[0], -1, pool_size))
-                sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
-
-            if self.mode == 'train':
-                if self.class_weights is not None:
-                    # class weights are additive for the individual timestep predictions
-                    # giving even more weight to transition points
-                    # class weights without pooling not supported yet
-                    # cw = np.array([1.0, 1.2, 1.0, 0.8], dtype=np.float32)
-                    cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
-                    cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
-                    # add class weights to applicable timesteps
-                    cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
-                    cw = np.sum(cw_arrays, axis=2)
-                    sw = np.multiply(cw, sw)
-
-                # todo, while now compressed, the following is still 1:1 with LSTM model... --> HelixerModel
-                if self.transition_weights is not None:
-                    transitions = self._mk_timestep_pools_class_last(transitions)
-                    # more reshaping and summing  up transition weights for multiplying with sample weights
-                    sw_t = self.compress_tw(transitions)
-                    sw = np.multiply(sw_t, sw)
-
-                if self.coverage_weights:
-                    coverage_scores = coverage_scores.reshape((coverage_scores.shape[0], -1, pool_size))
-                    # maybe offset coverage scores [0,1] by small number (bc RNAseq has issues too), default 0.0
-                    if self.coverage_offset > 0.:
-                        coverage_scores = np.add(coverage_scores, self.coverage_offset)
-                    coverage_scores = np.mean(coverage_scores, axis=2)
-                    sw = np.multiply(coverage_scores, sw)
-
-            if self.predict_phase and not self.only_predictions:
-                y_phase = self._mk_timestep_pools_class_last(phases)
-                y = [y, y_phase]
+        X, y, sw, transitions, phases, _, coverage_scores = self._generic_get_item(idx)
 
         if self.only_predictions:
             return X
@@ -90,7 +38,6 @@ class HybridModel(HelixerModel):
         return HybridSequence
 
     def model(self):
-        overhang = self.shape_train[1] % self.pool_size
         values_per_bp = 4
         if self.input_coverage:
             values_per_bp = 6

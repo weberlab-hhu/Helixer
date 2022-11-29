@@ -1,9 +1,10 @@
 #! /usr/bin/env python3
 import warnings
+import tensorflow as tf
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 import os
-import numpy as np
 
 from keras_layer_normalization import LayerNormalization
 
@@ -14,54 +15,16 @@ from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 
 
 class LSTMSequence(HelixerSequence):
-    def __init__(self, model, h5_file, mode, batch_size, shuffle):
-        super().__init__(model, h5_file, mode, batch_size, shuffle)
+    def __init__(self, model, h5_files, mode, batch_size, shuffle):
+        super().__init__(model, h5_files, mode, batch_size, shuffle)
 
     def __getitem__(self, idx):
-        X, y, sw, transitions, _, coverage_scores = self._get_batch_data(idx)
-        pool_size = self.model.pool_size
-        assert pool_size > 1, 'pooling size of <= 1 oh oh..'
-        assert y.shape[1] % pool_size == 0, 'pooling size has to evenly divide seq len'
+        X, y, sw, transitions, phases, _, coverage_scores = self._generic_get_item(idx)
 
-        X = self._mk_timestep_pools(X)
-        y = self._mk_timestep_pools_class_last(y)
-
-        # mark any multi-base timestep as error if any base has an error
-        sw = sw.reshape((sw.shape[0], -1, pool_size))
-        sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.float32)
-
-        # only change sample weights during training (not even validation) as we don't calculate
-        # a validation loss at the moment
-        if self.mode == 'train':
-            if self.class_weights is not None:
-                # class weights are only used during training and validation to keep the loss
-                # comparable and are additive for the individual timestep predictions
-                # giving even more weight to transition points
-                # class weights without pooling not supported yet
-                # cw = np.array([0.8, 1.4, 1.2, 1.2], dtype=np.float32)
-                cls_arrays = [np.any((y[:, :, :, col] == 1), axis=2) for col in range(4)]
-                cls_arrays = np.stack(cls_arrays, axis=2).astype(np.int8)
-                # add class weights to applicable timesteps
-                cw_arrays = np.multiply(cls_arrays, np.tile(self.class_weights, y.shape[:2] + (1,)))
-                cw = np.sum(cw_arrays, axis=2)
-                # multiply with previous sample weights
-                sw = np.multiply(sw, cw)
-
-            if self.transition_weights is not None:
-                transitions = self._mk_timestep_pools_class_last(transitions)
-                # more reshaping and summing  up transition weights for multiplying with sample weights
-                sw_t = self.compress_tw(transitions)
-                sw = np.multiply(sw_t, sw)
-
-            if self.coverage_weights:
-                coverage_scores = coverage_scores.reshape((coverage_scores.shape[0], -1, pool_size))
-                # maybe offset coverage scores [0,1] by small number (bc RNAseq has issues too), default 0.0
-                if self.coverage_offset > 0.:
-                    coverage_scores = np.add(coverage_scores, self.coverage_offset)
-                coverage_scores = np.mean(coverage_scores, axis=2)
-                sw = np.multiply(coverage_scores, sw)
-
-        return X, y, sw
+        if self.only_predictions:
+            return X
+        else:
+            return X, y, sw
 
 
 class LSTMModel(HelixerModel):
@@ -70,7 +33,7 @@ class LSTMModel(HelixerModel):
         super().__init__()
         self.parser.add_argument('--units', type=int, default=4, help='how many units per LSTM layer')
         self.parser.add_argument('--layers', type=str, default='1', help='how many LSTM layers')
-        self.parser.add_argument('--pool-size', type=int, default=10, help='how many bp to predict at once')
+        self.parser.add_argument('--pool-size', type=int, default=9, help='how many bp to predict at once')
         self.parser.add_argument('--dropout', type=float, default=0.0)
         self.parser.add_argument('--layer-normalization', action='store_true')
         self.parse_args()
@@ -87,7 +50,9 @@ class LSTMModel(HelixerModel):
 
     @staticmethod
     def append_pwd(path):
-        if path.startswith('/'):
+        if path is None:
+            return path
+        elif path.startswith('/'):
             return path
         else:
             pwd = os.getcwd()
@@ -100,9 +65,10 @@ class LSTMModel(HelixerModel):
         values_per_bp = 4
         if self.input_coverage:
             values_per_bp = 6
-        main_input = Input(shape=(None, self.pool_size * values_per_bp), dtype=self.float_precision,
+        main_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
                            name='main_input')
-        x = Bidirectional(LSTM(self.layers[0], return_sequences=True))(main_input)
+        x = Reshape((-1, self.pool_size * values_per_bp))(main_input)
+        x = Bidirectional(LSTM(self.layers[0], return_sequences=True))(x)
 
         # potential next layers
         if len(self.layers) > 1:
@@ -116,12 +82,25 @@ class LSTMModel(HelixerModel):
         if self.dropout > 0.0:
             x = Dropout(self.dropout)(x)
 
-        x = Dense(self.pool_size * 4)(x)
-        if self.pool_size > 1:
-            x = Reshape((-1, self.pool_size, 4))(x)
-        x = Activation('softmax', name='main')(x)
+        if self.predict_phase:
+            x = Dense(self.pool_size * 4 * 2)(x)  # predict twice a many floats
+            x_genic, x_phase = tf.split(x, 2, axis=-1)
+            if self.pool_size > 1:
+                x_genic = Reshape((-1, self.pool_size, 4))(x_genic)
+            x_genic = Activation('softmax', name='genic')(x_genic)
 
-        model = Model(inputs=main_input, outputs=x)
+            x_phase = Reshape((-1, self.pool_size, 4))(x_phase)
+            x_phase = Activation('softmax', name='phase')(x_phase)
+
+            outputs = [x_genic, x_phase]
+        else:
+            x = Dense(self.pool_size * 4)(x)
+            if self.pool_size > 1:
+                x = Reshape((-1, self.pool_size, 4))(x)
+            x = Activation('softmax', name='main')(x)
+            outputs = [x]
+
+        model = Model(inputs=main_input, outputs=outputs)
         return model
 
     def compile_model(self, model):

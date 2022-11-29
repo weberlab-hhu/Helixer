@@ -31,7 +31,7 @@ cd <your/path/to>/GeenuFF
 bash example.sh
 # store full path in a variable for later usage
 data_at=`readlink -f three_algae`
-cd <your/path/to/Helixer>
+cd <where/you/want/to/work>
 ```
 This downloads and pre-processes data for the species
 (Chlamydomonas_reinhardtii,  Cyanidioschyzon_merolae, and  Ostreococcus_lucimarinus)
@@ -45,8 +45,8 @@ mkdir -p example/h5s
 for species in `ls $data_at`
 do
   mkdir example/h5s/$species
-  python geenuff2h5.py --input-db-path $data_at/$species/output/$species.sqlite3 \
-    --output-path example/h5s/$species/test_data.h5
+  geenuff2h5.py --input-db-path $data_at/$species/output/$species.sqlite3 \
+    --h5-output-path example/h5s/$species/test_data.h5
 done
 ```
 To create the simples working example, we will use Chlamydomonas_reinhardtii 
@@ -123,7 +123,7 @@ LSTM architeture for 5 epochs and save the best iteration
 `example/best_helixer_model.h5`. 
 
 ```shell script
-python helixer/prediction/HybridModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 
+python <path/to/Helixer/>helixer/prediction/HybridModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 
 ```
 
 The rest of this example will continue with the model example/best_helixer_model.h5 produced above. 
@@ -135,7 +135,7 @@ in hyper optimization runs is:
 ```shell script
 # the indicated batch size and val-test-batch size have been chosen to work on a 2080ti with 11GB RAM
 # and should be set as large as the graphics card will allow. 
-python helixer/prediction/HybridModel.py -v --pool-size 9 --batch-size 50 --val-test-batch-size 100 \
+python <path/to/Helixer/>helixer/prediction/HybridModel.py -v --pool-size 9 --batch-size 50 --val-test-batch-size 100 \
   --class-weights "[0.7, 1.6, 1.2, 1.2]" --transition-weights "[1, 12, 3, 1, 12, 3]" --predict-phase \
   --lstm-layers 3 --cnn-layers 4 --units 128 --filter-depth 96 --kernel-size 10 \
   --data-dir example/train/ --save-model-path example/fullsize_helixer_model.h5
