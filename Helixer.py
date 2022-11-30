@@ -139,16 +139,25 @@ def main():
     pp = HelixerParameterParser('config/helixer_config.yaml')
     args = pp.get_args()
     args.overlap = not args.no_overlap  # minor overlapping is a far better default for inference. Thus, this hack.
-    print(colored('Helixer.py config loaded. Starting FASTA to H5 conversion.', 'green'))
     # before we start, check if helixer_post_bin is there
+    print(colored(f'Testing whether {helixer_post_bin} is correctly installed', 'green'))
     if not shutil.which(helixer_post_bin):
-        print(f'\nError: {helixer_post_bin} not found in $PATH, this is required for Helixer.py to complete.\n',
+        print(colored(f'\nError: {helixer_post_bin} not found in $PATH, this is required for Helixer.py to complete.\n',
+                      'red'),
               file=sys.stderr)
         print('Installation instructions: https://github.com/TonyBolger/HelixerPost, the lzf library is OPTIONAL',
               file=sys.stderr)
         print('Remember to add the compiled binary to a folder in your PATH variable.')
         sys.exit(1)
+    else:
+        run = subprocess.run([helixer_post_bin])
+        # we should get the help function and return code 1 if helixer_post_bin is fully installed
+        if run.returncode != 1:
+            # if we get anything else, subprocess will have shown the error (I hope),
+            # so just exit with the return code
+            sys.exit(run.returncode)
 
+    print(colored('Helixer.py config loaded. Starting FASTA to H5 conversion.', 'green'))
     # generate the .h5 file in a temp dir, which is then deleted
     with tempfile.TemporaryDirectory(dir=args.temporary_dir) as tmp_dirname:
         tmp_genome_h5_path = os.path.join(tmp_dirname, f'tmp_species_{args.species}.h5')
