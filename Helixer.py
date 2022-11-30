@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 import argparse
 import os
+import shutil
 import sys
 import time
 import h5py
@@ -133,11 +134,20 @@ class HelixerParameterParser(ParameterParser):
 
 
 def main():
+    helixer_post_bin = 'helixer_post_bin'
     start_time = time.time()
     pp = HelixerParameterParser('config/helixer_config.yaml')
     args = pp.get_args()
     args.overlap = not args.no_overlap  # minor overlapping is a far better default for inference. Thus, this hack.
     print(colored('Helixer.py config loaded. Starting FASTA to H5 conversion.', 'green'))
+    # before we start, check if helixer_post_bin is there
+    if not shutil.which(helixer_post_bin):
+        print(f'\nError: {helixer_post_bin} not found in $PATH, this is required for Helixer.py to complete.\n',
+              file=sys.stderr)
+        print('Installation instructions: https://github.com/TonyBolger/HelixerPost, the lzf library is OPTIONAL',
+              file=sys.stderr)
+        print('Remember to add the compiled binary to a folder in your PATH variable.')
+        sys.exit(1)
 
     # generate the .h5 file in a temp dir, which is then deleted
     with tempfile.TemporaryDirectory(dir=args.temporary_dir) as tmp_dirname:
@@ -172,7 +182,7 @@ def main():
         print(colored('Neural network prediction done. Starting post processing.', 'green'))
 
         # call to HelixerPost, has to be in PATH
-        helixerpost_cmd = ['helixer_post_bin', tmp_genome_h5_path, tmp_pred_h5_path]
+        helixerpost_cmd = [helixer_post_bin, tmp_genome_h5_path, tmp_pred_h5_path]
         helixerpost_params = [args.window_size, args.edge_threshold, args.peak_threshold, args.min_coding_length]
         helixerpost_cmd += [str(e) for e in helixerpost_params] + [args.gff_output_path]
 
