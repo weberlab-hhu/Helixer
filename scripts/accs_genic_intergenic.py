@@ -2,7 +2,7 @@
 import h5py
 import numpy as np
 import argparse
-from helixer.prediction.ConfusionMatrix import ConfusionMatrix as ConfusionMatrix
+from helixer.prediction.Metrics import ConfusionMatrix as ConfusionMatrix
 import sys
 from helixer.core.helpers import mk_keys, mk_seqonly_keys
 import os
