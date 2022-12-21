@@ -143,7 +143,7 @@ class ConfusionMatrix:
         # F1
         table = [['', 'norm. H', 'Precision', 'Recall', 'F1-Score']]
         for i, (name, values) in enumerate(scores.items()):
-            # check if there is an entropy value comming (only for single type classes)
+            # check if there is an entropy value coming (only for single type classes)
             if not self.skip_uncertainty and i < len(names):
                 metrics = []
             else:
@@ -160,8 +160,8 @@ class ConfusionMatrix:
         if pathout is not None:
             if not os.path.exists(pathout):
                 os.mkdir(pathout)
-
-            for table, table_name in self.prep_tables():
+            scores = self._get_scores()
+            for table, table_name in self.prep_tables(scores):
                 with open('{}/{}.csv'.format(pathout, table_name), 'w') as f:
                     writer = csv.writer(f)
                     for row in table:
