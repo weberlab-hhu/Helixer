@@ -95,6 +95,7 @@ class ConfusionMatrix:
 
     @staticmethod
     def _add_to_scores(d):
+        """adds precision, recall, and f1 to input dictionary, d"""
         metrics = ConfusionMatrix._precision_recall_f1(d['TP'], d['FP'], d['FN'])
         d['precision'], d['recall'], d['f1'] = metrics
 
@@ -105,6 +106,7 @@ class ConfusionMatrix:
             name = self.col_names[col]
             d = scores[name]
             not_col = np.arange(self.n_classes) != col
+            # reference annotation is in dim 0, prediction in dim 1
             d['TP'] = self.cm[col, col]
             d['FP'] = np.sum(self.cm[not_col, col])
             d['FN'] = np.sum(self.cm[col, not_col])
@@ -159,7 +161,7 @@ class ConfusionMatrix:
     def export_to_csvs(self, pathout):
         if pathout is not None:
             if not os.path.exists(pathout):
-                os.mkdir(pathout)
+                os.makedirs(pathout)
             scores = self._get_scores()
             for table, table_name in self.prep_tables(scores):
                 with open('{}/{}.csv'.format(pathout, table_name), 'w') as f:
@@ -199,6 +201,42 @@ class ConfusionMatrixGenic(ConfusionMatrix):
 
         return scores
 
+class ConfusionMatrixPhase(ConfusionMatrix):
+    """Extension of ConfusionMatrix to differentiate phase shift from CDS vs not mistake"""
+    def __init__(self, skip_uncertainty=True):
+        super().__init__(col_names = ["no_phase", "phase_0", "phase_1", "phase_2"],
+                         skip_uncertainty=skip_uncertainty)
+
+    def _get_scores(self):
+        scores = super()._get_scores()
+        # scores is a defaultdict, of dictionaries
+
+        # any_phase
+        # basically phase vs not phase
+        # should be close to CDS score, but with a slightly lower recall
+        # more false negatives are always expected in the 2x4 encoding, e.g. [0.35, 0.2, 0.2, 0.25]
+        # which will end up being CDS w/ phase_2 in the end, but argmax here will have given no_phase
+        d = scores['any_phase']
+        cm = self.cm
+        # sum up any_phase predictions
+        d['TP'] = np.sum(cm[1:, 1:])
+        d['FP'] = np.sum(cm[0, 1:])
+        d['FN'] = np.sum(cm[1:, 0])
+        ConfusionMatrix._add_to_scores(d)
+
+        # internal_phase
+        # to detect shifted phase predictions, as opposed to phase not phase
+        d = scores['internal_phase']
+        d['TP'] = cm[1, 1] + cm[2, 2] + cm[3, 3]
+        # OK, as all are now 'positive classes of interest' this will give us the _accuracy_!
+        # but that's fine because within phase there's class balance, and it keeps the implementation consistent...
+        mask = np.logical_not(np.eye(3))
+        n_mistakes = np.sum(cm[1:, 1:][mask])
+        d['FP'] = n_mistakes
+        d['FN'] = n_mistakes
+        ConfusionMatrix._add_to_scores(d)
+
+        return scores
 
 class Metrics:
 

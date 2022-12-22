@@ -2,9 +2,37 @@
 import h5py
 import numpy as np
 import argparse
-from helixer.prediction.Metrics import ConfusionMatrix as ConfusionMatrix
+from helixer.prediction.Metrics import ConfusionMatrixGenic, ConfusionMatrixPhase
 import re
 import os
+
+
+class CMHolder:
+    """manages a Conf. Mat. for class and for phase, w/ given filter function"""
+    def __init__(self, mask_fn, name):
+        self.mask_fn = mask_fn
+        self.name = name
+        self.cm_calc = ConfusionMatrixGenic(None)
+        self.cm_phase = ConfusionMatrixPhase()
+
+    def count_and_calculate_one_batch(self, sample_weights, data_y, pred_y,
+                                      data_phase, pred_phase, transitions):
+
+        mask = np.logical_and(self.mask_fn(transitions),
+                              sample_weights)
+
+        self.cm_calc.count_and_calculate_one_batch(data_y, pred_y, mask)
+        self.cm_phase.count_and_calculate_one_batch(data_phase, pred_phase, mask)
+
+    def print_cms(self):
+        print(f'\n======= tables for: {self.name} =========')
+        self.cm_calc.print_cm()
+        self.cm_phase.print_cm()
+
+    def export_to_csvs(self, stats_dir):
+        self.cm_calc.export_to_csvs(os.path.join(stats_dir, self.name, 'genic_class'))
+        self.cm_phase.export_to_csvs(os.path.join(stats_dir, self.name, 'phase'))
+
 
 class H5Holder:
     def __init__(self, h5_data, h5_pred, h5_prediction_dataset):
@@ -25,6 +53,38 @@ class H5Holder:
         self.pred_phase = h5_pred[h5_phase_dataset]
         # sample weights (to mask both of the above)
         self.sample_weights = h5_data['data/sample_weights']
+        # transitions
+        self.transitions = h5_data['data/transitions']
+
+    @property
+    def datasets(self):
+        # sorting here MUST MATCH that in CMHolder count_and_calculate_one_batch args
+        # but it's very io inefficient to get these there
+        return [self.sample_weights,
+                self.data_y,
+                self.pred_y,
+                self.data_phase,
+                self.pred_phase,
+                self.transitions]
+
+def no_mask(transitions):
+    return np.ones(shape=transitions.shape[:2], dtype=bool)
+
+
+def any_transition(transitions):
+    return np.sum(transitions, axis=-1).astype(bool)
+
+
+def transcript_transition(transitions):
+    return np.sum(transitions[:, : , [0, 3]], axis=-1).astype(bool)
+
+
+def coding_transition(transitions):
+    return np.sum(transitions[:, :, [1, 4]], axis=-1).astype(bool)
+
+
+def intron_transition(transitions):
+    return np.sum(transitions[:, :, [2, 5]], axis=-1).astype(bool)
 
 
 def main(args):
@@ -34,22 +94,27 @@ def main(args):
 
     h5h = H5Holder(h5_data, h5_pred, args.h5_prediction_dataset)
 
-    # and score
-    cm_calc = ConfusionMatrix(None)
-    cm_phase = ConfusionMatrix(['no_phase', 'phase_0', 'phase_1', 'phase_2'])
+    # prepare
+    cm_holders = [CMHolder(no_mask, "all"),
+                  CMHolder(any_transition, "transition"),
+                  CMHolder(transcript_transition, "transcript_transition"),
+                  CMHolder(coding_transition, "coding_transition"),
+                  CMHolder(intron_transition, "intron_transition")
+                  ]
 
     # sanity check
     assert h5h.data_y.shape == h5h.pred_y.shape
 
     # truncate (for devel efficiency, when we don't need the whole answer)
     if args.truncate is not None:
-        for key, val in h5h.__dict__.items():
-            h5h.__setattr__(key, val[:args.truncate])
+        end = args.truncate
+    else:
+        end = h5h.data_y.shape[0]
 
     # random subset (for devel efficiency, or just if we don't care that much about the full accuracy
     if args.sample is not None:
         a_sample = np.random.choice(
-            np.arange(h5h.data_y.shape[0]),
+            np.arange(end),
             size=[args.sample],
             replace=False
         )
@@ -60,20 +125,20 @@ def main(args):
     # break into chunks (keep mem usage minimal)
     i = 0
     size = 1000
-    while i < h5h.data_y.shape[0]:
-        cm_calc.count_and_calculate_one_batch(h5h.data_y[i:(i + size)],
-                                              h5h.pred_y[i:(i + size)],
-                                              h5h.sample_weights[i:(i + size)])
-        cm_phase.count_and_calculate_one_batch(h5h.data_phase[i:(i + size)],
-                                               h5h.pred_phase[i:(i + size)],
-                                               h5h.sample_weights[i:(i + size)])
+    while i < end:
+        # sorting here MUST MATCH that in CMHolder function args
+        batches = [x[i:(i + size)] for x in h5h.datasets]
+
+        for cmh in cm_holders:
+            cmh.count_and_calculate_one_batch(*batches)
+
         i += size
 
-    cm_calc.print_cm()
-    cm_calc.export_to_csvs(os.path.join(args.stats_dir, 'genic_class'))
+    # report output
+    for cmh in cm_holders:
+        cmh.print_cms()
+        cmh.export_to_csvs(args.stats_dir)
 
-    cm_phase.print_cm()
-    cm_phase.export_to_csvs(os.path.join(args.stats_dir, 'phase'))
 
 
 if __name__ == "__main__":
