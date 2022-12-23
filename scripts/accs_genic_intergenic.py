@@ -156,13 +156,13 @@ if __name__ == "__main__":
     parser.add_argument('--data', type=str, required=True)
     parser.add_argument('--predictions', type=str, required=True,
                         help="predictions h5 file, sorting _must_ match that of --data!")
+    parser.add_argument('--stats_dir', type=str, required=True,
+                        help="export several csv files of the calculated stats in this (nested) directory")
     parser.add_argument('--truncate', type=int, default=None, help="look at just the first N chunks of each sequence")
     parser.add_argument('--h5_prediction_dataset', type=str, default='/predictions',
                         help="dataset in predictions h5 file to compare with data's '/data/y', default='/predictions',"
-                             "the other likely option is '/data/y'")
+                             "the other likely option is '/data/y' or alternative/<something>/y")
     parser.add_argument('--sample', type=int, default=None,
                         help="take a random sample of the data of this many chunks per sequence")
-    parser.add_argument('--stats_dir', type=str,
-                        help="export several csv files of the calculated stats in this directory")
     args = parser.parse_args()
     main(args)
