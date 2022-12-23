@@ -90,6 +90,12 @@ def coding_transition(transitions):
 def intron_transition(transitions):
     return np.sum(transitions[:, :, [2, 5]], axis=-1).astype(bool)
 
+def slice_or_none(dataset, i, size):
+    if dataset is not None:
+        return dataset[i:(i + size)]
+    else:
+        return None
+
 
 def main(args):
 
@@ -131,7 +137,7 @@ def main(args):
     size = 1000
     while i < end:
         # sorting here MUST MATCH that in CMHolder function args
-        batches = [x[i:(i + size)] for x in h5h.datasets]
+        batches = [slice_or_none(ds, i, size) for ds in h5h.datasets]
 
         for cmh in cm_holders:
             cmh.count_and_calculate_one_batch(*batches)
