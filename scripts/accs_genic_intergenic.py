@@ -22,7 +22,8 @@ class CMHolder:
                               sample_weights)
 
         self.cm_calc.count_and_calculate_one_batch(data_y, pred_y, mask)
-        self.cm_phase.count_and_calculate_one_batch(data_phase, pred_phase, mask)
+        if pred_phase is not None:
+            self.cm_phase.count_and_calculate_one_batch(data_phase, pred_phase, mask)
 
     def print_cms(self):
         print(f'\n======= tables for: {self.name} =========')
@@ -50,7 +51,10 @@ class H5Holder:
         self.pred_y = h5_pred[h5_prediction_dataset]
         # phase
         self.data_phase = h5_data['data/phases']
-        self.pred_phase = h5_pred[h5_phase_dataset]
+        try:
+            self.pred_phase = h5_pred[h5_phase_dataset]
+        except KeyError:
+            self.pred_phase = None
         # sample weights (to mask both of the above)
         self.sample_weights = h5_data['data/sample_weights']
         # transitions
