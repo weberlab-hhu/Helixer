@@ -134,7 +134,7 @@ def main(args):
 
     # break into chunks (keep mem usage minimal)
     i = 0
-    size = 1000
+    size = 100
     while i < end:
         # sorting here MUST MATCH that in CMHolder function args
         batches = [slice_or_none(ds, i, size) for ds in h5h.datasets]
