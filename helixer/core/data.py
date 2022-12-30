@@ -9,7 +9,7 @@ import csv
 
 
 MODEL_PATH = os.path.join(appdirs.user_data_dir('Helixer'), 'models')
-MODEL_LIST_URL = 'https://raw.githubusercontent.com/weberlab-hhu/Helixer/dev/helixer/model_list.csv'
+MODEL_LIST_URL = 'https://raw.githubusercontent.com/weberlab-hhu/Helixer/main/resources/model_list.csv'
 MODEL_LIST = 'model_list.csv'
 
 
