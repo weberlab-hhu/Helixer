@@ -28,7 +28,7 @@ class HelixerParameterParser(ParameterParser):
                                      help='How to slice the genomic sequence. Set moderately longer than length of '
                                           'typical genic loci. Tested up to 200000. Must be evenly divisible by the '
                                           'timestep width of the used model, which is typically 9. (Default is 21384.)')
-        self.data_group.add_argument('--lineage', type=str, choices=['vertebrate', 'land_plant', 'fungi'],
+        self.data_group.add_argument('--lineage', type=str, choices=['vertebrate', 'land_plant', 'fungi', 'invertebrate'],
                                      help='What model to use for the annotation. (Default is "land_plant".)')
         self.data_group.add_argument('--model-filepath',
                                      help='set this to override the default model for any given '

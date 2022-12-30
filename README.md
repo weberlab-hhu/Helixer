@@ -55,16 +55,17 @@ architecture. For now a preliminary land plant model is available and
 will be used for the rest of the example. 
 
 #### Acquire models
-The latest model(s) will be acquired automatically.
+The best models for each or all lineages can automatically 
+downloaded with the `fetch_helixer_models.py` script.
 
-Info on the downloaded model (and any new releases) can be found here:
+The available lineages are `land_plant`, `vertebrate`, `invertebrate`,
+and `fungi`.
+
+Info on the downloaded models (and any new releases) can be found here:
 https://uni-duesseldorf.sciebo.de/s/lQTB7HYISW71Wi0
 
->Note: a baseline vertebrate model (vertebrate_v0.3_m0100) trained
-with the same species as the paper is now available; as well as
-a still-under-validation, but putatively new best land_plant model
-(land_plant_v0.3_a_0100). Until 'release' these models can be
-downloaded manually from the link above, and used by setting 
+
+>Note: to use a non-default model, set
 `--model-filepath <path/to/model.h5>'`,
 to override the lineage default for `Helixer.py`. 
 
