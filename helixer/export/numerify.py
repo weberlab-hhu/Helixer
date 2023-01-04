@@ -100,20 +100,18 @@ class SequenceNumerifier(Numerifier):
     def coord_to_matrices(self):
         """Does not alter the error mask unlike in AnnotationNumerifier"""
         def numerify(seq_part):
-            matrix_part = np.zeros((len(seq_part), self.n_cols,), self.dtype)
-            for i, bp in enumerate(seq_part):
-                matrix_part[i] = AMBIGUITY_DECODE[bp]
-            return matrix_part
+            as_list = [AMBIGUITY_DECODE[c] for c in seq_part]
+            return np.array(as_list, self.dtype)
 
         # plus strand, actual numerification of the sequence
         start_time = time.time()
         seq = self.coord.sequence[self.start:self.end]
         seq_len = len(seq)  # can be slow
         if seq_len < int(1e6) or not self.use_multiprocess:
-            # numerify short sequences sequencially
-            self._zero_matrix()
-            for i, bp in enumerate(seq):
-                self.matrix[i] = AMBIGUITY_DECODE[bp]
+            # numerify short sequences sequentially
+            as_list = [AMBIGUITY_DECODE[c] for c in seq]
+            self.matrix = np.array(as_list, self.dtype)
+
         else:
             # numerify longer sequences in parallel
             # use one less cpu than possible, with minimum 500K chars per process
@@ -358,7 +356,7 @@ class CoordNumerifier(object):
         return res
 
     @staticmethod
-    def numerify_only_fasta(coord, max_len, genome, one_hot=True, use_multiprocess=False, write_by=5000000):
+    def numerify_only_fasta(coord, max_len, genome, one_hot=True, use_multiprocess=False, write_by=20000000):
         """export the FASTA sequence only"""
         # passing empty features causes SplitFinder to consider noting more than splitting
         # to max length of write_by and end of sequence handling.
