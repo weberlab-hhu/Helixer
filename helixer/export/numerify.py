@@ -91,7 +91,7 @@ class Numerifier(ABC):
     def _zero_matrix(self):
         self.matrix = np.zeros((self.length, self.n_cols,), self.dtype)
 
-def numerify(seq_part):
+def seq_numerify(seq_part):
     as_list = [AMBIGUITY_DECODE[c] for c in seq_part]
     return np.array(as_list, np.float16)
 
@@ -121,7 +121,7 @@ class SequenceNumerifier(Numerifier):
                 max_seq_part_len = int(np.ceil(seq_len / n_processes))
                 seq_parts = [seq[offset:offset + max_seq_part_len]
                              for offset in range(0, seq_len, max_seq_part_len)]
-                numerified_parts = p.map(numerify, seq_parts)
+                numerified_parts = p.map(seq_numerify, seq_parts)
             assert seq_len == sum([len(p) for p in numerified_parts])
             self.matrix = np.concatenate(numerified_parts)
 
