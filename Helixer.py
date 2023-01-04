@@ -180,6 +180,7 @@ def main():
             '--val-test-batch-size', str(args.batch_size),
             '--overlap-offset', str(args.overlap_offset),
             '--core-length', str(args.overlap_core_length),
+            '--compression', str(args.compression)
         ]
         if args.overlap:
             hybrid_model_args.append('--overlap')
