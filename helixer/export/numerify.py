@@ -91,6 +91,10 @@ class Numerifier(ABC):
     def _zero_matrix(self):
         self.matrix = np.zeros((self.length, self.n_cols,), self.dtype)
 
+def numerify(seq_part):
+    as_list = [AMBIGUITY_DECODE[c] for c in seq_part]
+    return np.array(as_list, np.float16)
+
 
 class SequenceNumerifier(Numerifier):
     def __init__(self, coord, max_len, start=0, end=None, use_multiprocess=True):
@@ -99,9 +103,6 @@ class SequenceNumerifier(Numerifier):
 
     def coord_to_matrices(self):
         """Does not alter the error mask unlike in AnnotationNumerifier"""
-        def numerify(seq_part):
-            as_list = [AMBIGUITY_DECODE[c] for c in seq_part]
-            return np.array(as_list, self.dtype)
 
         # plus strand, actual numerification of the sequence
         start_time = time.time()
