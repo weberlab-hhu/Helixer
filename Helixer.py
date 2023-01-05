@@ -28,8 +28,9 @@ class HelixerParameterParser(ParameterParser):
                                      help='How to slice the genomic sequence. Set moderately longer than length of '
                                           'typical genic loci. Tested up to 200000. Must be evenly divisible by the '
                                           'timestep width of the used model, which is typically 9. (Default is 21384.)')
-        self.data_group.add_argument('--lineage', type=str, choices=['vertebrate', 'land_plant', 'fungi', 'invertebrate'],
-                                     help='What model to use for the annotation. (Default is "land_plant".)')
+        self.data_group.add_argument('--lineage', type=str, default=None,
+                                     choices=['vertebrate', 'land_plant', 'fungi', 'invertebrate'],
+                                     help='What model to use for the annotation.')
         self.data_group.add_argument('--model-filepath',
                                      help='set this to override the default model for any given '
                                           'lineage and instead take a specific model',
@@ -66,7 +67,7 @@ class HelixerParameterParser(ParameterParser):
             'temporary_dir': None,
             'species': '',
             'subsequence_length': 21384,
-            'lineage': 'land_plant',
+            'lineage': None,
             'model_filepath': None,
             'batch_size': 32,
             'no_overlap': False,
@@ -98,6 +99,7 @@ class HelixerParameterParser(ParameterParser):
                   f'with the manually specified {args.model_filepath}', file=sys.stderr)
             model_filepath = args.model_filepath
         else:
+            assert args.lineage is not None, "Either --lineage or --model-filepath is required. Run `Helixer.py --help` to see lineage options."
             model_filepath = self.check_for_lineage_model(args.lineage)
 
         args.model_filepath = model_filepath
