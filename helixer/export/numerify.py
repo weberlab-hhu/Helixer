@@ -378,7 +378,7 @@ class CoordNumerifier(object):
 
     @staticmethod
     def numerify(coord, coord_features, max_len, one_hot=True, mode=('X', 'y', 'anno_meta', 'transitions'),
-                 write_by=5000000, use_multiprocess=True):
+                 write_by=5000000, use_multiprocess=True, seen_annotation=None):
         assert isinstance(max_len, int) and max_len > 0, 'what is {} of type {}'.format(max_len, type(max_len))
         coord_features = sorted(coord_features, key=lambda f: min(f.start, f.end))  # sort by ~ +strand start
         split_finder = SplitFinder(features=coord_features, write_by=write_by, coord_length=coord.length,
@@ -386,12 +386,13 @@ class CoordNumerifier(object):
         for f_set, bp_coord, h5_coord in split_finder.feature_n_coord_gen():
             for strand_res in CoordNumerifier._numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len,
                                                                           one_hot, coord_features, mode,
-                                                                          use_multiprocess):
+                                                                          use_multiprocess, seen_annotation):
                 yield strand_res
 
     @staticmethod
     def _numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len, one_hot, coord_features, mode,
-                                    use_multiprocess):
+                                    use_multiprocess, seen_annotation):
+        assert seen_annotation is not None  # until a more thorough check / refactor
         export_x = 'X' in mode
         start, end = bp_coord
 
@@ -418,8 +419,9 @@ class CoordNumerifier(object):
             start_ends += start
 
             # mark examples from featureless coordinate / assume there is no trustworthy annotation
-            if not coord_features:
-                logging.warning('Sequence {} has no annotations'.format(coord.seqid))
+            seen_annotation = bool(coord_features) or seen_annotation
+            if not seen_annotation:
+                logging.warning('Sequence {} (& smaller) have no annotations'.format(coord.seqid))
                 is_annotated = [0] * len(y)
             else:
                 is_annotated = [1] * len(y)
@@ -446,7 +448,7 @@ class CoordNumerifier(object):
             if export_x:
                 out.append(MatAndInfo('X', x, 'float16'))
             out = tuple(out)
-            yield out, h5_coord[strand]
+            yield out, h5_coord[strand], seen_annotation
 
 
 # todo, consider moving to separate splitting file or exporter...?
