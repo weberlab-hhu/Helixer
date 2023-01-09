@@ -163,19 +163,17 @@ class HelixerExportController(HelixerExportControllerBase):
             coord_info[seqid] = (coord_id, coord_len)
         return coord_info
 
-    def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, write_by, modes, multiprocess,
-                        seen_annotation):
+    def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, write_by, modes, multiprocess):
         """filtering and stats"""
         coord_data_gen = CoordNumerifier.numerify(coord, coord_features, chunk_size, one_hot,
                                                   write_by=write_by, mode=modes, use_multiprocess=multiprocess,
                                                   seen_annotation=self.seen_annotation)
-        # update once we've seen a single annotation, we should stop masking annotation-less coords
-        self.seen_annotation = coord_data_gen[-1]
 
         # the following will all be used to calculate a percentage, which is yielded but ignored until the end
         n_chunks = n_bases = n_ig_bases = n_masked_bases = 0
 
-        for coord_data, h5_coord, _ in coord_data_gen:
+        for coord_data, h5_coord, seen_annotation in coord_data_gen:
+
             # easy access to matrices
             y = [cd.matrix for cd in coord_data if cd.key == 'y'][0]
             sample_weights = [cd.matrix for cd in coord_data if cd.key == 'sample_weights'][0]
@@ -191,6 +189,9 @@ class HelixerExportController(HelixerExportControllerBase):
             ig_bases_perc = n_ig_bases / n_bases * 100
 
             yield coord_data, coord, masked_bases_perc, ig_bases_perc, h5_coord
+
+        # update once we've seen a single annotation, we should stop masking annotation-less coords
+        self.seen_annotation = seen_annotation
 
     def export(self, chunk_size, one_hot=True, longest_only=True, write_by=10_000_000_000,
                modes=('X', 'y', 'anno_meta', 'transitions'), compression='gzip', multiprocess=True):
