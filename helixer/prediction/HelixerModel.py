@@ -1,3 +1,5 @@
+import copy
+import random
 from abc import ABC, abstractmethod
 import os
 import sys
@@ -125,6 +127,7 @@ class HelixerSequence(Sequence):
         self.mode = mode
         self.shuffle = shuffle
         self.batch_size = batch_size
+
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
                                  'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
@@ -138,6 +141,15 @@ class HelixerSequence(Sequence):
             assert cs == chunk_sizes[0], f'Not all chunk_size match in h5_files: {chunk_sizes}'
         self.chunk_size = chunk_sizes[0]
 
+        # params to track padding
+        # placeholder values will cause padding 'augmentation' to start at 10% and random length, but dynamically
+        # addapt to be 4x as frequent and match the length distribution of any actual fragmented data
+        self.pad_augment_ratio = 4
+        self.count_unpadded = 10 * self.pad_augment_ratio
+        self.count_padded = 1
+        self.padded_lengths = [random.randint(200, self.chunk_size - 1) for _ in 50]
+
+        # knowing the data
         self.data_list_names = ['data/X']
         if not self.only_predictions:
             self.data_list_names += ['data/y', 'data/sample_weights']
@@ -405,9 +417,54 @@ class HelixerSequence(Sequence):
     def __getitem__(self, idx):
         pass
 
+
+    def _maybe_augment_fragment(self):
+        """random decision on whether to add fake fragmented data at rate proportional to observed"""
+        padded_rate = self.count_padded / (self.count_unpadded + self.count_padded)
+        threshold = padded_rate * self.pad_augment_ratio
+        return random.uniform(0., 1.) < threshold
+
+    def _augment_fragment_batch(self, batch):
+        """random truncation of contiguous data to match length distribution of any fragmented contigs"""
+        if mode is not 'train':
+            return batch
+        y = batch[1]
+#        X, y, sw, transitions, phases, _, coverage_scores = batch
+        # find where padding exists based on y
+        for i, mat in enumerate(y):
+            length = np.sum(y)
+            if length == self.chunk_size:
+                if self._maybe_augment_fragment():
+                    b2 = copy.deepcopy(batch)
+                    self._augment_fragment_one_of_each(batch, i)
+                    assert b2 != batch  # tempory sanity check that change-in-place is working
+                self.count_unpadded += 1
+            else:
+                self.count_padded += 1
+                # update pool of padded lengths w/ observation
+                self.padded_lengths.pop(0)
+                self.padded_lengths.append(length)
+        return batch
+
+    def _augment_fragment_one_of_each(self, batch, i):
+        new_length = random.choice(self.padded_lengths)
+        start = random.randint(0, self.chunk_size - new_length)  # randint end is inclusive
+        end = start + new_length
+        # once we have have the new length and range two things have to happen
+        # 1) this range is shifted to the start of the chunk/subsequence
+        for mats in batch:
+            mats[i][:new_length] = mats[i][start:end]
+        # 2) looks like padding to the network, i.e. the sample weights thereafter are set to 0 and the X is 0 padded
+        # sample weights are idx=2
+        batch[2][i][new_length:] = 0
+        # X is idx=0
+        batch[0][i][new_length:, :] = 0.
+
     def _generic_get_item(self, idx):
         """covers the data preprocessing (reshape, trim, weighting, etc) common to all models"""
-        X, y, sw, transitions, phases, _, coverage_scores = self._get_batch_data(idx)
+        batch = self._get_batch_data(idx)
+        X, y, sw, transitions, phases, _, coverage_scores = self._augment_fragment_batch(batch)
+
         pool_size = self.model.pool_size
 
         if pool_size > 1:
@@ -441,7 +498,6 @@ class HelixerSequence(Sequence):
                     cw = np.sum(cw_arrays, axis=2)
                     sw = np.multiply(cw, sw)
 
-                # todo, while now compressed, the following is still 1:1 with LSTM model... --> HelixerModel
                 if self.transition_weights is not None:
                     transitions = self._mk_timestep_pools_class_last(transitions)
                     # more reshaping and summing  up transition weights for multiplying with sample weights
