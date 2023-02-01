@@ -147,7 +147,7 @@ class HelixerSequence(Sequence):
         self.pad_augment_ratio = 4
         self.count_unpadded = 10 * self.pad_augment_ratio
         self.count_padded = 1
-        self.padded_lengths = [random.randint(200, self.chunk_size - 1) for _ in 50]
+        self.padded_lengths = [random.randint(200, self.chunk_size - 1) for _ in range(50)]
 
         # knowing the data
         self.data_list_names = ['data/X']
@@ -426,7 +426,7 @@ class HelixerSequence(Sequence):
 
     def _augment_fragment_batch(self, batch):
         """random truncation of contiguous data to match length distribution of any fragmented contigs"""
-        if mode is not 'train':
+        if self.mode != 'train':
             return batch
         y = batch[1]
 #        X, y, sw, transitions, phases, _, coverage_scores = batch
