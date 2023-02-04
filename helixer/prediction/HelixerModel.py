@@ -35,6 +35,9 @@ from tensorflow_addons.optimizers import AdamW
 from helixer.prediction.Metrics import Metrics
 from helixer.core import overlap
 
+tf.config.experimental.enable_op_determinism()
+
+
 
 class ConfusionMatrixTrain(Callback):
     def __init__(self, save_model_path, train_generator, val_generator, large_eval_folder, patience, calc_H=False,
@@ -576,6 +579,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--nni', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
         self.parser.add_argument('--debug', action='store_true')
+        self.parser.add_argument('--seed', type=int, help='set seed for tf.random to allow for derterministic behavior')
 
     def parse_args(self):
         """Parses the arguments either from the command line via argparse by using self.parser or
@@ -635,9 +639,20 @@ class HelixerModel(ABC):
         if type(self.transition_weights) is list:
             self.transition_weights = np.array(self.transition_weights, dtype=np.float32)
 
+        seed = args['seed']
+        if seed is None:
+            seed = random.randint(0, 999999999)
+        
+        print(f'setting random seed to {seed}')
+        random.seed(seed)
+        tf.random.set_seed(random.randint(0, 999999999))
+        np.random.seed(random.randint(0, 999999999))
+
         if self.verbose:
             print(colored('HelixerModel config: ', 'yellow'))
             pprint(args)
+
+           
 
     def generate_callbacks(self, train_generator):
         callbacks = [ConfusionMatrixTrain(self.save_model_path, train_generator, self.gen_validation_data(),
