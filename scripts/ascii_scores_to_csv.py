@@ -6,7 +6,7 @@ Extracts individual tables from text file with 1+ ASCII terminal tables and save
 import re
 import argparse
 import os
-
+from collections import defaultdict
 
 def parse_table(splittable):
     out = []
@@ -45,17 +45,15 @@ def gen_tables(filein):
 
 
 def main(filein, dirout):
-    seen = set()
+    seen = defaultdict(lambda: 0)
     if not os.path.exists(dirout):
         os.mkdir(dirout)
     for table in gen_tables(filein):
         header, tab = parse_table(table)
         # force unique headers / output file names
-        if header in seen:
-            header += '_'
-        seen.add(header)
+        seen[header] += 1
 
-        fileout = '{}/{}.csv'.format(dirout, header)
+        fileout = f'{dirout}/{header}_{seen[header]:04}.csv'
         with open(fileout, 'w') as f:
             f.write(tab)
 
