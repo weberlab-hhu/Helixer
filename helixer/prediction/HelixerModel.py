@@ -150,6 +150,7 @@ class HelixerSequence(Sequence):
         self.pad_augment_ratio = 4
         self.count_unpadded = 10 * self.pad_augment_ratio
         self.count_padded = 1
+        self.down_sample_padded = 0.1
         self.padded_lengths = [random.randint(200, self.chunk_size - 1) for _ in range(50)]
 
         # knowing the data
@@ -424,15 +425,15 @@ class HelixerSequence(Sequence):
     def _maybe_augment_fragment(self):
         """random decision on whether to add fake fragmented data at rate proportional to observed"""
         padded_rate = self.count_padded / (self.count_unpadded + self.count_padded)
-        threshold = padded_rate * self.pad_augment_ratio
+        threshold = padded_rate * self.pad_augment_ratio * self.down_sample_padded
         return random.uniform(0., 1.) < threshold
 
     def _augment_fragment_batch(self, batch):
         """random truncation of contiguous data to match length distribution of any fragmented contigs"""
         if self.mode != 'train':
             return batch
+        # batch is  (X, y, sw, transitions, phases, _, coverage_scores)
         y = batch[1]
-#        X, y, sw, transitions, phases, _, coverage_scores = batch
         # find where padding exists based on y
         for i, mat in enumerate(y):
             length = np.sum(y)
@@ -440,20 +441,28 @@ class HelixerSequence(Sequence):
                 if self._maybe_augment_fragment():
                     b2 = copy.deepcopy(batch)
                     self._augment_fragment_one_of_each(batch, i)
-                    assert b2 != batch  # tempory sanity check that change-in-place is working
+                    assert b2 != batch  # temporary sanity check that change-in-place is working
                 self.count_unpadded += 1
             else:
                 self.count_padded += 1
                 # update pool of padded lengths w/ observation
                 self.padded_lengths.pop(0)
                 self.padded_lengths.append(length)
+                # most fragmented data has less trustworthy annotations than it's
+                # less fragmented data from the same genome / group.
+                # thus, we're going to reduce how much the network focuses on _most_
+                # of the fragmented data
+                if random.uniform(0., 1.) > self.down_sample_padded:
+                    # substantially down weight sample weights (because it's easier than dealing w/ filter)
+                    batch[2][i] *= 0.001
+
         return batch
 
     def _augment_fragment_one_of_each(self, batch, i):
         new_length = random.choice(self.padded_lengths)
         start = random.randint(0, self.chunk_size - new_length)  # randint end is inclusive
         end = start + new_length
-        # once we have have the new length and range two things have to happen
+        # once we have the new length and range two things have to happen
         # 1) this range is shifted to the start of the chunk/subsequence
         for mats in batch:
             mats[i][:new_length] = mats[i][start:end]
