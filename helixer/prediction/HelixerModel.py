@@ -458,8 +458,10 @@ class HelixerSequence(Sequence):
                 # thus, we're going to reduce how much the network focuses on _most_
                 # of the fragmented data
                 if random.uniform(0., 1.) > self.down_sample_padded:
-                    # substantially down weight sample weights (because it's easier than dealing w/ filter)
-                    batch[2][i] *= 0.001
+                    # mask with sample weights 
+                    # but leave a handful of positions [0,10) unmasked to avoid the 
+                    # corner cases where everything is 0 at once 
+                    batch[2][i][10:] *= 0
 
         return batch
 
