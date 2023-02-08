@@ -134,7 +134,8 @@ class HelixerSequence(Sequence):
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
                                  'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
-                                 'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
+                                 'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug',
+                                 'include_unannotated'])
 
         if self.mode == 'test':
             assert len(self.h5_files) == 1, "predictions and eval should be applied to individual files only"
@@ -219,8 +220,12 @@ class HelixerSequence(Sequence):
             n_seqs = x_dset.shape[0]
 
         if self.mode == "train" or self.mode == 'val':
-            mask = np.logical_and(h5_file['data/is_annotated'],
-                                  h5_file['data/err_samples'])
+            if self.include_unannotated:
+                mask = h5_file['data/err_samples'][:].astype(bool)
+            else:
+                mask = np.logical_and(h5_file['data/is_annotated'],
+                                      h5_file['data/err_samples'])
+
             n_masked = x_dset.shape[0] - np.sum(mask)
             print(f'\nmasking {n_masked} completely un-annotated or completely erroneous sequences')
                 
@@ -559,6 +564,8 @@ class HelixerModel(ABC):
         self.parser.add_argument('--coverage-offset', type=float, default=0.0)
         self.parser.add_argument('--calculate-uncertainty', action='store_true')
         self.parser.add_argument('--no-utrs', action='store_true', help=argparse.SUPPRESS)  # is this still needed?
+        self.parser.add_argument('--include-unannotated', action='store_true',
+                                 help='set to _not_ mask out sequences smaller than smallest annotated sequence')
         self.parser.add_argument('--predict-phase', action='store_true')
         self.parser.add_argument('--load-predictions', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
         self.parser.add_argument('--resume-training', action='store_true')
