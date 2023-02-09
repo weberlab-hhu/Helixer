@@ -130,9 +130,15 @@ a reasonable batch size cannot be used.
 
 #### Citation
 
-Felix Stiehler, Marvin Steinborn, Stephan Scholz, Daniela Dey, Andreas P M Weber, Alisandra K Denton, 
-Helixer: Cross-species gene annotation of large eukaryotic genomes using deep learning, Bioinformatics, , btaa1044, 
+##### Full Applicable Tool 
+
+Felix Holst, Anthony Bolger, Christopher Günther, Janina Maß, Sebastian Triesch, Felicitas Kindel, Niklas Kiel, Nima Saadat, Oliver Ebenhöh, Björn Usadel, Rainer Schwacke, Marie Bolger, Andreas P.M. Weber, Alisandra K. Denton.
+Helixer&mdash;_de novo_ Prediction of Primary Eukaryotic Gene Models Combining Deep Learning and a Hidden Markov Model.
+_bioRxiv_ 2023.02.06.527280; doi: https://doi.org/10.1101/2023.02.06.527280 
+
+##### Original Development and Description of Deep Neural Network for basewise predictions
+
+Felix Stiehler, Marvin Steinborn, Stephan Scholz, Daniela Dey, Andreas P M Weber, Alisandra K Denton.
+Helixer: Cross-species gene annotation of large eukaryotic genomes using deep learning. _Bioinformatics_, btaa1044, 
 https://doi.org/10.1093/bioinformatics/btaa1044
 
-Please check back to see if the post-processor and additional developments to the core Helixer
-functionality have been published.
