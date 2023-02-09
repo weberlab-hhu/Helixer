@@ -205,6 +205,14 @@ class HelixerSequence(Sequence):
                 print(f'ignoring the transition_weights of {self.transition_weights} in mode "test"')
                 self.transition_weights = None
 
+    def _mask_large_fraction_of_fragmented(self, sub_x):
+        """makes mask to downsample fragmented sequences"""
+        # obviously a dynamic mask would be nicer... but let's see if it helpful first
+        by_bp = np.sum(sub_x, axis=2).astype(int)
+        padding_at = np.where(np.sum(by_bp, axis=1) != self.chunk_size)[0]
+        drop_n = int(len(padding_at) * (1 - self.down_sample_padded))
+        return np.random.choice(padding_at, drop_n)
+
     def _load_one_h5(self, h5_file):
         print(f'For h5 starting with species = {h5_file["data/species"][0]}:')
         x_dset = h5_file['data/X']
@@ -236,13 +244,19 @@ class HelixerSequence(Sequence):
         # load at most 2000 uncompressed samples at a time in memory
         max_at_once = min(2000, n_seqs)
         for name, data_list in zip(self.data_list_names, self.data_lists):
+            if name == 'data/X':
+                fragmented_to_drop = []
             start_time_dset = time.time()
-            for offset in range(0, n_seqs, max_at_once):
-                step_mask = mask[offset:offset + max_at_once]
-                if name == 'data/predictions':
-                    data_slice = h5_file[name][0, offset:offset + max_at_once][step_mask]  # only use one prediction for now
-                else:
-                    data_slice = h5_file[name][offset:offset + max_at_once][step_mask]
+            for i, offset in enumerate(range(0, n_seqs, max_at_once)):
+                step_mask = mask[offset:offset + max_at_once]  # masks unannotated and erroneous
+                data_slice = h5_file[name][offset:offset + max_at_once]
+                # (make and) apply additional mask to skip large fraction of (noisy and hard) padded chunks
+                if self.mode == 'train':
+                    if name == 'data/X':
+                        fragmented_to_drop.append(self._mask_large_fraction_of_fragmented(data_slice))
+                    step_mask[fragmented_to_drop[i]] = False
+                data_slice = data_slice[step_mask]
+
                 if self.no_utrs and name == 'data/y':
                     HelixerSequence._zero_out_utrs(data_slice)
                 data_list.extend([self.compressor.encode(e) for e in data_slice])
@@ -453,15 +467,6 @@ class HelixerSequence(Sequence):
                 # update pool of padded lengths w/ observation
                 self.padded_lengths.pop(0)
                 self.padded_lengths.append(length)
-                # most fragmented data has less trustworthy annotations than it's
-                # less fragmented data from the same genome / group.
-                # thus, we're going to reduce how much the network focuses on _most_
-                # of the fragmented data
-                if random.uniform(0., 1.) > self.down_sample_padded:
-                    # mask with sample weights 
-                    # but leave a handful of positions [0,10) unmasked to avoid the 
-                    # corner cases where everything is 0 at once 
-                    batch[2][i][10:] *= 0
 
         return batch
 
