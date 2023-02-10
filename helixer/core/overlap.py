@@ -221,7 +221,8 @@ class OverlapSeqHelper(object):
             out.append(sb.overlap_and_edge_handle_preds(preds, self.core_length))
         out = np.concatenate(out)
         n_expect = np.sum([sb.keep_end - sb.keep_start for sb in sub_batches])
-        assert out.shape[0] == n_expect
+        assert out.shape[0] == n_expect, f'overlapping trouble, maybe try a higher batch-size? ' \
+                                         f'(debug info: got {out.shape[0]}, expected {n_expect})'
         return out
 
     def subset_input(self, batch_idx, y_true_or_sw):

@@ -803,7 +803,14 @@ class HelixerModel(ABC):
                 input_data = test_sequence[batch_index][0]
             else:
                 input_data = test_sequence[batch_index]
-            predictions = model.predict_on_batch(input_data)
+            try:
+                predictions = model.predict_on_batch(input_data)
+            except Exception as e:
+                print(colored('Errors at prediction often result from exhausting the GPU RAM.'
+                              'Your RAM requirement depends on subsequence_length x (val_test_)batch_size.'
+                              'That and the network size (can be changed during training but not inference).',
+                              'red'))
+                raise e
             if isinstance(predictions, list):
                 # when we have two outputs, one is for phase
                 output_names = ['predictions', 'predictions_phase']

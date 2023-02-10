@@ -38,7 +38,7 @@ class HelixerParameterParser(ParameterParser):
         self.pred_group = self.parser.add_argument_group("Prediction parameters")
         self.pred_group.add_argument('--batch-size', type=int,
                                      help='The batch size for the raw predictions in TensorFlow. Should be as large as '
-                                          'possible to save prediction time. (Default is 8.)')
+                                          'possible on your GPU to save prediction time. (Default is 8.)')
         self.data_group.add_argument('--no-overlap', action='store_true',
                                      help='Switches off the overlapping after predictions are made. Predictions without'
                                           ' overlapping will be faster, but will have lower quality towards '
@@ -66,7 +66,7 @@ class HelixerParameterParser(ParameterParser):
             'fasta_path': '',
             'temporary_dir': None,
             'species': '',
-            'subsequence_length': 21384,
+            'subsequence_length': None,
             'lineage': None,
             'model_filepath': None,
             'batch_size': 32,
@@ -98,9 +98,16 @@ class HelixerParameterParser(ParameterParser):
             print(f'overriding the lineage based model, '
                   f'with the manually specified {args.model_filepath}', file=sys.stderr)
             model_filepath = args.model_filepath
+            msg = 'when manually specifying a model, you must also specify a --subsequence-length appropriate for ' \
+                  'your target lineage. This should be more than long enough to easily contain most ' \
+                  'genomic loci. E.g. 21384, 64152, or 213840 for fungi, plants, and animals, respectively.'
+            assert args.subsequence_length is not None, msg
         else:
             assert args.lineage is not None, "Either --lineage or --model-filepath is required. Run `Helixer.py --help` to see lineage options."
             model_filepath = self.check_for_lineage_model(args.lineage)
+            if args.subsequence_length is None:
+                key = {'vertebrate': 213840, 'land_plant': 64152, 'fungi': 21384, 'invertebrate': 213840}
+                args.subsequence_length = key[args.lineage]
 
         args.model_filepath = model_filepath
 
