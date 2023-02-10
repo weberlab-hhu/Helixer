@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
-import argparse
 import os
+import random
 import shutil
 import sys
 import time
@@ -141,7 +141,8 @@ def main():
     pp = HelixerParameterParser('config/helixer_config.yaml')
     args = pp.get_args()
     args.overlap = not args.no_overlap  # minor overlapping is a far better default for inference. Thus, this hack.
-    # before we start, check if helixer_post_bin is there
+    # before we start, check if helixer_post_bin will (presumably) be able to run
+    # first, is it there
     print(colored(f'Testing whether {helixer_post_bin} is correctly installed', 'green'))
     if not shutil.which(helixer_post_bin):
         print(colored(f'\nError: {helixer_post_bin} not found in $PATH, this is required for Helixer.py to complete.\n',
@@ -158,6 +159,24 @@ def main():
             # if we get anything else, subprocess will have shown the error (I hope),
             # so just exit with the return code
             sys.exit(run.returncode)
+    # second, are we able to write the (or rather a dummy) output file to the directory
+    out_dir = os.path.dirname(args.gff_output_path)
+    out_dir = os.path.join(out_dir, '.')  # dodges checking existence of directory '' for the current directory
+    test_file = f'{args.gff_output_path}.{random.getrandbits(128)}'
+    try:
+        assert not os.path.exists(test_file), "this is a randomly generated test write, why is something here...?"
+        with open(test_file, 'w'):
+            pass
+        os.remove(test_file)
+    except Exception as e:
+        print(colored(f'checking if a random test file ({test_file}) can be written in the output directory', 'yellow'))
+        if not os.path.isdir(out_dir):
+            # the 'file not found error' for the directory when the user is thinking
+            # "of course it's not there, I want to crete it"
+            # tends to confuse..., so make it obvious here
+            print(colored(f'the output directory {out_dir}, needed to write the '
+                  f'output file {args.gff_output_path}, is absent, inaccessible, or not a directory', 'red'))
+        raise e
 
     print(colored('Helixer.py config loaded. Starting FASTA to H5 conversion.', 'green'))
     # generate the .h5 file in a temp dir, which is then deleted
