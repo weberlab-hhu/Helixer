@@ -133,10 +133,17 @@ class HelixerSequence(Sequence):
         if self.mode == 'test':
             assert len(self.h5_files) == 1, "predictions and eval should be applied to individual files only"
 
+        # set chunk size and overlap parameters
+        # this is first done here, because its pulled dynamically from h5 files
         chunk_sizes = [h5['data/X'].shape[1] for h5 in self.h5_files]
         for cs in chunk_sizes[1:]:
-            assert cs == chunk_sizes[0], f'Not all chunk_size match in h5_files: {chunk_sizes}'
+            assert cs == chunk_sizes[0], f'Not all subsequence lengths match in h5_files: {chunk_sizes}'
         self.chunk_size = chunk_sizes[0]
+        # once we have the chunk_size, we can find defaults for overlapping
+        if self.overlap_offset is None:
+            self.overlap_offset = self.chunk_size // 2
+        if self.core_length is None:
+            self.core_length = int(self.chunk_size * 3 / 4)
 
         self.data_list_names = ['data/X']
         if not self.only_predictions:
@@ -187,6 +194,7 @@ class HelixerSequence(Sequence):
             if self.transition_weights is not None:
                 print(f'ignoring the transition_weights of {self.transition_weights} in mode "test"')
                 self.transition_weights = None
+
 
     def _load_one_h5(self, h5_file):
         print(f'For h5 starting with species = {h5_file["data/species"][0]}:')
@@ -504,11 +512,12 @@ class HelixerModel(ABC):
         self.parser.add_argument('--overlap', action="store_true",
                                  help="will improve prediction quality at 'chunk' ends by creating and overlapping "
                                       "sliding-window predictions (with proportional increase in time usage)")
-        self.parser.add_argument('--overlap-offset', type=int, default=10692,
-                                 help="distance to 'step' between predicting subsequences when overlapping")
-        self.parser.add_argument('--core-length', type=int, default=16038,
+        self.parser.add_argument('--overlap-offset', type=int, default=None,
+                                 help="distance to 'step' between predicting subsequences when overlapping "
+                                      "(default: subsequence_length / 2)")
+        self.parser.add_argument('--core-length', type=int, default=None,
                                  help="length of 'core' subsequence to retain before overlapping. The ends beyond this"
-                                      "region will be cropped.")
+                                      "region will be cropped. (default: subsequence_length * 3 / 4)")
         # resources
         self.parser.add_argument('--float-precision', type=str, default='float32')
         self.parser.add_argument('--cpus', type=int, default=8)

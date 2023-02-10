@@ -26,8 +26,8 @@ class HelixerParameterParser(ParameterParser):
 
         self.data_group.add_argument('--subsequence-length', type=int,
                                      help='How to slice the genomic sequence. Set moderately longer than length of '
-                                          'typical genic loci. Tested up to 200000. Must be evenly divisible by the '
-                                          'timestep width of the used model, which is typically 9. (Default is 21384.)')
+                                          'typical genic loci. Tested up to 213840. Must be evenly divisible by the '
+                                          'timestep width of the used model, which is typically 9. (Default is 21384).')
         self.data_group.add_argument('--lineage', type=str, default=None,
                                      choices=['vertebrate', 'land_plant', 'fungi', 'invertebrate'],
                                      help='What model to use for the annotation.')
@@ -46,13 +46,13 @@ class HelixerParameterParser(ParameterParser):
                                           'and --overlap-core-length will have no effect.')
         self.pred_group.add_argument('--overlap-offset', type=int,
                                      help='Offset of the overlap processing. Smaller values may lead to better '
-                                          'predictions but will take longer. --chunk-input-len has to be evenly '
-                                          'divisible by this value. (Default is 10692.)')
+                                          'predictions but will take longer. The subsequence_length should be evenly '
+                                          'divisible by this value. (Default is subsequence_length / 2).')
         self.pred_group.add_argument('--overlap-core-length', type=int,
                                      help='Predicted sequences will be cut to this length to increase prediction '
                                           'quality if overlapping is enabled. Smaller values may lead to better '
-                                          'predictions but will take longer. Has to be smaller than --chunk-input-len. '
-                                          '(Default is 16038.)')
+                                          'predictions but will take longer. Has to be smaller than subsequence_length '
+                                          '(Default is subsequence_length * 3 / 4)')
         self.pred_group.add_argument('--debug', action='store_true', help='add this to quickly the code runs through'
                                                                           'without loading/predicting on the full file')
 
@@ -72,8 +72,8 @@ class HelixerParameterParser(ParameterParser):
             'batch_size': 32,
             'no_overlap': False,
             'debug': False,
-            'overlap_offset': 10692,
-            'overlap_core_length': 16038,
+            'overlap_offset': None,
+            'overlap_core_length': None,
             'window_size': 100,
             'edge_threshold': 0.1,
             'peak_threshold': 0.8,
@@ -120,10 +120,18 @@ class HelixerParameterParser(ParameterParser):
             assert args.subsequence_length % timestep_width == 0, msg
 
         if not args.no_overlap:
-            msg = '--overlap-offset has to evenly divide --subsequence-length'
-            assert args.subsequence_length % args.overlap_offset == 0, msg
-            msg = '--overlap-core-length has to be smaller than --subsequence-length'
-            assert args.subsequence_length > args.overlap_core_length, msg
+            # check user params are valid or set defaults relative to subsequence_length
+            if args.overlap_offset is not None:
+                msg = '--overlap-offset has to evenly divide --subsequence-length'
+                assert args.subsequence_length % args.overlap_offset == 0, msg
+            else:
+                args.overlap_offset = args.subsequence_length // 2
+
+            if args.overlap_core_length is not None:
+                msg = '--overlap-core-length has to be smaller than --subsequence-length'
+                assert args.subsequence_length > args.overlap_core_length, msg
+            else:
+                args.overlap_core_length = int(args.subsequence_length * 3 / 4)
 
         # check if custom temporary dir actually exists
         if args.temporary_dir is not None:
@@ -181,6 +189,7 @@ def main():
     print(colored('Helixer.py config loaded. Starting FASTA to H5 conversion.', 'green'))
     # generate the .h5 file in a temp dir, which is then deleted
     with tempfile.TemporaryDirectory(dir=args.temporary_dir) as tmp_dirname:
+        print(f'storing temporary files under {tmp_dirname}')
         tmp_genome_h5_path = os.path.join(tmp_dirname, f'tmp_species_{args.species}.h5')
         tmp_pred_h5_path = os.path.join(tmp_dirname, f'tmp_predictions_{args.species}.h5')
 
