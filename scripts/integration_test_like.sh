@@ -39,6 +39,9 @@ cd training/input
 wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/gff3/arabidopsis_lyrata/Arabidopsis_lyrata.v.1.0.47.chromosome.1.gff3.gz
 wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/fasta/arabidopsis_lyrata/dna/Arabidopsis_lyrata.v.1.0.dna.chromosome.1.fa.gz
 gunzip *  # unpack just one of the three so that both w/ and w/o is tested for opening
+# and then zip the gff3, so zip is also tested
+zip Arabidopsis_lyrata.v.1.0.47.chromosome.1.gff3.zip  Arabidopsis_lyrata.v.1.0.47.chromosome.1.gff3
+rm Arabidopsis_lyrata.v.1.0.47.chromosome.1.gff3
 
 ## DATA PRE-PROCESSING
 echo_both "------ DATA PRE-PROCESSING ------"
