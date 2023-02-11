@@ -146,7 +146,9 @@ class OverlapSeqHelper(object):
 
     def _mk_sliding_batches(self, contiguous_ranges, chunk_size, overlap_offset):
         max_n_chunks = _n_ori_chunks_from_batch_chunks(self.max_batch_size, overlap_offset, chunk_size)
-        assert max_n_chunks > 0, "batch_size is set too small to functionally overlap, " \
+        # make sure we can drop first and last (to produce same results, regardless of batch size)
+        # and still have one chunk
+        assert max_n_chunks >= 3, "batch_size is set too small to functionally overlap, " \
                                  "either a) set higher (to ~ 2 * chunk_size / overlap_offset + 1), " \
                                  "b) increase overlap_offset, or c) don't overlap"
         step = max_n_chunks - 2   # -2 bc ends will be cropped
