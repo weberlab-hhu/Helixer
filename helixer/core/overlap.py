@@ -7,14 +7,14 @@ import math
 import sys
 
 
-def _n_ori_chunks_from_batch_chunks(max_batch_size=32, overlap_offset=5000, chunk_size=20000):
+def _n_ori_chunks_from_batch_chunks(max_batch_size, overlap_offset, chunk_size):
     """check max number of original (non overlapped) chunks that fit in overlapped batch_size (or remaining)"""
     # this is going to be empirical for A simplicity and B maintainability
     end = 0
     empirical_bs = 0
     while empirical_bs <= max_batch_size:
         end += 1
-        sb = SubBatch(tuple(range(end)),
+        sb = SubBatch(tuple(range(end)), edge_handle_start=False, edge_handle_end=False, is_plus_strand=True,
                       overlap_offset=overlap_offset, chunk_size=chunk_size)
         empirical_bs = sb.sub_batch_size
 
@@ -23,8 +23,8 @@ def _n_ori_chunks_from_batch_chunks(max_batch_size=32, overlap_offset=5000, chun
 
 class SubBatch:
 
-    def __init__(self, h5_indices, edge_handle_start=False, edge_handle_end=False, is_plus_strand=True,
-                 overlap_offset=5000, chunk_size=20000, keep_start=None, keep_end=None):
+    def __init__(self, h5_indices, edge_handle_start, edge_handle_end, is_plus_strand,
+                 overlap_offset, chunk_size, keep_start=None, keep_end=None):
         self.h5_indices = h5_indices
         # the following parameters are primarily for debugging
         self.keep_start = keep_start
@@ -75,7 +75,7 @@ class SubBatch:
         sliding_dat = [dat[start:end] for start, end in self.sliding_coordinates]
         return sliding_dat
 
-    def _overlap_preds(self, preds, core_length=10000):
+    def _overlap_preds(self, preds, core_length):
         """take sliding-window predictions, and overlap (w/end clipping) to generate original coordinate predictions"""
         trim_by = (self.chunk_size - core_length) // 2
         ydim = preds[0].shape[-1]
@@ -106,7 +106,7 @@ class SubBatch:
         preds_out = preds_out.reshape((len(self.h5_indices), self.chunk_size, ydim))
         return preds_out
 
-    def overlap_and_edge_handle_preds(self, preds, core_length=10000):
+    def overlap_and_edge_handle_preds(self, preds, core_length):
         """overlaps sliding predictions, then crops as necessary on edges"""
         # the final sequences for what is cropped will come from previous/next batch instead
         # i.e. this should produce identical output regardless of batch size
@@ -127,7 +127,7 @@ class SubBatch:
 # places where overlap will affect core functionality of HelixerSequence
 class OverlapSeqHelper(object):
     """handles overlap-ready batching, as well as overlap-prep and overlapping there-of"""
-    def __init__(self, contiguous_ranges, chunk_size=20000, max_batch_size=32, overlap_offset=5000, core_length=10000):
+    def __init__(self, contiguous_ranges, chunk_size, max_batch_size, overlap_offset, core_length):
         # check validity of settings
         self.max_batch_size = max_batch_size
         self.core_length = core_length
