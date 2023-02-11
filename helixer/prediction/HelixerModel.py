@@ -35,9 +35,6 @@ from tensorflow_addons.optimizers import AdamW
 from helixer.prediction.Metrics import Metrics
 from helixer.core import overlap
 
-tf.config.experimental.enable_op_determinism()
-
-
 
 class ConfusionMatrixTrain(Callback):
     def __init__(self, save_model_path, train_generator, val_generator, large_eval_folder, patience, calc_H=False,
@@ -151,7 +148,7 @@ class HelixerSequence(Sequence):
         self.pad_augment_ratio = 4
         self.count_unpadded = 10 * self.pad_augment_ratio
         self.count_padded = 1
-        self.down_sample_padded = 0.1
+        self.down_sample_padded =  1 / self.pad_augment_ratio
         self.padded_lengths = [random.randint(200, self.chunk_size - 1) for _ in range(50)]
 
         # knowing the data
@@ -206,7 +203,7 @@ class HelixerSequence(Sequence):
                 self.transition_weights = None
 
     def _mask_large_fraction_of_fragmented(self, sub_x):
-        """makes mask to downsample fragmented sequences"""
+        """find indices to mask to downsample fragmented sequences"""
         # obviously a dynamic mask would be nicer... but let's see if it helpful first
         by_bp = np.sum(sub_x, axis=2).astype(int)
         padding_at = np.where(np.sum(by_bp, axis=1) != self.chunk_size)[0]
