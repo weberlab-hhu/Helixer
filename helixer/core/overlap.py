@@ -145,6 +145,8 @@ class OverlapSeqHelper(object):
                                                         overlap_offset=overlap_offset)
 
     def _mk_sliding_batches(self, contiguous_ranges, chunk_size, overlap_offset):
+        # max_n_chunks is the number of chunks that will go into overlapping
+        # before any sliding window, before any dropping or clipping
         max_n_chunks = _n_ori_chunks_from_batch_chunks(self.max_batch_size, overlap_offset, chunk_size)
         # make sure we can drop first and last (to produce same results, regardless of batch size)
         # and still have one chunk
@@ -166,7 +168,7 @@ class OverlapSeqHelper(object):
                 h5_indices = tuple(range(sub_batch_start, sub_batch_end))
                 sub_batches.append(
                     SubBatch(h5_indices, is_plus_strand=crange['is_plus_strand'],
-                             edge_handle_start=sub_batch_start == crange['start_i'],
+                             edge_handle_start=i == crange['start_i'],
                              edge_handle_end=i + step + 1 > crange['end_i'],
                              keep_start=keep_start,
                              keep_end=keep_end,
@@ -224,7 +226,8 @@ class OverlapSeqHelper(object):
         out = np.concatenate(out)
         n_expect = np.sum([sb.keep_end - sb.keep_start for sb in sub_batches])
         assert out.shape[0] == n_expect, f'overlapping trouble, maybe try a higher batch-size? ' \
-                                         f'(debug info: got {out.shape[0]}, expected {n_expect})'
+                                         f'(debug info: got {out.shape[0]}, expected {n_expect},' \
+                                         f'sub batches: {sub_batches})'
         return out
 
     def subset_input(self, batch_idx, y_true_or_sw):
