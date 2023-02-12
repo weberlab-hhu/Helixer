@@ -1284,7 +1284,7 @@ def test_ol_length_in_matches_out_sub_batch():
     for indices in indices_to_test:
         for ends in [True, False]:
             for offset in offsets:
-                sb = overlap.SubBatch(h5_indices=indices,
+                sb = overlap.SubBatch(h5_indices=indices, is_plus_strand=True, keep_start=None, keep_end=None,
                                       edge_handle_end=ends, edge_handle_start=ends,
                                       overlap_offset=offset, chunk_size=20000)
                 # below is close enough, since we're ignoring content here, and only care about dimensions
@@ -1301,7 +1301,8 @@ def test_ol_identical_preds_return_ori():
     for x_dset in x_dsets:
         for indices in indices_to_test:
             for core_length in [5020, 8000, 10000, 12000, 18000, 20000]:
-                sb = overlap.SubBatch(h5_indices=indices, overlap_offset=5000, chunk_size=20000)
+                sb = overlap.SubBatch(h5_indices=indices, overlap_offset=5000, chunk_size=20000,  
+                                      edge_handle_start=False, edge_handle_end=False, is_plus_strand=True)
                 # just checking identity, doesn't matter whether we actually have preds
                 raw_preds = sb.mk_sliding_overlaps_for_data_sub_batch(data_sub_batch=x_dset[np.array(sb.h5_indices)])
                 expect = x_dset[np.array(indices)]
@@ -1315,7 +1316,7 @@ def test_ol_identical_preds_return_ori():
     edge_handling = [(True, False), (False, False), (False, True)]
     for indices, edges in zip(indices_realistic, edge_handling):
         sbs.append(
-            overlap.SubBatch(h5_indices=indices, overlap_offset=5000, chunk_size=20000,
+            overlap.SubBatch(h5_indices=indices, overlap_offset=5000, chunk_size=20000, is_plus_strand=True,
                              edge_handle_start=edges[0], edge_handle_end=edges[1])
         )
     preds = []
@@ -1336,7 +1337,8 @@ def test_ol_indivisible_chunksize():
         for indices in indices_to_test:
             for core_length in [8000, 20000]:
                 for oo in [3000, 4245, 6000]:
-                    sb = overlap.SubBatch(h5_indices=indices, overlap_offset=oo, chunk_size=20000)
+                    sb = overlap.SubBatch(h5_indices=indices, overlap_offset=oo, chunk_size=20000, 
+                                          edge_handle_start=False, edge_handle_end=False, is_plus_strand=True)
                     # just checking identity, doesn't matter whether we actually have preds
                     raw_preds = sb.mk_sliding_overlaps_for_data_sub_batch(data_sub_batch=x_dset[np.array(sb.h5_indices)])
                     expect = x_dset[np.array(indices)]
@@ -1344,7 +1346,8 @@ def test_ol_indivisible_chunksize():
 
 def test_ol_pred_overlap_and_weighting():
     sb = overlap.SubBatch(h5_indices=(0, 1),
-                          overlap_offset=5000, chunk_size=20000)
+                          overlap_offset=5000, chunk_size=20000,
+                          edge_handle_start=False, edge_handle_end=False, is_plus_strand=True)
     # this should produce length 5 X, some test predictions, with easy to calc output
     # (each char is 5k, number is index with 1.)
     # 0 0 0 0
@@ -1398,7 +1401,9 @@ def test_ol_overlap_seq_helper():
         return {"is_plus_strand": True, "start_i": start_i, "end_i": end_i}
 
     def cmp_one(dummy_xpred, contiguous_ranges):
-        ol_helper = overlap.OverlapSeqHelper(contiguous_ranges=contiguous_ranges)
+        ol_helper = overlap.OverlapSeqHelper(contiguous_ranges=contiguous_ranges,
+                                             chunk_size=20000, max_batch_size=32, 
+                                             overlap_offset=5000, core_length=10000)
         preds_out = []
         print(ol_helper.adjusted_epoch_length())
         for batch_idx in range(ol_helper.adjusted_epoch_length()):
