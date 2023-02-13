@@ -20,7 +20,7 @@ import pkg_resources
 import subprocess
 import numpy as np
 import tensorflow as tf
-from sklearn.utils import shuffle
+#from sklearn.utils import shuffle
 from pprint import pprint
 from termcolor import colored
 from terminaltables import AsciiTable
@@ -34,6 +34,7 @@ from tensorflow_addons.optimizers import AdamW
 
 from helixer.prediction.Metrics import Metrics
 from helixer.core import overlap
+from helixer.core.shuffle import shuffle
 
 
 class ConfusionMatrixTrain(Callback):
@@ -269,7 +270,7 @@ class HelixerSequence(Sequence):
 
     def shuffle_data(self):
         start_time = time.time()
-        self.data_lists = shuffle(*self.data_lists)
+        self.data_lists, self.stratify = shuffle(*self.data_lists, n_samples=self.batch_size, stratify=self.stratify)
         print(f'Reshuffled {self.mode} data in {time.time() - start_time:.2f} secs')
 
     def _cp_into_namespace(self, names):
