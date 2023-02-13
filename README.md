@@ -5,7 +5,6 @@ Gene calling with Deep Neural Networks.
 
 ## Disclaimer
 This software is undergoing active testing and development.
-Build on it at your own risk.
 
 ## Goal
 Setup and train models for _de novo_ prediction of gene structure.
@@ -46,16 +45,9 @@ This example focuses only on applying trained models for gene calling, only.
 Information on training and evaluating the models can be found in `docs`.
 
 ### Using trained models
-> NOTE: the extensively evaluated models from the paper are available by
-> running `git checkout v0.2.0` and following the instructions
-> there in. But they were not yet _applicable_ for generating gff3 files.
-
-We are working towards training another round of models w/ the current
-architecture. For now a preliminary land plant model is available and
-will be used for the rest of the example. 
 
 #### Acquire models
-The best models for each or all lineages can automatically 
+The best models for each or all lineages can automatically be
 downloaded with the `fetch_helixer_models.py` script.
 
 The available lineages are `land_plant`, `vertebrate`, `invertebrate`,
@@ -111,8 +103,9 @@ that generalize well to your target species. When in doubt selection via `--line
 this will use the best available model for that lineage.
 
 ##### `--subsequence-length` and overlapping parameters
-> From v0.3.1 onwards these paramters are set to reasonable defaults when `--lineage`
-> is used, but `--subsequence-length` will still need to be specified when using `--model-filepath`.
+> From v0.3.1 onwards these parameters are set to reasonable defaults when `--lineage`
+> is used, but `--subsequence-length` will still need to be specified when using `--model-filepath`,
+> while the overlapping parameters can be derived automatically.
 
 Subsequence length controls how much of the genome the Neural Network can see at once, and should
 ideally be comfortably longer than the typical gene. 
