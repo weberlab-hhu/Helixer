@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 import argparse
 from collections import defaultdict
 from helixer.core.data import prioritized_models, fetch_and_organize_models

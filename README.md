@@ -101,6 +101,33 @@ for every predicted gene in the genome). You can find more about the format
 and you can readily derive other formats, such as a fasta file of the proteome, using
 a standard parser, for instance [gffread](https://github.com/gpertea/gffread).
 
+#### What Parameters Matter?
+Most parameters from `Helixer.py` have been set to a reasonable default; but nevertheless there
+are a couple where the best setting is genome dependent. 
+
+##### `--lineage` or `--model-filepath`
+It is of course critical to choose a model appropriate for your phylogenetic range / trained on species
+that generalize well to your target species. When in doubt selection via `--lineage` is recommended, as
+this will use the best available model for that lineage.
+
+##### `--subsequence-length` and overlapping parameters
+Subsequence length controls how much of the genome the Neural Network can see at once, and should
+ideally be comfortably longer than the typical gene. 
+
+For genomes with large genes (i.e. there are frequently > 20kbp genomic loci), `--subsequence-length` should be increased
+This is particularly common for vertebrates and invertebrates but can also happen in plants. For efficiency,
+the overlap parameters should increase as well. It might then be necessary to decrease `--batch-size`
+if the GPU runs out of memory.
+
+However, these should definitely not be higher than the N50, or even the N90 of the genome. Nor so high
+a reasonable batch size cannot be used. 
+
+###### General recommendations
+- fungi, leave as is (`--subsequence-length 21384 --overlap-offset 10692 --overlap-core-length 16038`)
+- plants, leave as is, or try up to `--subsequence-length 106920 --overlap-offset 53460 --overlap-core-length 80190`
+- invertebrates, set to `--subsequence-length 213840 --overlap-offset 106920 --overlap-core-length 160380`
+- vertebrates, set to `--subsequence-length 213840 --overlap-offset 106920 --overlap-core-length 160380`
+
 #### Citation
 
 Felix Stiehler, Marvin Steinborn, Stephan Scholz, Daniela Dey, Andreas P M Weber, Alisandra K Denton, 
