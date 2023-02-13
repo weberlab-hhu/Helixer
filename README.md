@@ -111,6 +111,9 @@ that generalize well to your target species. When in doubt selection via `--line
 this will use the best available model for that lineage.
 
 ##### `--subsequence-length` and overlapping parameters
+> From v0.3.1 onwards these paramters are set to reasonable defaults when `--lineage`
+> is used, but `--subsequence-length` will still need to be specified when using `--model-filepath`.
+
 Subsequence length controls how much of the genome the Neural Network can see at once, and should
 ideally be comfortably longer than the typical gene. 
 
