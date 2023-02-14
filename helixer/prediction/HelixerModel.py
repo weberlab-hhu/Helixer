@@ -121,14 +121,14 @@ class PreshuffleCallback(Callback):
 
 
 class HelixerSequence(Sequence):
-    def __init__(self, model, h5_files, mode, batch_size, shuffle):
+    def __init__(self, model, h5_files, mode, batch_size, do_shuffle):
         assert mode in ['train', 'val', 'test']
         self.model = model
         self.h5_files = h5_files
         self.mode = mode
-        self.shuffle = shuffle
+        self.shuffle = do_shuffle
         self.batch_size = batch_size
-
+        self._list_fraction_intergenic = []
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
                                  'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
@@ -202,6 +202,11 @@ class HelixerSequence(Sequence):
             if self.transition_weights is not None:
                 print(f'ignoring the transition_weights of {self.transition_weights} in mode "test"')
                 self.transition_weights = None
+        # turn fraction intergenic in quantile indexes for later stratification of minibatches
+        # so that they get more even representation of classes in each batch during training
+        if self.mode == "train":
+            fraction_intergenic = np.concatenate(self._list_fraction_intergenic)
+            self.stratify = self._to_stratification_quantiles(fraction_intergenic)
 
     def _mask_large_fraction_of_fragmented(self, sub_x):
         """find indices to mask to downsample fragmented sequences"""
@@ -241,9 +246,10 @@ class HelixerSequence(Sequence):
 
         # load at most 2000 uncompressed samples at a time in memory
         max_at_once = min(2000, n_seqs)
+        fragmented_to_drop = []
+        list_arr_frac_intergenic = []
+
         for name, data_list in zip(self.data_list_names, self.data_lists):
-            if name == 'data/X':
-                fragmented_to_drop = []
             start_time_dset = time.time()
             for i, offset in enumerate(range(0, n_seqs, max_at_once)):
                 step_mask = mask[offset:offset + max_at_once]  # masks unannotated and erroneous
@@ -255,11 +261,31 @@ class HelixerSequence(Sequence):
                     step_mask[fragmented_to_drop[i]] = False
                 data_slice = data_slice[step_mask]
 
+                if self.mode == "train" and name == "data/y":
+                    # track how much of each class is in each chunk
+                    list_arr_frac_intergenic.append(self._get_fraction_intergenic(data_slice))
+
                 if self.no_utrs and name == 'data/y':
                     HelixerSequence._zero_out_utrs(data_slice)
                 data_list.extend([self.compressor.encode(e) for e in data_slice])
             print(f'Data loading of {n_seqs - n_masked} (total so far {len(data_list)}) samples of {name} '
                   f'into memory took {time.time() - start_time_dset:.2f} secs')
+
+        # store fraction intergenic for processing once all h5s are loaded
+        self._list_fraction_intergenic += list_arr_frac_intergenic
+
+    @staticmethod
+    def _get_fraction_intergenic(y_chunks):
+        class_counts = np.sum(y_chunks, axis=1)
+        return class_counts[:,0] / np.sum(class_counts, axis=1)
+
+    @staticmethod
+    def _to_stratification_quantiles(fraction_intergenic):
+        """converts raw input to very low resolution rank (4 equal membership bins)"""
+        quartiles = np.quantile(fraction_intergenic, [0.25, 0.5, 0.75])
+        # basically the index any item in fraction_intergenic would need to slip it sorted into quartiles
+        quant_indices = np.searchsorted(quartiles, fraction_intergenic)
+        return quant_indices
 
     @staticmethod
     def _zero_out_utrs(y):
@@ -695,17 +721,17 @@ class HelixerModel(ABC):
     def gen_training_data(self):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self, h5_files=self.h5_trains, mode='train', batch_size=self.batch_size,
-                           shuffle=True)
+                           do_shuffle=True)
 
     def gen_validation_data(self):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self, h5_files=self.h5_vals, mode='val', batch_size=self.val_test_batch_size,
-                           shuffle=False)
+                           do_shuffle=False)
 
     def gen_test_data(self):
         SequenceCls = self.sequence_cls()
         return SequenceCls(model=self, h5_files=self.h5_tests, mode='test', batch_size=self.val_test_batch_size,
-                           shuffle=False)
+                           do_shuffle=False)
 
     @staticmethod
     def run_metrics(generator, model, print_to_stdout=True, calc_H=False):

@@ -187,6 +187,7 @@ def resample(*arrays, replace=True, n_samples=None, random_state=None, stratify=
 
         # take random samples from existing class indices, so that all classes can complete the last batch
         print([ci.shape for ci in class_indices], 'before')
+        print(f'len stratify {len(stratify)}')
         for i in range(n_classes):
             # pad out to desired length
             target_size = n_batches * n_i[i]
@@ -204,12 +205,13 @@ def resample(*arrays, replace=True, n_samples=None, random_state=None, stratify=
             for i in range(n_classes):
                 start = batch * n_i[i]
                 end = start + n_i[i]
-                print(f' batch: {batch}, i: {i}, ni[i]: {n_i[i]}, {class_indices[i]}, {start}, {end}')
+                #print(f' batch: {batch}, i: {i}, ni[i]: {n_i[i]}, {class_indices[i]}, {start}, {end}')
                 indices_i = class_indices[i][start:end]
                 indices.extend(indices_i)
 
         #indices = random_state.permutation(indices)  #
-
+    print([len(a) for a in arrays])
+    print(max(indices), len(indices))
     # convert sparse matrices to CSR for row-based indexing
     arrays = [a.tocsr() if issparse(a) else a for a in arrays]
     resampled_arrays = [_safe_indexing(a, indices) for a in arrays]
@@ -221,7 +223,7 @@ def resample(*arrays, replace=True, n_samples=None, random_state=None, stratify=
         return resampled_arrays, class_back
 
 
-def shuffle(*arrays, random_state=None, n_samples=None, stratify=None, batch_size=None):
+def shuffle(*arrays, random_state=None, n_samples=None, stratify=None):
     """Shuffle arrays or sparse matrices in a consistent way.
 
     This is a convenience alias to ``resample(*arrays, replace=False)`` to do

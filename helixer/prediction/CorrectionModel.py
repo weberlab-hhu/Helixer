@@ -8,8 +8,8 @@ from HelixerModel import HelixerModel, HelixerSequence
 
 
 class CorrectionSequence(HelixerSequence):
-    def __init__(self, model, h5_file, mode, batch_size, shuffle):
-        super().__init__(model, h5_file, mode, batch_size, shuffle)
+    def __init__(self, model, h5_file, mode, batch_size, do_shuffle):
+        super().__init__(model, h5_file, mode, batch_size, do_shuffle)
         assert self.load_predictions, 'need --load-predictions for correction model'
 
     def __getitem__(self, idx):

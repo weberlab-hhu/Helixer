@@ -15,8 +15,8 @@ from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
 
 
 class LSTMSequence(HelixerSequence):
-    def __init__(self, model, h5_files, mode, batch_size, shuffle):
-        super().__init__(model, h5_files, mode, batch_size, shuffle)
+    def __init__(self, model, h5_files, mode, batch_size, do_shuffle):
+        super().__init__(model, h5_files, mode, batch_size, do_shuffle)
 
     def __getitem__(self, idx):
         X, y, sw, transitions, phases, _, coverage_scores = self._generic_get_item(idx)
