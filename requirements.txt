@@ -11,7 +11,7 @@ intervaltree
 numpy
 h5py
 multiprocess
-git+https://github.com/janinamass/dustdas@master
+git+https://github.com/gglyptodon/dustdas@v0.2
 numcodecs
 appdirs
 # for testing only
