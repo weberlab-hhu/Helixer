@@ -97,7 +97,7 @@ def get_sense_strand(read, sense_strand=2):
     return strand
 
 
-def get_sense_cov_intervals(read, chromosome, strandedness):
+def get_sense_cov_intervals(read, chromosome, strandedness, mock_read_length, window_around_tn5_site):
     """gets intervals for standard and spliced coverage"""
     if strandedness is not None:
         strand = get_sense_strand(read, strandedness)
@@ -109,10 +109,52 @@ def get_sense_cov_intervals(read, chromosome, strandedness):
     standard_raw = [x for x in read.cigar if is_coverage(x)]
     spliced_raw = [x for x in read.cigar if is_spliced_coverage(x)]
 
+    # handle special cases where we are not literally taking the read coverage
+    if mock_read_length is not None:
+        assert strandedness is None, "mock read lengths not yet implemented for stranded data." \
+                                     "unclear if mock should be from 5' to 3' of original strand or from read start..."
+        start, end = get_mock_interval(read, mock_read_length)
+        return [[HTSeq.GenomicInterval(chromosome, start, end, strand)], []]  # standard, spliced (which is absent)
+
+    if window_around_tn5_site is not None:
+        assert strandedness is None, "tn5 data is not expected to be stranded...??"
+        start, end = get_mock_tn5_window_as_interval(read, window_around_tn5_site)
+        return [[HTSeq.GenomicInterval(chromosome, start, end, strand)], []] # standard, spliced (which is absent)
+
+    # otherwise continue with read coverage
     out = []
     for arr in [standard_raw, spliced_raw]:
         out.append([HTSeq.GenomicInterval(chromosome, x.ref_iv.start, x.ref_iv.end, strand) for x in arr])
     return out  # list [standard, spliced] of coverage intervals
+
+
+def get_mock_interval(read, mock_length):
+    if read.iv.strand == "+":
+        return read.iv.start, read.iv.start + mock_length
+    elif read.iv.strand == "-":
+        return read.iv.end - mock_length, read.iv.end
+    else:
+        raise ValueError(f'unknown strand {read.iv.strand}')
+
+def get_mock_tn5_window_as_interval(read, mock_length):
+    """find interval centered around tn5 binding site"""
+    # tn5 bind about 9 bp of DNA, and adds adapters on the 5' end in each direction
+    # so the middle of the binding site is just downstream of the 5' end
+    # 5' adapter ->[____x____]....
+    #..............[____x____] <- retpada '5
+    # convention is to consider the center as +5 bp on "+" strand, and -4 bp on "-" strand reads
+    upstream_half = mock_length // 2
+    downstream_half = mock_length - upstream_half
+    if read.iv.strand == "+":
+        # center is ~4.5 bp into the read (using standard +5)
+        return read.iv.start + 5 - upstream_half, read.iv.start + 5 + downstream_half
+    elif read.iv.strand == '-':
+        # center is ~4.5 bp into the read (using standard -4)
+        # start < end for HTSeq, regardless of 5' vs 3'.
+        # i.e. on the "-" strand, the 5' read begin is the 'end'
+        return read.iv.end - 4 - downstream_half, read.iv.end + upstream_half
+    else:
+        raise ValueError(f'unknown strand {read.iv.strand}')
 
 
 def write_in_bits(array, contiguous_bits, h5_dataset, chunk_size, target_row=None):
@@ -452,6 +494,13 @@ if __name__ == "__main__":
                         help='reads are not stranded, final "strand" will simply arbitrarily match read strand')
     parser.add_argument('--threads', default=8, help="how many threads, set to a value <= 1 to not use multiprocessing",
                         type=int)
+    parser.add_argument('--mock-read-length', type=int,
+                        help='count mock coverage based upon specified length from read start; '
+                             'e.g. to compare more fairly between studies with different read lengths. '
+                             'Not appropriate for spliced alignment')
+    parser.add_argument('--window-around-tn5-cut-site', type=int,
+                        help='count mock coverage based on window of given length centered 5 (+strand) or 4 (-strand)'
+                             'base pairs into the original mapping of the read')
     args = parser.parse_args()
 
     if args.first_read_is_sense_strand:
