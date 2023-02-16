@@ -99,8 +99,11 @@ def get_sense_strand(read, sense_strand=2):
     return strand
 
 
-def get_sense_cov_intervals(read, chromosome, strandedness, mock_read_length, window_around_tn5_site):
+def get_sense_cov_intervals(read, chromosomes, strandedness, mock_read_length, window_around_tn5_site):
     """gets intervals for standard and spliced coverage"""
+    chromosome = list(chromosomes.keys())[0]
+    length = chromosomes[chromosome]
+
     if strandedness is not None:
         strand = get_sense_strand(read, strandedness)
     else:
@@ -112,15 +115,16 @@ def get_sense_cov_intervals(read, chromosome, strandedness, mock_read_length, wi
     spliced_raw = [x for x in read.cigar if is_spliced_coverage(x)]
 
     # handle special cases where we are not literally taking the read coverage
-    if mock_read_length is not None:
-        assert strandedness is None, "mock read lengths not yet implemented for stranded data." \
-                                     "unclear if mock should be from 5' to 3' of original strand or from read start..."
-        start, end = get_mock_interval(read, mock_read_length)
-        return [[HTSeq.GenomicInterval(chromosome, start, end, strand)], []]  # standard, spliced (which is absent)
+    if mock_read_length is not None or window_around_tn5_site is not None:
+        assert strandedness is None, "mock read length/window around tn5 not yet implemented for stranded data."
+        if mock_read_length is not None:
+            start, end = get_mock_interval(read, mock_read_length)
+        if window_around_tn5_site is not None:
+            start, end = get_mock_tn5_window_as_interval(read, window_around_tn5_site)
 
-    if window_around_tn5_site is not None:
-        assert strandedness is None, "tn5 data is not expected to be stranded...??"
-        start, end = get_mock_tn5_window_as_interval(read, window_around_tn5_site)
+        # handle edge of chromosome cases
+        start = max(0, start)
+        end = min(end, length)
         return [[HTSeq.GenomicInterval(chromosome, start, end, strand)], []] # standard, spliced (which is absent)
 
     # otherwise continue with read coverage
@@ -301,7 +305,7 @@ def cov_by_chrom(chrm_bam_strandedness_mock_window):
     for read in htseqbam.fetch(region="{}:1-{}".format(chromosome, length)):
         if not skippable(read):
             counts['reads'] += 1
-            standard_ivs, spliced_ivs = get_sense_cov_intervals(read, chromosome, strandedness,
+            standard_ivs, spliced_ivs = get_sense_cov_intervals(read, chromosomes, strandedness,
                                                                 mock_read_length=mock_read_length,
                                                                 window_around_tn5_site=window_around_tn5_site)
             for iv in standard_ivs:
