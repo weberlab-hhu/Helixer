@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 import sys
 import argparse
 import HTSeq
@@ -276,8 +278,8 @@ def add_empty_cov_meta(h5, n):
                       fillvalue=''.encode('ASCII'))
 
 
-def cov_by_chrom(chrm_bam_strandedness):
-    chromosome, bam_file, strandedness = chrm_bam_strandedness
+def cov_by_chrom(chrm_bam_strandedness_mock_window):
+    chromosome, bam_file, strandedness,  mock_read_length, window_around_tn5_site = chrm_bam_strandedness_mock_window
     htseqbam = H5_BAMS[bam_file]
 
     # setup dir for memmap array (AKA, don't try and store the whole chromosome in RAM
@@ -299,7 +301,9 @@ def cov_by_chrom(chrm_bam_strandedness):
     for read in htseqbam.fetch(region="{}:1-{}".format(chromosome, length)):
         if not skippable(read):
             counts['reads'] += 1
-            standard_ivs, spliced_ivs = get_sense_cov_intervals(read, chromosome, strandedness)
+            standard_ivs, spliced_ivs = get_sense_cov_intervals(read, chromosome, strandedness,
+                                                                mock_read_length=mock_read_length,
+                                                                window_around_tn5_site=window_around_tn5_site)
             for iv in standard_ivs:
                 cov_array[iv] += 1
                 counts['coverage'] += iv.end - iv.start
@@ -384,7 +388,8 @@ def pad_cov_right(short_arr, length, fill_value=-1.):
     return out
 
 
-def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_final_dimension, threads=8):
+def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_final_dimension, threads,
+                                   mock_read_length, window_around_tn5_site):
     """calculates coverage for a coordinate from bam, saves to h5, returns counts for aggregating"""
     b_seqid, start_i, end_i = coord
     seqid = b_seqid.decode('utf-8')
@@ -396,8 +401,8 @@ def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_
     # calculate coverage
     nbams = len(H5_BAMS)
     # todo, guarnatee order?
-    mapargs = zip([seqid] * nbams, H5_BAMS.keys(), [strandedness] * nbams)
-
+    mapargs = zip([seqid] * nbams, H5_BAMS.keys(), [strandedness] * nbams,
+                  [mock_read_length] * nbams, [window_around_tn5_site] * nbams)
     if threads > 1:
         with Pool(threads) as p:
             coverage_out = p.map(cov_by_chrom, mapargs)
@@ -424,7 +429,7 @@ def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_
     return counts
 
 
-def main(species, h5_data, strandedness, prefix, threads):
+def main(species, h5_data, strandedness, prefix, threads, mock_read_length, window_around_tn5_site):
     # open h5
     h5 = h5py.File(h5_data, 'r+')
     # create evaluation, score, & metadata placeholders if they don't exist
@@ -468,7 +473,8 @@ def main(species, h5_data, strandedness, prefix, threads):
         cage_coverage_from_coord_to_h5(
             coord, h5, strandedness=strandedness,
             chunk_size=chunk_size, old_final_dimension=old_final_dimension,
-            threads=threads)
+            threads=threads, mock_read_length=mock_read_length,
+            window_around_tn5_site=window_around_tn5_site)
 
     h5.close()
 
@@ -498,7 +504,7 @@ if __name__ == "__main__":
                         help='count mock coverage based upon specified length from read start; '
                              'e.g. to compare more fairly between studies with different read lengths. '
                              'Not appropriate for spliced alignment')
-    parser.add_argument('--window-around-tn5-cut-site', type=int,
+    parser.add_argument('--window-around-tn5-site', type=int,
                         help='count mock coverage based on window of given length centered 5 (+strand) or 4 (-strand)'
                              'base pairs into the original mapping of the read')
     args = parser.parse_args()
@@ -529,4 +535,6 @@ if __name__ == "__main__":
          args.h5_data,
          strandedness,
          pfx,
-         args.threads)
+         args.threads,
+         args.mock_read_length,
+         args.window_around_tn5_site)
