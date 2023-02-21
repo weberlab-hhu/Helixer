@@ -36,13 +36,18 @@ See https://github.com/gglyptodon/helixer-docker
 
 ### Manual installation
 Please see [full installation instructions](docs/manual_install.md)
+Please additionally see [dev installation instructions](docs/dev_install.md)
 
 #### contributors & team members
-Please additionally see [dev installation instructions](docs/dev_install.md)
+
 
 ## Example
 This example focuses only on applying trained models for gene calling, only.
-Information on training and evaluating the models can be found in `docs`.
+
+### Training and Evaluation
+Information on training and evaluating the models can be found in seperate `docs` files  
+[Training models](docs/training.md)  
+
 
 ### Using trained models
 
@@ -89,9 +94,13 @@ helixer_post_bin Arabidopsis_lyrata.h5 predictions.h5 100 0.1 0.8 60 Arabidopsis
 **Output:** The main output of the above commands is the gff3 file (Arabidopsis_lyrata_chromosome8_helixer.gff3)
 which contains the predicted genic structure (where the exons, introns, and coding regions are
 for every predicted gene in the genome). You can find more about the format 
-[here](https://github.com/The-Sequence-Ontology/Specifications/blob/master/gff3.md),
-and you can readily derive other formats, such as a fasta file of the proteome, using
-a standard parser, for instance [gffread](https://github.com/gpertea/gffread).
+[here](https://github.com/The-Sequence-Ontology/Specifications/blob/master/gff3.md).
+You can readily derive other files, such as a fasta file of the proteome or the transcriptome, using
+a standard parser, for instance [gffread](https://github.com/gpertea/gffread).  
+For example to extract transcripts using the gff and the genome nucleotide file from above:  
+```
+gffread -w Arabidopsis_lyrata.transcripts.fa -g Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa Arabidopsis_lyrata_chromosome8_helixer.gff3
+```
 
 #### What Parameters Matter?
 Most parameters from `Helixer.py` have been set to a reasonable default; but nevertheless there
