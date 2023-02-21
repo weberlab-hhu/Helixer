@@ -36,22 +36,22 @@ See https://github.com/gglyptodon/helixer-docker
 
 ### Manual installation
 Please see [full installation instructions](docs/manual_install.md)
-Please additionally see [dev installation instructions](docs/dev_install.md)
 
 #### contributors & team members
-
+Please additionally see [dev installation instructions](docs/dev_install.md)
 
 ## Example
-This example focuses only on applying trained models for gene calling, only.
 
 ### Training and Evaluation
-Information on training and evaluating the models can be found in seperate `docs` files  
+Information on training and evaluating the models can be found in separate `docs` files  
 [Training models](docs/training.md)  
 
+### Inference (gene calling)
+If you want to use Helixer to annotate a genome, start here.
 
-### Using trained models
+#### Using trained models
 
-#### Acquire models
+##### Acquire models
 The best models for each or all lineages can automatically be
 downloaded with the `fetch_helixer_models.py` script.
 
@@ -66,7 +66,7 @@ https://uni-duesseldorf.sciebo.de/s/lQTB7HYISW71Wi0
 `--model-filepath <path/to/model.h5>'`,
 to override the lineage default for `Helixer.py`. 
 
-#### Run on target genome
+##### Run on target genome
 ```bash
 # download an example chromosome
 wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/fasta/arabidopsis_lyrata/dna/Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa.gz
@@ -97,21 +97,17 @@ for every predicted gene in the genome). You can find more about the format
 [here](https://github.com/The-Sequence-Ontology/Specifications/blob/master/gff3.md).
 You can readily derive other files, such as a fasta file of the proteome or the transcriptome, using
 a standard parser, for instance [gffread](https://github.com/gpertea/gffread).  
-For example to extract transcripts using the gff and the genome nucleotide file from above:  
-```
-gffread -w Arabidopsis_lyrata.transcripts.fa -g Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa Arabidopsis_lyrata_chromosome8_helixer.gff3
-```
 
-#### What Parameters Matter?
+##### What Parameters Matter?
 Most parameters from `Helixer.py` have been set to a reasonable default; but nevertheless there
 are a couple where the best setting is genome dependent. 
 
-##### `--lineage` or `--model-filepath`
+###### `--lineage` or `--model-filepath`
 It is of course critical to choose a model appropriate for your phylogenetic range / trained on species
 that generalize well to your target species. When in doubt selection via `--lineage` is recommended, as
 this will use the best available model for that lineage.
 
-##### `--subsequence-length` and overlapping parameters
+###### `--subsequence-length` and overlapping parameters
 > From v0.3.1 onwards these parameters are set to reasonable defaults when `--lineage`
 > is used, but `--subsequence-length` will still need to be specified when using `--model-filepath`,
 > while the overlapping parameters can be derived automatically.
