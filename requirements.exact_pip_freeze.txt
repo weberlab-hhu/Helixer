@@ -31,7 +31,7 @@ fastjsonschema==2.16.2
 filelock==3.8.0
 flatbuffers==22.9.24
 fonttools==4.38.0
-future==0.18.2
+future==0.18.3
 gast==0.4.0
 -e git+git@github.com:weberlab-hhu/GeenuFF.git@c66c0ab9389cff60cbc4df74dce8c929a735175a#egg=geenuff
 google-auth==2.13.0
