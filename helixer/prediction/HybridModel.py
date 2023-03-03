@@ -40,12 +40,16 @@ class HybridModel(HelixerModel):
     def model(self):
         values_per_bp = 4
         if self.input_coverage:
-            extra_input = Input(shape=(None, self.coverage_count * 2),
-                                dtype=self.float_precision, name='coverage_input')
+            values_per_bp += self.coverage_count * 2
 
-        raw_input = Input
-        main_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
-                           name='main_input')
+            raw_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
+                              name='raw_input')
+            main_input, coverage_input = tf.split(raw_input, [4, 2 * self.coverage_count],
+                                                  axis=-1)
+        else:
+            main_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
+                               name='main_input')
+
         x = Conv1D(filters=self.filter_depth,
                    kernel_size=self.kernel_size,
                    padding="same",
@@ -74,9 +78,10 @@ class HybridModel(HelixerModel):
         if self.dropout2 > 0.0:
             x = Dropout(self.dropout2)(x)
 
-        # maybe concatenate coverage on and add one extra dense at this point
+        # maybe concatenate coverage and add one extra dense at this point
         if self.input_coverage:
-            x =
+            x = tf.stack(x, coverage_input, axis=-1)
+            x = Dense(self.units // 2)(x)
 
         if self.predict_phase:
             x = Dense(self.pool_size * 4 * 2)(x)  # predict twice a many floats
