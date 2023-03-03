@@ -46,9 +46,12 @@ class HybridModel(HelixerModel):
                               name='raw_input')
             main_input, coverage_input = tf.split(raw_input, [4, 2 * self.coverage_count],
                                                   axis=-1)
+            coverage_input = Reshape((-1, self.pool_size * self.coverage_count * 2))(coverage_input)
+            model_input = raw_input
         else:
             main_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
                                name='main_input')
+            model_input = main_input
 
         x = Conv1D(filters=self.filter_depth,
                    kernel_size=self.kernel_size,
@@ -80,7 +83,7 @@ class HybridModel(HelixerModel):
 
         # maybe concatenate coverage and add one extra dense at this point
         if self.input_coverage:
-            x = tf.stack(x, coverage_input, axis=-1)
+            x = tf.concat([x, coverage_input], axis=-1)
             x = Dense(self.units // 2)(x)
 
         if self.predict_phase:
@@ -100,7 +103,7 @@ class HybridModel(HelixerModel):
             x = Activation('softmax', name='main')(x)
             outputs = [x]
 
-        model = Model(inputs=main_input, outputs=outputs)
+        model = Model(inputs=model_input, outputs=outputs)
         return model
 
     def compile_model(self, model):

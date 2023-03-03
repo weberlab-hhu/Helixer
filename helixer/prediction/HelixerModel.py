@@ -169,7 +169,7 @@ class HelixerSequence(Sequence):
                                                       core_length=self.core_length)
 
         if self.input_coverage and not self.only_predictions:
-            self.data_list_names += ['evaluation/coverage', 'evaluation/spliced_coverage']
+            self.data_list_names += ['evaluation/rnaseq_coverage', 'evaluation/rnaseq_spliced_coverage']
 
         self.data_lists = [[] for _ in range(len(self.data_list_names))]
         self.data_dtypes = [self.h5_files[0][name].dtype for name in self.data_list_names]
@@ -266,9 +266,9 @@ class HelixerSequence(Sequence):
                 # append coverage to X directly, might be clearer elsewhere once working, but this needs little code...
                 if name == 'data/X' and self.input_coverage:
                     decode_coverage = self.get_batch_of_one_dataset('evaluation/rnaseq_coverage', batch_idx)
-                    decode_coverage = [self._cov_norm(x.reshape(-1, 1)).astype(np.float16) for x in decode_coverage]
+                    decode_coverage = [self._cov_norm(x.reshape(-1, self.coverage_count)).astype(np.float16) for x in decode_coverage]
                     decode_spliced = self.get_batch_of_one_dataset('evaluation/rnaseq_spliced_coverage', batch_idx)
-                    decode_spliced = [self._cov_norm(x.reshape(-1, 1)).astype(np.float16) for x in decode_spliced]
+                    decode_spliced = [self._cov_norm(x.reshape(-1, self.coverage_count)).astype(np.float16) for x in decode_spliced]
                     decoded_list = [np.concatenate((x, y, z), axis=1) for x, y, z in
                                     zip(decoded_list, decode_coverage, decode_spliced)]
 
