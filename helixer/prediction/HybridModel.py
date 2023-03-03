@@ -40,7 +40,10 @@ class HybridModel(HelixerModel):
     def model(self):
         values_per_bp = 4
         if self.input_coverage:
-            values_per_bp = 6
+            extra_input = Input(shape=(None, self.coverage_count * 2),
+                                dtype=self.float_precision, name='coverage_input')
+
+        raw_input = Input
         main_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
                            name='main_input')
         x = Conv1D(filters=self.filter_depth,
@@ -70,6 +73,10 @@ class HybridModel(HelixerModel):
         # do not use recurrent dropout, but dropout on the output of the LSTM stack
         if self.dropout2 > 0.0:
             x = Dropout(self.dropout2)(x)
+
+        # maybe concatenate coverage on and add one extra dense at this point
+        if self.input_coverage:
+            x =
 
         if self.predict_phase:
             x = Dense(self.pool_size * 4 * 2)(x)  # predict twice a many floats

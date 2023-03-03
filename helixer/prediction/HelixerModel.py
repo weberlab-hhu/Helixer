@@ -126,7 +126,7 @@ class HelixerSequence(Sequence):
         self.shuffle = shuffle
         self.batch_size = batch_size
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
-                                 'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
+                                 'coverage_norm', 'coverage_count', 'overlap', 'overlap_offset', 'core_length',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
                                  'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
 
@@ -265,9 +265,9 @@ class HelixerSequence(Sequence):
 
                 # append coverage to X directly, might be clearer elsewhere once working, but this needs little code...
                 if name == 'data/X' and self.input_coverage:
-                    decode_coverage = self.get_batch_of_one_dataset('evaluation/coverage', batch_idx)
+                    decode_coverage = self.get_batch_of_one_dataset('evaluation/rnaseq_coverage', batch_idx)
                     decode_coverage = [self._cov_norm(x.reshape(-1, 1)).astype(np.float16) for x in decode_coverage]
-                    decode_spliced = self.get_batch_of_one_dataset('evaluation/spliced_coverage', batch_idx)
+                    decode_spliced = self.get_batch_of_one_dataset('evaluation/rnaseq_spliced_coverage', batch_idx)
                     decode_spliced = [self._cov_norm(x.reshape(-1, 1)).astype(np.float16) for x in decode_spliced]
                     decoded_list = [np.concatenate((x, y, z), axis=1) for x, y, z in
                                     zip(decoded_list, decode_coverage, decode_spliced)]
@@ -493,6 +493,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--class-weights', type=str, default='None')
         self.parser.add_argument('--input-coverage', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
         self.parser.add_argument('--coverage-norm', default=None, help=argparse.SUPPRESS)
+        self.parser.add_argument('--coverage-count', default=2, help='how many bam files were added (temporary param)')
         self.parser.add_argument('--transition-weights', type=str, default='None')
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0, help=argparse.SUPPRESS)  # bc no clear effect on result quality
         self.parser.add_argument('--coverage-weights', action='store_true')
