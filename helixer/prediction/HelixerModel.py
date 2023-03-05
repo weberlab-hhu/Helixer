@@ -26,7 +26,7 @@ from terminaltables import AsciiTable
 from tensorflow.keras.callbacks import Callback
 from tensorflow.keras import optimizers
 from tensorflow.keras import backend as K
-from tensorflow.keras.models import load_model
+from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.utils import Sequence
 from tensorflow_addons.optimizers import AdamW
 
@@ -503,6 +503,9 @@ class HelixerModel(ABC):
         self.parser.add_argument('--predict-phase', action='store_true')
         self.parser.add_argument('--load-predictions', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
         self.parser.add_argument('--resume-training', action='store_true')
+        self.parser.add_argument('--fine-tune', action='store_true',
+                                 help='use with --resume-training to replace and fine tune just the very last layer')
+
         # testing / predicting
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
         self.parser.add_argument('-t', '--test-data', type=str, default='')
@@ -690,6 +693,10 @@ class HelixerModel(ABC):
 
     @abstractmethod
     def model(self):
+        pass
+
+    @abstractmethod
+    def model_hat(self, penultimate_layers):
         pass
 
     @abstractmethod
@@ -908,6 +915,15 @@ class HelixerModel(ABC):
         if not self.testing:
             if self.resume_training:
                 model = load_model(self.load_model_path)
+                if self.fine_tune:
+                    # freeze weights and replace everything from the dense layer
+                    dense_at = [l.name for l in model.layers].index('dense')
+                    model.trainable = False
+                    inp = model.input
+                    assert not self.input_coverage
+                    output = self.model_hat((model.layers[dense_at - 1].output, None))
+                    model = Model(inp, output)
+
             else:
                 model = self.model()
             self._print_model_info(model)

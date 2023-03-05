@@ -52,6 +52,7 @@ class HybridModel(HelixerModel):
             main_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
                                name='main_input')
             model_input = main_input
+            coverage_input = None
 
         x = Conv1D(filters=self.filter_depth,
                    kernel_size=self.kernel_size,
@@ -81,6 +82,13 @@ class HybridModel(HelixerModel):
         if self.dropout2 > 0.0:
             x = Dropout(self.dropout2)(x)
 
+        outputs = self.model_hat(x, coverage_input)
+
+        model = Model(inputs=model_input, outputs=outputs)
+        return model
+
+    def model_hat(self, penultimate_layers):
+        x, coverage_input = penultimate_layers
         # maybe concatenate coverage and add one extra dense at this point
         if self.input_coverage:
             x = tf.concat([x, coverage_input], axis=-1)
@@ -90,21 +98,20 @@ class HybridModel(HelixerModel):
             x = Dense(self.pool_size * 4 * 2)(x)  # predict twice a many floats
             x_genic, x_phase = tf.split(x, 2, axis=-1)
 
-            x_genic = Reshape((-1, self.pool_size, 4))(x_genic)
+            x_genic = Reshape((-1, self.pool_size, 4), name='reshape_hat')(x_genic)
             x_genic = Activation('softmax', name='genic')(x_genic)
 
-            x_phase = Reshape((-1, self.pool_size, 4))(x_phase)
+            x_phase = Reshape((-1, self.pool_size, 4), name='reshape_hat1')(x_phase)
             x_phase = Activation('softmax', name='phase')(x_phase)
 
             outputs = [x_genic, x_phase]
         else:
             x = Dense(self.pool_size * 4)(x)
-            x = Reshape((-1, self.pool_size, 4))(x)
+            x = Reshape((-1, self.pool_size, 4), name='reshape_hat')(x)
             x = Activation('softmax', name='main')(x)
             outputs = [x]
 
-        model = Model(inputs=model_input, outputs=outputs)
-        return model
+        return outputs
 
     def compile_model(self, model):
         if self.predict_phase:
