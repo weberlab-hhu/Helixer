@@ -46,7 +46,6 @@ class HybridModel(HelixerModel):
                               name='raw_input')
             main_input, coverage_input = tf.split(raw_input, [4, 2 * self.coverage_count],
                                                   axis=-1)
-            coverage_input = Reshape((-1, self.pool_size * self.coverage_count * 2))(coverage_input)
             model_input = raw_input
         else:
             main_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
@@ -82,7 +81,7 @@ class HybridModel(HelixerModel):
         if self.dropout2 > 0.0:
             x = Dropout(self.dropout2)(x)
 
-        outputs = self.model_hat(x, coverage_input)
+        outputs = self.model_hat((x, coverage_input))
 
         model = Model(inputs=model_input, outputs=outputs)
         return model
@@ -91,6 +90,7 @@ class HybridModel(HelixerModel):
         x, coverage_input = penultimate_layers
         # maybe concatenate coverage and add one extra dense at this point
         if self.input_coverage:
+            coverage_input = Reshape((-1, self.pool_size * self.coverage_count * 2))(coverage_input)
             x = tf.concat([x, coverage_input], axis=-1)
             x = Dense(self.units // 2)(x)
 

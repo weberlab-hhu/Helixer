@@ -28,6 +28,7 @@ from tensorflow.keras import optimizers
 from tensorflow.keras import backend as K
 from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.utils import Sequence
+from tensorflow.keras.layers import Input
 from tensorflow_addons.optimizers import AdamW
 
 from helixer.prediction.Metrics import Metrics
@@ -493,7 +494,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--class-weights', type=str, default='None')
         self.parser.add_argument('--input-coverage', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
         self.parser.add_argument('--coverage-norm', default=None, help=argparse.SUPPRESS)
-        self.parser.add_argument('--coverage-count', default=2, help='how many bam files were added (temporary param)')
+        self.parser.add_argument('--coverage-count', default=2, type=int, help='how many bam files were added (temporary param)')
         self.parser.add_argument('--transition-weights', type=str, default='None')
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0, help=argparse.SUPPRESS)  # bc no clear effect on result quality
         self.parser.add_argument('--coverage-weights', action='store_true')
@@ -914,15 +915,35 @@ class HelixerModel(ABC):
         # we either train or predict
         if not self.testing:
             if self.resume_training:
-                model = load_model(self.load_model_path)
-                if self.fine_tune:
+                if not self.fine_tune:
+                    model = load_model(self.load_model_path)
+                else:
+                    oldmodel = load_model(self.load_model_path)
+                    #model.load_weights(self.load_model_path)
                     # freeze weights and replace everything from the dense layer
-                    dense_at = [l.name for l in model.layers].index('dense')
-                    model.trainable = False
-                    inp = model.input
-                    assert not self.input_coverage
-                    output = self.model_hat((model.layers[dense_at - 1].output, None))
-                    model = Model(inp, output)
+                    dense_at = [l.name for l in oldmodel.layers].index('dense')
+                    for layer in oldmodel.layers:
+                        layer.trainable = False
+                    # this currently assumes the base-model is trained without coverage and
+                    # really really will need to be cleaned up
+                    if not self.input_coverage:
+                        inp = oldmodel.input
+                        output = self.model_hat((oldmodel.layers[dense_at - 1].output, None))
+                        model = Model(inp, output)
+                    else:
+                        # hacking RNAseq coverage in. This only works when the pre-trained model
+                        # did not have coverage. Should assert or check that. Todo!
+                        values_per_bp = 4 + self.coverage_count * 2
+
+                        raw_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
+                                          name='main_input')
+                        # make a callable model that gives the intermediate output, with first 4 of input (CATG)
+                        excerpt_model = Model(oldmodel.input, oldmodel.layers[dense_at - 2].output)
+                        x = excerpt_model(raw_input[:, :, :4])
+                        # add hat, including coverage back on
+                        output = self.model_hat((x, raw_input[:, :, 4:]))
+
+                        model = Model(raw_input, output)
 
             else:
                 model = self.model()
