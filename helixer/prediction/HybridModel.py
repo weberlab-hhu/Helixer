@@ -92,7 +92,8 @@ class HybridModel(HelixerModel):
         if self.input_coverage:
             coverage_input = Reshape((-1, self.pool_size * self.coverage_count * 2))(coverage_input)
             x = tf.concat([x, coverage_input], axis=-1)
-            x = Dense(self.units // 2)(x)
+            if self.post_coverage_hidden_layer:
+                x = Dense(self.units // 2)(x)
 
         if self.predict_phase:
             x = Dense(self.pool_size * 4 * 2)(x)  # predict twice a many floats

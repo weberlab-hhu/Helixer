@@ -492,8 +492,13 @@ class HelixerModel(ABC):
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
         self.parser.add_argument('--weight-decay', type=float, default=3.5e-5)
         self.parser.add_argument('--class-weights', type=str, default='None')
-        self.parser.add_argument('--input-coverage', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
-        self.parser.add_argument('--coverage-norm', default=None, help=argparse.SUPPRESS)
+        self.parser.add_argument('--input-coverage', action='store_true',
+                                 help='use "evaluation/rnaseq_(spliced_)coverage" from h5 as additional input '
+                                      'for a late layer of the model')
+        self.parser.add_argument('--coverage-norm', default=None,
+                                 help='None, linear or log (recommended); how coverage will be normalized before inputting')
+        self.parser.add_argument('--post-coverage-hidden-layer', action='store_true',
+                                 help='adds extra dense layer between concatenating coverage and final output layer')
         self.parser.add_argument('--coverage-count', default=2, type=int, help='how many bam files were added (temporary param)')
         self.parser.add_argument('--transition-weights', type=str, default='None')
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0, help=argparse.SUPPRESS)  # bc no clear effect on result quality
