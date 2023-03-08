@@ -520,7 +520,8 @@ class HelixerModel(ABC):
         self.parser.add_argument('--resume-training', action='store_true')
         self.parser.add_argument('--fine-tune', action='store_true',
                                  help='use with --resume-training to replace and fine tune just the very last layer')
-
+        self.parser.add_argument('--pretrained-model-path',
+                                 help='required when predicting with a model fine tuned with coverage; hopefully temporary')
         # testing / predicting
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
         self.parser.add_argument('-t', '--test-data', type=str, default='')
@@ -984,7 +985,34 @@ class HelixerModel(ABC):
             strategy = tf.distribute.MirroredStrategy()
             print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
             with strategy.scope():
-                model = load_model(self.load_model_path)
+                if not self.only_predictions and self.input_coverage:
+                    model = load_model(self.load_model_path)
+                else:
+                    # duplicate code, just to see if it works...
+                    # to be clear, this is a horrible hack; and will need to be cleaned up before
+                    # anyone can be reasonably expected to use it
+                    oldmodel = load_model(self.pretrained_model_path)
+                    #model.load_weights(self.load_model_path)
+                    # freeze weights and replace everything from the dense layer
+                    dense_at = [l.name for l in oldmodel.layers].index('dense')
+                    for layer in oldmodel.layers:
+                        layer.trainable = False
+                    # this currently assumes the base-model is trained without coverage and
+                    # really really will need to be cleaned up
+                    # hacking RNAseq coverage in. This only works when the pre-trained model
+                    # did not have coverage. Should assert or check that. Todo!
+                    values_per_bp = 4 + self.coverage_count * 2
+
+                    raw_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
+                                      name='main_input')
+                    # make a callable model that gives the intermediate output, with first 4 of input (CATG)
+                    excerpt_model = Model(oldmodel.input, oldmodel.layers[dense_at - 2].output)
+                    x = excerpt_model(raw_input[:, :, :4])
+                    # add hat, including coverage back on
+                    output = self.model_hat((x, raw_input[:, :, 4:]))
+
+                    model = Model(raw_input, output)
+                    model.load_weights(self.load_model_path)
             self._print_model_info(model)
 
             if self.eval:
