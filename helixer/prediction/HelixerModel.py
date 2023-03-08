@@ -66,12 +66,21 @@ class ConfusionMatrixTrain(Callback):
             print(f'\nvalidation and checkpoint at batch {batch}')
             self.check_in(batch)
 
+    def freeze_layers(self, model):
+        # thank you https://github.com/keras-team/keras/issues/13279#issuecomment-527705263
+        for i in model.layers:
+            i.trainable = False
+            if isinstance(i, Model):
+                self.freeze_layers(i)
+        return model
+
     def check_in(self, batch=None):
         _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, self.model, calc_H=self.calc_H)
         if self.report_to_nni:
             nni.report_intermediate_result(val_genic_f1)
         if val_genic_f1 > self.best_val_genic_f1:
             self.best_val_genic_f1 = val_genic_f1
+            self.freeze_layers(self.model)
             self.model.save(self.save_model_path, save_format='h5')
             print('saved new best model with genic f1 of {} at {}'.format(self.best_val_genic_f1,
                                                                           self.save_model_path))
@@ -169,7 +178,7 @@ class HelixerSequence(Sequence):
                                                       overlap_offset=self.overlap_offset,
                                                       core_length=self.core_length)
 
-        if self.input_coverage and not self.only_predictions:
+        if self.input_coverage:
             self.data_list_names += ['evaluation/rnaseq_coverage', 'evaluation/rnaseq_spliced_coverage']
 
         self.data_lists = [[] for _ in range(len(self.data_list_names))]
