@@ -299,9 +299,9 @@ def add_empty_ngs_datasets(h5, n):
 
 def add_empty_cov_meta(h5, n):
     meta_str = META_STR
-    if meta_str not in h5.keys():
-        h5.create_group(meta_str)
-    h5.create_dataset(f'{meta_str}/{BAMFILES_DATASET}',
+    if meta_str not in h5['evaluation'].keys():
+        h5.create_group(f'evaluation/{meta_str}')
+    h5.create_dataset(f'evaluation/{meta_str}/{BAMFILES_DATASET}',
                       shape=(n,),
                       maxshape=(None, ),
                       dtype='S512',
@@ -483,12 +483,12 @@ def main(species, h5_data, strandedness, prefix, threads, shift, mock_read_lengt
         old_final_dimension = 0
 
     try:
-        h5[f'{META_STR}/{BAMFILES_DATASET}'].resize((old_final_dimension + nbams,))
+        h5[f'evaluation/{META_STR}/{BAMFILES_DATASET}'].resize((old_final_dimension + nbams,))
     except KeyError:
         add_empty_cov_meta(h5, nbams)
 
     bams_as_meta = np.array([str(x).encode('ASCII') for x in H5_BAMS.keys()])
-    h5[f'{META_STR}/{BAMFILES_DATASET}'][old_final_dimension:old_final_dimension + nbams] = bams_as_meta
+    h5[f'evaluation/{META_STR}/{BAMFILES_DATASET}'][old_final_dimension:old_final_dimension + nbams] = bams_as_meta
 
     # identify regions in h5 corresponding to species
     species_start, species_end = species_range(h5, species)
@@ -555,6 +555,14 @@ if __name__ == "__main__":
         print("Exactly one of [--first-read-is-sense-strand, --second-read-is-sense-strand, "
               "--unstranded] must be set", file=sys.stderr)
         sys.exit(1)
+
+    if not os.path.exists(args.h5_data):
+        raise FileNotFoundError(f"file {args.h5_data} doesn't exist")
+
+    try:
+        h5py.File(args.h5_data, "r")
+    except OSError as e:
+        raise OSError(f"{args.h5_data} is not a h5 file, please provide a valid h5 file") from e
 
     H5_BAMS = {}
     for bam in args.bam:
