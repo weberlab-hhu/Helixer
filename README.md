@@ -12,6 +12,11 @@ That is, to perform "gene calling" and identify
 which base pairs in a genome belong to the UTR/CDS/Intron of genes. 
 Train one model for a wide variety of genomes.
 
+## Web tool
+For light usage (inference on one to a few genomes), you may 
+want to check out the Helixer web tool: https://plabipd.de/helixer_main.html
+and skip the installation overhead.
+
 ## Install
 ### GPU requirements
 For realistically sized datasets, a GPU will be necessary
