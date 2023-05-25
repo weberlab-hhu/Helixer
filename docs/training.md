@@ -1,10 +1,9 @@
 # Training example
 
-We set up a working example with a limited amount of data. 
-For this, we will utilize the GeenuFF database in 
-located at `example/three_algae.sqlite3` to generate a training, 
-validation and testing dataset and then use those to first train a model 
-and then to make gene predictions with Helixer.
+We will set up a working example with a limited amount of data. 
+For this, we will process species for each of training, validation and testing.
+We will preprocess each species with GeenuFF, and then write to h5 files containing
+the numerical matrices that will be directly used during training.
 
 ### Generating training-ready data
 
@@ -18,7 +17,8 @@ using GeenuFF. This provides a more biologically-realistic
 representation of gene structures, and, most importantly
 right now, provides identification and masking of invalid
 gene structures from the gff file (e.g. those that don't
-have _any_ UTR between coding and intergenic or those that
+have _any_ UTR between coding and intergenic, those where
+the start codon is not ATG, or those that
 have overlapping exons within one transcript). 
 
 See the GeenuFF repository for more information.
@@ -27,11 +27,12 @@ For now we can just run the provided example script to
 download and pre-process some algae data.
 
 ```shell script
-cd <your/path/to>/GeenuFF
+# this script downloads + organizes data
+# and then runs import2geenuff.py for three algae genomes
+wget https://raw.githubusercontent.com/weberlab-hhu/GeenuFF/main/example.sh
 bash example.sh
 # store full path in a variable for later usage
 data_at=`readlink -f three_algae`
-cd <where/you/want/to/work>
 ```
 This downloads and pre-processes data for the species
 (Chlamydomonas_reinhardtii,  Cyanidioschyzon_merolae, and  Ostreococcus_lucimarinus)
