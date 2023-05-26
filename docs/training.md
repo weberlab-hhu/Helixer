@@ -34,9 +34,15 @@ bash example.sh
 # store full path in a variable for later usage
 data_at=`readlink -f three_algae`
 ```
+
 This downloads and pre-processes data for the species
 (Chlamydomonas_reinhardtii,  Cyanidioschyzon_merolae, and  Ostreococcus_lucimarinus)
 as you can see with `ls $data_at`
+
+To run other genomes, simply provide a fasta and gff3 
+file to the `import2geenuff.py` script according to the help function,
+and supply a species name. The example.sh shows one way to do so.
+
 #### numeric encoding of data
 To actually train (or predict) we will need to encode the
 data numerically (e.g. as 1s and 0s). 
@@ -50,9 +56,9 @@ do
     --h5-output-path example/h5s/$species/test_data.h5
 done
 ```
-To create the simples working example, we will use Chlamydomonas_reinhardtii 
+To create the simplest working example, we will use Chlamydomonas_reinhardtii 
 for training and Cyanidioschyzon_merolae for validation (normally you
-would merge multiple species for each) and use Ostreococcus_lucimarinus for
+would include multiple species for each) and use Ostreococcus_lucimarinus for
 testing / predicting / etc.
 
 ```shell script
@@ -72,8 +78,7 @@ cd ../..
 ```
 
 We should now have the following files in `example/`. 
-Note that the test data was not split into a training 
-and validation set due to the `--only-test-set` option: 
+
 ```
 example
 ├── h5s
@@ -202,7 +207,40 @@ metrics calculation took: 0.08 minutes
 ```
 
 In the demo run above (yours may vary) the model predicted
-perhaps better than random, but poorly, it practically
+perhaps better than random, but poorly. It practically
 needs more and more varied (from different species) data
-to train it (this result is for the small model example).
+to train it (this result is for the small model example),
+as well as to be larger and train for longer.
+
+## practical considerations
+While the above covers technically how to train a model, here are some
+tips on how to make it a _good_ model. 
+
+### scale
+Make sure to use the 'full size' model above, or larger if your resources permit.
+Scale up (quality) training data as you scale up the model.
+
+### training species selection
+Unfortunately we have no single 'best method' to pick training species at this point,
+but nevertheless some patterns are clear. You will probably want to:
+- train on a phylogenetically _wider_ selection of species than you need
+  the model to predict on 
+- train on a phylogenetically balanced selection of species across the range
+  you need the model to predict on (e.g. not 50% mice for a vertebrate model)
+- include more and _more diverse_ species to boost performance (current performant released models were trained
+  on many dozens of species)
+- include only higher quality annotations to boost performance
+- wrestle with the obvious trade off between the preceeding two points... 
+
+Trial and error has been a major part of the training process, 
+particularly for species selection. Eventually we automated that
+trial and error with many random draws of traing species and a 2-fold cross validatoin 
+process here: https://github.com/alisandra/SpeciesSelector.
+Given some compute resources and a target set of genomes, this
+is a fairly safe way to achieve a baseline or even quite respectable model.
+
+### hyperparameter optimization
+The helixer codebase is built to work with nni: https://github.com/microsoft/nni
+for hyperparameter optimization. Follow standard nni instructions and additionally add
+`--nni` to the `HybridModel.py` command.
 
