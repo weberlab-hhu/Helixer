@@ -25,19 +25,20 @@ helixer/evaluation.
 
 ### the 'data' group
 This should always be present, an example
-file (with 4018 'sequence chunks' of 20,000bp each) 
+file (with 4018 'subsequences' of 21,384bp each) 
 would have the following datasets
 ```
-X                        Dataset {4018/Inf, 20000, 4}
+X                        Dataset {4018/Inf, 21384, 4}
 err_samples              Dataset {4018/Inf}
 fully_intergenic_samples Dataset {4018/Inf}
-gene_lengths             Dataset {4018/Inf, 20000}
-sample_weights           Dataset {4018/Inf, 20000}
+gene_lengths             Dataset {4018/Inf, 21384}
+sample_weights           Dataset {4018/Inf, 21384}
 seqids                   Dataset {4018/Inf}
 species                  Dataset {4018/Inf}
 start_ends               Dataset {4018/Inf, 2}
-transitions              Dataset {4018/Inf, 20000, 6}
-y                        Dataset {4018/Inf, 20000, 4}
+transitions              Dataset {4018/Inf, 21384, 6}
+y                        Dataset {4018/Inf, 21384, 4}
+phase                    Dataset {4018/Inf, 21384, 4}
 ```
 
 #### The key-data
@@ -63,6 +64,18 @@ format. The last dimension corresponds to
 
 Will be used as labels for the network.
 
+##### phase
+This is the phase of the reference annotation, in matrix
+format. The last dimension corresponds to 
+[None, 0, 1, 2].
+
+Where 'None' is used for non-CDS regions, and within
+CDS regions
+0, 1, 2 correspond to phase (number of base pairs
+until the start of the next codon).
+
+Will be used as labels for the network.
+
 ##### sample_weights
 One value per base pair. This is used to adjust
 the sample_weights and there-by the loss, so 
@@ -72,34 +85,35 @@ are
  - 1 if base pair is valid
  - 0 if base pair is invalid (in GeenuFF error mask)
 
-#### Where the chunks are in the genome(s)
+#### Where the subsequence are in the genome(s)
 Critical for interpreting anything / quickly knowing
 where the data (and later predictions) came from.
 
 #####  species
-Species ID, repeated once per chunk. This is, of
+Species ID, repeated once per subsequence. This is, of
 course, important when multiple species are 
 in one file (e.g. when training with 6+ species
 as was done for vertebrate and plant models).
 
 ##### seqids
 The ID of the sequence (chromosome, scaffold, contig,
-etc...) that a chunk comes from.
+etc...) that a subsequence comes from.
 
 ##### start_ends
 the start and end
 coordinates of a
-given chunk (in that order). When end < start then 
-the chunk is from the minus strand. 
-So [0, 20000] is the first 20000bp of a given
-sequence and is reverse complented by [20000, 0].
+given subsequence (in that order). When end < start then 
+the subsequence is from the minus strand. 
+So [0, 21384] is the first 21384bp of a given
+sequence and is reverse complented by [21384, 0].
 On the plus strand start is inclusive and end
 exclusive. 
 
-If |start - end| is less than the chunk size then
-there is padding.
+If |start - end| is less than the subsequence size then
+there is padding. You can identify where the padding
+is according to data/X or data/y above.
 
-(todo, explain padding)
+(todo, explain padding better)
 
 #### Additional
 Various data matrices that were or are used in a
@@ -107,9 +121,9 @@ more experimental or peripheral fashion. To check for biases,
 experiment with filtering, or more.
  
 ##### err_samples
-One value per chunk, derived from sample_weights
- - 1 if the chunk contains any valid data
- - 0 if the chunk contains only invalid data
+One value per subsequence, derived from sample_weights
+ - 1 if the subsequence contains any valid data
+ - 0 if the subsequence contains only invalid data
 
 (where valid is the default and invalid means 
 any base pairs where GeenuFF masked an error)
@@ -117,7 +131,7 @@ any base pairs where GeenuFF masked an error)
 
 ##### fully_intergenic_samples 
 
-One value per chunk, useful for quickly filtering
+One value per subsequence, useful for quickly filtering
 entirely intergenic regions
  - True if only intergenic base pairs present in reference annotation
  - False otherwise
@@ -154,12 +168,12 @@ helixer/evaluation/training_rnaseq.py, which takes
 an indexed bam file and calculates the coverage, and spliced_coverage
 for each position on the genome. 
 
-Both data sets have the dimensions 'sequence chunks'
-by chunk_size in bp, so one value per bp of the genome. 
+Both data sets have the dimensions 'number subsequences'
+by 'subsequence size' in bp, so one value per bp of the genome. 
 
 ```
-coverage                 Dataset {4018/Inf, 20000}
-spliced_coverage         Dataset {4018/Inf, 20000}
+coverage                 Dataset {4018/Inf, 21384}
+spliced_coverage         Dataset {4018/Inf, 21384}
 ```
 
 Coverage is the number of reads mapping at a given position (cigar =, M, or X).
@@ -189,13 +203,28 @@ Todo: more complete list
 ### The 'meta' group
 Some meta-data on the different _species_ in any .h5 data file.
 Most related to RNAseq and provides values for potentially
-normalizing the raw RNAseq some. Yes, this is all very naive
+normalizing the raw RNAseq some. Yes, this is all very n21384aive
 still.
 
 ### the Alternative/* groups
-The script ___ can add alternative (non-reference, non-helixer)
+The script geenuff2h5.py can be used to add alternative (non-reference, non-helixer)
 annotations to the .h5 file, exactly aligned with the other
 data. 
 
 Any of these that have been added will be in alternative/<your name here>
 and from there have the same format as the original 'data' group.
+
+## predictions output
+The predictions file holds, well, the predictions. It does not stand 
+alone, but rather requires the sequence location and padding information
+from the Input Data above to be interpretable. There is a 1:1 correspondance
+between positions in the predictions output and the input data. 
+ 
+### predictions
+This is output of the network that has been trained to predict `data/y`
+from the input data, thus its categories are [intergenic, UTR, CDS, intron]
+
+### predictions_phase
+This is output of the network that has been trained to predict `data/phase`
+from the input data, thus its categories are [None, 0, 1, 2]
+
