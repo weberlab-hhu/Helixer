@@ -1,14 +1,13 @@
 # Training example
 
-We set up a working example with a limited amount of data. 
-For this, we will utilize the GeenuFF database in 
-located at `example/three_algae.sqlite3` to generate a training, 
-validation and testing dataset and then use those to first train a model 
-and then to make gene predictions with Helixer.
+We will set up a working example with a limited amount of data. 
+For this, we will process species for each of training, validation and testing.
+We will pre-process each species with GeenuFF, and then write to h5 files containing
+the numerical matrices that will be directly used during training.
 
-### Generating training-ready data
+## Generating training-ready data
 
-#### Pre-processing w/ GeenuFF
+### Pre-processing w/ GeenuFF
 >Note: you will be able to skip working with GeenuFF if
 > only wish to predict, and not train. See instead the
 > fasta2h5.py script.
@@ -18,7 +17,8 @@ using GeenuFF. This provides a more biologically-realistic
 representation of gene structures, and, most importantly
 right now, provides identification and masking of invalid
 gene structures from the gff file (e.g. those that don't
-have _any_ UTR between coding and intergenic or those that
+have _any_ UTR between coding and intergenic, those where
+the start codon is not ATG, or those that
 have overlapping exons within one transcript). 
 
 See the GeenuFF repository for more information.
@@ -27,16 +27,23 @@ For now we can just run the provided example script to
 download and pre-process some algae data.
 
 ```shell script
-cd <your/path/to>/GeenuFF
+# this script downloads + organizes data
+# and then runs import2geenuff.py for three algae genomes
+wget https://raw.githubusercontent.com/weberlab-hhu/GeenuFF/main/example.sh
 bash example.sh
 # store full path in a variable for later usage
 data_at=`readlink -f three_algae`
-cd <where/you/want/to/work>
 ```
+
 This downloads and pre-processes data for the species
 (Chlamydomonas_reinhardtii,  Cyanidioschyzon_merolae, and  Ostreococcus_lucimarinus)
 as you can see with `ls $data_at`
-#### numeric encoding of data
+
+To run other genomes, simply provide a fasta and gff3 
+file to the `import2geenuff.py` script according to the help function,
+and supply a species name. The example.sh shows one way to do so.
+
+### numeric encoding of data
 To actually train (or predict) we will need to encode the
 data numerically (e.g. as 1s and 0s). 
 
@@ -49,9 +56,9 @@ do
     --h5-output-path example/h5s/$species/test_data.h5
 done
 ```
-To create the simples working example, we will use Chlamydomonas_reinhardtii 
+To create the simplest working example, we will use Chlamydomonas_reinhardtii 
 for training and Cyanidioschyzon_merolae for validation (normally you
-would merge multiple species for each) and use Ostreococcus_lucimarinus for
+would include multiple species for each) and use Ostreococcus_lucimarinus for
 testing / predicting / etc.
 
 ```shell script
@@ -71,8 +78,7 @@ cd ../..
 ```
 
 We should now have the following files in `example/`. 
-Note that the test data was not split into a training 
-and validation set due to the `--only-test-set` option: 
+
 ```
 example
 ├── h5s
@@ -88,7 +94,7 @@ example
 ```
 > **Side note: Including multiple species in datasets.**
 > 
-> In order for the model to generalize accross species, it's of course
+> In order for the model to generalize across species, it's of course
 > important to train it on _multiple_ training species, and also to
 > validate it on _multiple_ validation species.
 >
@@ -116,9 +122,9 @@ example
 > of 'species\_01' ... 'species\_09' would be highly encouraged
 > for organizational purposes.
 
-### Model training
+## Model training
 Now we use the datasets in `example/train/` to train a model with our 
-LSTM architeture for 5 epochs and save the best iteration 
+LSTM architecture for 5 epochs and save the best iteration 
 (according to the Genic F1 on the validation dataset) to 
 `example/best_helixer_model.h5`. 
 
@@ -128,7 +134,7 @@ python <path/to/Helixer/>helixer/prediction/HybridModel.py --data-dir example/tr
 
 The rest of this example will continue with the model example/best_helixer_model.h5 produced above. 
 
-#### Full size aside
+### Full size aside
 The current 'full size' architecture that has been performing well
 in hyper optimization runs is:
 
@@ -141,11 +147,18 @@ python <path/to/Helixer/>helixer/prediction/HybridModel.py -v --pool-size 9 --ba
   --data-dir example/train/ --save-model-path example/fullsize_helixer_model.h5
 ```
 
-But make sure you have a full size dataset to go with that model, if you're going to train it.
+But make sure you have a full size dataset to go with that model, and up to a couple days,
+if you're going to train it.
 
-### Model evaluation
+## Model evaluation
 We can now use the mini model trained above to produce predictions for our test dataset. 
-WARNING: Generating predictions can produce very large files as 
+
+We could even skip right on ahead to generating gff3 files by
+calling `Helixer.py` with `--model-filepath example/best_helixer_model.h5`, but that is covered
+in the main README.md, and if you're training models you might want some finer
+tuned / intermediate predictions and evaluation, so see below:
+
+NOTE: Generating predictions can produce very large files as 
 we save every individual softmax value in 32 bit floating point format. 
 For this very small genome the predictions require 524MB of disk space. 
 ```shell script
@@ -154,7 +167,7 @@ python helixer/prediction/HybridModel.py --load-model-path example/best_helixer_
   --prediction-output-path example/Ostreococcus_lucimarinus_predictions.h5
 ```
 
-Or we can directly evaluate the predictive performance of our model. It is necessary to generate a test data file per species to get results for just that species.
+Or we can directly evaluate the predictive performance of our model. 
 
 ```shell script
 python helixer/prediction/HybridModel.py --load-model-path example/best_helixer_model.h5 \
@@ -201,7 +214,40 @@ metrics calculation took: 0.08 minutes
 ```
 
 In the demo run above (yours may vary) the model predicted
-perhaps better than random, but poorly, it practically
+perhaps better than random, but poorly. It practically
 needs more and more varied (from different species) data
-to train it (this result is for the small model example).
+to train it (this result is for the small model example),
+as well as to be larger and train for longer.
+
+## Practical considerations
+While the above covers technically how to train a model, here are some
+tips on how to make it a _good_ model. 
+
+### Scale
+Make sure to use the 'full size' model above, or larger if your resources permit.
+Scale up (quality) training data as you scale up the model.
+
+### Training species selection
+Unfortunately we have no single 'best method' to pick training species at this point,
+but nevertheless some patterns are clear. You will probably want to:
+- train on a phylogenetically _wider_ selection of species than you need
+  the model to predict on 
+- train on a phylogenetically balanced selection of species across the range
+  you need the model to predict on (e.g. not 50% mice for a vertebrate model)
+- include more and _more diverse_ species to boost performance (current performant released models were trained
+  on many dozens of species)
+- include only higher quality annotations to boost performance
+- wrestle with the obvious trade off between the proceeding two points... 
+
+Trial and error has been a major part of the training process, 
+particularly for species selection. Eventually we automated that
+trial and error with many random draws of training species and a 2-fold cross validation 
+process here: https://github.com/alisandra/SpeciesSelector.
+Given some compute resources and a target set of genomes, this
+is a fairly safe way to achieve a baseline or even quite respectable model.
+
+### Hyperparameter optimization
+The helixer codebase is built to work with nni: https://github.com/microsoft/nni
+for hyperparameter optimization. Follow standard nni instructions and additionally add
+`--nni` to the `HybridModel.py` command.
 

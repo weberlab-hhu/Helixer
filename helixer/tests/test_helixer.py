@@ -13,15 +13,15 @@ from geenuff.base.orm import SuperLocus, Genome, Coordinate
 from geenuff.base.helpers import reverse_complement
 from geenuff.base import types
 
-from ..core.controller import HelixerController
-from ..core import helpers
-from ..core import overlap
-from ..export import numerify
-from ..export.numerify import SequenceNumerifier, AnnotationNumerifier, Stepper, AMBIGUITY_DECODE
-from ..export.exporter import HelixerExportController, HelixerFastaToH5Controller
-from ..prediction.Metrics import ConfusionMatrix, ConfusionMatrixGenic
+from helixer.core.controller import HelixerController
+from helixer.core import helpers
+from helixer.core import overlap
+from helixer.export import numerify
+from helixer.export.numerify import SequenceNumerifier, AnnotationNumerifier, Stepper, AMBIGUITY_DECODE
+from helixer.export.exporter import HelixerExportController, HelixerFastaToH5Controller
+from helixer.prediction.Metrics import ConfusionMatrix, ConfusionMatrixGenic
 from helixer.prediction.LSTMModel import LSTMSequence
-from ..evaluation import rnaseq
+from helixer.evaluation import rnaseq
 
 TMP_DB = 'testdata/tmp/dummy.sqlite3'
 DUMMYLOCI_DB = 'testdata/dummyloci/dummyloci.sqlite3'
