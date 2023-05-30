@@ -26,8 +26,9 @@ from terminaltables import AsciiTable
 from tensorflow.keras.callbacks import Callback
 from tensorflow.keras import optimizers
 from tensorflow.keras import backend as K
-from tensorflow.keras.models import load_model
+from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.utils import Sequence
+from tensorflow.keras.layers import Input
 from tensorflow_addons.optimizers import AdamW
 
 from helixer.prediction.Metrics import Metrics
@@ -65,12 +66,21 @@ class ConfusionMatrixTrain(Callback):
             print(f'\nvalidation and checkpoint at batch {batch}')
             self.check_in(batch)
 
+    def freeze_layers(self, model):
+        # thank you https://github.com/keras-team/keras/issues/13279#issuecomment-527705263
+        for i in model.layers:
+            i.trainable = False
+            if isinstance(i, Model):
+                self.freeze_layers(i)
+        return model
+
     def check_in(self, batch=None):
         _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, self.model, calc_H=self.calc_H)
         if self.report_to_nni:
             nni.report_intermediate_result(val_genic_f1)
         if val_genic_f1 > self.best_val_genic_f1:
             self.best_val_genic_f1 = val_genic_f1
+            self.freeze_layers(self.model)
             self.model.save(self.save_model_path, save_format='h5')
             print('saved new best model with genic f1 of {} at {}'.format(self.best_val_genic_f1,
                                                                           self.save_model_path))
@@ -126,7 +136,7 @@ class HelixerSequence(Sequence):
         self.shuffle = shuffle
         self.batch_size = batch_size
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
-                                 'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
+                                 'coverage_norm', 'coverage_count', 'overlap', 'overlap_offset', 'core_length',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
                                  'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
 
@@ -168,8 +178,8 @@ class HelixerSequence(Sequence):
                                                       overlap_offset=self.overlap_offset,
                                                       core_length=self.core_length)
 
-        if self.input_coverage and not self.only_predictions:
-            self.data_list_names += ['evaluation/coverage', 'evaluation/spliced_coverage']
+        if self.input_coverage:
+            self.data_list_names += ['evaluation/rnaseq_coverage', 'evaluation/rnaseq_spliced_coverage']
 
         self.data_lists = [[] for _ in range(len(self.data_list_names))]
         self.data_dtypes = [self.h5_files[0][name].dtype for name in self.data_list_names]
@@ -265,10 +275,10 @@ class HelixerSequence(Sequence):
 
                 # append coverage to X directly, might be clearer elsewhere once working, but this needs little code...
                 if name == 'data/X' and self.input_coverage:
-                    decode_coverage = self.get_batch_of_one_dataset('evaluation/coverage', batch_idx)
-                    decode_coverage = [self._cov_norm(x.reshape(-1, 1)).astype(np.float16) for x in decode_coverage]
-                    decode_spliced = self.get_batch_of_one_dataset('evaluation/spliced_coverage', batch_idx)
-                    decode_spliced = [self._cov_norm(x.reshape(-1, 1)).astype(np.float16) for x in decode_spliced]
+                    decode_coverage = self.get_batch_of_one_dataset('evaluation/rnaseq_coverage', batch_idx)
+                    decode_coverage = [self._cov_norm(x.reshape(-1, self.coverage_count)).astype(np.float16) for x in decode_coverage]
+                    decode_spliced = self.get_batch_of_one_dataset('evaluation/rnaseq_spliced_coverage', batch_idx)
+                    decode_spliced = [self._cov_norm(x.reshape(-1, self.coverage_count)).astype(np.float16) for x in decode_spliced]
                     decoded_list = [np.concatenate((x, y, z), axis=1) for x, y, z in
                                     zip(decoded_list, decode_coverage, decode_spliced)]
 
@@ -491,8 +501,14 @@ class HelixerModel(ABC):
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
         self.parser.add_argument('--weight-decay', type=float, default=3.5e-5)
         self.parser.add_argument('--class-weights', type=str, default='None')
-        self.parser.add_argument('--input-coverage', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
-        self.parser.add_argument('--coverage-norm', default=None, help=argparse.SUPPRESS)
+        self.parser.add_argument('--input-coverage', action='store_true',
+                                 help='use "evaluation/rnaseq_(spliced_)coverage" from h5 as additional input '
+                                      'for a late layer of the model')
+        self.parser.add_argument('--coverage-norm', default=None,
+                                 help='None, linear or log (recommended); how coverage will be normalized before inputting')
+        self.parser.add_argument('--post-coverage-hidden-layer', action='store_true',
+                                 help='adds extra dense layer between concatenating coverage and final output layer')
+        self.parser.add_argument('--coverage-count', default=2, type=int, help='how many bam files were added (temporary param)')
         self.parser.add_argument('--transition-weights', type=str, default='None')
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0, help=argparse.SUPPRESS)  # bc no clear effect on result quality
         self.parser.add_argument('--coverage-weights', action='store_true')
@@ -502,6 +518,10 @@ class HelixerModel(ABC):
         self.parser.add_argument('--predict-phase', action='store_true')
         self.parser.add_argument('--load-predictions', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
         self.parser.add_argument('--resume-training', action='store_true')
+        self.parser.add_argument('--fine-tune', action='store_true',
+                                 help='use with --resume-training to replace and fine tune just the very last layer')
+        self.parser.add_argument('--pretrained-model-path',
+                                 help='required when predicting with a model fine tuned with coverage; hopefully temporary')
         # testing / predicting
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
         self.parser.add_argument('-t', '--test-data', type=str, default='')
@@ -689,6 +709,10 @@ class HelixerModel(ABC):
 
     @abstractmethod
     def model(self):
+        pass
+
+    @abstractmethod
+    def model_hat(self, penultimate_layers):
         pass
 
     @abstractmethod
@@ -906,7 +930,36 @@ class HelixerModel(ABC):
         # we either train or predict
         if not self.testing:
             if self.resume_training:
-                model = load_model(self.load_model_path)
+                if not self.fine_tune:
+                    model = load_model(self.load_model_path)
+                else:
+                    oldmodel = load_model(self.load_model_path)
+                    #model.load_weights(self.load_model_path)
+                    # freeze weights and replace everything from the dense layer
+                    dense_at = [l.name for l in oldmodel.layers].index('dense')
+                    for layer in oldmodel.layers:
+                        layer.trainable = False
+                    # this currently assumes the base-model is trained without coverage and
+                    # really really will need to be cleaned up
+                    if not self.input_coverage:
+                        inp = oldmodel.input
+                        output = self.model_hat((oldmodel.layers[dense_at - 1].output, None))
+                        model = Model(inp, output)
+                    else:
+                        # hacking RNAseq coverage in. This only works when the pre-trained model
+                        # did not have coverage. Should assert or check that. Todo!
+                        values_per_bp = 4 + self.coverage_count * 2
+
+                        raw_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
+                                          name='main_input')
+                        # make a callable model that gives the intermediate output, with first 4 of input (CATG)
+                        excerpt_model = Model(oldmodel.input, oldmodel.layers[dense_at - 2].output)
+                        x = excerpt_model(raw_input[:, :, :4])
+                        # add hat, including coverage back on
+                        output = self.model_hat((x, raw_input[:, :, 4:]))
+
+                        model = Model(raw_input, output)
+
             else:
                 model = self.model()
             self._print_model_info(model)
@@ -932,7 +985,34 @@ class HelixerModel(ABC):
             strategy = tf.distribute.MirroredStrategy()
             print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
             with strategy.scope():
-                model = load_model(self.load_model_path)
+                if not self.only_predictions and self.input_coverage:
+                    model = load_model(self.load_model_path)
+                else:
+                    # duplicate code, just to see if it works...
+                    # to be clear, this is a horrible hack; and will need to be cleaned up before
+                    # anyone can be reasonably expected to use it
+                    oldmodel = load_model(self.pretrained_model_path)
+                    #model.load_weights(self.load_model_path)
+                    # freeze weights and replace everything from the dense layer
+                    dense_at = [l.name for l in oldmodel.layers].index('dense')
+                    for layer in oldmodel.layers:
+                        layer.trainable = False
+                    # this currently assumes the base-model is trained without coverage and
+                    # really really will need to be cleaned up
+                    # hacking RNAseq coverage in. This only works when the pre-trained model
+                    # did not have coverage. Should assert or check that. Todo!
+                    values_per_bp = 4 + self.coverage_count * 2
+
+                    raw_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
+                                      name='main_input')
+                    # make a callable model that gives the intermediate output, with first 4 of input (CATG)
+                    excerpt_model = Model(oldmodel.input, oldmodel.layers[dense_at - 2].output)
+                    x = excerpt_model(raw_input[:, :, :4])
+                    # add hat, including coverage back on
+                    output = self.model_hat((x, raw_input[:, :, 4:]))
+
+                    model = Model(raw_input, output)
+                    model.load_weights(self.load_model_path)
             self._print_model_info(model)
 
             if self.eval:

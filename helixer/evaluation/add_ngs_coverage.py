@@ -457,7 +457,10 @@ def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_
                               old_final_dimension + i)
 
         for d in memmap_dirs:
-            shutil.rmtree(d)  # rm -r
+            try:
+                shutil.rmtree(d)  # rm -r
+            except OSError:  # for e.g. mounted file systems that are slow...
+                shutil.rmtree(d)
 
     return counts
 
