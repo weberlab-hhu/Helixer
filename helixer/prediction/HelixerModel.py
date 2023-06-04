@@ -501,14 +501,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
         self.parser.add_argument('--weight-decay', type=float, default=3.5e-5)
         self.parser.add_argument('--class-weights', type=str, default='None')
-        self.parser.add_argument('--input-coverage', action='store_true',
-                                 help='use "evaluation/rnaseq_(spliced_)coverage" from h5 as additional input '
-                                      'for a late layer of the model')
-        self.parser.add_argument('--coverage-norm', default=None,
-                                 help='None, linear or log (recommended); how coverage will be normalized before inputting')
-        self.parser.add_argument('--post-coverage-hidden-layer', action='store_true',
-                                 help='adds extra dense layer between concatenating coverage and final output layer')
-        self.parser.add_argument('--coverage-count', default=2, type=int, help='how many bam files were added (temporary param)')
         self.parser.add_argument('--transition-weights', type=str, default='None')
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0, help=argparse.SUPPRESS)  # bc no clear effect on result quality
         self.parser.add_argument('--coverage-weights', action='store_true')
@@ -518,10 +510,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('--predict-phase', action='store_true')
         self.parser.add_argument('--load-predictions', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
         self.parser.add_argument('--resume-training', action='store_true')
-        self.parser.add_argument('--fine-tune', action='store_true',
-                                 help='use with --resume-training to replace and fine tune just the very last layer')
-        self.parser.add_argument('--pretrained-model-path',
-                                 help='required when predicting with a model fine tuned with coverage; hopefully temporary')
         # testing / predicting
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
         self.parser.add_argument('-t', '--test-data', type=str, default='')
@@ -549,6 +537,25 @@ class HelixerModel(ABC):
         self.parser.add_argument('--nni', action='store_true')
         self.parser.add_argument('-v', '--verbose', action='store_true')
         self.parser.add_argument('--debug', action='store_true')
+        tuner = self.parser.add_argument_group('fine tuning',
+                                               'experimental parameters for training (a) final layer(s) '
+                                               'of the model on target species (or other small dataset) '
+                                               'with or without coverage, and '
+                                               'with the rest of the model weights locked to reduce over fitting')
+        tuner.add_argument('--fine-tune', action='store_true',
+                           help='use with --resume-training to replace and fine tune just the very last layer')
+        tuner.add_argument('--pretrained-model-path',
+                           help='required when predicting with a model fine tuned with coverage; hopefully temporary')
+        tuner.add_argument('--input-coverage',
+                           action='store_true',
+                           help='use "evaluation/rnaseq_(spliced_)coverage" from h5 as additional input '
+                                'for a late layer of the model')
+        tuner.add_argument('--coverage-norm', default=None,
+                           help='None, linear or log (recommended); how coverage will be normalized before inputting')
+        tuner.add_argument('--post-coverage-hidden-layer', action='store_true',
+                           help='adds extra dense layer between concatenating coverage and final output layer')
+        tuner.add_argument('--coverage-count', default=2, type=int,
+                           help='how many bam files were added (temporary param)')
 
     def parse_args(self):
         """Parses the arguments either from the command line via argparse by using self.parser or
@@ -927,7 +934,7 @@ class HelixerModel(ABC):
     def run(self):
         self.set_resources()
         self.open_data_files()
-        # we either train or predict
+        # we're training, not eval nor predict
         if not self.testing:
             if self.resume_training:
                 if not self.fine_tune:
@@ -985,7 +992,7 @@ class HelixerModel(ABC):
             strategy = tf.distribute.MirroredStrategy()
             print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
             with strategy.scope():
-                if not self.only_predictions and self.input_coverage:
+                if not self.input_coverage:
                     model = load_model(self.load_model_path)
                 else:
                     # duplicate code, just to see if it works...
