@@ -99,7 +99,7 @@ def get_sense_strand(read, sense_strand=2):
     return strand
 
 
-def get_sense_cov_intervals(read, chromosomes, strandedness, shift, mock_read_length, window_around_tn5_site):
+def get_sense_cov_intervals(read, chromosomes, strandedness, shift):
     """gets intervals for standard and spliced coverage"""
     chromosome = list(chromosomes.keys())[0]
     length = chromosomes[chromosome]
@@ -115,14 +115,10 @@ def get_sense_cov_intervals(read, chromosomes, strandedness, shift, mock_read_le
     spliced_raw = [x for x in read.cigar if is_spliced_coverage(x)]
 
     # handle special cases where we are not literally taking the read coverage
-    if shift or mock_read_length is not None or window_around_tn5_site is not None:
-        assert strandedness is None, "shift/mock read length/window around tn5 not yet implemented for stranded data."
+    if shift is not None:
+        assert strandedness is None, "shift not yet implemented for stranded data."
         if shift:
-            start, end = get_shifted_interval(read, mock_read_length)
-        if not shift and mock_read_length is not None:
-            start, end = get_mock_interval(read, mock_read_length)
-        if window_around_tn5_site is not None:
-            start, end = get_mock_tn5_window_as_interval(read, window_around_tn5_site)
+            start, end = get_shifted_interval(read)
 
         # handle edge of chromosome cases
         start = max(0, start)
@@ -136,7 +132,7 @@ def get_sense_cov_intervals(read, chromosomes, strandedness, shift, mock_read_le
     return out  # list [standard, spliced] of coverage intervals
 
 
-def get_shifted_interval(read, mock_length):
+def get_shifted_interval(read):
     """shift interval to tn5 cut site"""
     # tn5 bind about 9 bp of DNA, and adds adapters on the 5' end in each direction
     # so the middle of the binding site is just downstream of the 5' end
@@ -145,46 +141,12 @@ def get_shifted_interval(read, mock_length):
     # convention is to consider the center as +4 bp on "+" strand, and -5 bp on "-" strand reads
     if read.iv.strand == "+":
         # center is ~4.5 bp into the read (using standard +4)
-        if mock_length is not None:
-            return read.iv.start + 4, read.iv.start + 4 + mock_length
         return read.iv.start + 4, read.iv.end
     elif read.iv.strand == "-":
         # center is ~4.5 bp into the read (using standard -5)
         # start < end for HTSeq, regardless of 5' vs 3'.
         # i.e. on the "-" strand, the 5' read begin is the 'end'
-        if mock_length is not None:
-            return read.iv.end - 5 - mock_length, read.iv.end - 5
         return read.iv.start, read.iv.end - 5
-    else:
-        raise ValueError(f'unknown strand {read.iv.strand}')
-
-
-def get_mock_interval(read, mock_length):
-    if read.iv.strand == "+":
-        return read.iv.start, read.iv.start + mock_length
-    elif read.iv.strand == "-":
-        return read.iv.end - mock_length, read.iv.end
-    else:
-        raise ValueError(f'unknown strand {read.iv.strand}')
-
-
-def get_mock_tn5_window_as_interval(read, mock_length):
-    """find interval centered around tn5 binding site"""
-    # tn5 bind about 9 bp of DNA, and adds adapters on the 5' end in each direction
-    # so the middle of the binding site is just downstream of the 5' end
-    # 5' adapter ->[____x____]....
-    # .............[____x____] <- retpada '5
-    # convention is to consider the center as +4 bp on "+" strand, and -5 bp on "-" strand reads
-    upstream_half = mock_length // 2
-    downstream_half = mock_length - upstream_half
-    if read.iv.strand == "+":
-        # center is ~4.5 bp into the read (using standard +4)
-        return read.iv.start + 4 - upstream_half, read.iv.start + 4 + downstream_half
-    elif read.iv.strand == '-':
-        # center is ~4.5 bp into the read (using standard -5)
-        # start < end for HTSeq, regardless of 5' vs 3'.
-        # i.e. on the "-" strand, the 5' read begin is the 'end'
-        return read.iv.end - 5 - downstream_half, read.iv.end - 5 + upstream_half
     else:
         raise ValueError(f'unknown strand {read.iv.strand}')
 
@@ -308,9 +270,8 @@ def add_empty_cov_meta(h5, n):
                       fillvalue=''.encode('ASCII'))
 
 
-def cov_by_chrom(chrm_bam_strandedness_mock_window):
-    chromosome, bam_file, strandedness,  shift, mock_read_length, \
-        window_around_tn5_site = chrm_bam_strandedness_mock_window
+def cov_by_chrom(chrm_bam_strandedness_shift):
+    chromosome, bam_file, strandedness,  shift = chrm_bam_strandedness_shift
     htseqbam = H5_BAMS[bam_file]
 
     # setup dir for memmap array (AKA, don't try and store the whole chromosome in RAM
@@ -334,9 +295,7 @@ def cov_by_chrom(chrm_bam_strandedness_mock_window):
         if not skippable(read):
             counts['reads'] += 1
             standard_ivs, spliced_ivs = get_sense_cov_intervals(read, chromosomes, strandedness,
-                                                                shift=shift,
-                                                                mock_read_length=mock_read_length,
-                                                                window_around_tn5_site=window_around_tn5_site)
+                                                                shift=shift)
             for iv in standard_ivs:
                 cov_array[iv] += 1
                 counts['coverage'] += iv.end - iv.start
@@ -422,7 +381,7 @@ def pad_cov_right(short_arr, length, fill_value=-1.):
 
 
 def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_final_dimension, threads,
-                                   shift, mock_read_length, window_around_tn5_site):
+                                   shift):
     """calculates coverage for a coordinate from bam, saves to h5, returns counts for aggregating"""
     b_seqid, start_i, end_i = coord
     seqid = b_seqid.decode('utf-8')
@@ -434,8 +393,7 @@ def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_
     # calculate coverage
     nbams = len(H5_BAMS)
     # todo, guarnatee order?
-    mapargs = zip([seqid] * nbams, H5_BAMS.keys(), [strandedness] * nbams, [shift] * nbams,
-                  [mock_read_length] * nbams, [window_around_tn5_site] * nbams)
+    mapargs = zip([seqid] * nbams, H5_BAMS.keys(), [strandedness] * nbams, [shift] * nbams)
     if threads > 1:
         with Pool(threads) as p:
             coverage_out = p.map(cov_by_chrom, mapargs)
@@ -462,7 +420,7 @@ def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_
     return counts
 
 
-def main(species, h5_data, strandedness, prefix, threads, shift, mock_read_length, window_around_tn5_site):
+def main(species, h5_data, strandedness, prefix, threads, shift):
     # open h5
     h5 = h5py.File(h5_data, 'r+')
     # create evaluation, score, & metadata placeholders if they don't exist
@@ -506,8 +464,7 @@ def main(species, h5_data, strandedness, prefix, threads, shift, mock_read_lengt
         cage_coverage_from_coord_to_h5(
             coord, h5, strandedness=strandedness,
             chunk_size=chunk_size, old_final_dimension=old_final_dimension,
-            threads=threads, shift=shift, mock_read_length=mock_read_length,
-            window_around_tn5_site=window_around_tn5_site)
+            threads=threads, shift=shift)
 
     h5.close()
 
@@ -536,13 +493,6 @@ if __name__ == "__main__":
     parser.add_argument('--shift', action='store_true',
                         help='shift reads +4 (+strand) or -5 (-strand) base pairs as is typically done for ATAC-seq '
                              'data (can be combined with mock read length argument)')
-    parser.add_argument('--mock-read-length', type=int,
-                        help='count mock coverage based upon specified length from read start; '
-                             'e.g. to compare more fairly between studies with different read lengths. '
-                             'Not appropriate for spliced alignment')
-    parser.add_argument('--window-around-tn5-site', type=int,
-                        help='count mock coverage based on window of given length centered 4 (+strand) or 5 (-strand) '
-                             'base pairs into the original mapping of the read')
     args = parser.parse_args()
 
     if args.first_read_is_sense_strand:
@@ -580,6 +530,4 @@ if __name__ == "__main__":
          strandedness,
          pfx,
          args.threads,
-         args.shift,
-         args.mock_read_length,
-         args.window_around_tn5_site)
+         args.shift)
