@@ -136,7 +136,7 @@ class HelixerSequence(Sequence):
         self.shuffle = shuffle
         self.batch_size = batch_size
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
-                                 'coverage_norm', 'coverage_count', 'overlap', 'overlap_offset', 'core_length',
+                                 'coverage_count', 'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
                                  'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
 
@@ -187,6 +187,7 @@ class HelixerSequence(Sequence):
         self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)  # use BITSHUFFLE
 
         print(f'\nstarting to load {self.mode} data into memory..')
+
         for h5_file in self.h5_files:
             self._load_one_h5(h5_file)
 
@@ -554,8 +555,6 @@ class HelixerModel(ABC):
                            help='None, linear or log (recommended); how coverage will be normalized before inputting')
         tuner.add_argument('--post-coverage-hidden-layer', action='store_true',
                            help='adds extra dense layer between concatenating coverage and final output layer')
-        tuner.add_argument('--coverage-count', default=2, type=int,
-                           help='how many bam files were added (temporary param)')
 
     def parse_args(self):
         """Parses the arguments either from the command line via argparse by using self.parser or
@@ -934,6 +933,14 @@ class HelixerModel(ABC):
     def run(self):
         self.set_resources()
         self.open_data_files()
+        if self.input_coverage:
+            # grab an h5 file
+            try:
+                h5_files = self.h5_tests
+            except AttributeError:
+                h5_files = self.h5_trains
+            self.coverage_count = h5_files[0]['evaluation/rnaseq_coverage'].shape[2]
+
         # we're training, not eval nor predict
         if not self.testing:
             if self.resume_training:
