@@ -556,6 +556,8 @@ class HelixerModel(ABC):
         tuner.add_argument('--post-coverage-hidden-layer', action='store_true',
                            help='adds extra dense layer between concatenating coverage and final output layer')
 
+        self.coverage_count = None
+
     def parse_args(self):
         """Parses the arguments either from the command line via argparse by using self.parser or
         takes a list of cli arguments from self.cli_args. This can be used to invoke a HelixerModel from
@@ -934,7 +936,8 @@ class HelixerModel(ABC):
         self.set_resources()
         self.open_data_files()
         if self.input_coverage:
-            # grab an h5 file
+            # preview first h5 file to find number of bam files and set 'coverage_count'
+            # which is used to calculate model input size +
             try:
                 h5_files = self.h5_tests
             except AttributeError:
@@ -948,20 +951,20 @@ class HelixerModel(ABC):
                     model = load_model(self.load_model_path)
                 else:
                     oldmodel = load_model(self.load_model_path)
-                    #model.load_weights(self.load_model_path)
+                    assert oldmodel.input.shape[2] == 4, \
+                        f"input shape of trained model != 4 ({oldmodel.input.shape[2]}); " \
+                        f"fine tuning is only supported on models trained without coverage"
                     # freeze weights and replace everything from the dense layer
                     dense_at = [l.name for l in oldmodel.layers].index('dense')
                     for layer in oldmodel.layers:
                         layer.trainable = False
-                    # this currently assumes the base-model is trained without coverage and
-                    # really really will need to be cleaned up
+                    # the following assumes the base-model is trained without coverage
                     if not self.input_coverage:
                         inp = oldmodel.input
                         output = self.model_hat((oldmodel.layers[dense_at - 1].output, None))
                         model = Model(inp, output)
                     else:
-                        # hacking RNAseq coverage in. This only works when the pre-trained model
-                        # did not have coverage. Should assert or check that. Todo!
+                        # hacking RNAseq coverage in.
                         values_per_bp = 4 + self.coverage_count * 2
 
                         raw_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
@@ -1011,10 +1014,7 @@ class HelixerModel(ABC):
                     dense_at = [l.name for l in oldmodel.layers].index('dense')
                     for layer in oldmodel.layers:
                         layer.trainable = False
-                    # this currently assumes the base-model is trained without coverage and
-                    # really really will need to be cleaned up
-                    # hacking RNAseq coverage in. This only works when the pre-trained model
-                    # did not have coverage. Should assert or check that. Todo!
+
                     values_per_bp = 4 + self.coverage_count * 2
 
                     raw_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
