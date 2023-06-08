@@ -964,18 +964,7 @@ class HelixerModel(ABC):
                         output = self.model_hat((oldmodel.layers[dense_at - 1].output, None))
                         model = Model(inp, output)
                     else:
-                        # hacking RNAseq coverage in.
-                        values_per_bp = 4 + self.coverage_count * 2
-
-                        raw_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
-                                          name='main_input')
-                        # make a callable model that gives the intermediate output, with first 4 of input (CATG)
-                        excerpt_model = Model(oldmodel.input, oldmodel.layers[dense_at - 2].output)
-                        x = excerpt_model(raw_input[:, :, :4])
-                        # add hat, including coverage back on
-                        output = self.model_hat((x, raw_input[:, :, 4:]))
-
-                        model = Model(raw_input, output)
+                        model = self.insert_coverage_before_hat(oldmodel, dense_at)
 
             else:
                 model = self.model()
@@ -1005,27 +994,18 @@ class HelixerModel(ABC):
                 if not self.input_coverage:
                     model = load_model(self.load_model_path)
                 else:
-                    # duplicate code, just to see if it works...
-                    # to be clear, this is a horrible hack; and will need to be cleaned up before
-                    # anyone can be reasonably expected to use it
+                    # for whatever reason, the fine tuning method is not saving the full model
+                    # in an entirely valid h5 file (depending on if you ask h5py or h5ls). puh.
+                    # thus loading the original model is both the easiest way to get architecture
+                    # setup and seems safer to make sure _all_ and not just _new_ weights are there
                     oldmodel = load_model(self.pretrained_model_path)
-                    #model.load_weights(self.load_model_path)
+                    # repeat everything done setting up training to get exact architecture
                     # freeze weights and replace everything from the dense layer
                     dense_at = [l.name for l in oldmodel.layers].index('dense')
                     for layer in oldmodel.layers:
                         layer.trainable = False
 
-                    values_per_bp = 4 + self.coverage_count * 2
-
-                    raw_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
-                                      name='main_input')
-                    # make a callable model that gives the intermediate output, with first 4 of input (CATG)
-                    excerpt_model = Model(oldmodel.input, oldmodel.layers[dense_at - 2].output)
-                    x = excerpt_model(raw_input[:, :, :4])
-                    # add hat, including coverage back on
-                    output = self.model_hat((x, raw_input[:, :, 4:]))
-
-                    model = Model(raw_input, output)
+                    model = self.insert_coverage_before_hat(oldmodel, dense_at)
                     model.load_weights(self.load_model_path)
             self._print_model_info(model)
 
@@ -1043,3 +1023,19 @@ class HelixerModel(ABC):
                 self._make_predictions(model)
             for h5_test in self.h5_tests:
                 h5_test.close()
+
+    def insert_coverage_before_hat(self, oldmodel, dense_at):
+        """splits input in half, feeds CATG to the main model, and coverage in before tuning layers"""
+        # hacking RNAseq coverage in.
+        values_per_bp = 4 + self.coverage_count * 2
+
+        raw_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
+                          name='main_input')
+        # make a callable model that gives the intermediate output, with first 4 of input (CATG)
+        excerpt_model = Model(oldmodel.input, oldmodel.layers[dense_at - 2].output)
+        x = excerpt_model(raw_input[:, :, :4])
+        # add hat, including coverage back on
+        output = self.model_hat((x, raw_input[:, :, 4:]))
+
+        model = Model(raw_input, output)
+        return model
