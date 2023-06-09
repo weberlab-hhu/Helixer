@@ -237,7 +237,7 @@ but nevertheless some patterns are clear. You will probably want to:
 - include more and _more diverse_ species to boost performance (current performant released models were trained
   on many dozens of species)
 - include only higher quality annotations to boost performance
-- wrestle with the obvious trade off between the proceeding two points... 
+- wrestle with the obvious tradeoff between the proceeding two points... 
 
 Trial and error has been a major part of the training process, 
 particularly for species selection. Eventually we automated that
@@ -245,6 +245,16 @@ trial and error with many random draws of training species and a 2-fold cross va
 process here: https://github.com/alisandra/SpeciesSelector.
 Given some compute resources and a target set of genomes, this
 is a fairly safe way to achieve a baseline or even quite respectable model.
+
+### Validation Species selection
+It is critical here that your validation species are
+representative of your target prediction range. As with training,
+it is better to have a wider selection than your target predictive
+range than narrower. While model parameters are not directly optimized
+for validation species, these species _are_ used to select the best
+model; so it is critical that they are of high enough quality that
+metrics improve when the model is improving and get worse when the model is getting
+worse. Validation files _can_ be down sampled for performance. 
 
 ### Hyperparameter optimization
 The helixer codebase is built to work with nni: https://github.com/microsoft/nni
