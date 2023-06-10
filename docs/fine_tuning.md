@@ -149,6 +149,50 @@ HybridModel.py -v --batch-size 140 --val-test-batch-size 280 \
 
 ## Tuning with extrinsic information
 Extrinsic information that could be used to help gene calling
-is extremely varied. Moreover, much is sequencing based and has
-a tendency to be large, require extensive processing, and then 
-be replaced by a better method a year later.
+is extremely varied in both technology and execution. 
+Moreover, much is sequencing based and has
+a tendency to be large and require extensive processing. New
+developments and improvements are coming out continuously. 
+Training a network to generalize for e.g. RNAseq input would
+require training time input of data from high-quality, degraded,
+contaminated, normalized and unnormalized,
+low and high tissue-coverage RNA. 
+It would require this from Illumina and IsoSeq, 
+with random and poly-T priming, with and without 5' tagging, with
+minimally and over PCR amplified input; and that for many or
+most training species. Thus, we have not trained broadly 
+generalizable models with extrinsic input.
+**However, adding extrinsic input at fine-tune
+time and tuning on exactly the same extrinsic input you will 
+test with opens new possibilities.**
+
+This process starts as **Freeze + new final layers** above,
+but before the third step of selecting the 
+most confident predictions, coverage track(s) are added 
+to the h5 file of pseudolabels from Helixer post.
+
+This assumes you already have aligned reads in .bam format
+with information relating to genic regions (e.g. RNAseq,
+CAGE). 
+
+#### Add the data to the h5 file
+
+```commandline
+python <path_to>/Helixer/helixer/evaluation/add_ngs_coverage.py \
+  -s <species_name_or_prefix> --second-read-is-sense-strand 
+  --bam <your_sorted_indexed_bam_file(s)> --h5-data <your_species_helixer_post.h5> \
+   --dataset-prefix rnaseq --threads 1
+```
+
+Where `--second-read-is-sense-strand`, `--first-read-is-sense-strand`,
+or `--unstranded` is chosen to match the protocol. 
+
+You can add multiple bam files `--bam A.bam B.bam C.bam` or `--bam a/path/*.bam`,
+ans long as their srandedness matches. If you want to add reads with different
+protocols, run the above script once per strandedness.
+
+Once you've done this, continue with selecting the most confident
+subsequences, and splitting them into training and validation sets 
+as before. 
+
+#### Tuning with RNAseq
