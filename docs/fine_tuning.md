@@ -53,10 +53,48 @@ target is critical. A training + validation set from one species
 may predict extra well within that species, but fail to generalize
 to even a close relative. 
 
-Species specific tuning raises the same conundrum it does with 
+Species specific tuning raises the same conundrum for Helixer that it does with 
 any gene calling tool; in that it requires existing gene models
-to train. Established methods can be used here, although care
+to train. Established (e.g. data-centric) methods can be used here, although care
 should be taken that not-just-genes, but also a representative
 proportion of intergenic sequences are included. Moreover, insofar
 as the existing pre-trained Helixer model has respectable (if improvable)
 performance; there is an additional new option. 
+
+### Create pseudolabels with Helixer for fine-tuning
+Areas and genes within genomes differ in their difficulty level
+for gene callers. The following is an idea to leverage these differences,
+by fine-tuning Helixer on regions predicted confidently, so-as to make
+predictions in other regions better. 
+
+- first, setup numeric data (`fasta2h5.py`), 
+  raw predictions (`HybridModely.py`), and post-processed predictions 
+  (`helixer_post_bin`) according to the three-step process described in 
+  the main readme
+- second, convert the gff3 output by HelixerPost to Helixer's training
+  data format
+
+```commandline
+TODO
+```
+- 
+- third, select the 'most confident' predictions (subsequences, normally 21384bp each). 
+  Here, 'most confident' is defined
+  as the predictions with the smallest absolute discrepancy between the
+  raw predictions and the post-processed predictions; stratified by fraction
+  of the intergenic class. Stratification is necessary to avoid selecting 
+  all intergenic (which tends to be predicted confidently) examples, and 
+  teaching the fine-tuned model to predict only intergenic. Assuring that 
+  selected tuning examples are representative for the genome could and should
+  be improved further.
+
+```
+python filter-to-most-certain.py --write-by 6415200 \
+    --h5-to-filter <your_species_helixer_post.h5> --predictions <predictions.h5> \
+    --keep-fraction 0.2 --output-file <filtered.h5>
+```
+
+where filter-to-most-certain.py is the script here TODO
+
+- fourth,
+  
