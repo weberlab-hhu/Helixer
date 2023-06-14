@@ -175,7 +175,7 @@ This assumes you already have aligned reads in .bam format
 with information relating to genic regions (e.g. RNAseq,
 CAGE). 
 
-#### Add the data to the h5 file
+#### Add aligned reads to the h5 file as coverage tracks
 
 ```commandline
 python <path_to>/Helixer/helixer/evaluation/add_ngs_coverage.py \
@@ -188,11 +188,85 @@ Where `--second-read-is-sense-strand`, `--first-read-is-sense-strand`,
 or `--unstranded` is chosen to match the protocol. 
 
 You can add multiple bam files `--bam A.bam B.bam C.bam` or `--bam a/path/*.bam`,
-ans long as their srandedness matches. If you want to add reads with different
+as long as their srandedness matches. If you want to add reads with different
 protocols, run the above script once per strandedness.
 
+This script changes the file given to `--h5-data` in place, adding
+the datasets `rnaseq_coverage` and `rnaseq_spliced_coverage` which
+will be used as coverage input
+
+#### Select confident and split train / val
 Once you've done this, continue with selecting the most confident
 subsequences, and splitting them into training and validation sets 
-as before. 
+as before.
 
 #### Tuning with RNAseq
+This is very similar to the fine-tuning above, but requires
+a few extra parameters.
+
+```
+HybridModel.py -v --batch-size 140 --val-test-batch-size 280 \
+   --class-weights "[0.7, 1.6, 1.2, 1.2]" --transition-weights "[1, 12, 3, 1, 12, 3]" \
+   --predict-phase --learning-rate 0.0001 --resume-training --fine-tune \
+   --load-model-path <$HOME/.local/share/Helixer/models/land_plant/land_plant_v0.3_a_0080.h5> \
+   --input-coverage --coverage-norm log --data-dir --save-model-path <best_tuned_rnaseq_model.h5>
+```
+
+The new parameters are `--input-coverage`, which causes any data
+in the h5 datasets `rnaseq_coverage` and `rnaseq_spliced_coverage` 
+to be provided to the network after the frozen weights, but before
+the new final layers; and `--coverage-norm log` (recommended for RNAseq)
+which causes this
+data to be log transformed before being input to the network.
+Additionally, you can add `--post-coverage-hidden-layer` to add and tune not
+1, but 2 final layers.
+
+In this way, the network will learn the typical relation between high confidence
+gene models and the supplied RNAseq data, and can use this to help predict
+_all_ gene models. Thus, _in theory_ if the data has 3' bias the network will learn to use
+it for the 3' end of the gene, and if it has DNA contamination and resulting
+background reads, the network will learn to ignore the appropriate amount of
+background, and if the data is high quality and has very consistent correspondence
+to gene regions, the network will learn to trust it heavily. In theory. 
+
+> Note that this could be extended for any extrinsic data from which base
+level data can be created; but only input of data from .bam files is implemented
+here. 
+
+## Inference with tuned models
+For both tuning options without coverage, there are no special
+requirements at inference time. Just set `--model-filepath`
+to the fine-tuned model, and `--subsequence-length` to a 
+value substantially above the typical gene length and divisible
+by the pool-size used during training (generally 9) for `Helixer.py`. 
+If using the three-step process, just point `--load-model-path`
+to the fine-tuned model when running `Helixer.py`.
+
+### Coverage models
+Inference with coverage is a bit more complicated.
+
+First, and unsurprisingly, you must provide the model
+coverage at inference time. This means that
+- you will have to take the three-step inference process,
+  and make sure the h5 file has coverage
+  - yes, you could take the file from above, if and only if
+    the subsequence length (default 21384)
+    is substantially longer than the typical genetic loci length; i.e. this 
+    probably works for plants and fungi, not for animals.
+  - if you need a longer subsequence-length at inference time,
+    the only currently implemented option is to make an h5 each for training
+    and inference and then add coverage to each. **Make sure the coverage is 
+    added in exactly the same order as at training time!**
+- You will have to specify parameters at inference time, as done at 
+  train time. These are `--input-coverage`, `--coverage-norm <log>`,
+  `--post-coverage-hidden-layer` (if used).
+- Finally, you will have to provide `Helixer.py` the path not just to
+  the fine-tuned model with `--load-model-path`; but also provide the 
+  pretrained model on which the tuning was performed under 
+  `--pretrained-model-path`.
+
+## Feedback very welcome
+As this remains very experimental, we would highly encourage 
+you to share your experience either with these methods or alternatives
+you develop yourself; be it simply as a github issue, as a tutorial, a 
+manuscript or anything in between.
