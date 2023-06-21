@@ -491,8 +491,8 @@ if __name__ == "__main__":
     parser.add_argument('--threads', default=8, help="how many threads, set to a value <= 1 to not use multiprocessing",
                         type=int)
     parser.add_argument('--shift', action='store_true',
-                        help='shift reads +4 (+strand) or -5 (-strand) base pairs as is typically done for ATAC-seq '
-                             'data (can be combined with mock read length argument)')
+                        help='shift reads +4 (+ strand) or -5 (- strand) base pairs as is typically done for ATAC-seq '
+                             'data')
     args = parser.parse_args()
 
     if args.first_read_is_sense_strand:
