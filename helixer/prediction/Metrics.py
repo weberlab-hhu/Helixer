@@ -235,6 +235,13 @@ class ConfusionMatrixPhase(ConfusionMatrix):
         d['FP'] = n_mistakes
         d['FN'] = n_mistakes
         ConfusionMatrix._add_to_scores(d)
+        
+        # phase
+        # this is a lot like CDS F1, but with frame shifts still being penalized (as well as qualifiers above)
+        d = scores['phase']
+        for base_metric in ['TP', 'FP', 'FN']:
+            d[base_metric] = sum([scores[m][base_metric] for m in ['phase_0', 'phase_1', 'phase_2']])
+        ConfusionMatrix._add_to_scores(d)
 
         return scores
 
