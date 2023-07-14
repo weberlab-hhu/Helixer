@@ -115,10 +115,9 @@ def get_sense_cov_intervals(read, chromosomes, strandedness, shift):
     spliced_raw = [x for x in read.cigar if is_spliced_coverage(x)]
 
     # handle special cases where we are not literally taking the read coverage
-    if shift is not None:
+    if shift:
         assert strandedness is None, "shift not yet implemented for stranded data."
-        if shift:
-            start, end = get_shifted_interval(read)
+        start, end = get_shifted_interval(read)
 
         # handle edge of chromosome cases
         start = max(0, start)
