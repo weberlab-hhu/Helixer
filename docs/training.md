@@ -122,10 +122,13 @@ example
 Now we use the datasets in `example/train/` to train a model with our 
 LSTM architecture for 5 epochs and save the best iteration 
 (according to the Genic F1 on the validation dataset) to 
-`example/best_helixer_model.h5`. 
+`example/best_helixer_model.h5`. The parameter `--predict-phase`
+is necessary so that the resulting models are compatible with post-processing
+via HelixerPost.
 
 ```shell script
-python HybridModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 
+python HybridModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 \
+  --epochs 5 --predict-phase
 ```
 
 The rest of this example will continue with the model example/best_helixer_model.h5 produced above. 
