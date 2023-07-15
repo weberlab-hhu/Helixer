@@ -62,12 +62,11 @@ would include multiple species for each) and use Ostreococcus_lucimarinus for
 testing / predicting / etc.
 
 ```shell script
-# The training script requires two files in one folder named
-# training_data.h5 and validation_data.h5
+# The training script requires at least two files in the data folder: one matching
+# training_data*h5 and one matching validation_data*h5, respectively.
 #
-# while we would need to include multiple datasets to create our
-# training_data.h5 and validation_data.h5 normally, for this as-simple-
-# as-possible example we will point to one species each with symlinks
+# For this as-simple-as-possible example we will point to one species each
+# of training and validation with symlinks
 mkdir example/train
 cd example/train/
 # set training data 
@@ -117,10 +116,7 @@ example
 > ├── validation_data.species_08.h5
 > └── validation_data.species_09.h5
 > ```
->
-> Of course, using the actual species names or identifiers instead
-> of 'species\_01' ... 'species\_09' would be highly encouraged
-> for organizational purposes.
+
 
 ## Model training
 Now we use the datasets in `example/train/` to train a model with our 
