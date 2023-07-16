@@ -25,7 +25,11 @@ instead of randomly.
 
 This is very comparable to training from scratch, you just add
 `--load-model-path <trained_model.h5> --resume-training`
-to the command `HybridModel.py` otherwise described in [training.md].
+to the training command with `HybridModel.py` otherwise described 
+in [training.md](training.md#model-training).
+Note also that the architecture is taken from the pre-trained network,
+so parameters affecting the architecture (e.g. `--lstm-layers` and `--filter-depth`)
+are not necessary and will have no effect. 
 
 Note that this is potentially just as subject to over fitting
 as training from scratch, and similar amounts of data should be
@@ -35,6 +39,22 @@ target is very critical.
 Possible parameters that may help catch the sweet spot where
 tuning is helping before over fitting starts hurting are
 reducing the `--learning-rate` and the `--check-every-nth-batch`.
+The idea behind both of these changes is to reduce how much the
+model updates between checkpoints, so that "finding the sweet spot"
+is less luck dependent.
+
+The default learning rate is `3e-4`, so values such as `1e-4` or `3e-5` might
+be helpful. This causes the network to make smaller updates to the weights at
+each step.
+
+The default checkpointing occurs once per epoch, you can add additional checks
+based on the number of batches by adding `--check-every-nth-batch`; this then
+should be set to something smaller than the batches per epoch. In the example
+below, there are 1302 batches per epoch. 
+
+```
+266/1302 [=====>........................] - ETA: 7:13 - loss: 0.1457 - genic_loss: 0.1703 - phase_loss: 0.0476   
+```
 
 While simple, and requiring slightly less training time;
 the advantages over retraining from scratch may be limited. 
