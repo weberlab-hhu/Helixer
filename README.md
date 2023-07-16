@@ -48,11 +48,12 @@ Please additionally see [dev installation instructions](docs/dev_install.md)
 ## Example
 
 ### Training and Evaluation
-Information on training and evaluating the models can be found in separate `docs` files  
-[Training models](docs/training.md)  
+If the provided models don't work for your needs, 
+information on [training and evaluating](docs/training.md) the models can be found in the [docs folder](docs/), as well as notes on experimental ways to [fine-tune](docs/fine_tuning.md)
+the network for target species. 
 
 ### Inference (gene calling)
-If you want to use Helixer to annotate a genome, start here.
+If you want to use Helixer to annotate a genome with a provided model, start here.
 
 #### Using trained models
 
@@ -86,6 +87,7 @@ prediction of base-wise probabilities with the Deep Learning based model (`helix
 post-processing into primary gene models (`helixer_post_bin`). See respective help functions for additional
 usage information, if necessary.
 
+##### Run on target genomes, 3-step method
 ```bash
 # example broken into individual steps
 fasta2h5.py --species Arabidopsis_lyrata --h5-output-path Arabidopsis_lyrata.h5 --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa
