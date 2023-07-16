@@ -58,8 +58,14 @@ If you want to use Helixer to annotate a genome with a provided model, start her
 #### Using trained models
 
 ##### Acquire models
-The best models for each or all lineages can automatically be
-downloaded with the `fetch_helixer_models.py` script.
+The best models for all lineages are best downloaded by running.
+
+```
+fetch_helixer_models.py
+```
+
+If desired, the `--lineage` can be specified, or `--all` released models
+can be fetched. 
 
 The available lineages are `land_plant`, `vertebrate`, `invertebrate`,
 and `fungi`.
@@ -92,9 +98,10 @@ usage information, if necessary.
 # example broken into individual steps
 fasta2h5.py --species Arabidopsis_lyrata --h5-output-path Arabidopsis_lyrata.h5 --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa
 # the exact location ($HOME/.local/share/) of the model comes from appdirs
-# the model was downloaded when Helixer.py was called above
+# the model was downloaded when fetch_helixer_models.py was called above
 # this example code is for _linux_ and will need to be modified for other OSs
-HybridModel.py --load-model-path $HOME/.local/share/Helixer/models/land_plant.h5 --test-data Arabidopsis_lyrata.h5 --overlap --val-test-batch-size 32 -v
+HybridModel.py --load-model-path $HOME/.local/share/Helixer/models/land_plant/land_plant_v0.3_a_0080.h5 \
+     --test-data Arabidopsis_lyrata.h5 --overlap --val-test-batch-size 32 -v
 helixer_post_bin Arabidopsis_lyrata.h5 predictions.h5 100 0.1 0.8 60 Arabidopsis_lyrata_chromosome8_helixer.gff3
 ```
 
