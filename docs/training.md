@@ -172,7 +172,8 @@ Or we can directly evaluate the predictive performance of our model.
 
 ```shell script
 HybridModel.py --load-model-path example/best_helixer_model.h5 \
-  --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 --eval
+  --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 \
+  --predict-phase --eval
 ```
 
 The last command can be sped up with a higher batch size and should give us the same break down that is performed 
@@ -261,7 +262,8 @@ for speed purposes.
 
 ### Hyperparameter optimization
 The helixer codebase is built to work with [nni](https://github.com/microsoft/nni)
-for hyperparameter optimization. Follow standard nni instructions on setting up the config.yml
-and search_space.json files and additionally add
+for hyperparameter optimization. If you want to optimize the hyperparameters, we recommend
+following standard nni instructions on setting up the config.yml
+and search_space.json files and additionally adding
 `--nni` to the `HybridModel.py` command.
 
