@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
    name='helixer',
-   version='0.3.1',
+   version='0.3.2',
    description='Deep Learning fun on gene structure data',
    packages=['helixer', 'helixer.core', 'helixer.prediction', 'helixer.evaluation', 'helixer.tests', 'helixer.export'],
    package_data={'helixer': ['testdata/*.fa', 'testdata/*.gff']},
