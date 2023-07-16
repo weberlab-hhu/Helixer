@@ -36,6 +36,7 @@ as training from scratch, and similar amounts of data should be
 considered. A validation set that is representative of the prediction
 target is very critical. 
 
+##### additional useful parameters
 Possible parameters that may help catch the sweet spot where
 tuning is helping before over fitting starts hurting are
 reducing the `--learning-rate` and the `--check-every-nth-batch`.
@@ -69,18 +70,19 @@ network. Thus, this is a potential option, even training _within_
 one species. 
 
 To run this, add `--fine-tune` as well as the parameters from above:
-`--load-model-path <trained_model.h5> --resume-training`. Further,
-you can include `--post-coverage-hidden-layer` to allow for a potentially
-more complex fit. 
+`--load-model-path <trained_model.h5> --resume-training`. 
 
 As before, data quality and that the data represents the prediction
 target is critical. A training + validation set from one species
 may predict extra well within that species, but fail to generalize
-to even a close relative. 
+to even a close relative. Similarly a bias in the training + validation
+set towards highly expressed genes, or highly conserved genes will 
+likely be mirrored by the network.
 
 Species specific tuning raises the same conundrum for Helixer that it does with 
 any gene calling tool; in that it requires existing gene models
-to train. Established (e.g. data-centric) methods can be used here, although care
+to train. Established (e.g. data-centric, or self-supervised + data supported
+as used in genemark-ETP) methods can be used here, although care
 should be taken that not-just-genes, but also a representative
 proportion of intergenic sequences are included. It's also critical
 to keep in mind that the Neural Network is unconstrained in using all available 
@@ -104,10 +106,14 @@ for gene callers. The following is an idea to leverage these differences,
 by fine-tuning Helixer on regions predicted confidently, so-as to make
 predictions overall, but especially in harder regions better. 
 
+Before starting, download a couple of helper scripts:
+[filter-to-most-certain.py](https://raw.githubusercontent.com/weberlab-hhu/helixer_scratch/master/data_scripts/filter-to-most-certain.py) and 
+[n90_train_val_split.py](https://raw.githubusercontent.com/weberlab-hhu/helixer_scratch/master/data_scripts/n90_train_val_split.py)]; and put them in the same folder.
+
 - first, setup numeric data (`fasta2h5.py`), 
   raw predictions (`HybridModely.py`), and post-processed predictions 
-  (`helixer_post_bin`) according to the three-step process described in 
-  the main readme
+  (`helixer_post_bin`) according to the [three-step process described in 
+  the main readme](../README.md#run-on-target-genomes-3-step-method)
 - second, convert the gff3 output by HelixerPost to Helixer's training
   data format
 
@@ -132,13 +138,10 @@ geenuff2h5.py --h5-output-path <your_species_helixer_post>.h5 \
   be improved further.
 
 ```
-python filter-to-most-certain.py --write-by 6415200 \
+python3 filter-to-most-certain.py --write-by 6415200 \
     --h5-to-filter <your_species_helixer_post.h5> --predictions <predictions.h5> \
     --keep-fraction 0.2 --output-file <filtered.h5>
 ```
-
-where filter-to-most-certain.py is the script 
-[here](https://raw.githubusercontent.com/weberlab-hhu/helixer_scratch/master/data_scripts/filter-to-most-certain.py)
 
 - fourth, we'll split the resulting confident predictions into
   train and validation files. Each sequence from the fasta file will be
@@ -149,20 +152,31 @@ where filter-to-most-certain.py is the script
 
 ```commandline
 mkdir <fine_tuning_data_dir>
-python n90_train_val_split.py --write-by 6415200 \
+python3 n90_train_val_split.py --write-by 6415200 \
     --h5-to-split <filtered.h5> --output-pfx <fine_tuning_data_dir>/
 # note that any directories in the output-pfx should exist
 # it need not be an empty directory, but it is the simplest here
+
+# check that training and validation files were created
+ls -sSh <fine_tuning_data_dir>/
 ```
+> Note, if you've been taking the example from the readme or any other
+> example so small that it has just one chromosome; we're about to hit a tiny-example specific problem.
+> Specifically, the full sequence split will mean that the one chromosome available was assigned
+> entirely to training and that the validation file is empty here. This should not occur
+> with real data, and you should also _definitely not_ do the following hack with real data,
+> as it just about guarantees overfitting. But just for the sake of *making an example run*,
+> and if and only if the above applies to you, copy the training file to be a mock non-empty validation file, 
+> (e.g. `cp <fine_tuning_data_dir>/training_data.h5 <fine_tuning_data_dir>/validation_data.h5`
 
 - fifth, tune the model! 
 ```commandline
 # model architecture parameters are taken from the loaded model
 # but training, weighting and loss parameters do need to be specified
 # appropriate batch sizes depend on the size of your GPU
-HybridModel.py -v --batch-size 140 --val-test-batch-size 280 \
+HybridModel.py -v --batch-size 50 --val-test-batch-size 100 -e100 \
   --class-weights "[0.7, 1.6, 1.2, 1.2]" --transition-weights "[1, 12, 3, 1, 12, 3]" \
-  --predict-phase --learning-rate 0.0001 --resume-training --fine-tune 
+  --predict-phase --learning-rate 0.0001 --resume-training --fine-tune \
   --load-model-path <$HOME/.local/share/Helixer/models/land_plant/land_plant_v0.3_a_0080.h5> \
   --data-dir <fine_tuning_data_dir> --save-model-path <tuned_for_your_species_best_model.h5>
 ```
