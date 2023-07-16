@@ -127,7 +127,7 @@ is necessary so that the resulting models are compatible with post-processing
 via HelixerPost.
 
 ```shell script
-python HybridModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 \
+HybridModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 \
   --epochs 5 --predict-phase
 ```
 
@@ -138,9 +138,11 @@ The current 'full size' architecture that has been performing well
 in hyper optimization runs is:
 
 ```shell script
-# the indicated batch size and val-test-batch size have been chosen to work on a 2080ti with 11GB RAM
-# and should be set as large as the graphics card will allow. 
-python HybridModel.py -v --pool-size 9 --batch-size 50 --val-test-batch-size 100 \
+# the indicated batch size and val-test-batch size have been chosen to work on a GTX 2080ti with 11GB RAM
+# and should be set as large as the graphics card will allow. For instance, much of our training was
+# done on RTX 8000s with 48GB of ram, and there we could set `--batch-size 240 --val-test-batch-size 480`
+# for otherwise comparable hyperparameters
+HybridModel.py -v --pool-size 9 --batch-size 50 --val-test-batch-size 100 \
   --class-weights "[0.7, 1.6, 1.2, 1.2]" --transition-weights "[1, 12, 3, 1, 12, 3]" --predict-phase \
   --lstm-layers 3 --cnn-layers 4 --units 128 --filter-depth 96 --kernel-size 10 \
   --data-dir example/train/ --save-model-path example/fullsize_helixer_model.h5
@@ -161,7 +163,7 @@ NOTE: Generating predictions can produce very large files as
 we save every individual softmax value in 32 bit floating point format. 
 For this very small genome the predictions require 524MB of disk space. 
 ```shell script
-python HybridModel.py --load-model-path example/best_helixer_model.h5 \
+HybridModel.py --load-model-path example/best_helixer_model.h5 \
   --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 \
   --prediction-output-path example/Ostreococcus_lucimarinus_predictions.h5
 ```
@@ -169,7 +171,7 @@ python HybridModel.py --load-model-path example/best_helixer_model.h5 \
 Or we can directly evaluate the predictive performance of our model. 
 
 ```shell script
-python HybridModel.py --load-model-path example/best_helixer_model.h5 \
+HybridModel.py --load-model-path example/best_helixer_model.h5 \
   --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 --eval
 ```
 
