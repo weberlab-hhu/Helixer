@@ -7,7 +7,7 @@ Gene calling with Deep Neural Networks.
 This software is undergoing active testing and development.
 
 ## Goal
-Setup and train models for _de novo_ prediction of gene structure.
+Setup and train models for _ab initio_ prediction of gene structure.
 That is, to perform "gene calling" and identify
 which base pairs in a genome belong to the UTR/CDS/Intron of genes. 
 Train one model for a wide variety of genomes.
@@ -30,6 +30,7 @@ During development we have used
 
 * nvidia-driver-495
 * nvidia-driver-510
+* nvidia-driver-525
 
 and many in between.
 
@@ -49,8 +50,9 @@ Please additionally see [dev installation instructions](docs/dev_install.md)
 
 ### Training and Evaluation
 If the provided models don't work for your needs, 
-information on [training and evaluating](docs/training.md) the models can be found in the [docs folder](docs/), as well as notes on experimental ways to [fine-tune](docs/fine_tuning.md)
-the network for target species. 
+information on [training and evaluating](docs/training.md) the models can be found in the [docs folder](docs/), 
+as well as notes on experimental ways to [fine-tune](docs/fine_tuning.md) 
+the network for target species including a hack to include RNAseq data in the input.
 
 ### Inference (gene calling)
 If you want to use Helixer to annotate a genome with a provided model, start here.
