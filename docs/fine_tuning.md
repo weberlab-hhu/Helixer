@@ -210,16 +210,29 @@ with information relating to genic regions (e.g. RNAseq,
 CAGE). 
 
 #### Add aligned reads to the h5 file as coverage tracks
+*RECOMMENDED:* make a back up of your helixer-post-output-converted-back-to-h5 from above
+as this process will change it in place
 
 ```commandline
-python <path_to>/Helixer/helixer/evaluation/add_ngs_coverage.py \
+cp <your_species_helixer_post.h5> <your_species_helixer_post_backup.h5>
+```
+If anything goes wrong, you can copy this back to start over from here.
+
+Now on to adding the extrinsic data
+
+```commandline
+# in the provided containers, replace <path_to> below with /home/helixer_user
+# otherwise with the path to where you've cloned the repository
+python3 <path_to>/Helixer/helixer/evaluation/add_ngs_coverage.py \
   -s <species_name_or_prefix> --second-read-is-sense-strand 
   --bam <your_sorted_indexed_bam_file(s)> --h5-data <your_species_helixer_post.h5> \
    --dataset-prefix rnaseq --threads 1
 ```
 
-Where `--second-read-is-sense-strand`, `--first-read-is-sense-strand`,
-or `--unstranded` is chosen to match the protocol. 
+Where one of `--second-read-is-sense-strand`, `--first-read-is-sense-strand`,
+or `--unstranded` is chosen to match the protocol. For the common dUTP
+stranded protocol (Illumina stranded libraries) you will want `--second-read-is-sense-strand`
+as in the example. 
 
 You can add multiple bam files `--bam A.bam B.bam C.bam` or `--bam a/path/*.bam`,
 as long as their srandedness matches. If you want to add reads with different
@@ -249,7 +262,7 @@ HybridModel.py -v --batch-size 140 --val-test-batch-size 280 \
 The new parameters are `--input-coverage`, which causes any data
 in the h5 datasets `rnaseq_coverage` and `rnaseq_spliced_coverage` 
 to be provided to the network after the frozen weights, but before
-the new final layers; and `--coverage-norm log` (recommended for RNAseq)
+the new final layer(s); and `--coverage-norm log` (recommended for RNAseq)
 which causes this
 data to be log transformed before being input to the network.
 Additionally, you can add `--post-coverage-hidden-layer` to add and tune not
@@ -258,10 +271,10 @@ Additionally, you can add `--post-coverage-hidden-layer` to add and tune not
 In this way, the network will learn the typical relation between high confidence
 gene models and the supplied RNAseq data, and can use this to help predict
 _all_ gene models. Thus, _in theory_ if the data has 3' bias the network will learn to use
-it for the 3' end of the gene, and if it has DNA contamination and resulting
+it for the 3' end of the gene only, and if it has DNA contamination and resulting
 background reads, the network will learn to ignore the appropriate amount of
 background, and if the data is high quality and has very consistent correspondence
-to gene regions, the network will learn to trust it heavily. In theory. 
+to gene regions, the network will learn to trust it heavily. _In theory._
 
 > Note that this could be extended for any extrinsic data from which base
 level data can be created; but only input of data from .bam files is implemented
@@ -290,10 +303,10 @@ coverage at inference time. This means that
   - if you need a longer subsequence-length at inference time,
     the only currently implemented option is to make an h5 each for training
     and inference and then add coverage to each. **Make sure the coverage is 
-    added in exactly the same order as at training time!**
+    added (i.e. the bam files are specified) in exactly the same order as at training time!**
 - You will have to specify parameters at inference time, as done at 
   train time. These are `--input-coverage`, `--coverage-norm <log>`,
-  `--post-coverage-hidden-layer` (if used).
+  and `--post-coverage-hidden-layer` (if used).
 - Finally, you will have to provide `Helixer.py` the path not just to
   the fine-tuned model with `--load-model-path`; but also provide the 
   pretrained model on which the tuning was performed under 
