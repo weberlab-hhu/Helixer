@@ -176,7 +176,7 @@ HybridModel.py --load-model-path example/best_helixer_model.h5 \
 ```
 
 The last command can be sped up with a higher batch size and should give us the same break down that is performed 
-during after a training epoch, but on the test data:
+during training at each check (i.e. 1/epoch by default), but on the test data:
 
 ```
 +confusion_matrix------+----------+-----------+-------------+
@@ -218,7 +218,7 @@ In the demo run above (yours may vary) the model predicted
 perhaps better than random, but poorly. It practically
 needs more and more varied (from different species) data
 to train it (this result is for the small model example),
-as well as to be larger and train for longer.
+as well as for the network to be larger and trained for longer.
 
 ## Practical considerations
 While the above covers technically how to train a model, here are some
@@ -243,9 +243,9 @@ but nevertheless some patterns are clear. You will probably want to:
 Trial and error has been a major part of the training process, 
 particularly for species selection. Eventually we automated that
 trial and error with many random draws of training species and a 2-fold cross validation 
-process here: https://github.com/alisandra/SpeciesSelector.
+process [here](https://github.com/alisandra/SpeciesSelector).
 Given some compute resources and a target set of genomes, this
-is a fairly safe way to achieve a baseline or even quite respectable model.
+is a fairly safe way to achieve a baseline and often quite respectable model.
 
 ### Validation Species selection
 It is critical here that your validation species are
@@ -255,10 +255,13 @@ range than narrower. While model parameters are not directly optimized
 for validation species, these species _are_ used to select the best
 model; so it is critical that they are of high enough quality that
 metrics improve when the model is improving and get worse when the model is getting
-worse. Validation files _can_ be down sampled for performance. 
+worse. Validation files _can_ be 
+[down sampled](https://github.com/weberlab-hhu/helixer_scratch/blob/master/data_scripts/sample-single-genomes.py)
+for speed purposes. 
 
 ### Hyperparameter optimization
-The helixer codebase is built to work with nni: https://github.com/microsoft/nni
-for hyperparameter optimization. Follow standard nni instructions and additionally add
+The helixer codebase is built to work with [nni](https://github.com/microsoft/nni)
+for hyperparameter optimization. Follow standard nni instructions on setting up the config.yml
+and search_space.json files and additionally add
 `--nni` to the `HybridModel.py` command.
 
