@@ -226,7 +226,7 @@ class HelixerSequence(Sequence):
                                   h5_file['data/err_samples'])
             n_masked = x_dset.shape[0] - np.sum(mask)
             print(f'\nmasking {n_masked} completely un-annotated or completely erroneous sequences')
-                
+
         else:
             mask = np.ones(h5_file['data/X'].shape[0], dtype=bool)
             n_masked = 0
@@ -933,6 +933,25 @@ class HelixerModel(ABC):
         os.chdir(pwd)  # return to previous directory
 
     def run(self):
+        def load_model_strategy():
+            if not self.input_coverage:
+                model = load_model(self.load_model_path)
+            else:
+                # for whatever reason, the fine tuning method is not saving the full model
+                # in an entirely valid h5 file (depending on if you ask h5py or h5ls). puh.
+                # thus loading the original model is both the easiest way to get architecture
+                # setup and seems safer to make sure _all_ and not just _new_ weights are there
+                oldmodel = load_model(self.pretrained_model_path)
+                # repeat everything done setting up training to get exact architecture
+                # freeze weights and replace everything from the dense layer
+                dense_at = [l.name for l in oldmodel.layers].index('dense')
+                for layer in oldmodel.layers:
+                    layer.trainable = False
+
+                model = self.insert_coverage_before_hat(oldmodel, dense_at)
+                model.load_weights(self.load_model_path)
+            return model
+
         self.set_resources()
         self.open_data_files()
         if self.input_coverage:
@@ -990,23 +1009,13 @@ class HelixerModel(ABC):
 
             strategy = tf.distribute.MirroredStrategy()
             print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
-            with strategy.scope():
-                if not self.input_coverage:
-                    model = load_model(self.load_model_path)
-                else:
-                    # for whatever reason, the fine tuning method is not saving the full model
-                    # in an entirely valid h5 file (depending on if you ask h5py or h5ls). puh.
-                    # thus loading the original model is both the easiest way to get architecture
-                    # setup and seems safer to make sure _all_ and not just _new_ weights are there
-                    oldmodel = load_model(self.pretrained_model_path)
-                    # repeat everything done setting up training to get exact architecture
-                    # freeze weights and replace everything from the dense layer
-                    dense_at = [l.name for l in oldmodel.layers].index('dense')
-                    for layer in oldmodel.layers:
-                        layer.trainable = False
+            if strategy.num_replicas_in_sync > 1:
+                with strategy.scope():
+                    model = load_model_strategy()
+            else:
+                # use no strategy if there no replication to avoid warnings from the dataset not being tf.data
+                model = load_model_strategy()
 
-                    model = self.insert_coverage_before_hat(oldmodel, dense_at)
-                    model.load_weights(self.load_model_path)
             self._print_model_info(model)
 
             if self.eval:
