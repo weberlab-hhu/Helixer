@@ -306,6 +306,7 @@ coverage at inference time. This means that
     added (i.e. the bam files are specified) in exactly the same order as at training time!**
 - You will have to specify parameters at inference time, as done at 
   train time. These are `--input-coverage`, `--coverage-norm <log>`,
+  `--predict-phase`,
   and `--post-coverage-hidden-layer` (if used).
 - Finally, you will have to provide `Helixer.py` the path not just to
   the fine-tuned model with `--load-model-path`; but also provide the 
