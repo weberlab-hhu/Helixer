@@ -62,12 +62,11 @@ would include multiple species for each) and use Ostreococcus_lucimarinus for
 testing / predicting / etc.
 
 ```shell script
-# The training script requires two files in one folder named
-# training_data.h5 and validation_data.h5
+# The training script requires at least two files in the data folder: one matching
+# training_data*h5 and one matching validation_data*h5, respectively.
 #
-# while we would need to include multiple datasets to create our
-# training_data.h5 and validation_data.h5 normally, for this as-simple-
-# as-possible example we will point to one species each with symlinks
+# For this as-simple-as-possible example we will point to one species each
+# of training and validation with symlinks
 mkdir example/train
 cd example/train/
 # set training data 
@@ -117,19 +116,19 @@ example
 > ├── validation_data.species_08.h5
 > └── validation_data.species_09.h5
 > ```
->
-> Of course, using the actual species names or identifiers instead
-> of 'species\_01' ... 'species\_09' would be highly encouraged
-> for organizational purposes.
+
 
 ## Model training
 Now we use the datasets in `example/train/` to train a model with our 
 LSTM architecture for 5 epochs and save the best iteration 
 (according to the Genic F1 on the validation dataset) to 
-`example/best_helixer_model.h5`. 
+`example/best_helixer_model.h5`. The parameter `--predict-phase`
+is necessary so that the resulting models are compatible with post-processing
+via HelixerPost.
 
 ```shell script
-python <path/to/Helixer/>helixer/prediction/HybridModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 --epochs 5 
+HybridModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 \
+  --epochs 5 --predict-phase
 ```
 
 The rest of this example will continue with the model example/best_helixer_model.h5 produced above. 
@@ -139,9 +138,11 @@ The current 'full size' architecture that has been performing well
 in hyper optimization runs is:
 
 ```shell script
-# the indicated batch size and val-test-batch size have been chosen to work on a 2080ti with 11GB RAM
-# and should be set as large as the graphics card will allow. 
-python <path/to/Helixer/>helixer/prediction/HybridModel.py -v --pool-size 9 --batch-size 50 --val-test-batch-size 100 \
+# the indicated batch size and val-test-batch size have been chosen to work on a GTX 2080ti with 11GB RAM
+# and should be set as large as the graphics card will allow. For instance, much of our training was
+# done on RTX 8000s with 48GB of ram, and there we could set `--batch-size 240 --val-test-batch-size 480`
+# for otherwise comparable hyperparameters
+HybridModel.py -v --pool-size 9 --batch-size 50 --val-test-batch-size 100 \
   --class-weights "[0.7, 1.6, 1.2, 1.2]" --transition-weights "[1, 12, 3, 1, 12, 3]" --predict-phase \
   --lstm-layers 3 --cnn-layers 4 --units 128 --filter-depth 96 --kernel-size 10 \
   --data-dir example/train/ --save-model-path example/fullsize_helixer_model.h5
@@ -162,7 +163,7 @@ NOTE: Generating predictions can produce very large files as
 we save every individual softmax value in 32 bit floating point format. 
 For this very small genome the predictions require 524MB of disk space. 
 ```shell script
-python helixer/prediction/HybridModel.py --load-model-path example/best_helixer_model.h5 \
+HybridModel.py --load-model-path example/best_helixer_model.h5 \
   --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 \
   --prediction-output-path example/Ostreococcus_lucimarinus_predictions.h5
 ```
@@ -170,12 +171,13 @@ python helixer/prediction/HybridModel.py --load-model-path example/best_helixer_
 Or we can directly evaluate the predictive performance of our model. 
 
 ```shell script
-python helixer/prediction/HybridModel.py --load-model-path example/best_helixer_model.h5 \
-  --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 --eval
+HybridModel.py --load-model-path example/best_helixer_model.h5 \
+  --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 \
+  --predict-phase --eval
 ```
 
 The last command can be sped up with a higher batch size and should give us the same break down that is performed 
-during after a training epoch, but on the test data:
+during training at each check (i.e. 1/epoch by default), but on the test data:
 
 ```
 +confusion_matrix------+----------+-----------+-------------+
@@ -217,7 +219,7 @@ In the demo run above (yours may vary) the model predicted
 perhaps better than random, but poorly. It practically
 needs more and more varied (from different species) data
 to train it (this result is for the small model example),
-as well as to be larger and train for longer.
+as well as for the network to be larger and trained for longer.
 
 ## Practical considerations
 While the above covers technically how to train a model, here are some
@@ -237,17 +239,31 @@ but nevertheless some patterns are clear. You will probably want to:
 - include more and _more diverse_ species to boost performance (current performant released models were trained
   on many dozens of species)
 - include only higher quality annotations to boost performance
-- wrestle with the obvious trade off between the proceeding two points... 
+- wrestle with the obvious tradeoff between the proceeding two points... 
 
 Trial and error has been a major part of the training process, 
 particularly for species selection. Eventually we automated that
 trial and error with many random draws of training species and a 2-fold cross validation 
-process here: https://github.com/alisandra/SpeciesSelector.
+process [here](https://github.com/alisandra/SpeciesSelector).
 Given some compute resources and a target set of genomes, this
-is a fairly safe way to achieve a baseline or even quite respectable model.
+is a fairly safe way to achieve a baseline and often quite respectable model.
+
+### Validation Species selection
+It is critical here that your validation species are
+representative of your target prediction range. As with training,
+it is better to have a wider selection than your target predictive
+range than narrower. While model parameters are not directly optimized
+for validation species, these species _are_ used to select the best
+model; so it is critical that they are of high enough quality that
+metrics improve when the model is improving and get worse when the model is getting
+worse. Validation files _can_ be 
+[down sampled](https://github.com/weberlab-hhu/helixer_scratch/blob/master/data_scripts/sample-single-genomes.py)
+for speed purposes. 
 
 ### Hyperparameter optimization
-The helixer codebase is built to work with nni: https://github.com/microsoft/nni
-for hyperparameter optimization. Follow standard nni instructions and additionally add
+The helixer codebase is built to work with [nni](https://github.com/microsoft/nni)
+for hyperparameter optimization. If you want to optimize the hyperparameters, we recommend
+following standard nni instructions on setting up the config.yml
+and search_space.json files and additionally adding
 `--nni` to the `HybridModel.py` command.
 

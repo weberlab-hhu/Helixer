@@ -27,7 +27,8 @@ class HelixerParameterParser(ParameterParser):
         self.data_group.add_argument('--subsequence-length', type=int,
                                      help='How to slice the genomic sequence. Set moderately longer than length of '
                                           'typical genic loci. Tested up to 213840. Must be evenly divisible by the '
-                                          'timestep width of the used model, which is typically 9. (Default is 21384).')
+                                          'timestep width of the used model, which is typically 9. (Default is '
+                                          'lineage dependent from 21384 to 213840).')
         self.data_group.add_argument('--lineage', type=str, default=None,
                                      choices=['vertebrate', 'land_plant', 'fungi', 'invertebrate'],
                                      help='What model to use for the annotation.')

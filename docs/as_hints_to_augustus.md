@@ -6,7 +6,7 @@ This requires AUGUSTUS and all its dependencies, see:
 https://github.com/Gaius-Augustus/Augustus
 
 ## When to use or not
-For _de novo_ prediction of primary gene models helixer + AUGUSTUS 
+For _ab initio_ prediction of primary gene models helixer + AUGUSTUS 
 does not have _quite_ the same raw accuracy as running 
 helixer + helixer_post_bin (as done when running Helixer.py),
 on species we've checked so far. If this is your use-case, we
@@ -30,7 +30,7 @@ helixer/prediction/HybridModel.py --load-model-path models/land_plant.h5 --test-
 
 Second, convert these predictions into hints
 ```
-python scripts/predictions2hints.py -p predictions.h5 -d Arabidopsis_lyrata.h5 -o Arabidopsis_lyrata_helixer_hints.gff3
+python3 <path_to>/Helixer/scripts/predictions2hints.py -p predictions.h5 -d Arabidopsis_lyrata.h5 -o Arabidopsis_lyrata_helixer_hints.gff3
 ```
 
 Third, get extrinsic config setup for Helixer-style hints. Bonus and penalty weighting 

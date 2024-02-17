@@ -7,10 +7,15 @@ Gene calling with Deep Neural Networks.
 This software is undergoing active testing and development.
 
 ## Goal
-Setup and train models for _de novo_ prediction of gene structure.
+Setup and train models for _ab initio_ prediction of gene structure.
 That is, to perform "gene calling" and identify
 which base pairs in a genome belong to the UTR/CDS/Intron of genes. 
 Train one model for a wide variety of genomes.
+
+## Web tool
+For light usage (inference on one to a few genomes), you may 
+want to check out the Helixer web tool: https://plabipd.de/helixer_main.html
+and skip the installation overhead.
 
 ## Install
 ### GPU requirements
@@ -25,6 +30,7 @@ During development we have used
 
 * nvidia-driver-495
 * nvidia-driver-510
+* nvidia-driver-525
 
 and many in between.
 
@@ -41,14 +47,27 @@ Please see [full installation instructions](docs/manual_install.md)
 Please additionally see [dev installation instructions](docs/dev_install.md)
 
 ## Example
-This example focuses only on applying trained models for gene calling, only.
-Information on training and evaluating the models can be found in `docs`.
 
-### Using trained models
+### Training and Evaluation
+If the provided models don't work for your needs, 
+information on [training and evaluating](docs/training.md) the models can be found in the [docs folder](docs/), 
+as well as notes on experimental ways to [fine-tune](docs/fine_tuning.md) 
+the network for target species including a hack to include RNAseq data in the input.
 
-#### Acquire models
-The best models for each or all lineages can automatically be
-downloaded with the `fetch_helixer_models.py` script.
+### Inference (gene calling)
+If you want to use Helixer to annotate a genome with a provided model, start here.
+
+#### Using trained models
+
+##### Acquire models
+The best models for all lineages are best downloaded by running.
+
+```
+fetch_helixer_models.py
+```
+
+If desired, the `--lineage` can be specified, or `--all` released models
+can be fetched. 
 
 The available lineages are `land_plant`, `vertebrate`, `invertebrate`,
 and `fungi`.
@@ -61,7 +80,7 @@ https://uni-duesseldorf.sciebo.de/s/lQTB7HYISW71Wi0
 `--model-filepath <path/to/model.h5>'`,
 to override the lineage default for `Helixer.py`. 
 
-#### Run on target genome
+##### Run on target genome
 ```bash
 # download an example chromosome
 wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/fasta/arabidopsis_lyrata/dna/Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa.gz
@@ -76,33 +95,35 @@ prediction of base-wise probabilities with the Deep Learning based model (`helix
 post-processing into primary gene models (`helixer_post_bin`). See respective help functions for additional
 usage information, if necessary.
 
+##### Run on target genomes, 3-step method
 ```bash
 # example broken into individual steps
 fasta2h5.py --species Arabidopsis_lyrata --h5-output-path Arabidopsis_lyrata.h5 --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa
 # the exact location ($HOME/.local/share/) of the model comes from appdirs
-# the model was downloaded when Helixer.py was called above
+# the model was downloaded when fetch_helixer_models.py was called above
 # this example code is for _linux_ and will need to be modified for other OSs
-HybridModel.py --load-model-path $HOME/.local/share/Helixer/models/land_plant.h5 --test-data Arabidopsis_lyrata.h5 --overlap --val-test-batch-size 32 -v
+HybridModel.py --load-model-path $HOME/.local/share/Helixer/models/land_plant/land_plant_v0.3_a_0080.h5 \
+     --test-data Arabidopsis_lyrata.h5 --overlap --val-test-batch-size 32 -v
 helixer_post_bin Arabidopsis_lyrata.h5 predictions.h5 100 0.1 0.8 60 Arabidopsis_lyrata_chromosome8_helixer.gff3
 ```
 
 **Output:** The main output of the above commands is the gff3 file (Arabidopsis_lyrata_chromosome8_helixer.gff3)
 which contains the predicted genic structure (where the exons, introns, and coding regions are
 for every predicted gene in the genome). You can find more about the format 
-[here](https://github.com/The-Sequence-Ontology/Specifications/blob/master/gff3.md),
-and you can readily derive other formats, such as a fasta file of the proteome, using
-a standard parser, for instance [gffread](https://github.com/gpertea/gffread).
+[here](https://github.com/The-Sequence-Ontology/Specifications/blob/master/gff3.md).
+You can readily derive other files, such as a fasta file of the proteome or the transcriptome, using
+a standard parser, for instance [gffread](https://github.com/gpertea/gffread).  
 
-#### What Parameters Matter?
+##### What Parameters Matter?
 Most parameters from `Helixer.py` have been set to a reasonable default; but nevertheless there
 are a couple where the best setting is genome dependent. 
 
-##### `--lineage` or `--model-filepath`
+###### `--lineage` or `--model-filepath`
 It is of course critical to choose a model appropriate for your phylogenetic range / trained on species
 that generalize well to your target species. When in doubt selection via `--lineage` is recommended, as
 this will use the best available model for that lineage.
 
-##### `--subsequence-length` and overlapping parameters
+###### `--subsequence-length` and overlapping parameters
 > From v0.3.1 onwards these parameters are set to reasonable defaults when `--lineage`
 > is used, but `--subsequence-length` will still need to be specified when using `--model-filepath`,
 > while the overlapping parameters can be derived automatically.
