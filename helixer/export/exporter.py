@@ -31,12 +31,12 @@ class HelixerExportControllerBase(object):
         return n_chunks
 
     @staticmethod
-    def _create_dataset(h5_file, key, matrix, dtype, compression='gzip', create_empty=True):
+    def _create_dataset(zarr_file, key, matrix, dtype, compression='gzip', create_empty=True):
         shape = list(matrix.shape)
         shuffle = len(shape) > 1
         if create_empty:
             shape[0] = 0  # create w/o size
-        h5_file.create_dataset(key,
+        zarr_file.create_dataset(key,
                                shape=shape,
                                maxshape=tuple([None] + shape[1:]),
                                chunks=tuple([1] + shape[1:]),
@@ -44,32 +44,32 @@ class HelixerExportControllerBase(object):
                                compression=compression,
                                shuffle=shuffle)  # only for the compression
 
-    def _create_or_expand_datasets(self, h5_group, flat_data, n_chunks, compression='gzip'):
-        if h5_group not in self.h5 or len(self.h5[h5_group].keys()) == 0:
+    def _create_or_expand_datasets(self, zarr_group, flat_data, n_chunks, compression='gzip'):
+        if zarr_group not in self.zarr or len(self.zarr[zarr_group].keys()) == 0:
             for mat_info in flat_data:
-                self._create_dataset(self.h5, h5_group + mat_info.key, mat_info.matrix, mat_info.dtype, compression)
+                self._create_dataset(self.zarr, zarr_group + mat_info.key, mat_info.matrix, mat_info.dtype, compression)
 
-        old_len = self.h5[h5_group + flat_data[0].key].shape[0]
-        self.h5_coord_offset = old_len
+        old_len = self.zarr[zarr_group + flat_data[0].key].shape[0]
+        self.zarr_coord_offset = old_len
         for mat_info in flat_data:
-            self.h5[h5_group + mat_info.key].resize(old_len + n_chunks, axis=0)
+            self.zarr[zarr_group + mat_info.key].resize(old_len + n_chunks, axis=0)
 
-    def _save_data(self, flat_data, h5_coords, n_chunks, first_round_for_coordinate, compression='gzip',
-                   h5_group='/data/'):
+    def _save_data(self, flat_data, zarr_coords, n_chunks, first_round_for_coordinate, compression='gzip',
+                   zarr_group='/data/'):
         assert len(set(mat_info.matrix.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
 
         if first_round_for_coordinate:
-            self._create_or_expand_datasets(h5_group, flat_data, n_chunks, compression)
+            self._create_or_expand_datasets(zarr_group, flat_data, n_chunks, compression)
 
-        # h5_coords are relative for the coordinate/chromosome, so offset by previous length
-        old_len = self.h5_coord_offset
-        start = old_len + h5_coords[0]
-        end = old_len + h5_coords[1]
+        # zarr_coords are relative for the coordinate/chromosome, so offset by previous length
+        old_len = self.zarr_coord_offset
+        start = old_len + zarr_coords[0]
+        end = old_len + zarr_coords[1]
 
-        # writing to the h5 file
+        # writing to the zarr file
         for mat_info in flat_data:
-            self.h5[h5_group + mat_info.key][start:end] = mat_info.matrix
-        self.h5.flush()
+            self.zarr[zarr_group + mat_info.key][start:end] = mat_info.matrix
+        self.zarr.flush()
 
     def _add_data_attrs(self):
         attrs = {
@@ -90,15 +90,15 @@ class HelixerExportControllerBase(object):
                 )
                 print('logged installed version in place of git commit for {}'.format(module.__name__))
         os.chdir(pwd)
-        # insert attrs into .h5 file
+        # insert attrs into .zarr file
         for key, value in attrs.items():
-            self.h5.attrs[key] = value
+            self.zarr.attrs[key] = value
 
 
-class HelixerFastaToH5Controller(HelixerExportControllerBase):
+class HelixerFastaToZarrController(HelixerExportControllerBase):
 
     class CoordinateSurrogate(object):
-        """Mimics some functionality of the Coordinate orm class, so we can go directly from FASTA to H5"""
+        """Mimics some functionality of the Coordinate orm class, so we can go directly from FASTA to zarr"""
         def __init__(self, seqid, seq):
             self.seqid = seqid
             self.sequence = seq
@@ -107,32 +107,32 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
         def __repr__(self):
             return f'Fasta only Coordinate (seqid: {self.seqid}, len: {self.length})'
 
-    def export_fasta_to_h5(self, chunk_size, compression, multiprocess, species):
+    def export_fasta_to_zarr(self, chunk_size, compression, multiprocess, species):
         fasta_importer = FastaImporter(None)
         fasta_seqs = fasta_importer.parse_fasta(self.input_path)
-        self.h5 = h5py.File(self.output_path, 'w')
+        self.zarr = h5py.File(self.output_path, 'w')
 
         for i, (seqid, seq) in enumerate(fasta_seqs):
             start_time = time.time()
-            coord = HelixerFastaToH5Controller.CoordinateSurrogate(seqid, seq)
+            coord = HelixerFastaToZarrController.CoordinateSurrogate(seqid, seq)
             n_chunks = HelixerExportControllerBase.calc_n_chunks(coord.length, chunk_size)
             data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species, use_multiprocess=multiprocess)
             for j, strand_res in enumerate(data_gen):
-                data, h5_coords = strand_res
-                self._save_data(data, h5_coords=h5_coords, n_chunks=n_chunks,
+                data, zarr_coords = strand_res
+                self._save_data(data, zarr_coords=zarr_coords, n_chunks=n_chunks,
                                 first_round_for_coordinate=(j == 0), compression=compression)
             print(f'{i + 1} Numerified {coord} in {time.time() - start_time:.2f} secs', end='\n\n')
         self._add_data_attrs()
-        self.h5.close()
+        self.zarr.close()
 
 
 class HelixerExportController(HelixerExportControllerBase):
 
-    def __init__(self, input_path, output_path, match_existing=False, h5_group='/data/'):
+    def __init__(self, input_path, output_path, match_existing=False, zarr_group='/data/'):
         super().__init__(input_path, output_path, match_existing)
-        self.h5_group = h5_group
+        self.zarr_group = zarr_group
         input_db_path = self.input_path
-        self.h5_coord_offset = 0
+        self.zarr_coord_offset = 0
 
         # check db
         conn = sqlite3.connect(input_db_path)
@@ -147,9 +147,9 @@ class HelixerExportController(HelixerExportControllerBase):
         if match_existing:
             # confirm files exist
             assert os.path.exists(self.output_path), 'output_path not existing'
-            self.h5 = h5py.File(output_path, 'a')
+            self.zarr = h5py.File(output_path, 'a')
         else:
-            self.h5 = h5py.File(output_path, 'w')
+            self.zarr = h5py.File(output_path, 'w')
         print(f'Exporting all data to {output_path}')
 
     def _coord_info(self, coords_features):
@@ -167,7 +167,7 @@ class HelixerExportController(HelixerExportControllerBase):
         # the following will all be used to calculated a percentage, which is yielded but ignored until the end
         n_chunks = n_bases = n_ig_bases = n_masked_bases = 0
 
-        for coord_data, h5_coord in coord_data_gen:
+        for coord_data, zarr_coord in coord_data_gen:
             # easy access to matrices
             y = [cd.matrix for cd in coord_data if cd.key == 'y'][0]
             sample_weights = [cd.matrix for cd in coord_data if cd.key == 'sample_weights'][0]
@@ -182,7 +182,7 @@ class HelixerExportController(HelixerExportControllerBase):
             masked_bases_perc = n_masked_bases / n_bases * 100
             ig_bases_perc = n_ig_bases / n_bases * 100
 
-            yield coord_data, coord, masked_bases_perc, ig_bases_perc, h5_coord
+            yield coord_data, coord, masked_bases_perc, ig_bases_perc, zarr_coord
 
     def export(self, chunk_size, one_hot=True, longest_only=True, write_by=10_000_000_000,
                modes=('X', 'y', 'anno_meta', 'transitions'), compression='gzip', multiprocess=True):
@@ -190,8 +190,8 @@ class HelixerExportController(HelixerExportControllerBase):
         print(f'\n{len(coords_features)} coordinates chosen to numerify')
         if self.match_existing:
             # resort coordinates to match existing
-            seqids = self.h5['data/seqids'][:]
-            seqid_idxs = sorted(np.unique(seqids, return_index=True)[1])  # seqid info in the h5
+            seqids = self.zarr['data/seqids'][:]
+            seqid_idxs = sorted(np.unique(seqids, return_index=True)[1])  # seqid info in the zarr
             unique_seqids = seqids[seqid_idxs]
 
             coord_info = self._coord_info(coords_features)  # seqid info of the current data
@@ -208,9 +208,9 @@ class HelixerExportController(HelixerExportControllerBase):
             numerify_outputs = self._numerify_coord(coord, one_coord_features, chunk_size, one_hot, write_by=write_by,
                                                     modes=modes, multiprocess=multiprocess)
 
-            for i, (flat_data, coord, masked_bases_perc, ig_bases_perc, h5_coord) in enumerate(numerify_outputs):
-                self._save_data(flat_data, h5_coords=h5_coord, n_chunks=n_chunks, first_round_for_coordinate=(i == 0),
-                                compression=compression, h5_group=self.h5_group)
+            for i, (flat_data, coord, masked_bases_perc, ig_bases_perc, zarr_coord) in enumerate(numerify_outputs):
+                self._save_data(flat_data, zarr_coords=zarr_coord, n_chunks=n_chunks, first_round_for_coordinate=(i == 0),
+                                compression=compression, zarr_group=self.zarr_group)
                 n_writing_chunks += 1
 
             print(f'{n_coords_done}/{len(coords_features)} Numerified {coord} '
@@ -219,6 +219,6 @@ class HelixerExportController(HelixerExportControllerBase):
                   f'({time.time() - start_time:.2f} secs)', end='\n\n')
             n_coords_done += 1
         self._add_data_attrs()
-        self.h5.close()
-        print('Export from geenuff db to h5 file(s) with numeric matrices finished successfully.')
+        self.zarr.close()
+        print('Export from geenuff db to zarr file(s) with numeric matrices finished successfully.')
         return n_writing_chunks  # for testing only atm

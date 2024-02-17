@@ -20,7 +20,7 @@ class ParameterParser(ABC):
 
         self.data_group = self.parser.add_argument_group("Data generation parameters")
         self.data_group.add_argument('--compression', type=str, choices=['gzip', 'lzf'],
-                                     help='Compression algorithm used for the intermediate .h5 output '
+                                     help='Compression algorithm used for the intermediate .zarr output '
                                           'files with a fixed compression level of 4. '
                                           '(Default is "gzip", which is much slower than "lzf".)')
         self.data_group.add_argument('--no-multiprocess', action='store_true',
@@ -74,9 +74,9 @@ class ParameterParser(ABC):
 class ExportParameterParser(ParameterParser):
     def __init__(self, config_file_path=''):
         super().__init__(config_file_path)
-        self.io_group.add_argument('--h5-output-path', type=str, required=True,
-                                   help='HDF5 output file for the encoded data. Must end with ".h5"')
+        self.io_group.add_argument('--zarr-output-path', type=str, required=True,
+                                   help='Zarr output file for the encoded data. Must end with ".zarr"')
 
     def check_args(self, args):
-        assert args.h5_output_path.endswith('.h5'), '--output-path must end with ".h5"'
+        assert args.zarr_output_path.endswith('.zarr'), '--output-path must end with ".zarr"'
 
