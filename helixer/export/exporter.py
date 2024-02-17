@@ -76,20 +76,6 @@ class HelixerExportControllerBase(object):
             'timestamp': str(datetime.datetime.now()),
             'input_path': self.input_path
         }
-        # get GeenuFF and Helixer commit hashes
-        pwd = os.getcwd()
-        for module in [geenuff, helixer]:
-            os.chdir(os.path.dirname(module.__file__))
-            cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
-            try:
-                attrs[module.__name__ + '_commit'] = subprocess.check_output(cmd, stderr=subprocess.STDOUT).\
-                    strip().decode()
-            except subprocess.CalledProcessError:
-                attrs[module.__name__ + '_commit'] = 'commit not found, version: {}'.format(
-                    pkg_resources.require(module.__name__)[0].version
-                )
-                print('logged installed version in place of git commit for {}'.format(module.__name__))
-        os.chdir(pwd)
         # insert attrs into .zarr file
         for key, value in attrs.items():
             self.zarr.attrs[key] = value
