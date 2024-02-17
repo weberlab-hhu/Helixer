@@ -44,23 +44,47 @@ device = (
 )
 print(f"Using {device} device")
 
+
+class Transpose_1_2(nn.Module):
+    def __init__(self):
+        super(Transpose_1_2, self).__init__()
+
+    def forward(self, x):
+        return torch.transpose(x, 1, 2) 
+
+class bLSTM(nn.Module):
+    def __init__(self, input_size, hidden_size, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.layer = nn.LSTM(input_size=self.input_size, 
+                       hidden_size=self.hidden_size, 
+                       batch_first=True, bidirectional=True)
+
+    def forward(self, x):
+
+        x, _ = self.layer(x)
+        return x
+
+
 # Define model
 class NeuralNetwork(nn.Module):
     def __init__(self):
         super().__init__()
-        #self.flatten = nn.Flatten()
         self.linear_relu_stack = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(LEN * CLASSES, 512),
+            nn.Conv1d(CLASSES, 16, kernel_size=3, padding='same'),
             nn.ReLU(),
-            nn.Linear(512, 512),
+            nn.Conv1d(16, 32, kernel_size=3, padding='same'),
             nn.ReLU(),
-            nn.Linear(512, LEN * CLASSES),
-            nn.Unflatten(1, (CLASSES, LEN))
+            Transpose_1_2(),
+            #nn.Conv1d(32, CLASSES, kernel_size=3, padding='same'),
+            bLSTM(32, 2),
+            Transpose_1_2(),
+            #nn.Linear(34, CLASSES)
         )
 
     def forward(self, x):
-        #x = self.flatten(x)
+        x = torch.transpose(x, 1, 2) # swap class * len dimensions, not batch
         logits = self.linear_relu_stack(x)
         return logits
 
