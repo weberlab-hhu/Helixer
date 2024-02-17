@@ -19,8 +19,7 @@ def main(args):
     write_by = round(args.write_by / args.subsequence_length) * args.subsequence_length
     controller = HelixerExportController(args.input_db_path, args.h5_output_path, match_existing=match_existing,
                                          h5_group=h5_group)
-    controller.export(chunk_size=args.subsequence_length, write_by=write_by, modes=modes, compression=args.compression,
-                      multiprocess=not args.no_multiprocess)
+    controller.export(chunk_size=args.subsequence_length, write_by=write_by, modes=modes, multiprocess=not args.no_multiprocess)
 
 
 if __name__ == '__main__':

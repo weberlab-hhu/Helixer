@@ -6,6 +6,7 @@ import sqlite3
 import datetime
 import subprocess
 import pkg_resources
+from numcodecs import Blosc
 
 import geenuff
 import helixer
@@ -30,46 +31,24 @@ class HelixerExportControllerBase(object):
         n_chunks *= 2  # for + & - strand
         return n_chunks
 
-    @staticmethod
-    def _create_dataset(zarr_file, key, matrix, dtype, compression='gzip', create_empty=True):
-        shape = list(matrix.shape)
-        shuffle = len(shape) > 1
-        if create_empty:
-            shape[0] = 0  # create w/o size
-        zarr_file.create_dataset(key,
-                               shape=shape,
-                               maxshape=tuple([None] + shape[1:]),
-                               chunks=tuple([1] + shape[1:]),
-                               dtype=dtype,
-                               compression=compression,
-                               shuffle=shuffle)  # only for the compression
-
-    def _create_or_expand_datasets(self, zarr_group, flat_data, n_chunks, compression='gzip'):
-        if zarr_group not in self.zarr or len(self.zarr[zarr_group].keys()) == 0:
-            for mat_info in flat_data:
-                self._create_dataset(self.zarr, zarr_group + mat_info.key, mat_info.matrix, mat_info.dtype, compression)
-
-        old_len = self.zarr[zarr_group + flat_data[0].key].shape[0]
-        self.zarr_coord_offset = old_len
-        for mat_info in flat_data:
-            self.zarr[zarr_group + mat_info.key].resize(old_len + n_chunks, axis=0)
-
-    def _save_data(self, flat_data, zarr_coords, n_chunks, first_round_for_coordinate, compression='gzip',
-                   zarr_group='/data/'):
+    def _save_data(self, flat_data, zarr_coords, n_chunks, first_round_for_coordinate, zarr_group='/data/'):
         assert len(set(mat_info.matrix.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
 
-        if first_round_for_coordinate:
-            self._create_or_expand_datasets(zarr_group, flat_data, n_chunks, compression)
+        # create dataset if it does not exist yet
+        if first_round_for_coordinate and zarr_group not in self.zarr_file:
+            compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=6, shuffle=2)
+            for mat_info in flat_data:
+                shape = mat_info.matrix.shape
+                self.zarr_file.create_dataset(zarr_group + mat_info.key,
+                                              shape=shape,
+                                              chunks=tuple([1] + shape[1:]),
+                                              dtype=mat_info.dtype,
+                                              compressor=compressor)
+            self._create_or_expand_datasets(zarr_group, flat_data, n_chunks)
 
-        # zarr_coords are relative for the coordinate/chromosome, so offset by previous length
-        old_len = self.zarr_coord_offset
-        start = old_len + zarr_coords[0]
-        end = old_len + zarr_coords[1]
-
-        # writing to the zarr file
+        # simply append the data
         for mat_info in flat_data:
-            self.zarr[zarr_group + mat_info.key][start:end] = mat_info.matrix
-        self.zarr.flush()
+            self.zarr_file[zarr_group + mat_info.key].append(mat_info.matrix)
 
     def _add_data_attrs(self):
         attrs = {
@@ -78,7 +57,7 @@ class HelixerExportControllerBase(object):
         }
         # insert attrs into .zarr file
         for key, value in attrs.items():
-            self.zarr.attrs[key] = value
+            self.zarr_file.attrs[key] = value
 
 
 class HelixerFastaToZarrController(HelixerExportControllerBase):
@@ -93,10 +72,10 @@ class HelixerFastaToZarrController(HelixerExportControllerBase):
         def __repr__(self):
             return f'Fasta only Coordinate (seqid: {self.seqid}, len: {self.length})'
 
-    def export_fasta_to_zarr(self, chunk_size, compression, multiprocess, species):
+    def export_fasta_to_zarr(self, chunk_size, multiprocess, species):
         fasta_importer = FastaImporter(None)
         fasta_seqs = fasta_importer.parse_fasta(self.input_path)
-        self.zarr = h5py.File(self.output_path, 'w')
+        self.zarr_file = zarr.open(self.output_path, mode='w')
 
         for i, (seqid, seq) in enumerate(fasta_seqs):
             start_time = time.time()
@@ -105,20 +84,18 @@ class HelixerFastaToZarrController(HelixerExportControllerBase):
             data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species, use_multiprocess=multiprocess)
             for j, strand_res in enumerate(data_gen):
                 data, zarr_coords = strand_res
-                self._save_data(data, zarr_coords=zarr_coords, n_chunks=n_chunks,
-                                first_round_for_coordinate=(j == 0), compression=compression)
+                self._save_data(data, zarr_coords=zarr_coords, n_chunks=n_chunks, first_round_for_coordinate=(j == 0))
             print(f'{i + 1} Numerified {coord} in {time.time() - start_time:.2f} secs', end='\n\n')
         self._add_data_attrs()
-        self.zarr.close()
 
 
 class HelixerExportController(HelixerExportControllerBase):
 
     def __init__(self, input_path, output_path, match_existing=False, zarr_group='/data/'):
         super().__init__(input_path, output_path, match_existing)
-        self.zarr_group = zarr_group
+        self.zarr_file_group = zarr_group
         input_db_path = self.input_path
-        self.zarr_coord_offset = 0
+        self.zarr_file_coord_offset = 0
 
         # check db
         conn = sqlite3.connect(input_db_path)
@@ -133,9 +110,9 @@ class HelixerExportController(HelixerExportControllerBase):
         if match_existing:
             # confirm files exist
             assert os.path.exists(self.output_path), 'output_path not existing'
-            self.zarr = h5py.File(output_path, 'a')
+            self.zarr_file = h5py.File(output_path, 'a')
         else:
-            self.zarr = h5py.File(output_path, 'w')
+            self.zarr_file = h5py.File(output_path, 'w')
         print(f'Exporting all data to {output_path}')
 
     def _coord_info(self, coords_features):
@@ -171,12 +148,12 @@ class HelixerExportController(HelixerExportControllerBase):
             yield coord_data, coord, masked_bases_perc, ig_bases_perc, zarr_coord
 
     def export(self, chunk_size, one_hot=True, longest_only=True, write_by=10_000_000_000,
-               modes=('X', 'y', 'anno_meta', 'transitions'), compression='gzip', multiprocess=True):
+               modes=('X', 'y', 'anno_meta', 'transitions'), multiprocess=True):
         coords_features = self.exporter.genome_query(longest_only=longest_only)
         print(f'\n{len(coords_features)} coordinates chosen to numerify')
         if self.match_existing:
             # resort coordinates to match existing
-            seqids = self.zarr['data/seqids'][:]
+            seqids = self.zarr_file['data/seqids'][:]
             seqid_idxs = sorted(np.unique(seqids, return_index=True)[1])  # seqid info in the zarr
             unique_seqids = seqids[seqid_idxs]
 
@@ -196,7 +173,7 @@ class HelixerExportController(HelixerExportControllerBase):
 
             for i, (flat_data, coord, masked_bases_perc, ig_bases_perc, zarr_coord) in enumerate(numerify_outputs):
                 self._save_data(flat_data, zarr_coords=zarr_coord, n_chunks=n_chunks, first_round_for_coordinate=(i == 0),
-                                compression=compression, zarr_group=self.zarr_group)
+                                zarr_group=self.zarr_file_group)
                 n_writing_chunks += 1
 
             print(f'{n_coords_done}/{len(coords_features)} Numerified {coord} '
@@ -205,6 +182,5 @@ class HelixerExportController(HelixerExportControllerBase):
                   f'({time.time() - start_time:.2f} secs)', end='\n\n')
             n_coords_done += 1
         self._add_data_attrs()
-        self.zarr.close()
         print('Export from geenuff db to zarr file(s) with numeric matrices finished successfully.')
         return n_writing_chunks  # for testing only atm

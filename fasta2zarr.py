@@ -16,5 +16,4 @@ if __name__ == '__main__':
     args = pp.get_args()
 
     controller = HelixerFastaToZarrController(args.fasta_path, args.zarr_output_path)
-    controller.export_fasta_to_zarr(chunk_size=args.subsequence_length, compression=args.compression,
-                                  multiprocess=not args.no_multiprocess, species=args.species)
+    controller.export_fasta_to_zarr(chunk_size=args.subsequence_length, multiprocess=not args.no_multiprocess, species=args.species)

@@ -19,16 +19,12 @@ class ParameterParser(ABC):
                               help='Config in form of a YAML file with lower priority than parameters given on the command line.')
 
         self.data_group = self.parser.add_argument_group("Data generation parameters")
-        self.data_group.add_argument('--compression', type=str, choices=['gzip', 'lzf'],
-                                     help='Compression algorithm used for the intermediate .zarr output '
-                                          'files with a fixed compression level of 4. '
-                                          '(Default is "gzip", which is much slower than "lzf".)')
         self.data_group.add_argument('--no-multiprocess', action='store_true',
                                      help='Whether to not parallize the numerification of large sequences. Uses half the memory '
                                           'but can be much slower when many CPU cores can be utilized.')
 
         # Default values have to be specified - and potentially added - here
-        self.defaults = {'compression': 'gzip', 'no_multiprocess': False}
+        self.defaults = {'no_multiprocess': False}
 
     @abstractmethod
     def check_args(self, args):
