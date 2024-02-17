@@ -10,7 +10,7 @@ the numerical matrices that will be directly used during training.
 ### Pre-processing w/ GeenuFF
 >Note: you will be able to skip working with GeenuFF if
 > only wish to predict, and not train. See instead the
-> fasta2h5.py script.
+> fasta2zarr.py script.
 
 First we will need to pre-process the data (Fasta & GFF3 files)
 using GeenuFF. This provides a more biologically-realistic
@@ -52,7 +52,7 @@ mkdir -p example/h5s
 for species in `ls $data_at`
 do
   mkdir example/h5s/$species
-  geenuff2h5.py --input-db-path $data_at/$species/output/$species.sqlite3 \
+  geenuff2zarr.py --input-db-path $data_at/$species/output/$species.sqlite3 \
     --h5-output-path example/h5s/$species/test_data.h5
 done
 ```

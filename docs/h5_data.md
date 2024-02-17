@@ -207,7 +207,7 @@ normalizing the raw RNAseq some. Yes, this is all very n21384aive
 still.
 
 ### the Alternative/* groups
-The script geenuff2h5.py can be used to add alternative (non-reference, non-helixer)
+The script geenuff2zarr.py can be used to add alternative (non-reference, non-helixer)
 annotations to the .h5 file, exactly aligned with the other
 data. 
 

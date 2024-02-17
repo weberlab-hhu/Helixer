@@ -24,7 +24,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    pp = ExportParameterParser(config_file_path='config/geenuff2h5_config.yaml')
+    pp = ExportParameterParser(config_file_path='config/geenuff2zarr_config.yaml')
     pp.io_group.add_argument('--input-db-path', type=str, required=True,
                             help='Path to the GeenuFF SQLite input database (has to contain only one genome).')
     pp.io_group.add_argument('--add-additional', type=str,

@@ -7,7 +7,7 @@ from helixer.export.exporter import HelixerExportController, HelixerFastaToH5Con
 
 
 if __name__ == '__main__':
-    pp = ExportParameterParser(config_file_path='config/fasta2h5_config.yaml')
+    pp = ExportParameterParser(config_file_path='config/fasta2zarr_config.yaml')
     pp.io_group.add_argument('--fasta-path', type=str, default=None, required=True,
                              help='Fasta input file for direct FASTA to .h5 file conversion.')
     pp.io_group.add_argument('--species', type=str, default='', help='Species name. Will be added to the .h5 file.')

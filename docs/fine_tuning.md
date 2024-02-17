@@ -110,7 +110,7 @@ Before starting, download a couple of helper scripts:
 [filter-to-most-certain.py](https://raw.githubusercontent.com/weberlab-hhu/helixer_scratch/master/data_scripts/filter-to-most-certain.py) and 
 [n90_train_val_split.py](https://raw.githubusercontent.com/weberlab-hhu/helixer_scratch/master/data_scripts/n90_train_val_split.py)]; and put them in the same folder.
 
-- first, setup numeric data (`fasta2h5.py`), 
+- first, setup numeric data (`fasta2zarr.py`), 
   raw predictions (`HybridModely.py`), and post-processed predictions 
   (`helixer_post_bin`) according to the [three-step process described in 
   the main readme](../README.md#run-on-target-genomes-3-step-method)
@@ -123,7 +123,7 @@ import2geenuff.py --fasta <your_genome.fa> --gff3 <helixer_post_output.gff3> \
   --db-path <your_species>.sqlite3 --log-file <your_species_import>.log \
   --species <speces_name_or_prefix>
 # export to numeric matrices
-geenuff2h5.py --h5-output-path <your_species_helixer_post>.h5 \
+geenuff2zarr.py --h5-output-path <your_species_helixer_post>.h5 \
   --input-db-path <your_species>.sqlite3 
 ```
 

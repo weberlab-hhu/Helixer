@@ -59,10 +59,10 @@ mkdir -p h5s/train
 mkdir h5s/test
 for mode in training validation
 do
-  geenuff2h5.py --h5-output-path h5s/train/${mode}_data.h5 \
+  geenuff2zarr.py --h5-output-path h5s/train/${mode}_data.h5 \
     --input-db-path $wdir/datain/$mode/output/Arabidopsis_lyrata.sqlite3
 done
-geenuff2h5.py --h5-output-path h5s/test/test_data.h5 \
+geenuff2zarr.py --h5-output-path h5s/test/test_data.h5 \
   --input-db-path $wdir/datain/test/output/Arabidopsis_lyrata.sqlite3
 
 ## TRAINING

@@ -90,7 +90,7 @@ Helixer.py --lineage land_plant --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromo
   --species Arabidopsis_lyrata --gff-output-path Arabidopsis_lyrata_chromosome8_helixer.gff3
 ```
 
-The above runs three main steps: conversion of sequence to numerical matrices in preparation (`fasta2h5.py`),
+The above runs three main steps: conversion of sequence to numerical matrices in preparation (`fasta2zarr.py`),
 prediction of base-wise probabilities with the Deep Learning based model (`helixer/prediction/HybridModel.py`),
 post-processing into primary gene models (`helixer_post_bin`). See respective help functions for additional
 usage information, if necessary.
@@ -98,7 +98,7 @@ usage information, if necessary.
 ##### Run on target genomes, 3-step method
 ```bash
 # example broken into individual steps
-fasta2h5.py --species Arabidopsis_lyrata --h5-output-path Arabidopsis_lyrata.h5 --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa
+fasta2zarr.py --species Arabidopsis_lyrata --h5-output-path Arabidopsis_lyrata.h5 --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa
 # the exact location ($HOME/.local/share/) of the model comes from appdirs
 # the model was downloaded when fetch_helixer_models.py was called above
 # this example code is for _linux_ and will need to be modified for other OSs
