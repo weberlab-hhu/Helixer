@@ -22,20 +22,11 @@ class HelixerExportControllerBase(object):
         self.output_path = output_path
         self.match_existing = match_existing
 
-    @staticmethod
-    def calc_n_chunks(coord_len, chunk_size):
-        """calculates the number of chunks resulting from a coord len and chunk size"""
-        n_chunks = coord_len // chunk_size
-        if coord_len % chunk_size:
-            n_chunks += 1  # bc pad to size
-        n_chunks *= 2  # for + & - strand
-        return n_chunks
-
-    def _save_data(self, flat_data, zarr_coords, n_chunks, first_round_for_coordinate, zarr_group='/data/'):
+    def _save_data(self, flat_data, zarr_group='/data/'):
         assert len(set(mat_info.matrix.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
 
         # create dataset if it does not exist yet
-        if first_round_for_coordinate and zarr_group not in self.zarr_file:
+        if zarr_group not in self.zarr_file:
             compressor = Blosc(cname='blosclz', clevel=6, shuffle=2)
             for mat_info in flat_data:
                 shape = mat_info.matrix.shape
@@ -81,11 +72,10 @@ class HelixerFastaToZarrController(HelixerExportControllerBase):
         for i, (seqid, seq) in enumerate(fasta_seqs):
             start_time = time.time()
             coord = HelixerFastaToZarrController.CoordinateSurrogate(seqid, seq)
-            n_chunks = HelixerExportControllerBase.calc_n_chunks(coord.length, chunk_size)
             data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species, use_multiprocess=multiprocess)
             for j, strand_res in enumerate(data_gen):
                 data, zarr_coords = strand_res
-                self._save_data(data, zarr_coords=zarr_coords, n_chunks=n_chunks, first_round_for_coordinate=(j == 0))
+                self._save_data(data)
             print(f'{i + 1} Numerified {coord} in {time.time() - start_time:.2f} secs', end='\n\n')
         self._add_data_attrs()
 
