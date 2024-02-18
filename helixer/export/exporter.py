@@ -6,7 +6,7 @@ import sqlite3
 import datetime
 import subprocess
 import pkg_resources
-from numcodecs import Blosc
+from numcodecs import Blosc, Zstd
 
 import geenuff
 import helixer
@@ -21,26 +21,20 @@ class HelixerExportControllerBase(object):
         self.input_path = input_path
         self.output_path = output_path
         self.match_existing = match_existing
+        zarr.storage.default_compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
     def _save_data(self, flat_data, zarr_group='/data/'):
         assert len(set(mat_info.matrix.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
 
-        # create dataset if it does not exist yet
         if zarr_group not in self.zarr_file:
-            compressor = Blosc(cname='blosclz', clevel=6, shuffle=2)
+            # create dataset if it does not exist yet
             for mat_info in flat_data:
-                shape = mat_info.matrix.shape
-                self.zarr_file.create_dataset(zarr_group + mat_info.key,
-                                              shape=shape,
-                                              chunks=tuple([1] + list(shape[1:])),
-                                              dtype=mat_info.dtype,
-                                              compressor=compressor)
-                self.zarr_file[zarr_group + mat_info.key] = mat_info.matrix
-
-
-        # simply append the data
-        for mat_info in flat_data:
-            self.zarr_file[zarr_group + mat_info.key].append(mat_info.matrix)
+                zarr_array = zarr.array(mat_info.matrix, chunks=tuple([1] + list(mat_info.matrix.shape[1:])))
+                self.zarr_file[zarr_group + mat_info.key] = zarr_array
+        else:
+            # if dataset exists simply append the data
+            for mat_info in flat_data:
+                self.zarr_file[zarr_group + mat_info.key].append(mat_info.matrix)
 
     def _add_data_attrs(self):
         attrs = {
