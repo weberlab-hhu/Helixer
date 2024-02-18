@@ -36,15 +36,14 @@ class HelixerExportControllerBase(object):
 
         # create dataset if it does not exist yet
         if first_round_for_coordinate and zarr_group not in self.zarr_file:
-            compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=6, shuffle=2)
+            compressor = Blosc(cname='blosclz', clevel=6, shuffle=2)
             for mat_info in flat_data:
                 shape = mat_info.matrix.shape
                 self.zarr_file.create_dataset(zarr_group + mat_info.key,
                                               shape=shape,
-                                              chunks=tuple([1] + shape[1:]),
+                                              chunks=tuple([1] + list(shape[1:])),
                                               dtype=mat_info.dtype,
                                               compressor=compressor)
-            self._create_or_expand_datasets(zarr_group, flat_data, n_chunks)
 
         # simply append the data
         for mat_info in flat_data:

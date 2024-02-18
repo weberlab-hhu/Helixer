@@ -462,7 +462,7 @@ class SplitFinder:
         self.coord_length = coord_length
         self.chunk_size = chunk_size
         self.splits = tuple(self._find_splits())
-        print(len(self.splits), 'expected num of chunks to write in', self.write_by, 'bases to hdf5')
+        print(len(self.splits), 'expected num of chunks to write in', self.write_by, 'bases to output file')
         self.relative_h5_coords = tuple(self._get_rel_h5_coords_for_splits())
 
     @property
