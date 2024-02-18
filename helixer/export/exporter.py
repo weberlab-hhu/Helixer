@@ -44,6 +44,8 @@ class HelixerExportControllerBase(object):
                                               chunks=tuple([1] + list(shape[1:])),
                                               dtype=mat_info.dtype,
                                               compressor=compressor)
+                self.zarr_file[zarr_group + mat_info.key] = mat_info.matrix
+
 
         # simply append the data
         for mat_info in flat_data:
