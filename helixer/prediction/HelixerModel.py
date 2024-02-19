@@ -528,6 +528,7 @@ class HelixerModel(ABC):
 
         self.coverage_count = None
         self.device = None
+        self.nn_model = None
         # place holder to make it run in simplfied form #TODO remove again
         self.h5_trains, self.h5_vals, self.h5_tests = None, None, None
 
@@ -698,7 +699,7 @@ class HelixerModel(ABC):
         pass
 
     @abstractmethod
-    def model(self):
+    def setup_model(self):
         pass
 
     #@abstractmethod
@@ -706,7 +707,7 @@ class HelixerModel(ABC):
     #    pass
 
     @abstractmethod
-    def compile_model(self, model):
+    def compile_model(self):
         pass
 
     #@staticmethod
@@ -887,11 +888,10 @@ class HelixerModel(ABC):
         #pred_out.close()
         #h5_model.close()
 
-    def count_params(self, model):
-        # TODO, store the model instance as a class attrib, so it isn't constantly passed around
-        return sum(p.numel() for p in model.parameters())
+    def count_params(self):
+        return sum(p.numel() for p in self.model.parameters())
 
-    def _print_model_info(self, model):
+    def _print_model_info(self):
         pwd = os.getcwd()
         os.chdir(os.path.dirname(__file__))
         try:
@@ -915,19 +915,19 @@ class HelixerModel(ABC):
 
         print()
         if self.verbose:
-            print(model)
+            print(self.model)
         else:
-            print('Total params: {:,}'.format(self.count_params(model)))
+            print('Total params: {:,}'.format(self.count_params()))
         os.chdir(pwd)  # return to previous directory
 
-    def train_epoch(self, dataloader, model):
+    def train_epoch(self, dataloader):
         size = len(dataloader.dataset)
-        model.train()
+        self.model.train()
         for batch, (X, y) in enumerate(dataloader):
             X, y = X.to(self.device), y.to(self.device)
 
             # Compute prediction error
-            pred = model(X)
+            pred = self.model(X)
             loss = self.loss_fn(pred, y)
 
             # Backpropagation
@@ -944,12 +944,12 @@ class HelixerModel(ABC):
             #          callbacks=self.generate_callbacks(train_generator),
             #          verbose=True)
  
-    def train(self, dataloader, model):
+    def train(self, dataloader):
         # todo, this needs to grow to be s.t. with early stopping, call backs, etc...
         epochs = 3
         for t in range(epochs):
             print(f"Epoch {t+1}\n-------------------------------")
-            self.train_epoch(dataloader, model)
+            self.train_epoch(dataloader)
 
     def run(self):
         self.set_resources()
@@ -987,8 +987,8 @@ class HelixerModel(ABC):
             #            model = self.insert_coverage_before_hat(oldmodel, dense_at)
 
             else:
-                model = self.model()
-            self._print_model_info(model)
+                self.model = self.setup_model()
+            self._print_model_info()
 
             #if self.optimizer.lower() == 'adam':
             #    self.optimizer = optimizers.Adam(learning_rate=self.learning_rate, clipnorm=self.clip_norm)
@@ -997,10 +997,10 @@ class HelixerModel(ABC):
             #                           weight_decay=self.weight_decay)
 
 
-            self.compile_model(model)
+            self.compile_model()
 
             train_generator = self.gen_training_data()
-            self.train(train_generator.dataloader, model)
+            self.train(train_generator.dataloader)
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'

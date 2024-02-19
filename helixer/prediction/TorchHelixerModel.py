@@ -46,12 +46,12 @@ class HybridModel(HelixerModel):
     def sequence_cls(self):
         return HybridSequence 
     
-    def model(self):
+    def setup_model(self):
         return NeuralNetwork(HybridSequence.CLASSES).to(self.device)
 
-    def compile_model(self, model):
+    def compile_model(self):
         self.loss_fn = nn.CrossEntropyLoss()
-        self.optimizer = torch.optim.SGD(model.parameters(), lr=0.05)
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.05)
 
    
 
