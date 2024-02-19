@@ -383,32 +383,7 @@ class HelixerSequence(Sequence):
         # replace 0's (where weighting shouldn't change) with 1's as this will be multiplied later
         summed_trns[summed_trns == 0] = 1
 
-        # maybe stretch transitions to upweight surrounding region somewhat (DEPRECATED bc performance was equivalent)
-        if stretch != 0:
-            summed_trns = HelixerSequence._apply_stretch(summed_trns, stretch)
-
         return summed_trns
-
-    @staticmethod
-    def _apply_stretch(reshaped_sw_t, stretch):
-        """modifies sample weight shaped transitions so that they are a peak instead of a single point"""
-        reshaped_sw_t = np.array(reshaped_sw_t)
-        dilated_rf = np.ones(np.shape(reshaped_sw_t))
-
-        where = np.where(reshaped_sw_t > 1)
-        i = np.array(where[0])  # i unchanged
-        j = np.array(where[1])  # j +/- step
-
-        # find dividers depending on the size of the dilated rf
-        dividers = []
-        for distance in range(1, stretch + 1):
-            dividers.append(2**distance)
-
-        for z in range(stretch, 0, -1):
-            dilated_rf[i, np.maximum(np.subtract(j, z), 0)] = np.maximum(reshaped_sw_t[i, j]/dividers[z-1], 1)
-            dilated_rf[i, np.minimum(np.add(j, z), len(dilated_rf[0])-1)] = np.maximum(reshaped_sw_t[i, j]/dividers[z-1], 1)
-        dilated_rf[i, j] = np.maximum(reshaped_sw_t[i, j], 1)
-        return dilated_rf
 
     def __len__(self):
         """how many batches in epoch"""
@@ -621,21 +596,24 @@ class HelixerModel(ABC):
             pprint(args)
 
     def generate_callbacks(self, train_generator):
-        callbacks = [ConfusionMatrixTrain(self.save_model_path, train_generator, self.gen_validation_data(),
-                                          self.large_eval_folder, self.patience, calc_H=self.calculate_uncertainty,
-                                          report_to_nni=self.nni, check_every_nth_batch=self.check_every_nth_batch,
-                                          save_every_check=self.save_every_check),
-                     PreshuffleCallback(train_generator)]
-        return callbacks
+        pass
+        # TODO torch mvp
+    #    callbacks = [ConfusionMatrixTrain(self.save_model_path, train_generator, self.gen_validation_data(),
+    #                                      self.large_eval_folder, self.patience, calc_H=self.calculate_uncertainty,
+    #                                      report_to_nni=self.nni, check_every_nth_batch=self.check_every_nth_batch,
+    #                                      save_every_check=self.save_every_check),
+    #                 PreshuffleCallback(train_generator)]
+    #    return callbacks
 
     def set_resources(self):
-        gpu_devices = tf.config.experimental.list_physical_devices('GPU')
-        for device in gpu_devices:
-            tf.config.experimental.set_memory_growth(device, True)
+        pass # TODO torch mvp
+        #gpu_devices = tf.config.experimental.list_physical_devices('GPU')
+        #for device in gpu_devices:
+        #    tf.config.experimental.set_memory_growth(device, True)
 
-        K.set_floatx(self.float_precision)
-        if self.gpu_id > -1:
-            tf.config.set_visible_devices([gpu_devices[self.gpu_id]], 'GPU')
+        #K.set_floatx(self.float_precision)
+        #if self.gpu_id > -1:
+        #    tf.config.set_visible_devices([gpu_devices[self.gpu_id]], 'GPU')
 
     def gen_training_data(self):
         SequenceCls = self.sequence_cls()
@@ -664,52 +642,52 @@ class HelixerModel(ABC):
         print('\nmetrics calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
         return genic_metrics['precision'], genic_metrics['recall'], genic_metrics['f1']
 
-    @staticmethod
-    def run_large_eval(folder, model, generator, training_species, print_to_stdout=False, calc_H=False):
-        def print_table(results, table_name, training_species):
-            table = [['Name', 'Precision', 'Recall', 'F1-Score']]
-            for name, values in results:
-                if name.lower() in training_species:
-                    name += ' (T)'
-                table.append([name] + [f'{v:.4f}' for v in values])
-            print('\n', AsciiTable(table, table_name).table, sep='')
+    #@staticmethod
+    #def run_large_eval(folder, model, generator, training_species, print_to_stdout=False, calc_H=False):
+    #    def print_table(results, table_name, training_species):
+    #        table = [['Name', 'Precision', 'Recall', 'F1-Score']]
+    #        for name, values in results:
+    #            if name.lower() in training_species:
+    #                name += ' (T)'
+    #            table.append([name] + [f'{v:.4f}' for v in values])
+    #        print('\n', AsciiTable(table, table_name).table, sep='')
 
-        results = []
-        training_species = [s.lower() for s in training_species]
-        eval_file_names = glob.glob(f'{folder}/*.h5')
-        for i, eval_file_name in enumerate(eval_file_names):
-            h5_eval = h5py.File(eval_file_name, 'r')
-            species_name = os.path.basename(eval_file_name).split('.')[0]
-            print(f'\nEvaluating with a sample of {species_name} ({i + 1}/{len(eval_file_names)})')
+    #    results = []
+    #    training_species = [s.lower() for s in training_species]
+    #    eval_file_names = glob.glob(f'{folder}/*.h5')
+    #    for i, eval_file_name in enumerate(eval_file_names):
+    #        h5_eval = h5py.File(eval_file_name, 'r')
+    #        species_name = os.path.basename(eval_file_name).split('.')[0]
+    #        print(f'\nEvaluating with a sample of {species_name} ({i + 1}/{len(eval_file_names)})')
 
-            # possibly adjust batch size based on sample length, which could be flexible
-            # assume the given batch size is for 20k length
-            sample_len = h5_eval['data/X'].shape[1]
-            adjusted_batch_size = int(generator.batch_size * (20000 / sample_len))
-            print(f'adjusted batch size is {adjusted_batch_size}')
+    #        # possibly adjust batch size based on sample length, which could be flexible
+    #        # assume the given batch size is for 20k length
+    #        sample_len = h5_eval['data/X'].shape[1]
+    #        adjusted_batch_size = int(generator.batch_size * (20000 / sample_len))
+    #        print(f'adjusted batch size is {adjusted_batch_size}')
 
-            # use exactly the data generator that is used during validation
-            GenCls = generator.__class__
-            gen = GenCls(model=generator.model, h5_file=h5_eval, mode='val',
-                         batch_size=adjusted_batch_size, shuffle=False)
-            perf_one_species = HelixerModel.run_metrics(gen, model, print_to_stdout=print_to_stdout, calc_H=calc_H)
-            results.append([species_name, perf_one_species])
-        # print results in tables sorted alphabetically and by f1
-        results_by_name = sorted(results, key=lambda r: r[0])
-        results_by_f1 = sorted(results, key=lambda r: r[1][2], reverse=True)
-        print_table(results_by_name, 'Generalization Validation by Name', training_species)
-        print_table(results_by_f1, 'Generalization Validation by Genic F1', training_species)
+    #        # use exactly the data generator that is used during validation
+    #        GenCls = generator.__class__
+    #        gen = GenCls(model=generator.model, h5_file=h5_eval, mode='val',
+    #                     batch_size=adjusted_batch_size, shuffle=False)
+    #        perf_one_species = HelixerModel.run_metrics(gen, model, print_to_stdout=print_to_stdout, calc_H=calc_H)
+    #        results.append([species_name, perf_one_species])
+    #    # print results in tables sorted alphabetically and by f1
+    #    results_by_name = sorted(results, key=lambda r: r[0])
+    #    results_by_f1 = sorted(results, key=lambda r: r[1][2], reverse=True)
+    #    print_table(results_by_name, 'Generalization Validation by Name', training_species)
+    #    print_table(results_by_f1, 'Generalization Validation by Genic F1', training_species)
 
-        # print one number summaries
-        f1_scores = np.array([r[1][2] for r in results])
-        in_train = np.array([r[0].lower() in training_species for r in results], dtype=np.bool)
-        table = [['Metric', 'All', 'Training', 'Evaluation']]
-        for name, func in zip(['Median F1', 'Average F1', 'Stddev F1'], [np.median, np.mean, np.std]):
-            table.append([name, f'{func(f1_scores):.4f}',
-                                f'{func(f1_scores[in_train]):.4f}',
-                                f'{func(f1_scores[~in_train]):.4f}'])
-        print('\n', AsciiTable(table, 'Summary').table, sep='')
-        return np.median(f1_scores[~in_train])
+    #    # print one number summaries
+    #    f1_scores = np.array([r[1][2] for r in results])
+    #    in_train = np.array([r[0].lower() in training_species for r in results], dtype=np.bool)
+    #    table = [['Metric', 'All', 'Training', 'Evaluation']]
+    #    for name, func in zip(['Median F1', 'Average F1', 'Stddev F1'], [np.median, np.mean, np.std]):
+    #        table.append([name, f'{func(f1_scores):.4f}',
+    #                            f'{func(f1_scores[in_train]):.4f}',
+    #                            f'{func(f1_scores[~in_train]):.4f}'])
+    #    print('\n', AsciiTable(table, 'Summary').table, sep='')
+    #    return np.median(f1_scores[~in_train])
 
     @abstractmethod
     def sequence_cls(self):
@@ -719,20 +697,20 @@ class HelixerModel(ABC):
     def model(self):
         pass
 
-    @abstractmethod
-    def model_hat(self, penultimate_layers):
-        pass
+    #@abstractmethod
+    #def model_hat(self, penultimate_layers):
+    #    pass
 
     @abstractmethod
     def compile_model(self, model):
         pass
 
-    @staticmethod
-    def plot_model(model):
-        from tensorflow.keras.utils import plot_model
-        plot_model(model, to_file='model.png')
-        print('Plotted to model.png')
-        sys.exit()
+    #@staticmethod
+    #def plot_model(model):
+    #    from tensorflow.keras.utils import plot_model
+    #    plot_model(model, to_file='model.png')
+    #    print('Plotted to model.png')
+    #    sys.exit()
 
     @staticmethod
     def sum_shapes(datasets):
@@ -823,85 +801,86 @@ class HelixerModel(ABC):
                     n_test_correct_seqs / self.shape_test[0] * 100))
 
     def _make_predictions(self, model):
-        # loop through batches and continuously expand output dataset as everything might
-        # not fit in memory
-        pred_out = h5py.File(self.prediction_output_path, 'w')
-        test_sequence = self.gen_test_data()
+        # TODO mvp
+        ## loop through batches and continuously expand output dataset as everything might
+        ## not fit in memory
+        #pred_out = h5py.File(self.prediction_output_path, 'w')
+        #test_sequence = self.gen_test_data()
 
-        for batch_index in range(len(test_sequence)):
-            if self.verbose:
-                print(batch_index, '/', len(test_sequence), end='\r')
-            if not self.only_predictions:
-                input_data = test_sequence[batch_index][0]
-            else:
-                input_data = test_sequence[batch_index]
-            try:
-                predictions = model.predict_on_batch(input_data)
-            except Exception as e:
-                print(colored('Errors at prediction often result from exhausting the GPU RAM.'
-                              'Your RAM requirement depends on subsequence_length x (val_test_)batch_size.'
-                              'That and the network size (can be changed during training but not inference).',
-                              'red'))
-                raise e
-            if isinstance(predictions, list):
-                # when we have two outputs, one is for phase
-                output_names = ['predictions', 'predictions_phase']
-            else:
-                # if we just had one output
-                predictions = (predictions,)
-                output_names = ['predictions']
+        #for batch_index in range(len(test_sequence)):
+        #    if self.verbose:
+        #        print(batch_index, '/', len(test_sequence), end='\r')
+        #    if not self.only_predictions:
+        #        input_data = test_sequence[batch_index][0]
+        #    else:
+        #        input_data = test_sequence[batch_index]
+        #    try:
+        #        predictions = model.predict_on_batch(input_data)
+        #    except Exception as e:
+        #        print(colored('Errors at prediction often result from exhausting the GPU RAM.'
+        #                      'Your RAM requirement depends on subsequence_length x (val_test_)batch_size.'
+        #                      'That and the network size (can be changed during training but not inference).',
+        #                      'red'))
+        #        raise e
+        #    if isinstance(predictions, list):
+        #        # when we have two outputs, one is for phase
+        #        output_names = ['predictions', 'predictions_phase']
+        #    else:
+        #        # if we just had one output
+        #        predictions = (predictions,)
+        #        output_names = ['predictions']
 
-            for dset_name, pred_dset in zip(output_names, predictions):
-                # join last two dims when predicting one hot labels
-                pred_dset = pred_dset.reshape(pred_dset.shape[:2] + (-1,))
-                # reshape when predicting more than one point at a time
-                label_dim = 4
-                if pred_dset.shape[2] != label_dim:
-                    n_points = pred_dset.shape[2] // label_dim
-                    pred_dset = pred_dset.reshape(
-                        pred_dset.shape[0],
-                        pred_dset.shape[1] * n_points,
-                        label_dim,
-                    )
-                    # add 0-padding if needed
-                    n_removed = self.shape_test[1] - pred_dset.shape[1]
-                    if n_removed > 0:
-                        zero_padding = np.zeros((pred_dset.shape[0], n_removed, pred_dset.shape[2]),
-                                                dtype=pred_dset.dtype)
-                        pred_dset = np.concatenate((pred_dset, zero_padding), axis=1)
-                else:
-                    n_removed = 0  # just to avoid crashing with Unbound Local Error setting attrs for dCNN
+        #    for dset_name, pred_dset in zip(output_names, predictions):
+        #        # join last two dims when predicting one hot labels
+        #        pred_dset = pred_dset.reshape(pred_dset.shape[:2] + (-1,))
+        #        # reshape when predicting more than one point at a time
+        #        label_dim = 4
+        #        if pred_dset.shape[2] != label_dim:
+        #            n_points = pred_dset.shape[2] // label_dim
+        #            pred_dset = pred_dset.reshape(
+        #                pred_dset.shape[0],
+        #                pred_dset.shape[1] * n_points,
+        #                label_dim,
+        #            )
+        #            # add 0-padding if needed
+        #            n_removed = self.shape_test[1] - pred_dset.shape[1]
+        #            if n_removed > 0:
+        #                zero_padding = np.zeros((pred_dset.shape[0], n_removed, pred_dset.shape[2]),
+        #                                        dtype=pred_dset.dtype)
+        #                pred_dset = np.concatenate((pred_dset, zero_padding), axis=1)
+        #        else:
+        #            n_removed = 0  # just to avoid crashing with Unbound Local Error setting attrs for dCNN
 
-                if self.overlap:
-                    pred_dset = test_sequence.ol_helper.overlap_predictions(batch_index, pred_dset)
+        #        if self.overlap:
+        #            pred_dset = test_sequence.ol_helper.overlap_predictions(batch_index, pred_dset)
 
-                # prepare h5 dataset and save the predictions to disk
-                pred_dset = pred_dset.astype(np.float16)
-                if batch_index == 0:
-                    old_len = 0
-                    pred_out.create_dataset(dset_name,
-                                            data=pred_dset,
-                                            maxshape=(None,) + pred_dset.shape[1:],
-                                            chunks=(1,) + pred_dset.shape[1:],
-                                            dtype='float16',
-                                            compression=self.compression,
-                                            shuffle=True)
-                else:
-                    old_len = pred_out[dset_name].shape[0]
-                    pred_out[dset_name].resize(old_len + pred_dset.shape[0], axis=0)
-                pred_out[dset_name][old_len:] = pred_dset
+        #        # prepare h5 dataset and save the predictions to disk
+        #        pred_dset = pred_dset.astype(np.float16)
+        #        if batch_index == 0:
+        #            old_len = 0
+        #            pred_out.create_dataset(dset_name,
+        #                                    data=pred_dset,
+        #                                    maxshape=(None,) + pred_dset.shape[1:],
+        #                                    chunks=(1,) + pred_dset.shape[1:],
+        #                                    dtype='float16',
+        #                                    compression=self.compression,
+        #                                    shuffle=True)
+        #        else:
+        #            old_len = pred_out[dset_name].shape[0]
+        #            pred_out[dset_name].resize(old_len + pred_dset.shape[0], axis=0)
+        #        pred_out[dset_name][old_len:] = pred_dset
 
-        # add model config and other attributes to predictions
-        h5_model = h5py.File(self.load_model_path, 'r')
-        pred_out.attrs['model_config'] = h5_model.attrs['model_config']
-        pred_out.attrs['n_bases_removed'] = n_removed
-        pred_out.attrs['test_data_path'] = self.test_data
-        pred_out.attrs['model_path'] = self.load_model_path
-        pred_out.attrs['timestamp'] = str(datetime.datetime.now())
-        if hasattr(self, 'loaded_model_hash'):
-            pred_out.attrs['model_md5sum'] = self.loaded_model_hash
-        pred_out.close()
-        h5_model.close()
+        ## add model config and other attributes to predictions
+        #h5_model = h5py.File(self.load_model_path, 'r')
+        #pred_out.attrs['model_config'] = h5_model.attrs['model_config']
+        #pred_out.attrs['n_bases_removed'] = n_removed
+        #pred_out.attrs['test_data_path'] = self.test_data
+        #pred_out.attrs['model_path'] = self.load_model_path
+        #pred_out.attrs['timestamp'] = str(datetime.datetime.now())
+        #if hasattr(self, 'loaded_model_hash'):
+        #    pred_out.attrs['model_md5sum'] = self.loaded_model_hash
+        #pred_out.close()
+        #h5_model.close()
 
     def _print_model_info(self, model):
         pwd = os.getcwd()
@@ -1012,11 +991,11 @@ class HelixerModel(ABC):
             if self.eval:
                 test_generator = self.gen_test_data()
                 _, _, _ = HelixerModel.run_metrics(test_generator, model, calc_H=self.calculate_uncertainty)
-                if self.large_eval_folder:
-                    assert self.data_dir != '', 'need training data of the model for training genome names'
-                    training_species = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r').attrs['genomes']
-                    _ = HelixerModel.run_large_eval(self.large_eval_folder, model, test_generator, training_species,
-                                                    print_to_stdout=True, calc_H=self.calculate_uncertainty)
+                #if self.large_eval_folder:
+                #    assert self.data_dir != '', 'need training data of the model for training genome names'
+                #    training_species = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r').attrs['genomes']
+                #    _ = HelixerModel.run_large_eval(self.large_eval_folder, model, test_generator, training_species,
+                #                                    print_to_stdout=True, calc_H=self.calculate_uncertainty)
             else:
                 if os.path.isfile(self.prediction_output_path):
                     print(f'{self.prediction_output_path} already exists and will be overwritten.')
@@ -1024,18 +1003,18 @@ class HelixerModel(ABC):
             for h5_test in self.h5_tests:
                 h5_test.close()
 
-    def insert_coverage_before_hat(self, oldmodel, dense_at):
-        """splits input in half, feeds CATG to the main model, and coverage in before tuning layers"""
-        # hacking RNAseq coverage in.
-        values_per_bp = 4 + self.coverage_count * 2
-
-        raw_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
-                          name='main_input')
-        # make a callable model that gives the intermediate output, with first 4 of input (CATG)
-        excerpt_model = Model(oldmodel.input, oldmodel.layers[dense_at - 2].output)
-        x = excerpt_model(raw_input[:, :, :4])
-        # add hat, including coverage back on
-        output = self.model_hat((x, raw_input[:, :, 4:]))
-
-        model = Model(raw_input, output)
-        return model
+#    def insert_coverage_before_hat(self, oldmodel, dense_at):
+#        """splits input in half, feeds CATG to the main model, and coverage in before tuning layers"""
+#        # hacking RNAseq coverage in.
+#        values_per_bp = 4 + self.coverage_count * 2
+#
+#        raw_input = Input(shape=(None, values_per_bp), dtype=self.float_precision,
+#                          name='main_input')
+#        # make a callable model that gives the intermediate output, with first 4 of input (CATG)
+#        excerpt_model = Model(oldmodel.input, oldmodel.layers[dense_at - 2].output)
+#        x = excerpt_model(raw_input[:, :, :4])
+#        # add hat, including coverage back on
+#        output = self.model_hat((x, raw_input[:, :, 4:]))
+#
+#        model = Model(raw_input, output)
+#        return model
