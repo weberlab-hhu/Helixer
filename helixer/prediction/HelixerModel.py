@@ -472,7 +472,6 @@ class HelixerModel(ABC):
         self.parser.add_argument('--weight-decay', type=float, default=3.5e-5)
         self.parser.add_argument('--class-weights', type=str, default='None')
         self.parser.add_argument('--transition-weights', type=str, default='None')
-        self.parser.add_argument('--stretch-transition-weights', type=int, default=0, help=argparse.SUPPRESS)  # bc no clear effect on result quality
         self.parser.add_argument('--coverage-weights', action='store_true')
         self.parser.add_argument('--coverage-offset', type=float, default=0.0)
         self.parser.add_argument('--calculate-uncertainty', action='store_true')
@@ -482,7 +481,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--resume-training', action='store_true')
         # testing / predicting
         self.parser.add_argument('-l', '--load-model-path', type=str, default='')
-        self.parser.add_argument('-t', '--test-data', type=str, default='')
+        self.parser.add_argument('-t', '--test-data-path', type=str, default='')
         self.parser.add_argument('-p', '--prediction-output-path', type=str, default='predictions.h5')
         self.parser.add_argument('--compression', default='gzip', help='compression used for datasets in predictions '
                                                                        'h5 file. One of "lzf" or "gzip" (default)')
@@ -529,6 +528,7 @@ class HelixerModel(ABC):
         self.device = None
         self.model = None
         self._validation_data, self._test_data, self._training_data = None, None, None
+        self.run_purpose = None
         # place holder to make it run in simplfied form #TODO remove again
         self.h5_trains, self.h5_vals, self.h5_tests = None, None, None
         self.test_data_path = None
@@ -580,6 +580,10 @@ class HelixerModel(ABC):
         if self.run_purpose == strs.TRAIN:
             assert self.data_dir is not None, '--data-dir required for training'
             assert not self.test_data_path, '--test-data-path cannot be set when training'
+        else:
+            assert self.test_data_path.endswith('.h5'), 'Need a h5 test data file when loading a model'
+            assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
+
 
         self.class_weights = eval(self.class_weights)
         if not isinstance(self.class_weights, (list, np.ndarray, type(None))):
@@ -952,7 +956,7 @@ class HelixerModel(ABC):
         test_loss /= num_batches
         correct /= size * y.shape[1]
         print(f"Test Performance: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
-
+        # TODO hook to actual metrics, masking and all that jazz 
 
     def train_epoch(self, training_data):
         size = len(training_data.data)
@@ -986,6 +990,9 @@ class HelixerModel(ABC):
             self.train_epoch(training_data)
             self.eval_epoch(eval_data)
 
+        torch.save(self.model.state_dict(), self.save_model_path)
+
+
     def run(self):
         self.set_resources()
         #self.open_data_files()
@@ -998,7 +1005,6 @@ class HelixerModel(ABC):
         #        h5_files = self.h5_trains
         #    self.coverage_count = h5_files[0]['evaluation/rnaseq_coverage'].shape[2]
 
-        # we're training, not eval nor predict
         if self.run_purpose == strs.TRAIN:
             if self.resume_training:
                 pass  
@@ -1035,33 +1041,15 @@ class HelixerModel(ABC):
             self.compile_model()
             self.fit(self.training_data, self.validation_data)
         else:
-            assert self.test_data_path.endswith('.h5'), 'Need a h5 test data file when loading a model'
-            assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
-
-            strategy = tf.distribute.MirroredStrategy()
-            print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
-            with strategy.scope():
-                if not self.input_coverage:
-                    model = load_model(self.load_model_path)
-                else:
-                    # for whatever reason, the fine tuning method is not saving the full model
-                    # in an entirely valid h5 file (depending on if you ask h5py or h5ls). puh.
-                    # thus loading the original model is both the easiest way to get architecture
-                    # setup and seems safer to make sure _all_ and not just _new_ weights are there
-                    oldmodel = load_model(self.pretrained_model_path)
-                    # repeat everything done setting up training to get exact architecture
-                    # freeze weights and replace everything from the dense layer
-                    dense_at = [l.name for l in oldmodel.layers].index('dense')
-                    for layer in oldmodel.layers:
-                        layer.trainable = False
-
-                    model = self.insert_coverage_before_hat(oldmodel, dense_at)
-                    model.load_weights(self.load_model_path)
-            self._print_model_info(model)
+            self.model = self.setup_model() 
+            self.model.load_state_dict(torch.load(self.load_model_path))
+            self.compile_model()  # todo, this is likely optional once metrics are in and loss not reported
+            self._print_model_info()
 
             if self.run_purpose == strs.EVAL:
-                test_generator = self.gen_test_data()
-                _, _, _ = HelixerModel.run_metrics(test_generator, model, calc_H=self.calculate_uncertainty)
+                # TODO, next line only, mvp
+                #_, _, _ = HelixerModel.run_metrics(test_generator, model, calc_H=self.calculate_uncertainty)
+                self.eval_epoch(self.test_data)
                 #if self.large_eval_folder:
                 #    assert self.data_dir != '', 'need training data of the model for training genome names'
                 #    training_species = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r').attrs['genomes']
@@ -1074,8 +1062,6 @@ class HelixerModel(ABC):
             else:
                 assert ValueError, f"run_purpose should be in {strs.TRAIN}, {strs.EVAL}, {strs.PREDICT}"
 
-            for h5_test in self.h5_tests:
-                h5_test.close()
 
 #    def insert_coverage_before_hat(self, oldmodel, dense_at):
 #        """splits input in half, feeds CATG to the main model, and coverage in before tuning layers"""
