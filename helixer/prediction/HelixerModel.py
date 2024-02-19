@@ -24,8 +24,7 @@ from terminaltables import AsciiTable
 import torch
 
 from helixer.prediction.Metrics import Metrics
-from helixer.core import overlap
-
+from helixer.core import overlap, strs
 
 #class ConfusionMatrixTrain(Callback):
 class ConfusionMatrixTrain():
@@ -124,7 +123,7 @@ class PresuffleCallback():
 #class HelixerSequence(Sequence):
 class HelixerSequence():
     def __init__(self, model, h5_files, mode, batch_size, shuffle):
-        assert mode in ['train', 'val', 'test']
+        assert mode in [strs.TEST, strs.TRAIN, strs.VAL]
         self.model = model
         self.h5_files = h5_files
         self.mode = mode
@@ -135,7 +134,7 @@ class HelixerSequence():
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
                                  'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
 
-        if self.mode == 'test':
+        if self.mode == strs.TEST:
             assert len(self.h5_files) == 1, "predictions and eval should be applied to individual files only"
 
         # set chunk size and overlap parameters
@@ -164,7 +163,7 @@ class HelixerSequence():
                     self.data_list_names.append('scores/by_bp')
 
         if self.overlap:
-            assert self.mode == "test", "overlapping currently only works for test (predictions & eval)"
+            assert self.mode == strs.TEST, "overlapping currently only works for test (predictions & eval)"
             # can take [0] below bc we've asserted that test means len(self.h5_files) == 1 above
             contiguous_ranges = helixer.core.helpers.get_contiguous_ranges(self.h5_files[0])
             self.ol_helper = overlap.OverlapSeqHelper(contiguous_ranges=contiguous_ranges,
@@ -193,7 +192,7 @@ class HelixerSequence():
         self.n_seqs = len(self.data_lists[0])
         print(f'setting self.n_seqs to {self.n_seqs}, bc that is len of {self.data_list_names[0]}')
 
-        if self.mode == "test":
+        if self.mode == strs.TEST:
             if self.class_weights is not None:
                 print(f'ignoring the class_weights of {self.class_weights} in mode "test"')
                 self.class_weights = None
@@ -216,7 +215,7 @@ class HelixerSequence():
         else:
             n_seqs = x_dset.shape[0]
 
-        if self.mode == "train" or self.mode == 'val':
+        if self.mode == strs.TRAIN or self.mode == strs.VAL:
             mask = np.logical_and(h5_file['data/is_annotated'],
                                   h5_file['data/err_samples'])
             n_masked = x_dset.shape[0] - np.sum(mask)
@@ -409,7 +408,7 @@ class HelixerSequence():
                     sw = sw[:, :-overhang]
                     if self.predict_phase:
                         phases = phases[:, :-overhang]
-                    if self.mode == 'train' and self.transition_weights is not None:
+                    if self.mode == strs.TRAIN and self.transition_weights is not None:
                         transitions = transitions[:, :-overhang]
 
             if not self.only_predictions:
@@ -417,7 +416,7 @@ class HelixerSequence():
                 sw = sw.reshape((sw.shape[0], -1, pool_size))
                 sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
 
-            if self.mode == 'train':
+            if self.mode == strs.TRAIN:
                 if self.class_weights is not None:
                     # class weights are additive for the individual timestep predictions
                     # giving even more weight to transition points
@@ -528,9 +527,11 @@ class HelixerModel(ABC):
 
         self.coverage_count = None
         self.device = None
-        self.nn_model = None
+        self.model = None
+        self._validation_data, self._test_data, self._training_data = None, None, None
         # place holder to make it run in simplfied form #TODO remove again
         self.h5_trains, self.h5_vals, self.h5_tests = None, None, None
+        self.test_data_path = None
 
     def parse_args(self):
         """Parses the arguments either from the command line via argparse by using self.parser or
@@ -572,7 +573,7 @@ class HelixerModel(ABC):
         if not self.testing:
             assert self.data_dir is not None, '--data-dir required for training'
 
-        assert not (not self.testing and self.test_data)
+        assert not (not self.testing and self.test_data_path)
         assert not (self.resume_training and (not self.load_model_path or not self.data_dir))
 
         self.class_weights = eval(self.class_weights)
@@ -620,20 +621,32 @@ class HelixerModel(ABC):
         #if self.gpu_id > -1:
         #    tf.config.set_visible_devices([gpu_devices[self.gpu_id]], 'GPU')
 
-    def gen_training_data(self):
-        SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_files=self.h5_trains, mode='train', batch_size=self.batch_size,
-                           shuffle=True)
+    @property
+    def training_data(self):
+        if self._training_data is None:
+            SequenceCls = self.sequence_cls()
+            self._training_data = SequenceCls(model=self, h5_files=self.h5_trains, 
+                                              mode=strs.TRAIN, batch_size=self.batch_size,
+                                              shuffle=True)
+        return self._training_data
 
-    def gen_validation_data(self):
-        SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_files=self.h5_vals, mode='val', batch_size=self.val_test_batch_size,
-                           shuffle=False)
+    @property
+    def validation_data(self):
+        if self._validation_data is None:
+            SequenceCls = self.sequence_cls()
+            self._validation_data = SequenceCls(model=self, h5_files=self.h5_vals, 
+                                                mode=strs.VAL, batch_size=self.val_test_batch_size,
+                                                shuffle=False)
+        return self._validation_data
 
-    def gen_test_data(self):
-        SequenceCls = self.sequence_cls()
-        return SequenceCls(model=self, h5_files=self.h5_tests, mode='test', batch_size=self.val_test_batch_size,
-                           shuffle=False)
+    @property
+    def test_data(self):
+        if self._test_data is None:
+            SequenceCls = self.sequence_cls()
+            self._test_data = SequenceCls(model=self, h5_files=self.h5_tests, 
+                                          mode=strs.TEST, batch_size=self.val_test_batch_size,
+                                          shuffle=False)
+        return self._test_data
 
     @staticmethod
     def run_metrics(generator, model, print_to_stdout=True, calc_H=False):
@@ -776,7 +789,7 @@ class HelixerModel(ABC):
             n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_trains)
             n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_vals)
         else:
-            self.h5_tests = [h5py.File(self.test_data, 'r')]  # list for consistency with train/val
+            self.h5_tests = [h5py.File(self.test_data_path, 'r')]  # list for consistency with train/val
             self.shape_test = self.h5_tests[0]['/data/X'].shape
 
             n_test_correct_seqs = get_n_correct_seqs(self.h5_tests)
@@ -880,7 +893,7 @@ class HelixerModel(ABC):
         #h5_model = h5py.File(self.load_model_path, 'r')
         #pred_out.attrs['model_config'] = h5_model.attrs['model_config']
         #pred_out.attrs['n_bases_removed'] = n_removed
-        #pred_out.attrs['test_data_path'] = self.test_data
+        #pred_out.attrs['test_data_path'] = self.test_data_path
         #pred_out.attrs['model_path'] = self.load_model_path
         #pred_out.attrs['timestamp'] = str(datetime.datetime.now())
         #if hasattr(self, 'loaded_model_hash'):
@@ -919,11 +932,27 @@ class HelixerModel(ABC):
         else:
             print('Total params: {:,}'.format(self.count_params()))
         os.chdir(pwd)  # return to previous directory
+    
+    def eval_epoch(self, data):
+        size = len(data.data)
+        num_batches = len(data.loader)
+        self.model.eval()
+        test_loss, correct = 0, 0
+        with torch.no_grad():
+            for X, y in data.loader:
+                X, y = X.to(self.device), y.to(self.device)
+                pred = self.model(X)
+                test_loss += self.loss_fn(pred, y).item()
+                correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+        test_loss /= num_batches
+        correct /= size * y.shape[1]
+        print(f"Test Performance: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 
-    def train_epoch(self, dataloader):
-        size = len(dataloader.dataset)
+
+    def train_epoch(self, training_data):
+        size = len(training_data.data)
         self.model.train()
-        for batch, (X, y) in enumerate(dataloader):
+        for batch, (X, y) in enumerate(training_data.loader):
             X, y = X.to(self.device), y.to(self.device)
 
             # Compute prediction error
@@ -944,12 +973,13 @@ class HelixerModel(ABC):
             #          callbacks=self.generate_callbacks(train_generator),
             #          verbose=True)
  
-    def train(self, dataloader):
+    def fit(self, training_data, eval_data):
         # todo, this needs to grow to be s.t. with early stopping, call backs, etc...
         epochs = 3
         for t in range(epochs):
             print(f"Epoch {t+1}\n-------------------------------")
-            self.train_epoch(dataloader)
+            self.train_epoch(training_data)
+            self.eval_epoch(eval_data)
 
     def run(self):
         self.set_resources()
@@ -998,11 +1028,9 @@ class HelixerModel(ABC):
 
 
             self.compile_model()
-
-            train_generator = self.gen_training_data()
-            self.train(train_generator.dataloader)
+            self.fit(self.training_data, self.validation_data)
         else:
-            assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
+            assert self.test_data_path.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
 
             strategy = tf.distribute.MirroredStrategy()

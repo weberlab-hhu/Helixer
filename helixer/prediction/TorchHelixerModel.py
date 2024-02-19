@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
+from helixer.core import strs
 from HelixerModel import HelixerModel
 
 class CustomMockDataset(Dataset):
@@ -28,14 +29,14 @@ class HybridSequence:
 
         self.batch_size = batch_size
         self.model = model
-        if mode == 'train':
+        if mode == strs.TRAIN:
             n_examples = 12800
         else:
             n_examples = 128
 
         self.data = CustomMockDataset((n_examples, self.LEN, self.CLASSES))
 
-        self.dataloader = DataLoader(self.data, batch_size=batch_size)
+        self.loader = DataLoader(self.data, batch_size=batch_size)
 
 
 class HybridModel(HelixerModel):
