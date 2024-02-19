@@ -10,32 +10,25 @@ except ImportError:
     pass
 import time
 import glob
-import h5py
-import numcodecs
+#import numcodecs
 import argparse
 import datetime
 import pkg_resources
 import subprocess
 import numpy as np
-import tensorflow as tf
 from sklearn.utils import shuffle
 from pprint import pprint
 from termcolor import colored
 from terminaltables import AsciiTable
 
-from tensorflow.keras.callbacks import Callback
-from tensorflow.keras import optimizers
-from tensorflow.keras import backend as K
-from tensorflow.keras.models import load_model, Model
-from tensorflow.keras.utils import Sequence
-from tensorflow.keras.layers import Input
-from tensorflow_addons.optimizers import AdamW
+import torch
 
 from helixer.prediction.Metrics import Metrics
 from helixer.core import overlap
 
 
-class ConfusionMatrixTrain(Callback):
+#class ConfusionMatrixTrain(Callback):
+class ConfusionMatrixTrain():
     def __init__(self, save_model_path, train_generator, val_generator, large_eval_folder, patience, calc_H=False,
                  report_to_nni=False, check_every_nth_batch=1_000_000, save_every_check=False):
         self.save_model_path = save_model_path
@@ -118,7 +111,8 @@ class ConfusionMatrixTrain(Callback):
             nni.report_final_result(self.best_val_genic_f1)
 
 
-class PreshuffleCallback(Callback):
+#class PreshuffleCallback(Callback):
+class PresuffleCallback():
     def __init__(self, train_generator):
         self.train_generator = train_generator
 
@@ -127,7 +121,8 @@ class PreshuffleCallback(Callback):
             self.train_generator.shuffle_data()
 
 
-class HelixerSequence(Sequence):
+#class HelixerSequence(Sequence):
+class HelixerSequence():
     def __init__(self, model, h5_files, mode, batch_size, shuffle):
         assert mode in ['train', 'val', 'test']
         self.model = model
@@ -532,6 +527,9 @@ class HelixerModel(ABC):
                            help='adds extra dense layer between concatenating coverage and final output layer')
 
         self.coverage_count = None
+        self.device = None
+        # place holder to make it run in simplfied form #TODO remove again
+        self.h5_trains, self.h5_vals, self.h5_tests = None, None, None
 
     def parse_args(self):
         """Parses the arguments either from the command line via argparse by using self.parser or
@@ -606,7 +604,13 @@ class HelixerModel(ABC):
     #    return callbacks
 
     def set_resources(self):
-        pass # TODO torch mvp
+        self.device = (
+            "cuda"
+            if torch.cuda.is_available()
+            else "mps"
+            if torch.backends.mps.is_available()
+            else "cpu"
+        )
         #gpu_devices = tf.config.experimental.list_physical_devices('GPU')
         #for device in gpu_devices:
         #    tf.config.experimental.set_memory_growth(device, True)
@@ -801,6 +805,7 @@ class HelixerModel(ABC):
                     n_test_correct_seqs / self.shape_test[0] * 100))
 
     def _make_predictions(self, model):
+        pass
         # TODO mvp
         ## loop through batches and continuously expand output dataset as everything might
         ## not fit in memory
@@ -882,6 +887,10 @@ class HelixerModel(ABC):
         #pred_out.close()
         #h5_model.close()
 
+    def count_params(self, model):
+        # TODO, store the model instance as a class attrib, so it isn't constantly passed around
+        return sum(p.numel() for p in model.parameters())
+
     def _print_model_info(self, model):
         pwd = os.getcwd()
         os.chdir(os.path.dirname(__file__))
@@ -906,63 +915,92 @@ class HelixerModel(ABC):
 
         print()
         if self.verbose:
-            print(model.summary())
+            print(model)
         else:
-            print('Total params: {:,}'.format(model.count_params()))
+            print('Total params: {:,}'.format(self.count_params(model)))
         os.chdir(pwd)  # return to previous directory
+
+    def train_epoch(self, dataloader, model):
+        size = len(dataloader.dataset)
+        model.train()
+        for batch, (X, y) in enumerate(dataloader):
+            X, y = X.to(self.device), y.to(self.device)
+
+            # Compute prediction error
+            pred = model(X)
+            loss = self.loss_fn(pred, y)
+
+            # Backpropagation
+            loss.backward()
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+
+            if batch % 100 == 0:
+                loss, current = loss.item(), (batch + 1) * len(X)
+                print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+            #model.fit(train_generator,
+            #          epochs=self.epochs,
+            #          workers=self.workers,
+            #          callbacks=self.generate_callbacks(train_generator),
+            #          verbose=True)
+ 
+    def train(self, dataloader, model):
+        # todo, this needs to grow to be s.t. with early stopping, call backs, etc...
+        epochs = 3
+        for t in range(epochs):
+            print(f"Epoch {t+1}\n-------------------------------")
+            self.train_epoch(dataloader, model)
 
     def run(self):
         self.set_resources()
-        self.open_data_files()
-        if self.input_coverage:
-            # preview first h5 file to find number of bam files and set 'coverage_count'
-            # which is used to calculate model input size +
-            try:
-                h5_files = self.h5_tests
-            except AttributeError:
-                h5_files = self.h5_trains
-            self.coverage_count = h5_files[0]['evaluation/rnaseq_coverage'].shape[2]
+        #self.open_data_files()
+        #if self.input_coverage:
+        #    # preview first h5 file to find number of bam files and set 'coverage_count'
+        #    # which is used to calculate model input size +
+        #    try:
+        #        h5_files = self.h5_tests
+        #    except AttributeError:
+        #        h5_files = self.h5_trains
+        #    self.coverage_count = h5_files[0]['evaluation/rnaseq_coverage'].shape[2]
 
         # we're training, not eval nor predict
         if not self.testing:
             if self.resume_training:
-                if not self.fine_tune:
-                    model = load_model(self.load_model_path)
-                else:
-                    oldmodel = load_model(self.load_model_path)
-                    assert oldmodel.input.shape[2] == 4, \
-                        f"input shape of trained model != 4 ({oldmodel.input.shape[2]}); " \
-                        f"fine tuning is only supported on models trained without coverage"
-                    # freeze weights and replace everything from the dense layer
-                    dense_at = [l.name for l in oldmodel.layers].index('dense')
-                    for layer in oldmodel.layers:
-                        layer.trainable = False
-                    # the following assumes the base-model is trained without coverage
-                    if not self.input_coverage:
-                        inp = oldmodel.input
-                        output = self.model_hat((oldmodel.layers[dense_at - 1].output, None))
-                        model = Model(inp, output)
-                    else:
-                        model = self.insert_coverage_before_hat(oldmodel, dense_at)
+                pass  
+            #    if not self.fine_tune:
+            #        model = load_model(self.load_model_path)
+            #    else:
+            #        oldmodel = load_model(self.load_model_path)
+            #        assert oldmodel.input.shape[2] == 4, \
+            #            f"input shape of trained model != 4 ({oldmodel.input.shape[2]}); " \
+            #            f"fine tuning is only supported on models trained without coverage"
+            #        # freeze weights and replace everything from the dense layer
+            #        dense_at = [l.name for l in oldmodel.layers].index('dense')
+            #        for layer in oldmodel.layers:
+            #            layer.trainable = False
+            #        # the following assumes the base-model is trained without coverage
+            #        if not self.input_coverage:
+            #            inp = oldmodel.input
+            #            output = self.model_hat((oldmodel.layers[dense_at - 1].output, None))
+            #            model = Model(inp, output)
+            #        else:
+            #            model = self.insert_coverage_before_hat(oldmodel, dense_at)
 
             else:
                 model = self.model()
             self._print_model_info(model)
 
-            if self.optimizer.lower() == 'adam':
-                self.optimizer = optimizers.Adam(learning_rate=self.learning_rate, clipnorm=self.clip_norm)
-            elif self.optimizer.lower() == 'adamw':
-                self.optimizer = AdamW(learning_rate=self.learning_rate, clipnorm=self.clip_norm,
-                                       weight_decay=self.weight_decay)
+            #if self.optimizer.lower() == 'adam':
+            #    self.optimizer = optimizers.Adam(learning_rate=self.learning_rate, clipnorm=self.clip_norm)
+            #elif self.optimizer.lower() == 'adamw':
+            #    self.optimizer = AdamW(learning_rate=self.learning_rate, clipnorm=self.clip_norm,
+            #                           weight_decay=self.weight_decay)
+
 
             self.compile_model(model)
 
             train_generator = self.gen_training_data()
-            model.fit(train_generator,
-                      epochs=self.epochs,
-                      workers=self.workers,
-                      callbacks=self.generate_callbacks(train_generator),
-                      verbose=True)
+            self.train(train_generator.dataloader, model)
         else:
             assert self.test_data.endswith('.h5'), 'Need a h5 test data file when loading a model'
             assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
