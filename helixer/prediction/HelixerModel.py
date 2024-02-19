@@ -567,14 +567,19 @@ class HelixerModel(ABC):
             args['save_model_path'] = nni_save_model_path
             args['prediction_output_path'] = nni_pred_output_path
 
-        self.testing = bool(self.load_model_path and not self.resume_training)
-        self.only_predictions = (self.testing and not self.eval)  # do only load X in this case
+        # there are 3 main purposes of running a model, train, eval, predict
+        self.run_purpose = strs.TRAIN
 
-        if not self.testing:
+        if self.load_model_path and not self.resume_training:
+            if self.eval:
+                self.run_purpose = strs.EVAL
+            else:
+                self.run_purpose = strs.PREDICT
+
+        # check consistency with other parameters
+        if self.run_purpose == strs.TRAIN:
             assert self.data_dir is not None, '--data-dir required for training'
-
-        assert not (not self.testing and self.test_data_path)
-        assert not (self.resume_training and (not self.load_model_path or not self.data_dir))
+            assert not self.test_data_path, '--test-data-path cannot be set when training'
 
         self.class_weights = eval(self.class_weights)
         if not isinstance(self.class_weights, (list, np.ndarray, type(None))):
@@ -764,7 +769,7 @@ class HelixerModel(ABC):
                 sum_n_fully_ig += n_fully_ig
             return sum_n_fully_ig
 
-        if not self.testing:
+        if self.run_purpose == strs.TRAIN:
             self.h5_trains = [h5py.File(f, 'r') for f in glob.glob(os.path.join(self.data_dir, 'training_data*h5'))]
             self.h5_vals = [h5py.File(f, 'r') for f in glob.glob(os.path.join(self.data_dir, 'validation_data*h5'))]
             try:
@@ -798,7 +803,7 @@ class HelixerModel(ABC):
 
         if self.verbose:
             print('\nData config: ')
-            if not self.testing:
+            if self.run_purpose == strs.TRAIN:
                 print([dict(x.attrs) for x in self.h5_trains])
                 print('\nTraining data/X shape: {}'.format(self.shape_train[:2]))
                 print('Validation data/X shape: {}'.format(self.shape_val[:2]))
@@ -994,7 +999,7 @@ class HelixerModel(ABC):
         #    self.coverage_count = h5_files[0]['evaluation/rnaseq_coverage'].shape[2]
 
         # we're training, not eval nor predict
-        if not self.testing:
+        if self.run_purpose == strs.TRAIN:
             if self.resume_training:
                 pass  
             #    if not self.fine_tune:
@@ -1054,7 +1059,7 @@ class HelixerModel(ABC):
                     model.load_weights(self.load_model_path)
             self._print_model_info(model)
 
-            if self.eval:
+            if self.run_purpose == strs.EVAL:
                 test_generator = self.gen_test_data()
                 _, _, _ = HelixerModel.run_metrics(test_generator, model, calc_H=self.calculate_uncertainty)
                 #if self.large_eval_folder:
@@ -1062,10 +1067,13 @@ class HelixerModel(ABC):
                 #    training_species = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r').attrs['genomes']
                 #    _ = HelixerModel.run_large_eval(self.large_eval_folder, model, test_generator, training_species,
                 #                                    print_to_stdout=True, calc_H=self.calculate_uncertainty)
-            else:
+            elif self.run_purpose == strs.PREDICT:
                 if os.path.isfile(self.prediction_output_path):
                     print(f'{self.prediction_output_path} already exists and will be overwritten.')
                 self._make_predictions(model)
+            else:
+                assert ValueError, f"run_purpose should be in {strs.TRAIN}, {strs.EVAL}, {strs.PREDICT}"
+
             for h5_test in self.h5_tests:
                 h5_test.close()
 
