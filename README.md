@@ -145,6 +145,11 @@ a reasonable batch size cannot be used.
 - invertebrates, set to `--subsequence-length 213840 --overlap-offset 106920 --overlap-core-length 160380`
 - vertebrates, set to `--subsequence-length 213840 --overlap-offset 106920 --overlap-core-length 160380`
 
+##### --peak-threshold affects the precision <-> recall balance
+In particular, increasing the peak threshold from the default of 0.8 has been reported to increase the precision
+of predictions, with very minimal reduction in e.g. [BUSCO](https://busco.ezlab.org/) scores. Values such as 0.9, 0.95 and 0.975 are 
+very reasonable to try. 
+
 #### Citation
 
 ##### Full Applicable Tool 
