@@ -98,7 +98,7 @@ usage information, if necessary.
 ##### Run on target genomes, 3-step method
 ```bash
 # example broken into individual steps
-fasta2zarr.py --species Arabidopsis_lyrata --h5-output-path Arabidopsis_lyrata.h5 --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa
+fasta2zarr.py --species Arabidopsis_lyrata --zarr-output-path Arabidopsis_lyrata.zarr --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa
 # the exact location ($HOME/.local/share/) of the model comes from appdirs
 # the model was downloaded when fetch_helixer_models.py was called above
 # this example code is for _linux_ and will need to be modified for other OSs
