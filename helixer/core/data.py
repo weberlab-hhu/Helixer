@@ -33,6 +33,7 @@ def fetch_and_organize_models(priority_models):
         r = requests.get(url, allow_redirects=True)
         with open(os.path.join(model_path, lineage, mfile), 'wb') as f:
             f.write(r.content)
+        print(f'saved model {mfile} to {model_path}')
 
     # additionally save model list to disk (so it can run offline w/ default models)
     r = requests.get(MODEL_LIST_URL, allow_redirects=True)
@@ -54,6 +55,7 @@ def prioritized_models(lineage):
         with open(existing_list) as f:
             ml = f.readlines()
             ml = [x.rstrip() for x in ml]
+    print(f'retrived list of available models from {MODEL_LIST_URL}')
 
     cr = csv.reader(ml)
     models = []
