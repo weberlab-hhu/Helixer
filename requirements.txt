@@ -3,7 +3,7 @@ tensorflow>=2.6.2
 tensorflow_addons
 nni
 seaborn
-Keras
+Keras<3.0.0
 keras_layer_normalization
 terminaltables
 HTSeq
