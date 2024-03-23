@@ -913,8 +913,7 @@ class HelixerModel(ABC):
             commit = subprocess.check_output(cmd, stderr=subprocess.STDOUT).strip().decode()
             print(f'Current Helixer branch: {branch} ({commit})')
         except subprocess.CalledProcessError:
-            version =  version(module.__name__)
-            print(f'Current Helixer version: {version}')
+            print(f'Current Helixer version: {version("helixer")}')
 
         try:
             if os.path.isfile(self.load_model_path):
