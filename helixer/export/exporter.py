@@ -86,7 +86,7 @@ class HelixerExportControllerBase(object):
                     strip().decode()
             except subprocess.CalledProcessError:
                 attrs[module.__name__ + '_commit'] = 'commit not found, version: {}'.format(
-                    version(module) 
+                    version(module.__name__) 
                 )
                 print('logged installed version in place of git commit for {}'.format(module.__name__))
         os.chdir(pwd)
