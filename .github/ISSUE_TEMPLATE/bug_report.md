@@ -24,6 +24,7 @@ When behavior differs from expectation, but no specific error occurred, include 
 **Environment (please complete the following information):**
  - OS: [e.g. iOS]
  - whether a container (any of docker, singularity, apptainer) was used
+ - if the web tool at https://www.plabipd.de/helixer_main.html was used
 
 **Additional context**
 Add any other context about the problem here.
