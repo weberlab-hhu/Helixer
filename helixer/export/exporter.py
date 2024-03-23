@@ -5,7 +5,7 @@ import numpy as np
 import sqlite3
 import datetime
 import subprocess
-import pkg_resources
+from importlib.metadata import version
 
 import geenuff
 import helixer
@@ -86,7 +86,7 @@ class HelixerExportControllerBase(object):
                     strip().decode()
             except subprocess.CalledProcessError:
                 attrs[module.__name__ + '_commit'] = 'commit not found, version: {}'.format(
-                    pkg_resources.require(module.__name__)[0].version
+                    version(module) 
                 )
                 print('logged installed version in place of git commit for {}'.format(module.__name__))
         os.chdir(pwd)
