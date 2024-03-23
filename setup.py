@@ -9,7 +9,7 @@ setup(
    install_requires=["geenuff @ git+https://github.com/weberlab-hhu/GeenuFF@v0.3.2",
                      "sqlalchemy==1.3.22",
                      "tensorflow>=2.6.2",
-                     "tensorflow-addons>=0.23.0",
+                     "tensorflow-addons>=0.21.0",
                      "nni",
                      "seaborn",
                      "Keras<3.0.0",
