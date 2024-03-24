@@ -14,7 +14,7 @@ import h5py
 import numcodecs
 import argparse
 import datetime
-import pkg_resources
+from importlib.metadata import version
 import subprocess
 import numpy as np
 import tensorflow as tf
@@ -913,8 +913,7 @@ class HelixerModel(ABC):
             commit = subprocess.check_output(cmd, stderr=subprocess.STDOUT).strip().decode()
             print(f'Current Helixer branch: {branch} ({commit})')
         except subprocess.CalledProcessError:
-            version = pkg_resources.require('helixer')[0].version
-            print(f'Current Helixer version: {version}')
+            print(f'Current Helixer version: {version("helixer")}')
 
         try:
             if os.path.isfile(self.load_model_path):
