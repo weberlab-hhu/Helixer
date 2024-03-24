@@ -55,7 +55,7 @@ def prioritized_models(lineage):
         with open(existing_list) as f:
             ml = f.readlines()
             ml = [x.rstrip() for x in ml]
-    print(f'retrived list of available models from {MODEL_LIST_URL}')
+    print(f'retrieved list of available models from {MODEL_LIST_URL}')
 
     cr = csv.reader(ml)
     models = []
