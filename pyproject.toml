@@ -46,3 +46,4 @@ packages = [
     "helixer.export"
 ]
 package-data = {helixer = ["testdata/*.fa", "testdata/*.gff"]}
+script-files = ["Helixer.py", "fasta2h5.py", "geenuff2h5.py", "helixer/prediction/HybridModel.py", "scripts/fetch_helixer_models.py"]
