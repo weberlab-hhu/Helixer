@@ -84,9 +84,9 @@ to override the lineage default for `Helixer.py`.
 ```bash
 # download an example chromosome
 wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/fasta/arabidopsis_lyrata/dna/Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa.gz
-gunzip Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa.gz
+
 # run all Helixer components from fa to gff3
-Helixer.py --lineage land_plant --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa  \
+Helixer.py --lineage land_plant --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa.gz  \
   --species Arabidopsis_lyrata --gff-output-path Arabidopsis_lyrata_chromosome8_helixer.gff3
 ```
 
