@@ -4,12 +4,8 @@ import zarr
 import numpy as np
 import sqlite3
 import datetime
-import subprocess
-import pkg_resources
-from numcodecs import Blosc, Zstd
+from numcodecs import Blosc
 
-import geenuff
-import helixer
 from geenuff.applications.exporter import GeenuffExportController
 from geenuff.applications.importer import FastaImporter
 from .numerify import CoordNumerifier
@@ -95,9 +91,9 @@ class HelixerExportController(HelixerExportControllerBase):
         if match_existing:
             # confirm files exist
             assert os.path.exists(self.output_path), 'output_path not existing'
-            self.zarr_file = h5py.File(output_path, 'a')
+            self.zarr_file = zarr.open(output_path, mode='a')
         else:
-            self.zarr_file = h5py.File(output_path, 'w')
+            self.zarr_file = zarr.open(output_path, mode='w')
         print(f'Exporting all data to {output_path}')
 
     def _coord_info(self, coords_features):
@@ -108,11 +104,12 @@ class HelixerExportController(HelixerExportControllerBase):
             coord_info[seqid] = (coord_id, coord_len)
         return coord_info
 
-    def _numerify_coord(self, coord, coord_features, chunk_size, one_hot, write_by, modes, multiprocess):
+    @staticmethod
+    def _numerify_coord(coord, coord_features, chunk_size, one_hot, write_by, modes, multiprocess):
         """filtering and stats"""
         coord_data_gen = CoordNumerifier.numerify(coord, coord_features, chunk_size, one_hot,
                                                   write_by=write_by, mode=modes, use_multiprocess=multiprocess)
-        # the following will all be used to calculated a percentage, which is yielded but ignored until the end
+        # the following will all be used to calculate a percentage, which is yielded but ignored until the end
         n_chunks = n_bases = n_ig_bases = n_masked_bases = 0
 
         for coord_data, zarr_coord in coord_data_gen:
@@ -151,14 +148,12 @@ class HelixerExportController(HelixerExportControllerBase):
 
         for (coord_id, coord_len), one_coord_features in coords_features.items():
             start_time = time.time()
-            n_chunks = HelixerExportControllerBase.calc_n_chunks(coord_len, chunk_size)
             coord = self.exporter.get_coord_by_id(coord_id)
             numerify_outputs = self._numerify_coord(coord, one_coord_features, chunk_size, one_hot, write_by=write_by,
                                                     modes=modes, multiprocess=multiprocess)
 
-            for i, (flat_data, coord, masked_bases_perc, ig_bases_perc, zarr_coord) in enumerate(numerify_outputs):
-                self._save_data(flat_data, zarr_coords=zarr_coord, n_chunks=n_chunks, first_round_for_coordinate=(i == 0),
-                                zarr_group=self.zarr_file_group)
+            for flat_data, coord, masked_bases_perc, ig_bases_perc, zarr_coord in numerify_outputs:
+                self._save_data(flat_data, zarr_group=self.zarr_file_group)
                 n_writing_chunks += 1
 
             print(f'{n_coords_done}/{len(coords_features)} Numerified {coord} '
