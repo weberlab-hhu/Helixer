@@ -489,7 +489,7 @@ class HelixerModel(ABC):
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('-d', '--data-dir', type=str, default=None)
         self.parser.add_argument('-s', '--save-model-path', type=str, default='./best_model.h5')
-        self.parser.add_argument('--large-eval-folder', type=str, default='')
+        self.parser.add_argument('--large-eval-folder', type=str, default='', help=argparse.SUPPRESS)
         # training params
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
         self.parser.add_argument('-b', '--batch-size', type=int, default=8)
@@ -504,9 +504,9 @@ class HelixerModel(ABC):
         self.parser.add_argument('--class-weights', type=str, default='None')
         self.parser.add_argument('--transition-weights', type=str, default='None')
         self.parser.add_argument('--stretch-transition-weights', type=int, default=0, help=argparse.SUPPRESS)  # bc no clear effect on result quality
-        self.parser.add_argument('--coverage-weights', action='store_true')
-        self.parser.add_argument('--coverage-offset', type=float, default=0.0)
-        self.parser.add_argument('--calculate-uncertainty', action='store_true')
+        self.parser.add_argument('--coverage-weights', action='store_true', help=argparse.SUPPRESS)
+        self.parser.add_argument('--coverage-offset', type=float, default=0.0, help=argparse.SUPPRESS)
+        self.parser.add_argument('--calculate-uncertainty', action='store_true', help=argparse.SUPPRESS)
         self.parser.add_argument('--no-utrs', action='store_true', help=argparse.SUPPRESS)  # is this still needed?
         self.parser.add_argument('--predict-phase', action='store_true')
         self.parser.add_argument('--load-predictions', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
@@ -530,9 +530,12 @@ class HelixerModel(ABC):
         # resources
         self.parser.add_argument('--float-precision', type=str, default='float32')
         self.parser.add_argument('--cpus', type=int, default=8)
-        self.parser.add_argument('--gpu-id', type=int, default=-1)
+        self.parser.add_argument('--gpu-id', type=int, default=-1,
+                                 help='sets GPU index, use if you want to train on one GPU on a multi-GPU machine '
+                                      'without a job scheduler system')
         self.parser.add_argument('--workers', type=int, default=1,
-                                 help='consider setting to match the number of GPUs')
+                                 help='umber of threads used to fetch input data; '
+                                      'consider setting to match the number of GPUs')
         # misc flags
         self.parser.add_argument('--save-every-check', action='store_true')
         self.parser.add_argument('--nni', action='store_true')
@@ -1012,7 +1015,7 @@ class HelixerModel(ABC):
                 with strategy.scope():
                     model = load_model_strategy()
             else:
-                # use no strategy if there no replication to avoid warnings from the dataset not being tf.data
+                # use no strategy if there is no replication to avoid warnings from the dataset not being tf.data
                 model = load_model_strategy()
 
             self._print_model_info(model)

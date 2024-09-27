@@ -19,7 +19,7 @@ class HelixerParameterParser(ParameterParser):
     def __init__(self, config_file_path=''):
         super().__init__(config_file_path)
         self.io_group.add_argument('--fasta-path', type=str, required=True, help='FASTA input file.')
-        self.io_group.add_argument('--gff-output-path', type=str, required=True, help='Output GFF file path.')
+        self.io_group.add_argument('--gff-output-path', type=str, required=True, help='Output GFF3 file path.')
         self.io_group.add_argument('--species', type=str, help='Species name.')
         self.io_group.add_argument('--temporary-dir', type=str,
                                    help='use supplied (instead of system default) for temporary directory')
@@ -54,14 +54,23 @@ class HelixerParameterParser(ParameterParser):
                                           'quality if overlapping is enabled. Smaller values may lead to better '
                                           'predictions but will take longer. Has to be smaller than subsequence_length '
                                           '(Default is subsequence_length * 3 / 4)')
-        self.pred_group.add_argument('--debug', action='store_true', help='add this to quickly the code runs through'
+        self.pred_group.add_argument('--debug', action='store_true', help='add this to quickly run the code through '
                                                                           'without loading/predicting on the full file')
 
-        self.post_group = self.parser.add_argument_group("Post processing parameters")
-        self.post_group.add_argument('--window-size', type=int, help='')
-        self.post_group.add_argument('--edge-threshold', type=float, help='')
-        self.post_group.add_argument('--peak-threshold', type=float, help='')
-        self.post_group.add_argument('--min-coding-length', type=int, help='')
+        self.post_group = self.parser.add_argument_group("Post-processing parameters")
+        self.post_group.add_argument('--window-size', type=int,
+                                     help='width of the sliding window that is assessed for intergenic vs genic '
+                                          '(UTR/Coding Sequence/Intron) content')
+        self.post_group.add_argument('--edge-threshold', type=float,
+                                     help='threshold specifies the genic score which defines the start/end boundaries '
+                                          'of each candidate region within the sliding window')
+        self.post_group.add_argument('--peak-threshold', type=float,
+                                     help='threshold specifies the minimum peak genic score required to accept the '
+                                          'candidate region; the candidate region is accepted if it contains at least '
+                                          'one window with a genic score above this threshold')
+        self.post_group.add_argument('--min-coding-length', type=int,
+                                     help='output is filtered to remove genes with a total coding length shorter '
+                                          'than this value')
 
         helixer_defaults = {
             'fasta_path': '',
@@ -104,7 +113,8 @@ class HelixerParameterParser(ParameterParser):
                   'genomic loci. E.g. 21384, 64152, or 213840 for fungi, plants, and animals, respectively.'
             assert args.subsequence_length is not None, msg
         else:
-            assert args.lineage is not None, "Either --lineage or --model-filepath is required. Run `Helixer.py --help` to see lineage options."
+            assert args.lineage is not None, ("Either --lineage or --model-filepath is required. Run `Helixer.py "
+                                              "--help` to see lineage options.")
             model_filepath = self.check_for_lineage_model(args.lineage)
             if args.subsequence_length is None:
                 key = {'vertebrate': 213840, 'land_plant': 64152, 'fungi': 21384, 'invertebrate': 213840}

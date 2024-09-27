@@ -32,7 +32,7 @@ cd ..
 git clone https://github.com/weberlab-hhu/Helixer.git
 cd Helixer/
 git checkout dev
-pip install -r requirements.txt
+pip install -r requirements.3.10.txt  # or requirements.3.8.txt
 pip install -e .
 
 # finally, force installation of Geenuff to be 
