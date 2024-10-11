@@ -63,6 +63,9 @@ further add the compiled `helixer_post_bin` to
 your system PATH. 
 
 ### Most python dependencies of Helixer
+You may need to run `pip install --upgrade pip` and `pip install wheel` first before
+continuing with installing Helixer and it's requirements. So when in doubt, just run
+these commands first.
 ```shell script
 # from the Helixer directory
 pip install -r requirements.3.10.txt  # or requirements.3.8.txt

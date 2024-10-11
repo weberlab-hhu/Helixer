@@ -1,5 +1,13 @@
 # Helixer options
-## Helixer.py options
+The most important scripts and their options are listed.
+1. [Helixer.py](#1-helixerpy-options)
+2. [fasta2h5.py](#2-fasta2h5py-options)
+3. [HybridModel.py](#3-hybridmodelpy-options)
+4. [HelixerPost](#4-helixerpost-options) (the same as the [post-processing parameters](#post-processing-parameters) for Helixer.py)
+5. [import2geenuff.py](#5-import2geenuffpy-options)
+6. [geenuff2h5.py](#6-geenuff2h5py-options)
+
+## 1. Helixer.py options
 Helixer.py always searches for the configuration file ``config/helixer_config.yaml`` in the current
 working directory. If that file isn't provided, the parameters are expected to be given via the
 command line.
@@ -32,7 +40,7 @@ command line.
 | --peak-threshold    | 0.8     | Threshold specifies the minimum peak genic score required to accept the candidate region; the candidate region is accepted if it contains at least one window with a genic score above this threshold |
 | --min-coding-length | 60      | Output is filtered to remove genes with a total coding length shorter than this value                                                                                                                 |
 
-## fasta2h5.py options
+## 2. fasta2h5.py options
 fasta2h5.py always searches for the configuration file ``config/fasta2h5_config.yaml`` in the current
 working directory. If that file isn't provided, the parameters are expected to be given via the
 command line.
@@ -44,7 +52,7 @@ command line.
 | --species            | /       | **Required**; Species name. Will be added to the .h5 file.                |
 | --subsequence-length | 21384   | Size of the chunks each genomic sequence gets cut into.                   |
 
-## HybridModel.py options
+## 3. HybridModel.py options
 (for training and evaluation)
 ### General parameters
 | Parameter            | Default         | Explanation                                                                                                                                                                                       |
@@ -103,12 +111,12 @@ command line.
 | --workers         | 1       | Number of threads used to fetch input data. Consider setting to match the number of GPUs                  |
 
 ### Miscellaneous parameters
-| Parameter          | Default | Explanation                                                                                                                                                                                                                                                                                                                 |
-|:-------------------|:--------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| --save-every-check | False   | Add to save a model checkpoint every validation genic F1 check (see --check-every-nth-batch in [training parameters](#training-parameters)                                                                                                                                                                                  |
-| --nni              | False   | [nni](https://github.com/microsoft/nni) = Neural Network Intelligence,  automates feature engineering, neural architecture search, hyperparameter tuning, and model compression for deep learning; add this in addition to following the standard nni instructions on setting up the config.yml and search_space.json files |
-| -v/--verbose       | False   | Add to run HybridModel.py in verbosity mode (additional information will be printed)                                                                                                                                                                                                                                        |
-| --debug            | False   | Add to run in debug mode; truncates input data to small example (for training: just runs a few epochs)                                                                                                                                                                                                                      |
+| Parameter          | Default | Explanation                                                                                                                                                                                                                                                                                                                |
+|:-------------------|:--------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| --save-every-check | False   | Add to save a model checkpoint every validation genic F1 check (see --check-every-nth-batch in [training parameters](#training-parameters)                                                                                                                                                                                 |
+| --nni              | False   | [nni](https://github.com/microsoft/nni) = Neural Network Intelligence,  automates feature engineering, neural architecture search, hyperparameter tuning, and model compression for deep learning; add this in addition to following the standard nni instructions on setting up the config.yml and search_space.json file |
+| -v/--verbose       | False   | Add to run HybridModel.py in verbosity mode (additional information will be printed)                                                                                                                                                                                                                                       |
+| --debug            | False   | Add to run in debug mode; truncates input data to small example (for training: just runs a few epochs)                                                                                                                                                                                                                     |
 
 ### Fine tuning parameters
 | Parameter                    | Default | Explanation                                                                                                                             |
@@ -119,7 +127,7 @@ command line.
 | --coverage-norm              | None    | None, linear or log (recommended); how coverage will be normalized before inputting                                                     |
 | --post-coverage-hidden-layer | False   | Adds extra dense layer between concatenating coverage and final output layer                                                            |
 
-## HelixerPost options
+## 4. HelixerPost options
 The options for HelixerPost are either chosen when directly using Helixer.py (see 
 [post-processing parameters](#post-processing-parameters)) or by using HelixerPost directly after
 HybridModel.py. In that case the parameters are not defined by name but position.
@@ -128,7 +136,7 @@ helixer_post_bin <genome.h5> <predictions.h5> <window_size> <edge_threshold> <pe
 <min_coding_length> <output.gff3>
 ```
 
-## import2geenuff.py options
+## 5. import2geenuff.py options
 (see [GeenuFF repository](https://github.com/weberlab-hhu/GeenuFF/tree/main))
 ### Configuration parameters
 | Parameter     | Default           | Explanation                                                                                             |
@@ -159,7 +167,7 @@ These parameters are **required** if ``--base-dir`` is not set.
 |:-------------|:--------|:-------------------------------------------------------------------------------------------------------|
 | --replace-db | /       | Whether to override a GeenuFF database file found at the default location/at the location of --db_path |
 
-## geenuff2h5.py options
+## 6. geenuff2h5.py options
 geenuff2h5.py always searches for the configuration file ``config/fasta2h5_config.yaml`` in the current
 working directory. If that file isn't provided, the parameters are expected to be given via the
 command line.
