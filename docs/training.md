@@ -10,7 +10,7 @@ the numerical matrices that will be directly used during training.
 ### Pre-processing w/ GeenuFF
 > Note: you will be able to skip working with GeenuFF if you
 > only wish to predict, and not train. See instead the
-> [fasta2h5.py options](helixer_options.md#fasta2h5py-options).
+> [fasta2h5.py options](helixer_options.md#2-fasta2h5py-options).
 
 First we will need to pre-process the data (Fasta & GFF3 files)
 using GeenuFF. This provides a more biologically-realistic
@@ -41,7 +41,7 @@ This downloads and pre-processes data for the species
 as you can see with `ls $data_at`.
 
 To run other genomes, simply provide a fasta and gff3 
-file to the `import2geenuff.py` script according to the help function/the [Helixer options documentation](helixer_options.md#import2geenuffpy-options),
+file to the `import2geenuff.py` script according to the help function/the [Helixer options documentation](helixer_options.md#5-import2geenuffpy-options),
 and supply a species name. The example.sh shows one way to do so.
 
 ### numeric encoding of data
@@ -126,7 +126,7 @@ LSTM architecture for 5 epochs and save the best iteration
 `example/best_helixer_model.h5`. The parameter `--predict-phase`
 is necessary so that the resulting models are compatible with post-processing
 via HelixerPost. For a detailed explanation of all possible parameters see the
-[Helixer options documentation](helixer_options.md#hybridmodelpy-options).
+[Helixer options documentation](helixer_options.md#3-hybridmodelpy-options).
 
 ```shell script
 HybridModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 \

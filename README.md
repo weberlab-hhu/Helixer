@@ -74,7 +74,7 @@ of Helixer which you can use for inference.
 If you want to use Helixer to annotate a genome with a provided model, start here.
 The best models are:
 
-| Lineage (choose the lineage your species belongs to for prediction) | Model name                  | Available since (year/month/date) |
+| Lineage (choose the lineage your species belongs to for prediction) | Model filename              | Available since (year/month/date) |
 |:--------------------------------------------------------------------|:----------------------------|:----------------------------------|
 | fungi                                                               | fungi_v0.3_a_0100.h5        | 2022/11/21                        |                                            
 | land_plant                                                          | land_plant_v0.3_a_0080.h5   | 2022/11/28                        |
@@ -82,7 +82,7 @@ The best models are:
 | invertebrate                                                        | invertebrate_v0.3_m_0100.h5 | 2022/12/30                        |
 
 ### Acquire models
-The best models for all lineages are best downloaded by running.
+The best models for all lineages are best downloaded by running:
 
 ```bash
 # the models will be at /home/<user>/.local/share/Helixer/models
@@ -109,7 +109,7 @@ part of the **intergenic region**, **UTR**, **CDS** or **intron**)
 with a Deep Learning based model and post-processes those probabilities
 into primary gene models returning a gff3 output file.
 Explanations for the parameters used in this example can be found
-[a little further down below](#what-parameters-matter).
+[a little further down below](#1-step-inference-parameters).
 ```bash
 # download an example chromosome
 wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/fasta/arabidopsis_lyrata/dna/Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa.gz
@@ -120,16 +120,24 @@ wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/fasta/arabidopsis_lyrata
 Helixer.py --lineage land_plant --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa.gz  \
   --species Arabidopsis_lyrata --gff-output-path Arabidopsis_lyrata_chromosome8_helixer.gff3
 ```
+##### 1-step inference parameters
+| Parameter         | Default | Explanation                                                                                       |
+|:------------------|:--------|:--------------------------------------------------------------------------------------------------|
+| --fasta-path      | /       | FASTA input file                                                                                  |
+| --gff-output-path | /       | Output GFF3 file path                                                                             |
+| --species         | /       | Species name. Will be added to the GFF3 file.                                                     |
+| --lineage         | /       | What model to use for the annotation. Options are: vertebrate, land_plant, fungi or invertebrate. |
+
 ### 3-step inference
 The three main steps the command above executes can also be run separately:
 - [fasta2h5.py](fasta2h5.py): conversion of the DNA sequence to numerical matrices
 - [HybridModel.py](helixer/prediction/HelixerModel.py): prediction of base-wise
 probabilities with the Deep Learning based model defined/programmed in this file
 - [helixer_post_bin](https://github.com/TonyBolger/HelixerPost) (part of another
-repository): post-processing into primary gene models (`helixer_post_bin`).   
+repository): post-processing into primary gene models
 
 Explanations for the parameters used in this example can be found
-[a little further down below](#what-parameters-matter). You can also check out
+[a little further down below](#3-step-inference-parameters). You can also check out
 the respective help functions or the [Helixer options documentation](docs/helixer_options.md) for
 additional usage information, if necessary.
 ```bash
@@ -163,22 +171,7 @@ for every predicted gene in the genome). You can find more about the format
 You can readily derive other files, such as a fasta file of the proteome or
 the transcriptome, using a standard parser, for instance [gffread](https://github.com/gpertea/gffread).  
 
-### What Parameters Matter?
-Most parameters from `Helixer.py` have been set to a reasonable default (again you can look
-at the [Helixer options documentation](docs/helixer_options.md)); but nevertheless there
-are a couple where the best setting is genome dependent. Those as well as the ones
-mentioned in the example above are explained in the following sections.
-
-#### Short explanations
-##### 1-step inference
-| Parameter         | Default |   | Explanation                                                                                       |
-|:------------------|:--------|:--|:--------------------------------------------------------------------------------------------------|
-| --fasta-path      | /       |   | FASTA input file                                                                                  |
-| --gff-output-path | /       |   | Output GFF3 file path                                                                             |
-| --species         | /       |   | Species name. Will be added to the GFF3 file.                                                     |
-| --lineage         | /       |   | What model to use for the annotation. Options are: vertebrate, land_plant, fungi or invertebrate. |
-
-##### 3-step inference
+##### 3-step inference parameters
 ###### fasta2h5.py
 | Parameter            | Default | Explanation                                                               |
 |:---------------------|:--------|:--------------------------------------------------------------------------|
@@ -206,7 +199,11 @@ mentioned in the example above are explained in the following sections.
 | min-coding-length | 6                  | 60      | Output is filtered to remove genes with a total coding length shorter than this value                                                                                                                 |
 | output.gff3       | 7                  | /       | Output GFF3 file path                                                                                                                                                                                 |
 
-#### Detailed explanations/information on 3 important parameters
+### Genome dependent parameters
+Most parameters from `Helixer.py` have been set to a reasonable default (again you can look
+at the [Helixer options documentation](docs/helixer_options.md)); but nevertheless there
+are a couple where the best setting is genome dependent.  
+
 1. `--lineage` or `--model-filepath`   
 It is of course critical to choose a model appropriate for your phylogenetic
 range / trained on species that generalize well to your target species. When
@@ -216,10 +213,10 @@ and `fungi`.).
 
 2. `--subsequence-length` and overlapping parameters
     > From v0.3.1 onwards these parameters are set to reasonable defaults (see the
-    > [leave as is part in general recommendations](#general-recommendations-for-inference))
-    > when `--lineage` is used, but `--subsequence-length` will still need to be specified
-    > when using `--model-filepath`, while the overlapping parameters can be derived
-    > automatically. These parameters are:
+     [general recommendations section](#general-recommendations-for-inference))
+     when `--lineage` is used, but `--subsequence-length` will still need to be specified
+     when using `--model-filepath`, while the overlapping parameters can be derived
+     automatically. These parameters are:
     >- `--overlap-offset`: Distance to 'step' between predicting subsequences when overlapping.
     Default: subsequence-length/2  
     >- `--overlap-core-length`:  Predicted sequences will be cut to this length to increase
@@ -236,8 +233,8 @@ and `fungi`.).
     decrease `--batch-size` if the GPU runs out of memory.
 \
 \
-    However, these should definitely not be higher than the N50, or even the N90 of
-    the genome. Nor so high a reasonable batch size cannot be used. 
+    However, the overlap parameters should definitely not be higher than the N50,
+    or even the N90 of the genome. Nor so high a reasonable batch size cannot be used. 
     
     ##### General recommendations for inference
     | model         | --subsequence-length        | --overlap-offset           | --overlap-core-length      |
