@@ -82,11 +82,7 @@ for your phylogenetic family/order of interest):
   (`import2geenuff.py` can be found in the
   [GeenuFF repository](https://github.com/weberlab-hhu/GeenuFF)):
   ```bash
-  # conversion of the DNA sequence to numerical matrices
-  fasta2h5.py --species <speces_name_or_prefix> --h5-output-path <your_species>.h5 \
-   --fasta-path <genome_assembly>.fa.gz --subsequence-length 21384
-  
-  # conversion of the annotation to a sqlite database
+  # conversion of the assembly and annotation to a sqlite database
   import2geenuff.py --gff3 <genome_annotation>.gff3 --fasta <genome_assembly>.fa.gz \
    --db-path <your_species>.sqlite3 --log-file <your_species_import>.log \
    --species <speces_name_or_prefix>
@@ -95,7 +91,7 @@ for your phylogenetic family/order of interest):
   geenuff2h5.py --input-db-path <your_species>.sqlite3 \
    --h5-output-path <your_species>.h5 --subsequence-length <best_length_depending_on_lineage>
   # the output h5 file <species>.h5 is the same that was created in the fasta2h5.py
-  # step, so you add the annotation to an EXISTING h5 file; you can copy your fasta-h5
+  #!!!!!!!!!!!!!!!! step, so you add the annotation to an EXISTING h5 file; you can copy your fasta-h5
   # file to another directory so you don't have to recreate it if
   # adding the annotation doesn't work on the first try
   ```
@@ -205,13 +201,7 @@ general.
 
 ### 2.3 Fine-tuning steps
 #### 2.3.1 Create training data
-1. Convert your species fasta file (DNA sequence) to numerical matrices
-   ```bash
-   # conversion of the DNA sequence to numerical matrices
-   fasta2h5.py --species <speces_name_or_prefix> --h5-output-path <your_species>.h5 \
-    --fasta-path <genome_assembly>.fa.gz --subsequence-length 21384
-   ```
-2. Convert the gff3 file (either Helixer's predictions or another source)
+Convert the gff3 file (either Helixer's predictions or another source)
 and the fasta file to Helixer's training data format
    - There is the option of using a first round of Helixer's predictions
    as pseudolabels for fine-tuning. For this you need to predict genes
@@ -224,22 +214,17 @@ and the fasta file to Helixer's training data format
       only use the 'most certain' ones (see
       [here](#interlude-select-the-most-confident-predictions)), you
       _need_ to use the [3-step method](../README.md#3-step-inference).
-   - You can find `import2geenuff.py` in the [GeenuFF repository](https://github.com/weberlab-hhu/GeenuFF).
-    ```bash
-    # read into the GeenuFF database
-    import2geenuff.py --fasta <genome_assembly.fa> --gff3 <helixer_post_output.gff3> \
-      --db-path <your_species>.sqlite3 --log-file <your_species_import>.log \
-      --species <speces_name_or_prefix>
-    
-    # export to numeric matrices
-    geenuff2h5.py --h5-output-path <your_species>.h5 \
-      --input-db-path <your_species>.sqlite3 
-    # NOTE: the output h5 file you add your annotation to is the SAME
-    # file created in step 1! You just add your genome annotation/labels
-    # to it. This changes the file inplace. You can copy your fasta-h5
-    # file to another directory so you don't have to recreate it if
-    # adding the annotation doesn't work on the first try.
-    ```
+- You can find `import2geenuff.py` in the [GeenuFF repository](https://github.com/weberlab-hhu/GeenuFF).
+   ```bash
+   # read into the GeenuFF database
+   import2geenuff.py --fasta <genome_assembly.fa> --gff3 <helixer_post_output.gff3> \
+     --db-path <your_species>.sqlite3 --log-file <your_species_import>.log \
+     --species <speces_name_or_prefix>
+      
+      # export to numeric matrices
+      geenuff2h5.py --h5-output-path <your_species>.h5 \
+        --input-db-path <your_species>.sqlite3
+  ```
 
 #### Interlude: Select the 'most confident' predictions
 > **Note**: ONLY applies when Helixer's predictions are used for fine-tuning
@@ -268,7 +253,7 @@ already very good, you can also consider skipping this filtering step.
 > Note: Assuring that selected tuning examples are representative
 > for the genome could be improved further and will be at some point.
 
-```
+```bash
 python3 filter-to-most-certain.py --write-by 6415200 \
     --h5-to-filter <your_species_helixer_post.h5> --predictions <predictions.h5> \
     --keep-fraction 0.2 --output-file <filtered.h5>
@@ -402,7 +387,7 @@ other annotation/pseudolabels from HelixerPost.
 
 ##### Add aligned reads to the h5 file as coverage tracks
 *RECOMMENDED:* Make a back-up of the `<your_species>.h5` file
-from the previous steps (step 1 and 2 from the
+from the previous steps (see
 [create training data section above](#231-create-training-data)).
 Adding coverage data to the h5 file will change it in place, like
 adding the genome annotation/pseudolabels did.

@@ -9,9 +9,17 @@ The code, bash and python scripts as well as jupyter notebooks, aren't
 optimized, but will work on the output from the version of the tools
 we used.
 
+### Important Definitions:
+- **UTR**: untranslated region; present in the mature RNA, but doesn't get
+translated; two UTRs per gene: 5' UTR at the start of the gene and 3' UTR
+at the end
+- **CDS**: coding sequence; present in the mature RNA, gets translated
+- **Exon**: contains UTR and CDS regions   
+
+
 ## Running other gene callers (short)
 We compared Helixer to two different _ab initio_ gene callers:
--  GeneMark-ES (v4.71_lic) (Lomsadze et al., 2005, Ter-Hovhannisyan et al., 2008)
+- GeneMark-ES (v4.71_lic) (Lomsadze et al., 2005, Ter-Hovhannisyan et al., 2008)
 - AUGUSTUS (v3.3.2) (Stanke et al., 2006)
 
 The commands we used to run them were (please look up the tools
@@ -26,7 +34,22 @@ augustus --species=<augustus_species> <genome_assembly.fa> --softmasking=1 \
     --gff3=on --UTR=on > <output>.gff3
     # utr = on if available
 ```
+We converted GeneMark-ES's GTF output file into a GFF3 file. Then,
+we removed the non-ID parts of the fasta headers with the script
+[fix_gm_names.py](https://github.com/weberlab-hhu/helixer_scratch/blob/master/data_scripts/fix_gm_names.py).
+```bash
+# convert to gff3
+gffread genemark.gtf -o genemark.gff3
 
+# fix ID names
+python3 fix_gm_names.py genemark.gff3 > <species>_genemark.gff3
+```
+Gff3 files produced from AUGUSTUS called with `--gff3=on --UTR=off` were corrected
+by inserting exons for every CDS and changing transcript features to mRNA. We used
+the script [clean_UTRoff_gff3.py](https://github.com/weberlab-hhu/helixer_scratch/blob/master/method_comp/clean_UTRoff_gff3.py).
+```bash
+python3 clean_UTRoff_gff3.py --gff-in <augustus_annotation_utr_off>.gff3 --out <cleaned_annotation>.gff3
+```
 ## BUSCO
 First, we ran BUSCO for each lineage (plant, fungi, vertebrate, invertebrate),
 species and gene caller prediction (AUGUSTUS, GeneMark, Helixer), as well as for
@@ -82,13 +105,6 @@ callers with the script [lala_longest.py](https://github.com/weberlab-hhu/helixe
 lala_longest.py --gff-file <gff_to_filter>
 ```
 ### Compare without UTRs and Exons
-Definitions:
-- **UTR**: untranslated region; present in the mature RNA, but doesn't get
-translated; two UTRs per gene: 5' UTR at the start of the gene and 3' UTR
-at the end
-- **CDS**: coding sequence; present in the mature RNA, gets translated
-- **Exon**: contains UTR and CDS regions   
-
 Next we filter out the 5' and 3' UTR regions. AUGUSTUS and GeneMark don't
 generally predict UTRs and the combination of biological variability
 of transcript start/ends and a lot of technical error, leads to all tools
