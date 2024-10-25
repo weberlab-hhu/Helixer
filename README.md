@@ -10,9 +10,10 @@ is under ongoing development and improvements.
 1. [Goal](#goal)
 2. [Web tool](#web-tool)
 3. [Install](#install)
-4. [Example usage](#example-usageinference-gene-calling)
-5. [Expert mode](#expert-mode)
-6. [Citation](#citation)
+4. [Network architecture](#helixers-architecture)
+5. [Example usage](#example-usageinference-gene-calling)
+6. [Expert mode](#expert-mode)
+7. [Citation](#citation)
 
 ## Goal
 Perform _ab initio_ prediction of the gene structure for your species.
@@ -69,7 +70,8 @@ Please see [full installation instructions](docs/manual_install.md)
 ## Galaxy ToolShed
 There is also a [Galaxy installation](https://usegalaxy.eu/?tool_id=toolshed.g2.bx.psu.edu%2Frepos%2Fgenouest%2Fhelixer%2Fhelixer%2F0.3.3%2Bgalaxy1&version=latest)
 of Helixer which you can use for inference.
-
+## Helixer's architecture
+![](img/network.png)
 ## Example usage/inference (gene calling)
 If you want to use Helixer to annotate a genome with a provided model, start here.
 The best models are:

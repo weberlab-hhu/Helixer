@@ -53,6 +53,10 @@ We also provide short instructions on
 > During training these weights change until the best network with the highest
 > prediction accuracy for the validation set is found.
 
+## Helixer's architecture
+(shown for better understanding of Helixer's core architecture, input and output)
+![](../img/network.png)
+
 ## 1. Fine-tune the whole Network
 ### 1.1 Info
 This fine-tuning method is potentially just _**as subject to overfitting

@@ -10,7 +10,7 @@ cd Helixer
 
 ### System dependencies
 
-#### Python 3.8/3.10
+#### Python 3.10
 
 #### Python development libraries
 Ubuntu (& co.)
@@ -68,7 +68,7 @@ continuing with installing Helixer and it's requirements. So when in doubt, just
 these commands first.
 ```shell script
 # from the Helixer directory
-pip install -r requirements.3.10.txt  # or requirements.3.8.txt
+pip install -r requirements.3.10.txt
 ```
 
 ### Helixer itself

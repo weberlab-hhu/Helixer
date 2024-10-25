@@ -34,7 +34,7 @@ augustus --species=<augustus_species> <genome_assembly.fa> --softmasking=1 \
     --gff3=on --UTR=on > <output>.gff3
     # utr = on if available
 ```
-We converted GeneMark-ES's GTF output file into a GFF3 file. Then,
+We converted GeneMark-ES's gtf output file into a gff3 file. Then,
 we removed the non-ID parts of the fasta headers with the script
 [fix_gm_names.py](https://github.com/weberlab-hhu/helixer_scratch/blob/master/data_scripts/fix_gm_names.py).
 ```bash
@@ -102,7 +102,7 @@ Since Helixer only predicts the splice variants producing the longest protein,
 we first filter out all other splice variants from annotations of other gene
 callers with the script [lala_longest.py](https://github.com/weberlab-hhu/helixer_scratch/blob/master/misc_scripts/lala_longest.py).
 ```bash
-lala_longest.py --gff-file <gff_to_filter>
+lala_longest.py --gff-file <gff_to_filter> > <filtered_gff>
 ```
 ### Compare without UTRs and Exons
 Next we filter out the 5' and 3' UTR regions. AUGUSTUS and GeneMark don't
@@ -110,11 +110,14 @@ generally predict UTRs and the combination of biological variability
 of transcript start/ends and a lot of technical error, leads to all tools
 approaching 0% exactly right UTRs (gffcompare doesn't use base-wise
 statistics, but only scores something as true positive if it's exactly right.).
-Furthermore, since we filtered out the UTRs, the exons are redundant (see
+Since 99.9 % accuracy for CDS and Intron could point to a frame shift
+and therefore result in a non-functional protein, non-base-wise statistics
+make sense. For UTRs even just 90 % accuracy wouldn't have that effect.
+Next, since we filtered out the UTRs, the exons are redundant (see
 definition above). Therefore, we compare CDS, intron, intron chain (any
 predicted transcript for which all of its introns can be found, with the
 same exact intron coordinates in a reference transcript (with the same
-number of introns, base-wise)) and transcript annotations.
+number of introns)) and transcript annotations.
 
 ```bash
 # command
