@@ -107,7 +107,9 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
         def __repr__(self):
             return f'Fasta only Coordinate (seqid: {self.seqid}, len: {self.length})'
 
-    def export_fasta_to_h5(self, chunk_size, compression, multiprocess, species):
+    def export_fasta_to_h5(self, chunk_size, compression, multiprocess, species, write_by):
+        assert write_by >= chunk_size, ("when specifying '--write-by' it needs to be larger than "
+                                        "or equal to '--subsequence-length'")
         fasta_importer = FastaImporter(None)
         fasta_seqs = fasta_importer.parse_fasta(self.input_path)
         self.h5 = h5py.File(self.output_path, 'w')
@@ -116,7 +118,8 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
             start_time = time.time()
             coord = HelixerFastaToH5Controller.CoordinateSurrogate(seqid, seq)
             n_chunks = HelixerExportControllerBase.calc_n_chunks(coord.length, chunk_size)
-            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species, use_multiprocess=multiprocess)
+            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species,
+                                                           use_multiprocess=multiprocess, write_by=write_by)
             for j, strand_res in enumerate(data_gen):
                 data, h5_coords = strand_res
                 self._save_data(data, h5_coords=h5_coords, n_chunks=n_chunks,

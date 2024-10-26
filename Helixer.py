@@ -29,6 +29,12 @@ class HelixerParameterParser(ParameterParser):
                                           'typical genic loci. Tested up to 213840. Must be evenly divisible by the '
                                           'timestep width of the used model, which is typically 9. (Default is '
                                           'lineage dependent from 21384 to 213840).')
+        self.data_group.add_argument('--write-by', type=int,
+                                     help='convert genomic sequence in super-chunks to numerical matrices with this '
+                                          'many base pairs; for lower memory consumption, which will be rounded to be '
+                                          'divisible by subsequence-length; ; needs to be equal to or larger than '
+                                          'subsequence length, for lower memory consumption, consider setting a '
+                                          'lower number')
         self.data_group.add_argument('--lineage', type=str, default=None,
                                      choices=['vertebrate', 'land_plant', 'fungi', 'invertebrate'],
                                      help='What model to use for the annotation.')
@@ -77,6 +83,7 @@ class HelixerParameterParser(ParameterParser):
             'temporary_dir': None,
             'species': '',
             'subsequence_length': None,
+            'write_by': 20_000_000,
             'lineage': None,
             'model_filepath': None,
             'batch_size': 32,
@@ -137,19 +144,20 @@ class HelixerParameterParser(ParameterParser):
                    f'has to be evenly divisible by {timestep_width}')
             assert args.subsequence_length % timestep_width == 0, msg
 
-        if not args.no_overlap:
-            # check user params are valid or set defaults relative to subsequence_length
-            if args.overlap_offset is not None:
-                msg = '--overlap-offset has to evenly divide --subsequence-length'
-                assert args.subsequence_length % args.overlap_offset == 0, msg
-            else:
-                args.overlap_offset = args.subsequence_length // 2
+        # check user params are valid or set defaults relative to subsequence_length
+        # set overlap parameters no matter if overlap is used or not to prevent HelixerModel
+        # from throwing an argparse type error when None gets passed as an argument
+        if args.overlap_offset is not None and not args.no_overlap:
+            msg = '--overlap-offset has to evenly divide --subsequence-length'
+            assert args.subsequence_length % args.overlap_offset == 0, msg
+        else:
+            args.overlap_offset = args.subsequence_length // 2
 
-            if args.overlap_core_length is not None:
-                msg = '--overlap-core-length has to be smaller than --subsequence-length'
-                assert args.subsequence_length > args.overlap_core_length, msg
-            else:
-                args.overlap_core_length = int(args.subsequence_length * 3 / 4)
+        if args.overlap_core_length is not None and not args.no_overlap:
+            msg = '--overlap-core-length has to be smaller than --subsequence-length'
+            assert args.subsequence_length > args.overlap_core_length, msg
+        else:
+            args.overlap_core_length = int(args.subsequence_length * 3 / 4)
 
         # check if custom temporary dir actually exists
         if args.temporary_dir is not None:
@@ -214,7 +222,8 @@ def main():
         controller = HelixerFastaToH5Controller(args.fasta_path, tmp_genome_h5_path)
         # hard coded subsequence length due to how the models have been created
         controller.export_fasta_to_h5(chunk_size=args.subsequence_length, compression=args.compression,
-                                      multiprocess=not args.no_multiprocess, species=args.species)
+                                      multiprocess=not args.no_multiprocess, species=args.species,
+                                      write_by=args.write_by)
 
         msg = 'with' if args.overlap else 'without'
         msg = 'FASTA to H5 conversion done. Starting neural network prediction ' + msg + ' overlapping.'
