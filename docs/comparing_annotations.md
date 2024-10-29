@@ -100,7 +100,7 @@ to create plots and tables.
 ### Filtering: longest gene isoform
 Since Helixer only predicts the splice variants producing the longest protein,
 we first filter out all other splice variants from annotations of other gene
-callers with the script [lala_longest.py](https://github.com/weberlab-hhu/helixer_scratch/blob/master/misc_scripts/lala_longest.py).
+callers and the reference with the script [lala_longest.py](https://github.com/weberlab-hhu/helixer_scratch/blob/master/misc_scripts/lala_longest.py).
 ```bash
 lala_longest.py --gff-file <gff_to_filter> > <filtered_gff>
 ```
