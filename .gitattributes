@@ -1,0 +1,2 @@
+# exclude jupyter notebook documentation files from language analysis
+*.ipynb linguist-documentation

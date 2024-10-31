@@ -10,7 +10,7 @@ cd Helixer
 
 ### System dependencies
 
-#### Python 3.8 or later
+#### Python 3.10
 
 #### Python development libraries
 Ubuntu (& co.)
@@ -63,9 +63,12 @@ further add the compiled `helixer_post_bin` to
 your system PATH. 
 
 ### Most python dependencies of Helixer
+You may need to run `pip install --upgrade pip` and `pip install wheel` first before
+continuing with installing Helixer and it's requirements. So when in doubt, just run
+these commands first.
 ```shell script
 # from the Helixer directory
-pip install -r requirements.txt
+pip install -r requirements.3.10.txt
 ```
 
 ### Helixer itself
@@ -73,4 +76,13 @@ pip install -r requirements.txt
 ```shell script
 # from the Helixer directory
 pip install .  # or `pip install -e .`, if you will be changing the code
+```
+
+#### Test Helixer
+Helixer comes with test data and unit tests.
+```bash
+# switch to the Helixer code subdirectory
+cd Helixer/helixer
+# run the unit tests
+pytest --verbose tests/test_helixer.py
 ```
