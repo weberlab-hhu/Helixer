@@ -51,10 +51,10 @@ python3 -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'
 The following has been most recently tested.
 
 system packages:
-* cuda-11-2
+* cuda-12-2
 * libcudnn8
 * libcudnn8-dev
-* nvidia-driver-495
+* nvidia-driver-555
 
 A GPU with 11GB Memory (e.g. GTX 1080 Ti) can run the largest 
 configurations described below, for smaller GPUs you might
