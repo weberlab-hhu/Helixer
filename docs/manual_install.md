@@ -38,17 +38,23 @@ And to run on a GPU (highly recommended for realistically sized datasets),
 everything for tensorflow-gpu is required, 
 see: https://www.tensorflow.org/install/gpu
 
+```bash
+# Linux instructions from the tensorflow GPU install
+pip install tensorflow[and-cuda]  # inside a virtual environment, otherwise use: python3 -m pip install tensorflow[and-cuda]
+# Verify the installation:
+python3 -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
 
+# sometimes the following error will pop up: Unable to register cuDNN factory... (and other factories)
+# sometimes the following warning will pop up: tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+# usually those can be ignored and will not impair Helixer's performance
+```
 The following has been most recently tested.
 
-python packages:
-* tensorflow-gpu==2.7.0
-
 system packages:
-* cuda-11-2
+* cuda-12-2
 * libcudnn8
 * libcudnn8-dev
-* nvidia-driver-495
+* nvidia-driver-555
 
 A GPU with 11GB Memory (e.g. GTX 1080 Ti) can run the largest 
 configurations described below, for smaller GPUs you might
