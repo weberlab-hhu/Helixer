@@ -109,7 +109,7 @@ command line.
 |:------------------|:--------|:----------------------------------------------------------------------------------------------------------|
 | --float-precision | float32 | Precision of model weights and biases                                                                     |
 | --gpu-id          | 1       | Sets GPU index, use if you want to train on one GPU on a multi-GPU machine without a job scheduler system |
-| --workers         | 1       | Number of threads used to fetch input data. Consider setting to match the number of GPUs                  |
+| --workers         | 1       | Number of threads used to fetch input data for training. Consider setting to match the number of GPUs     |
 
 ### Miscellaneous parameters
 | Parameter          | Default | Explanation                                                                                                                                                                                                                                                                                                                |
