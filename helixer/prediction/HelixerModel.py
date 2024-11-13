@@ -1062,3 +1062,7 @@ class HelixerModel(ABC):
 
         model = Model(raw_input, output)
         return model
+
+if __name__ == '__main__':
+    print(colored("ERROR: 'HelixerModel.py' is not meant to be executed by the user. "
+                  "Please use 'Helixer.py' or 'HybridModel.py'.", 'red'))

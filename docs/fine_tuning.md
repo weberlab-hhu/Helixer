@@ -452,7 +452,7 @@ HybridModel.py -v --batch-size 140 --val-test-batch-size 280 \
    --class-weights "[0.7, 1.6, 1.2, 1.2]" --transition-weights "[1, 12, 3, 1, 12, 3]" \
    --predict-phase --learning-rate 0.0001 --resume-training --fine-tune \
    --load-model-path <$HOME/.local/share/Helixer/models/land_plant/land_plant_v0.3_a_0080.h5> \
-   --input-coverage --coverage-norm log --data-dir --save-model-path <best_tuned_rnaseq_model.h5>
+   --input-coverage --coverage-norm log --data-dir <fine_tuning_data_dir> --save-model-path <best_tuned_rnaseq_model.h5>
 ```
 ###### Previous parameters
 | Parameter             | Default         | Explanation                                                                                                                                                                                                                  |
