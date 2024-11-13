@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools < 72.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "helixer"
+version = "0.3.4"
+description = "Deep Learning fun on gene structure data"
+readme = "README.md"
+requires-python = ">=3.10.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+]
+dependencies = [
+    "geenuff @ git+https://github.com/weberlab-hhu/GeenuFF@v0.3.2",
+    "sqlalchemy==1.3.22",
+    "tensorflow>=2.6.2",
+    "tensorflow-addons>=0.21.0",
+    "nni",
+    "seaborn",
+    "Keras<3.0.0",
+    "keras_layer_normalization",
+    "terminaltables",
+    "HTSeq",
+    "intervaltree",
+    "numpy",
+    "h5py",
+    "multiprocess",
+    "numcodecs",
+    "appdirs"
+]
+authors = [
+  {name = "Alisandra K. Denton"},
+  {name = "Felix Holst"},
+  {name = "Janina Mass"},
+  {name = "Anthony Bolger"},
+  {name = "Felicitas Kindel"},
+  {name = "Christopher Guenther"},
+]
+
+[project.urls]
+"Homepage" = "https://github.com/weberlab-hhu/Helixer"
+"Documentation" = "https://github.com/weberlab-hhu/Helixer"
+
+[tool.setuptools]
+packages = [
+    "helixer",
+    "helixer.core",
+    "helixer.prediction",
+    "helixer.evaluation",
+    "helixer.tests",
+    "helixer.export"
+]
+package-data = {helixer = ["testdata/*.fa", "testdata/*.gff"]}
+script-files = ["Helixer.py", "fasta2h5.py", "geenuff2h5.py", "helixer/prediction/HybridModel.py",
+    "scripts/fetch_helixer_models.py"]
