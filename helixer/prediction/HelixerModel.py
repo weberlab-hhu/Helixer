@@ -529,12 +529,12 @@ class HelixerModel(ABC):
                                       "region will be cropped. (default: subsequence_length * 3 / 4)")
         # resources
         self.parser.add_argument('--float-precision', type=str, default='float32')
-        self.parser.add_argument('--cpus', type=int, default=8)
+        self.parser.add_argument('--cpus', type=int, default=8, help=argparse.SUPPRESS)
         self.parser.add_argument('--gpu-id', type=int, default=-1,
                                  help='sets GPU index, use if you want to train on one GPU on a multi-GPU machine '
                                       'without a job scheduler system')
         self.parser.add_argument('--workers', type=int, default=1,
-                                 help='umber of threads used to fetch input data; '
+                                 help='number of threads used to fetch input data for training; '
                                       'consider setting to match the number of GPUs')
         # misc flags
         self.parser.add_argument('--save-every-check', action='store_true')
@@ -566,6 +566,18 @@ class HelixerModel(ABC):
         takes a list of cli arguments from self.cli_args. This can be used to invoke a HelixerModel from
         another script."""
         args = vars(self.parser.parse_args(args=self.cli_args))
+
+        # hack to deprecate a few args
+        for arg in ['large_eval_folder', 'cpus', 'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
+                    'calculate_uncertainty', 'no_utrs', 'load_predictions']:
+            default = self.parser.get_default(arg)
+            if args[arg] != default:
+                print(colored(
+                    f"Warning: the argument '{arg}' is deprecated and will be "
+                    f"removed in the future. The argument will have no effect.", 'yellow'))
+                # set arg back to default
+                args[arg] = default
+
         self.__dict__.update(args)
 
         if self.nni:
@@ -1050,3 +1062,7 @@ class HelixerModel(ABC):
 
         model = Model(raw_input, output)
         return model
+
+if __name__ == '__main__':
+    print(colored("ERROR: 'HelixerModel.py' is not meant to be executed by the user. "
+                  "Please use 'Helixer.py' or 'HybridModel.py'.", 'red'))
