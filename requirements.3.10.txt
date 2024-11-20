@@ -65,7 +65,7 @@ requests-oauthlib==2.0.0
 responses==0.25.0
 rsa==4.9
 schema==0.7.5
-scikit-learn==1.4.1.post1
+scikit-learn==1.5.0
 scipy==1.12.0
 seaborn==0.13.2
 simplejson==3.19.2
