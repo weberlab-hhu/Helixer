@@ -3,6 +3,7 @@ import os
 import sys
 
 import helixer.core.helpers
+from helixer.core.strs import *
 
 try:
     import nni
@@ -10,7 +11,8 @@ except ImportError:
     pass
 import time
 import glob
-#import numcodecs
+import zarr
+import numcodecs
 import argparse
 import datetime
 import pkg_resources
@@ -22,6 +24,7 @@ from termcolor import colored
 from terminaltables import AsciiTable
 
 import torch
+from torch.utils.data import Dataset
 
 from helixer.prediction.Metrics import Metrics
 from helixer.core import overlap, strs
@@ -58,13 +61,14 @@ class ConfusionMatrixTrain():
             print(f'\nvalidation and checkpoint at batch {batch}')
             self.check_in(batch)
 
-    def freeze_layers(self, model):
-        # thank you https://github.com/keras-team/keras/issues/13279#issuecomment-527705263
-        for i in model.layers:
-            i.trainable = False
-            if isinstance(i, Model):
-                self.freeze_layers(i)
-        return model
+    # todo: find other way to freeze layers
+    #def freeze_layers(self, model):
+    #    # thank you https://github.com/keras-team/keras/issues/13279#issuecomment-527705263
+    #    for i in model.layers:
+    #        i.trainable = False
+    #        if isinstance(i, Model):
+    #           self.freeze_layers(i)
+    #    return model
 
     def check_in(self, batch=None):
         _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, self.model, calc_H=self.calc_H)
@@ -91,8 +95,10 @@ class ConfusionMatrixTrain():
             print(f'saved model at {path}')
 
     def on_train_end(self, logs=None):
+        # TODO rewrite entire function later
         if os.path.isdir(self.large_eval_folder):
             # load best model
+            # TODO custom save and load to retain some info in the dict (not just model state dict)
             best_model = load_model(self.save_model_path)
             # double check that we loaded the correct model, can be remove if confirmed this works
             print('\nValidation set again:')
@@ -111,21 +117,21 @@ class ConfusionMatrixTrain():
 
 
 #class PreshuffleCallback(Callback):
-class PresuffleCallback():
-    def __init__(self, train_generator):
-        self.train_generator = train_generator
+#class PresuffleCallback():
+#    def __init__(self, train_generator):
+#        self.train_generator = train_generator
 
-    def on_epoch_begin(self, epoch, logs=None):
-        if self.train_generator.shuffle:
-            self.train_generator.shuffle_data()
+#    def on_epoch_begin(self, epoch, logs=None):
+#        if self.train_generator.shuffle:
+#            self.train_generator.shuffle_data()
 
 
 #class HelixerSequence(Sequence):
-class HelixerSequence():
-    def __init__(self, model, h5_files, mode, batch_size, shuffle):
+class HelixerSequence(Dataset):
+    def __init__(self, model, zarr_files, mode, batch_size, shuffle):
         assert mode in [strs.TEST, strs.TRAIN, strs.VAL]
         self.model = model
-        self.h5_files = h5_files
+        self.zarr_files = zarr_files  # generators, opened in read mode by HelixerModel class
         self.mode = mode
         self.shuffle = shuffle
         self.batch_size = batch_size
@@ -135,13 +141,13 @@ class HelixerSequence():
                                  'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
 
         if self.mode == strs.TEST:
-            assert len(self.h5_files) == 1, "predictions and eval should be applied to individual files only"
+            assert len(self.zarr_files) == 1, "predictions and eval should be applied to individual files only"
 
         # set chunk size and overlap parameters
-        # this is first done here, because its pulled dynamically from h5 files
-        chunk_sizes = [h5['data/X'].shape[1] for h5 in self.h5_files]
+        # this is first done here, because its pulled dynamically from zarr files
+        chunk_sizes = [zf[DATA_X].shape[1] for zf in self.zarr_files]
         for cs in chunk_sizes[1:]:
-            assert cs == chunk_sizes[0], f'Not all subsequence lengths match in h5_files: {chunk_sizes}'
+            assert cs == chunk_sizes[0], f'Not all subsequence lengths match in zarr files: {chunk_sizes}'
         self.chunk_size = chunk_sizes[0]
         # once we have the chunk_size, we can find defaults for overlapping
         if self.overlap_offset is None:
@@ -149,23 +155,23 @@ class HelixerSequence():
         if self.core_length is None:
             self.core_length = int(self.chunk_size * 3 / 4)
 
-        self.data_list_names = ['data/X']
+        self.data_list_names = [DATA_X]
         if not self.only_predictions:
-            self.data_list_names += ['data/y', 'data/sample_weights']
+            self.data_list_names += [DATA_Y, DATA_SAMPLE_WEIGHTS]
             if self.load_predictions:
-                self.data_list_names.append('data/predictions')
+                self.data_list_names.append('data/predictions')  # deprecated
             if self.predict_phase:
-                self.data_list_names.append('data/phases')
+                self.data_list_names.append(DATA_PHASES)
             if self.mode == 'train':
                 if self.transition_weights is not None:
-                    self.data_list_names.append('data/transitions')
+                    self.data_list_names.append(DATA_TRANSITIONS)
                 if self.coverage_weights:
                     self.data_list_names.append('scores/by_bp')
 
         if self.overlap:
             assert self.mode == strs.TEST, "overlapping currently only works for test (predictions & eval)"
-            # can take [0] below bc we've asserted that test means len(self.h5_files) == 1 above
-            contiguous_ranges = helixer.core.helpers.get_contiguous_ranges(self.h5_files[0])
+            # can take [0] below bc we've asserted that test means len(self.zarr_files) == 1 above
+            contiguous_ranges = helixer.core.helpers.get_contiguous_ranges(self.zarr_files[0])
             self.ol_helper = overlap.OverlapSeqHelper(contiguous_ranges=contiguous_ranges,
                                                       chunk_size=self.chunk_size,
                                                       max_batch_size=self.batch_size,
@@ -176,14 +182,14 @@ class HelixerSequence():
             self.data_list_names += ['evaluation/rnaseq_coverage', 'evaluation/rnaseq_spliced_coverage']
 
         self.data_lists = [[] for _ in range(len(self.data_list_names))]
-        self.data_dtypes = [self.h5_files[0][name].dtype for name in self.data_list_names]
-
+        self.data_dtypes = [self.zarr_files[0][name].dtype for name in self.data_list_names]
+        # TODO: maybe convert X.dtype=float16 (less RAM usage while compressed)
         self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)  # use BITSHUFFLE
 
         print(f'\nstarting to load {self.mode} data into memory..')
 
-        for h5_file in self.h5_files:
-            self._load_one_h5(h5_file)
+        for zarr_file in self.zarr_files:
+            self._load_one_zarr(zarr_file)
 
         for name, data_list in zip(self.data_list_names, self.data_lists):
             comp_data_size = sum([sys.getsizeof(e) for e in data_list])
@@ -201,28 +207,28 @@ class HelixerSequence():
                 self.transition_weights = None
 
 
-    def _load_one_h5(self, h5_file):
-        print(f'For h5 starting with species = {h5_file["data/species"][0]}:')
-        x_dset = h5_file['data/X']
+    def _load_one_zarr(self, zarr_file):
+        print(f'For zarr file starting with species = {zarr_file[DATA_SPECIES][0]}:')
+        x_dset = zarr_file[DATA_X]
         print(f'x shape: {x_dset.shape}')
         if not self.only_predictions:
-            y_dset = h5_file['data/y']
+            y_dset = zarr_file[DATA_Y]
             print(f'y shape: {y_dset.shape}')
 
         if self.debug:
             # so that total sequences between all files add to ~1000
-            n_seqs = max(1000 // len(self.h5_files), 1)
+            n_seqs = max(1000 // len(self.zarr_files), 1)
         else:
             n_seqs = x_dset.shape[0]
 
         if self.mode == strs.TRAIN or self.mode == strs.VAL:
-            mask = np.logical_and(h5_file['data/is_annotated'],
-                                  h5_file['data/err_samples'])
+            mask = np.logical_and(zarr_file[DATA_IS_ANNOTATED],
+                                  zarr_file[DATA_ERR_SAMPLES])
             n_masked = x_dset.shape[0] - np.sum(mask)
             print(f'\nmasking {n_masked} completely un-annotated or completely erroneous sequences')
                 
         else:
-            mask = np.ones(h5_file['data/X'].shape[0], dtype=bool)
+            mask = np.ones(zarr_file[DATA_X].shape[0], dtype=bool)
             n_masked = 0
 
         # load at most 2000 uncompressed samples at a time in memory
@@ -231,23 +237,24 @@ class HelixerSequence():
             start_time_dset = time.time()
             for offset in range(0, n_seqs, max_at_once):
                 step_mask = mask[offset:offset + max_at_once]
-                if name == 'data/predictions':
-                    data_slice = h5_file[name][0, offset:offset + max_at_once][step_mask]  # only use one prediction for now
+                if name == 'data/predictions':  # deprecated
+                    data_slice = zarr_file[name][0, offset:offset + max_at_once][step_mask]  # only use one prediction for now
                 else:
-                    data_slice = h5_file[name][offset:offset + max_at_once][step_mask]
-                if self.no_utrs and name == 'data/y':
-                    HelixerSequence._zero_out_utrs(data_slice)
+                    data_slice = zarr_file[name][offset:offset + max_at_once][step_mask]
+                #if self.no_utrs and name == 'data/y':
+                #    HelixerSequence._zero_out_utrs(data_slice)
                 data_list.extend([self.compressor.encode(e) for e in data_slice])
             print(f'Data loading of {n_seqs - n_masked} (total so far {len(data_list)}) samples of {name} '
                   f'into memory took {time.time() - start_time_dset:.2f} secs')
 
-    @staticmethod
-    def _zero_out_utrs(y):
+    #@staticmethod
+    #def _zero_out_utrs(y):
         # merge UTR and IG labels and zero out the UTR column
         # still keep 4 columns for simplicity of downstream code and (maybe) more transfer learning potential
-        y[..., 0] = np.logical_or(y[..., 0], y[..., 1])
-        y[..., 1] = 0
+        #y[..., 0] = np.logical_or(y[..., 0], y[..., 1])
+        #y[..., 1] = 0
 
+    # not needed when the PyTorch Dataloader handels that
     def shuffle_data(self):
         start_time = time.time()
         self.data_lists = shuffle(*self.data_lists)
@@ -261,7 +268,7 @@ class HelixerSequence():
     def _get_batch_data(self, batch_idx):
         batch = []
         # batch must have one thing for everything unpacked by __getitem__ (and in order)
-        for name in ['data/X', 'data/y', 'data/sample_weights', 'data/transitions', 'data/phases',
+        for name in [DATA_X, DATA_Y, DATA_SAMPLE_WEIGHTS, DATA_TRANSITIONS, DATA_PHASES,
                      'data/predictions', 'scores/by_bp']:
             if name not in self.data_list_names:
                 batch.append(None)
@@ -269,7 +276,8 @@ class HelixerSequence():
                 decoded_list = self.get_batch_of_one_dataset(name, batch_idx)
 
                 # append coverage to X directly, might be clearer elsewhere once working, but this needs little code...
-                if name == 'data/X' and self.input_coverage:
+                # TODO delete/comment out and rework (be strict, just accept rnaseq as prefix)
+                if name == DATA_X and self.input_coverage:
                     decode_coverage = self.get_batch_of_one_dataset('evaluation/rnaseq_coverage', batch_idx)
                     decode_coverage = [self._cov_norm(x.reshape(-1, self.coverage_count)).astype(np.float16) for x in decode_coverage]
                     decode_spliced = self.get_batch_of_one_dataset('evaluation/rnaseq_spliced_coverage', batch_idx)
@@ -278,7 +286,7 @@ class HelixerSequence():
                                     zip(decoded_list, decode_coverage, decode_spliced)]
 
                 decoded = np.stack(decoded_list, axis=0)
-                if self.overlap and name == 'data/X':
+                if self.overlap and name == DATA_X:
                     decoded = self.ol_helper.make_input(batch_idx, decoded)
 
                 batch.append(decoded)
@@ -289,20 +297,20 @@ class HelixerSequence():
         """returns single batch (the Nth where N=batch_idx) from dataset '{name}'"""
         # setup indices based on overlapping or not
         if self.overlap:
-            h5_indices = self.ol_helper.h5_indices_of_batch(batch_idx)
+            zarr_indices = self.ol_helper.zarr_indices_of_batch(batch_idx)
         else:
             end = min(self.n_seqs, (batch_idx + 1) * self.batch_size)
-            h5_indices = np.arange(batch_idx * self.batch_size, end)
+            zarr_indices = np.arange(batch_idx * self.batch_size, end)
 
-        return self._decode_one(name, h5_indices)
+        return self._decode_one(name, zarr_indices)
 
-    def _decode_one(self, name, h5_indices):
-        """decode batch delineated by h5_indices from compressed data originally from dataset {name}"""
+    def _decode_one(self, name, zarr_indices):
+        """decode batch delineated by zarr_indices from compressed data originally from dataset {name}"""
         i = self.data_list_names.index(name)
         dtype = self.data_dtypes[i]
         data_list = self.data_lists[i]
         decoded_list = [np.frombuffer(self.compressor.decode(data_list[idx]), dtype=dtype)
-                        for idx in h5_indices]
+                        for idx in zarr_indices]
         if len(decoded_list[0]) > self.chunk_size:
             decoded_list = [e.reshape(self.chunk_size, -1) for e in decoded_list]
         return decoded_list
@@ -354,7 +362,7 @@ class HelixerSequence():
         matrix = matrix.reshape((
             matrix.shape[0],
             matrix.shape[1] // pool_size,
-            pool_size,  # make labels 2d so we can use the standard softmax / loss functions
+            pool_size,  # make labels 2d, so we can use the standard softmax / loss functions
             matrix.shape[-1],
         ))
         return matrix
@@ -379,15 +387,29 @@ class HelixerSequence():
 
         return summed_trns
 
+
+    @staticmethod
+    def to_torch_tensor(data):
+        if isinstance(data, np.ndarray):
+            return torch.from_numpy(data).float()
+        elif isinstance(data, list):
+           if all(isinstance(d, np.ndarray) for d in data):
+               return [torch.from_numpy(d).float() for d in data]
+           else:
+               raise Exception(f'expected list of numpy.ndarrays, got {type(data[0])}')
+        else:
+            raise Exception(f'expected numpy.ndarray, got {type(data)}')
+
+
     def __len__(self):
-        """how many batches in epoch"""
+        """how many total samples"""
         if self.debug:
             # if self.debug and self.mode == 'train':
             return 3
         elif self.overlap:
             return self.ol_helper.adjusted_epoch_length()
         else:
-            return int(np.ceil(self.n_seqs / self.batch_size))
+            return self.n_seqs
 
     @abstractmethod
     def __getitem__(self, idx):
@@ -448,7 +470,7 @@ class HelixerSequence():
                 y_phase = self._mk_timestep_pools_class_last(phases)
                 y = [y, y_phase]
 
-            return X, y, sw, transitions, phases, _, coverage_scores
+            return [self.to_torch_tensor(d) for d in (X, y, sw, transitions, phases, _, coverage_scores)]
 
 
 class HelixerModel(ABC):
@@ -527,10 +549,12 @@ class HelixerModel(ABC):
         self.coverage_count = None
         self.device = None
         self.model = None
+        self.epoch = 0
+        self.loss = None
         self._validation_data, self._test_data, self._training_data = None, None, None
         self.run_purpose = None
         # place holder to make it run in simplfied form #TODO remove again
-        self.h5_trains, self.h5_vals, self.h5_tests = None, None, None
+        self.zarr_trains, self.zarr_vals, self.zarr_tests = None, None, None
         self.test_data_path = None
 
     def parse_args(self):
@@ -563,7 +587,7 @@ class HelixerModel(ABC):
             self.__dict__['save_model_path'] = nni_save_model_path
             self.__dict__['prediction_output_path'] = nni_pred_output_path
             args.update(hyperopt_args)
-            # for the print out
+            # for the print-out
             args['save_model_path'] = nni_save_model_path
             args['prediction_output_path'] = nni_pred_output_path
 
@@ -581,8 +605,8 @@ class HelixerModel(ABC):
             assert self.data_dir is not None, '--data-dir required for training'
             assert not self.test_data_path, '--test-data-path cannot be set when training'
         else:
-            assert self.test_data_path.endswith('.h5'), 'Need a h5 test data file when loading a model'
-            assert self.load_model_path.endswith('.h5'), 'Need a h5 model file'
+            assert self.test_data_path.endswith('.zarr'), 'Need a zarr test data file when loading a model'
+            assert self.load_model_path.endswith('.pt'), 'Need a .pt model file'
 
 
         self.class_weights = eval(self.class_weights)
@@ -634,7 +658,7 @@ class HelixerModel(ABC):
     def training_data(self):
         if self._training_data is None:
             SequenceCls = self.sequence_cls()
-            self._training_data = SequenceCls(model=self, h5_files=self.h5_trains, 
+            self._training_data = SequenceCls(model=self, zarr_files=self.zarr_trains,
                                               mode=strs.TRAIN, batch_size=self.batch_size,
                                               shuffle=True)
         return self._training_data
@@ -643,7 +667,7 @@ class HelixerModel(ABC):
     def validation_data(self):
         if self._validation_data is None:
             SequenceCls = self.sequence_cls()
-            self._validation_data = SequenceCls(model=self, h5_files=self.h5_vals, 
+            self._validation_data = SequenceCls(model=self, zarr_files=self.zarr_vals,
                                                 mode=strs.VAL, batch_size=self.val_test_batch_size,
                                                 shuffle=False)
         return self._validation_data
@@ -652,7 +676,7 @@ class HelixerModel(ABC):
     def test_data(self):
         if self._test_data is None:
             SequenceCls = self.sequence_cls()
-            self._test_data = SequenceCls(model=self, h5_files=self.h5_tests, 
+            self._test_data = SequenceCls(model=self, zarr_files=self.zarr_tests,
                                           mode=strs.TEST, batch_size=self.val_test_batch_size,
                                           shuffle=False)
         return self._test_data
@@ -745,11 +769,11 @@ class HelixerModel(ABC):
         return [sum(x[0] for x in shapes)] + list(shapes[0][1:])
 
     def open_data_files(self):
-        def get_n_correct_seqs(h5_files):
+        def get_n_correct_seqs(zarr_files):
             sum_n_correct = 0
-            for h5_file in h5_files:
-                if 'err_samples' in h5_file['/data'].keys():
-                    err_samples = np.array(h5_file['/data/err_samples'])
+            for zarr_file in zarr_files:
+                if DATA_ERR_SAMPLES in zarr_file.keys():
+                    err_samples = np.array(zarr_file[DATA_ERR_SAMPLES])
                     n_correct = np.count_nonzero(err_samples == False)
                     if n_correct == 0:
                         print('WARNING: no fully correct sample found')
@@ -759,11 +783,11 @@ class HelixerModel(ABC):
                 sum_n_correct += n_correct
             return sum_n_correct
 
-        def get_n_intergenic_seqs(h5_files):
+        def get_n_intergenic_seqs(zarr_files):
             sum_n_fully_ig = 0
-            for h5_file in h5_files:
-                if 'fully_intergenic_samples' in h5_file['/data'].keys():
-                    ic_samples = np.array(h5_file['/data/fully_intergenic_samples'])
+            for zarr_file in zarr_files:
+                if DATA_FULLY_INTERGENIC_SAMPLES in zarr_file.keys():
+                    ic_samples = np.array(zarr_file[DATA_FULLY_INTERGENIC_SAMPLES])
                     n_fully_ig = np.count_nonzero(ic_samples == True)
                     if n_fully_ig == 0:
                         print('WARNING: no fully intergenic samples found')
@@ -774,43 +798,43 @@ class HelixerModel(ABC):
             return sum_n_fully_ig
 
         if self.run_purpose == strs.TRAIN:
-            self.h5_trains = [h5py.File(f, 'r') for f in glob.glob(os.path.join(self.data_dir, 'training_data*h5'))]
-            self.h5_vals = [h5py.File(f, 'r') for f in glob.glob(os.path.join(self.data_dir, 'validation_data*h5'))]
+            self.zarr_trains = [zarr.open(f, mode='r') for f in glob.glob(os.path.join(self.data_dir, 'training_data*.zarr'))]
+            self.zarr_vals = [zarr.open(f, mode='r') for f in glob.glob(os.path.join(self.data_dir, 'validation_data*.zarr'))]
             try:
-                self.shape_train = self.sum_shapes([h5['/data/X'] for h5 in self.h5_trains])
+                self.shape_train = self.sum_shapes([zf[DATA_X] for zf in self.zarr_trains])
             except IndexError as e:
-                print('debugging info: self.h5_trains = {}, self.data_dir = {}'.format(self.h5_trains, self.data_dir),
+                print('debugging info: self.zarr_trains = {}, self.data_dir = {}'.format(self.zarr_trains, self.data_dir),
                       file=sys.stderr)
                 raise e
             try:
-                self.shape_val = self.sum_shapes([h5['/data/X'] for h5 in self.h5_vals])
+                self.shape_val = self.sum_shapes([zf[DATA_X] for zf in self.zarr_vals])
             except IndexError as e:
-                print('debugging info: self.h5_vals = {}, self.data_dir = {}'.format(self.h5_vals, self.data_dir),
+                print('debugging info: self.zarr_vals = {}, self.data_dir = {}'.format(self.zarr_vals, self.data_dir),
                       file=sys.stderr)
                 raise e
 
-            n_train_correct_seqs = get_n_correct_seqs(self.h5_trains)
-            n_val_correct_seqs = get_n_correct_seqs(self.h5_vals)
+            n_train_correct_seqs = get_n_correct_seqs(self.zarr_trains)
+            n_val_correct_seqs = get_n_correct_seqs(self.zarr_vals)
 
             n_train_seqs = self.shape_train[0]
             n_val_seqs = self.shape_val[0]  # always validate on all
 
-            n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_trains)
-            n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_vals)
+            n_intergenic_train_seqs = get_n_intergenic_seqs(self.zarr_trains)
+            n_intergenic_val_seqs = get_n_intergenic_seqs(self.zarr_vals)
         else:
-            self.h5_tests = [h5py.File(self.test_data_path, 'r')]  # list for consistency with train/val
-            self.shape_test = self.h5_tests[0]['/data/X'].shape
+            self.zarr_tests = [zarr.open(self.test_data_path, mode='r')]  # list for consistency with train/val
+            self.shape_test = self.zarr_tests[0][DATA_X].shape
 
-            n_test_correct_seqs = get_n_correct_seqs(self.h5_tests)
+            n_test_correct_seqs = get_n_correct_seqs(self.zarr_tests)
             n_test_seqs_with_intergenic = self.shape_test[0]
-            n_intergenic_test_seqs = get_n_intergenic_seqs(self.h5_tests)
+            n_intergenic_test_seqs = get_n_intergenic_seqs(self.zarr_tests)
 
         if self.verbose:
             print('\nData config: ')
             if self.run_purpose == strs.TRAIN:
-                print([dict(x.attrs) for x in self.h5_trains])
-                print('\nTraining data/X shape: {}'.format(self.shape_train[:2]))
-                print('Validation data/X shape: {}'.format(self.shape_val[:2]))
+                print([dict(x.attrs) for x in self.zarr_trains])
+                print('\nTraining {} shape: {}'.format(DATA_X, self.shape_train[:2]))
+                print('Validation {} shape: {}'.format(DATA_X, self.shape_val[:2]))
                 print('\nTotal est. training sequences: {}'.format(n_train_seqs))
                 print('Total est. val sequences: {}'.format(n_val_seqs))
                 print('\nEst. intergenic train/val seqs: {:.2f}% / {:.2f}%'.format(
@@ -820,7 +844,7 @@ class HelixerModel(ABC):
                     n_train_correct_seqs / self.shape_train[0] * 100,
                     n_val_correct_seqs / self.shape_val[0] * 100))
             else:
-                print([dict(x.attrs) for x in self.h5_tests])
+                print([dict(x.attrs) for x in self.zarr_tests])
                 print('\nTest data shape: {}'.format(self.shape_test[:2]))
                 print('\nIntergenic test seqs: {:.2f}%'.format(
                     n_intergenic_test_seqs / n_test_seqs_with_intergenic * 100))
@@ -956,7 +980,8 @@ class HelixerModel(ABC):
         test_loss /= num_batches
         correct /= size * y.shape[1]
         print(f"Test Performance: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
-        # TODO hook to actual metrics, masking and all that jazz 
+        # TODO hook to actual metrics, masking and all that jazz
+        # todo: repackage into tnt units (class, let HelixerModel inherit from that class)
 
     def train_epoch(self, training_data):
         size = len(training_data.data)
@@ -981,16 +1006,37 @@ class HelixerModel(ABC):
             #          workers=self.workers,
             #          callbacks=self.generate_callbacks(train_generator),
             #          verbose=True)
- 
+
+    def save_model(self):
+        # todo: save all hyperparameters and callback states (seed, loop state, ranks, global step?)
+        torch.save({
+            'epoch': self.epoch,
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'loss': self.loss
+        }, self.save_model_path)
+
+    def load_model(self):
+        checkpoint = torch.load(self.load_model_path, weights_only=True)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])  # todo: set self.optimizer in init
+        self.epoch = checkpoint['epoch']
+        self.loss = checkpoint['loss']
+
     def fit(self, training_data, eval_data):
-        # todo, this needs to grow to be s.t. with early stopping, call backs, etc...
+        # todo, this needs to grow to be s.t. with early stopping, call backs, etc... (torch.tnt)
         epochs = 3
-        for t in range(epochs):
-            print(f"Epoch {t+1}\n-------------------------------")
+        for epoch in range(epochs):
+            self.epoch = epoch + 1
+            print(f"Epoch {self.epoch}\n-------------------------------")
             self.train_epoch(training_data)
             self.eval_epoch(eval_data)
+            # todo: save self.loss here
 
-        torch.save(self.model.state_dict(), self.save_model_path)
+        # todo: if save every so and so interval, don't save here again if the interval is hit (callback candidate)
+        # todo: still save the best model only or give more options? e.g. at least every epoch for training
+        # todo (continued): in case the training stops for non-early stop reasons
+        self.save_model()
 
 
     def run(self):
@@ -1007,6 +1053,7 @@ class HelixerModel(ABC):
 
         if self.run_purpose == strs.TRAIN:
             if self.resume_training:
+                self.load_model()
                 pass  
             #    if not self.fine_tune:
             #        model = load_model(self.load_model_path)
@@ -1042,7 +1089,7 @@ class HelixerModel(ABC):
             self.fit(self.training_data, self.validation_data)
         else:
             self.model = self.setup_model() 
-            self.model.load_state_dict(torch.load(self.load_model_path))
+            self.load_model()
             self.compile_model()  # todo, this is likely optional once metrics are in and loss not reported
             self._print_model_info()
 
@@ -1058,7 +1105,7 @@ class HelixerModel(ABC):
             elif self.run_purpose == strs.PREDICT:
                 if os.path.isfile(self.prediction_output_path):
                     print(f'{self.prediction_output_path} already exists and will be overwritten.')
-                self._make_predictions(model)
+                self._make_predictions(self.model)  # callback candidate?
             else:
                 assert ValueError, f"run_purpose should be in {strs.TRAIN}, {strs.EVAL}, {strs.PREDICT}"
 

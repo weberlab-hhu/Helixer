@@ -13,7 +13,7 @@ class CustomMockDataset(Dataset):
 
     def __getitem__(self, idx):
         x = torch.rand(self.shape[1:])
-        y_idx = torch.max(x, axis=-1).values * 4 // 1 
+        y_idx = torch.max(x, dim=-1).values * 4 // 1
         y_idx = y_idx.to(torch.int64)
         return x, y_idx
 
@@ -36,7 +36,7 @@ class HybridSequence:
 
         self.data = CustomMockDataset((n_examples, self.LEN, self.CLASSES))
 
-        self.loader = DataLoader(self.data, batch_size=batch_size)
+        self.loader = DataLoader(self.data, batch_size=batch_size, shuffle=shuffle)
 
 
 class HybridModel(HelixerModel):
@@ -73,16 +73,15 @@ class Transpose_1_2(nn.Module):
         super(Transpose_1_2, self).__init__()
 
     def forward(self, x):
-        return torch.transpose(x, 1, 2) 
+        return torch.transpose(x, 1, 2)  # swap class * len dimensions, not batch
 
 class bLSTM(nn.Module):
     def __init__(self, input_size, hidden_size, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.input_size = input_size
         self.hidden_size = hidden_size
-        self.layer = nn.LSTM(input_size=self.input_size, 
-                       hidden_size=self.hidden_size, 
-                       batch_first=True, bidirectional=True)
+        self.layer = nn.LSTM(input_size=self.input_size,
+                             hidden_size=self.hidden_size, batch_first=True, bidirectional=True)
 
     def forward(self, x):
 
@@ -95,6 +94,7 @@ class NeuralNetwork(nn.Module):
     def __init__(self, n_classes):
         super().__init__()
         self.linear_relu_stack = nn.Sequential(
+            Transpose_1_2(),
             nn.Conv1d(n_classes, 16, kernel_size=3, padding='same'),
             nn.ReLU(),
             nn.Conv1d(16, 32, kernel_size=3, padding='same'),
@@ -102,12 +102,10 @@ class NeuralNetwork(nn.Module):
             Transpose_1_2(),
             #nn.Conv1d(32, CLASSES, kernel_size=3, padding='same'),
             bLSTM(32, int(n_classes // 2)),
-            Transpose_1_2(),
-            #nn.Linear(34, CLASSES)
+            nn.Linear(34, n_classes)
         )
 
     def forward(self, x):
-        x = torch.transpose(x, 1, 2) # swap class * len dimensions, not batch
         logits = self.linear_relu_stack(x)
         return logits
 
@@ -120,13 +118,15 @@ def test(dataloader, model, loss_fn):
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
     model.eval()
+    # mini hard-code for testing:
+    device = "gpu"
     test_loss, correct = 0, 0
     with torch.no_grad():
         for X, y in dataloader:
             X, y = X.to(device), y.to(device)
             pred = model(X)
             test_loss += loss_fn(pred, y).item()
-            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+            correct += (pred.argmax(1) == y).type(torch.float).sum().item() # expected to be a tuple, so why the complaining, PyCharm?
     test_loss /= num_batches
     correct /= size * y.shape[1]
     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
