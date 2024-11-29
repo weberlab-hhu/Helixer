@@ -153,7 +153,7 @@ class AnnotationNumerifier(Numerifier):
     # todo, major refactor so that everything is handled in a symmetric fashion, and so that it's possible
     #  to skip onehot, sample_weights, gene_length, or transitions without a maze of if/else statements
     #  maybe have first pass & second pass matrix gen functions, and loop through those that exist at each step??
-    #  Second pass could also be written to h5 in a second round to reduce mem usage if need be. Or first pass is
+    #  Second pass could also be written to zarr in a second round to reduce mem usage if need be. Or first pass is
     #  a generator that autodetects splittable intergenic regions every 10mb or so.
 
     def __init__(self, coord, features, max_len, one_hot=True, start=0, end=None):

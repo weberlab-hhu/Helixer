@@ -1,23 +1,25 @@
 import numpy as np
+from helixer.core.strs import *
 
-# some helpers for handling / sorting / or checking sort of our h5 files
-def mk_seqonly_keys(h5):
-    return [a + b for a, b in zip(h5['data/species'],
-                                  h5['data/seqids'])]
+# todo: way more comments what each function does
+# some helpers for handling / sorting / or checking sort of our zarr files
+def mk_seqonly_keys(zarr_file):
+    return [a + b for a, b in zip(zarr_file[DATA_SPECIES],
+                                  zarr_file[DATA_SEQIDS])]
 
 
-def mk_keys(h5, flip=False):
+def mk_keys(zarr_file, flip=False):
     first_idx = 0
     second_idx = 1
     if flip:
         first_idx, second_idx = second_idx, first_idx
-    return zip(h5['data/species'],
-               h5['data/seqids'],
-               h5['data/start_ends'][:, first_idx],
-               h5['data/start_ends'][:, second_idx])
+    return zip(zarr_file[DATA_SPECIES],
+               zarr_file[DATA_SEQIDS],
+               zarr_file[DATA_START_ENDS][:, first_idx],
+               zarr_file[DATA_START_ENDS][:, second_idx])
 
 
-def get_sp_seq_ranges(h5):
+def get_sp_seq_ranges(zarr_file):
     # dict with {sp: {"start: N,
     #                 "end": N,
     #                 "seqids": {seqid: [start, end], seqid2: [start2, end2], ...}},
@@ -25,7 +27,7 @@ def get_sp_seq_ranges(h5):
     #            ...}
     out = {}
 
-    gen = zip(range(h5['data/y'].shape[0]), h5['data/species'], h5['data/seqids'])
+    gen = zip(range(zarr_file[DATA_Y].shape[0]), zarr_file[DATA_SPECIES], zarr_file[DATA_SEQIDS])
 
     i, prev_sp, prev_seqid = next(gen)
     out[prev_sp] = {"start": i,  # 0
@@ -52,10 +54,10 @@ def get_sp_seq_ranges(h5):
 
 # additional helping functions for predictions to hints, here so they can be tested
 # also probably some redundancy with above to clean up (-_-)
-def get_contiguous_ranges(h5):
+def get_contiguous_ranges(zarr_file):
     """gets h5 coordinates for same species, sequence and strand AKA end to end across a chromosome/scaffold"""
-    start_ends = h5['data/start_ends'][:]
-    marks_unique = np.stack((h5['data/seqids'], h5['data/species'], start_ends[:, 1] > start_ends[:, 0]))
+    start_ends = zarr_file[DATA_START_ENDS][:]
+    marks_unique = np.stack((zarr_file[DATA_SEQIDS], zarr_file[DATA_SPECIES], start_ends[:, 1] > start_ends[:, 0]))
     items, indexes, lengths = np.unique(marks_unique, axis=1, return_index=True, return_counts=True)
     reindex = np.argsort(indexes)
     for i in reindex:
@@ -78,12 +80,12 @@ def read_in_chunks(preds, data, start_i, end_i, step=100):
         ei = min(i + step, end_i)
         pred_chunk = preds['predictions'][i:ei]
         pred_chunk = pred_chunk.reshape((-1, 4))
-        start = data['data/start_ends'][i, 0]
-        end = data['data/start_ends'][ei - 1, 1]
+        start = data[DATA_START_ENDS][i, 0]
+        end = data[DATA_START_ENDS][ei - 1, 1]
         # in case of padding
-        if abs(end - start) % data['data/X'].shape[1]:
+        if abs(end - start) % data[DATA_X].shape[1]:
             # padded areas have no sequence, so will use that to create a mask for simplicity
-            mask = data['data/X'][i:ei].reshape((-1, 4))
+            mask = data[DATA_X][i:ei].reshape((-1, 4))
             mask = np.any(mask, axis=1)
             pred_chunk = pred_chunk[mask]
             assert pred_chunk.shape[0] == abs(start - end)
@@ -149,5 +151,5 @@ def divvy_by_confidence(one_class_chunk, step_key, pad=5, stability_threshold=0.
 
 def file_stem(path):
     """Returns the file name without extension"""
-    import os
+    import os  # todo: move import to the top
     return os.path.basename(path).split('.')[0]

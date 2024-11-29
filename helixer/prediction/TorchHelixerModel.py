@@ -165,3 +165,117 @@ if __name__ == '__main__':
 # goal 1 - go from something shaped [batch, 20k, 4] to something shaped [batch, 20k, 4]
 # goal 2 - do the above with CNN + LSTM
 # goal 3 (which will need breaking into subgoals)- connect the above to be called via HelixerModel.py
+
+# todo: test Network (imitation of HybridModel in torch)
+# todo: is this class a little overcomplicated?
+class Network(HelixerModel):
+    def __init__(self, cnn_layers, filter_depth, kernel_size, pool_size, lstm_layers,
+                 units, n_classes, dropout1, dropout2):
+        super().__init__()
+        self.cnn_layers = cnn_layers
+        self.filter_depth = filter_depth
+        self.kernel_size = kernel_size
+        self.pool_size = pool_size
+        self.lstm_layers = lstm_layers
+        self.units = units
+        self.n_classes = n_classes
+        self.dropout1 = dropout1
+        self.dropout2 = dropout2
+        # needs to be at the end
+        self.hparams = self.get_hparams()
+
+        # WARNING: without RNA-seq coverage support so far
+
+        # Add CNN stack
+        # ---------------------------------
+        self.cnn_blstm_stack = nn.Sequential()
+
+        self.cnn_blstm_stack.append(self.TransposeDims())
+        self.cnn_blstm_stack.append(nn.Conv1d(n_classes, self.filter_depth, self.kernel_size, padding='same'))
+        self.cnn_blstm_stack.append(nn.ReLU())
+
+        # if there are additional CNN layers
+        for _ in range(self.cnn_layers - 1):
+            # will NOT work like tensorflow, because of diff. available parameters and diff. definition of momentum
+            self.cnn_blstm_stack.append(nn.BatchNorm1d(self.filter_depth))
+            self.cnn_blstm_stack.append(nn.Conv1d(n_classes, self.filter_depth, self.kernel_size, padding='same'))
+            self.cnn_blstm_stack.append(nn.ReLU())
+
+        self.cnn_blstm_stack.append(self.TransposeDims())
+
+        # Add bLSTM (and others) stack
+        # --------------------------------
+        if self.pool_size > 1:
+            self.cnn_blstm_stack.append(self.Reshape((-1, self.pool_size * self.filter_depth)))
+
+        if self.dropout1 > 0.0:
+            self.cnn_blstm_stack.append(nn.Dropout(self.dropout1))
+
+        self.cnn_blstm_stack.append(self.bLSTM(self.filter_depth, self.units, self.lstm_layers))
+
+        # do not use recurrent dropout, but dropout on the output of the LSTM stack
+        if self.dropout2 > 0.0:
+            self.cnn_blstm_stack.append(nn.Dropout(self.dropout2))
+
+        self.cnn_blstm_stack.append(self.ModelHat(self.units, self.pool_size, self.predict_phase))
+
+    class TransposeDims(nn.Module):
+        def __init__(self):
+            super(Network.TransposeDims, self).__init__()
+
+        @staticmethod
+        def forward(x):
+            return torch.transpose(x, 1, 2)  # swap class * len dimensions, not batch
+
+    class bLSTM(nn.Module):
+        def __init__(self, input_size, hidden_size, lstm_layers, *args, **kwargs):
+            super(Network.bLSTM, self).__init__()
+            super().__init__(*args, **kwargs)
+            self.layer = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
+                                 num_layers=lstm_layers, batch_first=True, bidirectional=True)
+
+        def forward(self, x):
+            x, _ = self.layer(x)
+            return x
+
+    class Reshape(nn.Module):
+        def __init__(self, new_shape, *args, **kwargs):
+            super(Network.Reshape, self).__init__()
+            super().__init__(*args, **kwargs)
+            self.new_shape = new_shape
+
+        def forward(self, x):
+            return x.view(new_shape=self.new_shape)
+
+    class ModelHat(nn.Module):
+        def __init__(self, units, pool_size, predict_phase):
+            super(Network.ModelHat, self).__init__()
+            self.predict_phase = predict_phase
+            if self.predict_phase:
+                # right input size?, bidirectional lstm should double the given units
+                self.linear_layer = nn.Linear(units * 2, pool_size * 4 * 2)
+
+            else:
+                self.linear_layer = nn.Linear(units * 2, pool_size * 4)
+
+            self.output_stack = nn.Sequential()
+            self.output_stack.append(Network.Reshape((-1, pool_size * 4)))
+            self.output_stack.append(nn.Softmax(dim=2))  # last dim
+
+        def forward(self, x):
+            if self.predict_phase:
+                x = self.linear_layer(x)
+                x_genic, x_phase = torch.tensor_split(x, 2, dim=-1)
+                x_genic = self.output_stack(x_genic)
+                x_phase = self.output_stack(x_phase)
+                return [x_genic, x_phase]
+
+            else:
+                x = self.linear_layer(x)
+                x = self.output_stack(x)
+                return [x]
+
+
+    def forward(self, x):
+        logits = self.cnn_blstm_stack(x)
+        return logits

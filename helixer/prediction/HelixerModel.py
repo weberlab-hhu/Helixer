@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import os
 import sys
+import inspect
 
 import helixer.core.helpers
 from helixer.core.strs import *
@@ -24,6 +25,7 @@ from termcolor import colored
 from terminaltables import AsciiTable
 
 import torch
+from torch import nn
 from torch.utils.data import Dataset
 
 from helixer.prediction.Metrics import Metrics
@@ -473,8 +475,11 @@ class HelixerSequence(Dataset):
             return [self.to_torch_tensor(d) for d in (X, y, sw, transitions, phases, _, coverage_scores)]
 
 
-class HelixerModel(ABC):
-    def __init__(self, cli_args=None):
+class HelixerModel(nn.Module, ABC):
+    def __init__(self, cli_args=None, *args, **kwargs):
+        # todo: move to parser class, maybe with click not argparse, don't write cli args into init
+        # todo: inherit from nn.Module to use torch -> adapt parse_args accordingly
+        super().__init__(*args, **kwargs)
         self.cli_args = cli_args  # if cli_args is None, the parameters from sys.argv will be used
 
         self.parser = argparse.ArgumentParser()
@@ -550,7 +555,7 @@ class HelixerModel(ABC):
         self.device = None
         self.model = None
         self.epoch = 0
-        self.loss = None
+        self.loss = None # todo: rename this or cli arg loss maybe to loss-fn so they don't conflict
         self._validation_data, self._test_data, self._training_data = None, None, None
         self.run_purpose = None
         # place holder to make it run in simplfied form #TODO remove again
@@ -627,6 +632,11 @@ class HelixerModel(ABC):
         if self.verbose:
             print(colored('HelixerModel config: ', 'yellow'))
             pprint(args)
+
+    def get_hparams(self):
+        init_parameters = inspect.signature(self.__init__).parameters
+        hyperparameters = {arg: getattr(self, arg) for arg, value in init_parameters.items()}
+        return hyperparameters
 
     def generate_callbacks(self, train_generator):
         pass
@@ -938,6 +948,7 @@ class HelixerModel(ABC):
         return sum(p.numel() for p in self.model.parameters())
 
     def _print_model_info(self):
+        # todo: add model summary; use lightning as an example (leave out parameter size computation for now)
         pwd = os.getcwd()
         os.chdir(os.path.dirname(__file__))
         try:
