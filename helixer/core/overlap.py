@@ -23,9 +23,9 @@ def _n_ori_chunks_from_batch_chunks(max_batch_size, overlap_offset, chunk_size):
 
 class SubBatch:
 
-    def __init__(self, h5_indices, edge_handle_start, edge_handle_end, is_plus_strand,
+    def __init__(self, zarr_indices, edge_handle_start, edge_handle_end, is_plus_strand,
                  overlap_offset, chunk_size, keep_start=None, keep_end=None):
-        self.h5_indices = h5_indices
+        self.zarr_indices = zarr_indices
         # the following parameters are primarily for debugging
         self.keep_start = keep_start
         self.keep_end = keep_end
@@ -48,11 +48,11 @@ class SubBatch:
         if self.edge_handle_start:
             sstr = '['
 
-        return 'SubBatch, {}edges{}, h5 indices: {}'.format(sstr, estr, self.h5_indices)
+        return 'SubBatch, {}edges{}, zarr indices: {}'.format(sstr, estr, self.zarr_indices)
 
     @property
     def seq_length(self):
-        return self.chunk_size * len(self.h5_indices)
+        return self.chunk_size * len(self.zarr_indices)
 
     def _mk_sliding_coordinates(self):
         out = []
@@ -103,7 +103,7 @@ class SubBatch:
             preds_out[start:end] = (preds_out[start:end] * sub_counts + chunk) / (sub_counts + 1)
             # increment counted so far
             counts[start:end] += 1
-        preds_out = preds_out.reshape((len(self.h5_indices), self.chunk_size, ydim))
+        preds_out = preds_out.reshape((len(self.zarr_indices), self.chunk_size, ydim))
         return preds_out
 
     def overlap_and_edge_handle_preds(self, preds, core_length):
@@ -140,9 +140,9 @@ class OverlapSeqHelper(object):
         assert overlap_offset > 0
 
         # contiguous ranges should be created by .helpers.get_contiguous_ranges
-        self.sliding_batches = self._mk_sliding_batches(contiguous_ranges=contiguous_ranges,
-                                                        chunk_size=chunk_size,
-                                                        overlap_offset=overlap_offset)
+        self.sliding_batches, self.sample_count = self._mk_sliding_batches(contiguous_ranges=contiguous_ranges,
+                                                                           chunk_size=chunk_size,
+                                                                           overlap_offset=overlap_offset)
 
     def _mk_sliding_batches(self, contiguous_ranges, chunk_size, overlap_offset):
         # max_n_chunks is the number of chunks that will go into overlapping
@@ -165,9 +165,9 @@ class OverlapSeqHelper(object):
                 keep_start = max(i, crange['start_i'])
                 keep_end = min(i + step, crange['end_i'])
                 sub_batch_end = min(i + step + 1, crange['end_i'])   # pad 1 right (except seq edge)
-                h5_indices = tuple(range(sub_batch_start, sub_batch_end))
+                zarr_indices = tuple(range(sub_batch_start, sub_batch_end))
                 sub_batches.append(
-                    SubBatch(h5_indices, is_plus_strand=crange['is_plus_strand'],
+                    SubBatch(zarr_indices, is_plus_strand=crange['is_plus_strand'],
                              edge_handle_start=i == crange['start_i'],
                              edge_handle_end=i + step + 1 > crange['end_i'],
                              keep_start=keep_start,
@@ -189,24 +189,25 @@ class OverlapSeqHelper(object):
                 batch = [sb]
                 batch_total_size = sb.sub_batch_size
         sliding_batches.append(batch)
-        return sliding_batches
+        samples = sum([len(batch) for batch in sliding_batches])
+        return sliding_batches, samples
 
     def adjusted_epoch_length(self):
-        """number of batches per epoch (given that we're overlapping)"""
-        return len(self.sliding_batches)
+        """number of total samples (given that we're overlapping)"""
+        return self.sample_count
 
-    def h5_indices_of_batch(self, batch_idx):
+    def zarr_indices_of_batch(self, batch_idx):
         """concatenate indices from sub batches to give all indices for the batch at {batch_idx}"""
         sub_batches = self.sliding_batches[batch_idx]
-        h5_indices = []
+        zarr_indices = []
         for sb in sub_batches:
-            h5_indices += sb.h5_indices
-        return np.array(h5_indices)
+            zarr_indices += sb.zarr_indices
+        return np.array(zarr_indices)
 
     def make_input(self, batch_idx, data_batch):
         """make sliding input for prediction and overlapping (i.e. for X, maybe also for coverage)"""
         sub_batches = self.sliding_batches[batch_idx]
-        sb_input_lengths = [len(sb.h5_indices) for sb in sub_batches]
+        sb_input_lengths = [len(sb.zarr_indices) for sb in sub_batches]
         sb_input_starts = np.cumsum(sb_input_lengths) - sb_input_lengths
         x_as_list = []
         for start, length, sb in zip(sb_input_starts, sb_input_lengths, sub_batches):
@@ -233,7 +234,7 @@ class OverlapSeqHelper(object):
     def subset_input(self, batch_idx, y_true_or_sw):
         """generate subset from data corresponding to _final_ predictions, i.e. to run y_true through during eval"""
         sub_batches = self.sliding_batches[batch_idx]
-        sb_input_lengths = [len(sb.h5_indices) for sb in sub_batches]
+        sb_input_lengths = [len(sb.zarr_indices) for sb in sub_batches]
         sb_input_starts = np.cumsum(sb_input_lengths) - sb_input_lengths
         dat_as_list = []
         for start, length, sb in zip(sb_input_starts, sb_input_lengths, sub_batches):
