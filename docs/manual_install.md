@@ -1,4 +1,4 @@
-
+> **! Note**: Manual installation is only available for _Linux_ operating systems.
 ### Get the code
 First, download and checkout the latest release
 ```shell script
@@ -69,9 +69,13 @@ further add the compiled `helixer_post_bin` to
 your system PATH. 
 
 ### Most python dependencies of Helixer
-You may need to run `pip install --upgrade pip` and `pip install wheel` first before
+We recommend to run `pip install --upgrade pip`<sup>1</sup> and `pip install wheel` first before
 continuing with installing Helixer and it's requirements. So when in doubt, just run
 these commands first.
+
+_<sup>1</sup> (required if instead of installing Helixer the output from pip is
+`successfully installed UNKNOWN 0.0.0` or you get the error `name, version not
+recognized (UNKNOWN 0.0.0)`_
 ```shell script
 # from the Helixer directory
 pip install -r requirements.3.10.txt

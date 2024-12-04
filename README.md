@@ -36,7 +36,7 @@ You can then skip the installation instructions down below.
 ## Install
 The installation time depends on the installation method you are using (e.g.
 [docker/singularity](#via-docker--singularity-recommended) or
-[manual installation](#manual-installation)) and your experience in using GitHub, Python and
+[manual installation](#manual-installation)(only for Linux)) and your experience in using GitHub, Python and
 CUDA. The time it takes a decently experienced user to install Helixer is 20-30 minutes.
 
 ### GPU requirements
@@ -65,7 +65,8 @@ See https://github.com/gglyptodon/helixer-docker
 > slightly from the example below. 
 
 ### Manual installation
-Please see [full installation instructions](docs/manual_install.md)
+Please see [full installation instructions](docs/manual_install.md). Manual installation is
+only available for Linux operating systems.
 
 ## Galaxy ToolShed
 There is also a [Galaxy installation](https://usegalaxy.eu/?tool_id=toolshed.g2.bx.psu.edu%2Frepos%2Fgenouest%2Fhelixer%2Fhelixer%2F0.3.3%2Bgalaxy1&version=latest)
@@ -111,7 +112,8 @@ part of the **intergenic region**, **UTR**, **CDS** or **intron**)
 with a Deep Learning based model and post-processes those probabilities
 into primary gene models returning a gff3 output file.
 Explanations for the parameters used in this example can be found
-[a little further down below](#1-step-inference-parameters).
+[a little further down below](#1-step-inference-parameters). It should take around 3 minutes for the
+1-step-inference demo below to run (when using a GPU).
 ```bash
 # download an example chromosome
 wget ftp://ftp.ensemblgenomes.org/pub/plants/release-47/fasta/arabidopsis_lyrata/dna/Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa.gz
@@ -141,7 +143,8 @@ repository): post-processing into primary gene models
 Explanations for the parameters used in this example can be found
 [a little further down below](#3-step-inference-parameters). You can also check out
 the respective help functions or the [Helixer options documentation](docs/helixer_options.md) for
-additional usage information, if necessary.
+additional usage information, if necessary. It should take around 5 minutes for
+the 3-step-inference demo below to run (when using a GPU).
 ```bash
 # example broken into individual steps
 # ---------------------------------------
