@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "helixer"
 version = "0.3.4"
-description = "Deep Learning fun on gene structure data"
+description = "Structural genome annotation utilizing Deep Neural Networks and a Hidden Markov Model"
 readme = "README.md"
 requires-python = ">=3.10.12"
 classifiers = [

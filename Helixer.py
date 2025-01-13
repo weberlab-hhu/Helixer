@@ -60,8 +60,6 @@ class HelixerParameterParser(ParameterParser):
                                           'quality if overlapping is enabled. Smaller values may lead to better '
                                           'predictions but will take longer. Has to be smaller than subsequence_length '
                                           '(Default is subsequence_length * 3 / 4)')
-        self.pred_group.add_argument('--debug', action='store_true', help='add this to quickly run the code through '
-                                                                          'without loading/predicting on the full file')
 
         self.post_group = self.parser.add_argument_group("Post-processing parameters")
         self.post_group.add_argument('--window-size', type=int,
@@ -88,7 +86,6 @@ class HelixerParameterParser(ParameterParser):
             'model_filepath': None,
             'batch_size': 32,
             'no_overlap': False,
-            'debug': False,
             'overlap_offset': None,
             'overlap_core_length': None,
             'window_size': 100,
@@ -148,13 +145,15 @@ class HelixerParameterParser(ParameterParser):
         # set overlap parameters no matter if overlap is used or not to prevent HelixerModel
         # from throwing an argparse type error when None gets passed as an argument
         if args.overlap_offset is not None and not args.no_overlap:
-            msg = '--overlap-offset has to evenly divide --subsequence-length'
+            msg = (f'the given --overlap-offset of {args.overlap_offset} has to evenly '
+                   f'divide --subsequence-length, which is {args.subsequence_length}')
             assert args.subsequence_length % args.overlap_offset == 0, msg
         else:
             args.overlap_offset = args.subsequence_length // 2
 
         if args.overlap_core_length is not None and not args.no_overlap:
-            msg = '--overlap-core-length has to be smaller than --subsequence-length'
+            msg = (f'the given --overlap-core-length of {args.overlap_core_length} has to be smaller '
+                   f'than --subsequence-length, which is {args.subsequence_length}')
             assert args.subsequence_length > args.overlap_core_length, msg
         else:
             args.overlap_core_length = int(args.subsequence_length * 3 / 4)
@@ -241,8 +240,6 @@ def main():
         ]
         if args.overlap:
             hybrid_model_args.append('--overlap')
-        if args.debug:
-            hybrid_model_args.append('--debug')
         model = HybridModel(cli_args=hybrid_model_args)
         model.run()
 
