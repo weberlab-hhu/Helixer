@@ -4,8 +4,12 @@ import zarr
 import numpy as np
 import sqlite3
 import datetime
-from numcodecs import Blosc
+import numcodecs
+import subprocess
+from importlib.metadata import version
 
+import geenuff
+import helixer
 from geenuff.applications.exporter import GeenuffExportController
 from geenuff.applications.importer import FastaImporter
 from .numerify import CoordNumerifier
@@ -17,7 +21,8 @@ class HelixerExportControllerBase(object):
         self.input_path = input_path
         self.output_path = output_path
         self.match_existing = match_existing
-        zarr.storage.default_compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
+        zarr.storage.default_compressor = numcodecs.blosc.Blosc(cname='zstd', clevel=3,
+                                                                shuffle=numcodecs.blosc.Blosc.BITSHUFFLE)
 
     def _save_data(self, flat_data, zarr_group='/data/'):
         assert len(set(mat_info.matrix.shape[0] for mat_info in flat_data)) == 1, 'unequal data lengths'
@@ -37,6 +42,21 @@ class HelixerExportControllerBase(object):
             'timestamp': str(datetime.datetime.now()),
             'input_path': self.input_path
         }
+
+        # get GeenuFF and Helixer commit hashes
+        pwd = os.getcwd()
+        for module in [geenuff, helixer]:
+            os.chdir(os.path.dirname(module.__file__))
+            cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
+            try:
+                attrs[module.__name__ + '_commit'] = subprocess.check_output(cmd, stderr=subprocess.STDOUT).\
+                    strip().decode()
+            except subprocess.CalledProcessError:
+                attrs[module.__name__ + '_commit'] = 'commit not found, version: {}'.format(
+                    version(module.__name__) 
+                )
+                print('logged installed version in place of git commit for {}'.format(module.__name__))
+        os.chdir(pwd)
         # insert attrs into .zarr file
         for key, value in attrs.items():
             self.zarr_file.attrs[key] = value
@@ -54,7 +74,9 @@ class HelixerFastaToZarrController(HelixerExportControllerBase):
         def __repr__(self):
             return f'Fasta only Coordinate (seqid: {self.seqid}, len: {self.length})'
 
-    def export_fasta_to_zarr(self, chunk_size, multiprocess, species):
+    def export_fasta_to_zarr(self, chunk_size, multiprocess, species, write_by):
+        assert write_by >= chunk_size, ("when specifying '--write-by' it needs to be larger than "
+                                        "or equal to '--subsequence-length'")
         fasta_importer = FastaImporter(None)
         fasta_seqs = fasta_importer.parse_fasta(self.input_path)
         self.zarr_file = zarr.open(self.output_path, mode='w')
@@ -62,7 +84,8 @@ class HelixerFastaToZarrController(HelixerExportControllerBase):
         for i, (seqid, seq) in enumerate(fasta_seqs):
             start_time = time.time()
             coord = HelixerFastaToZarrController.CoordinateSurrogate(seqid, seq)
-            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species, use_multiprocess=multiprocess)
+            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species,
+                                                           use_multiprocess=multiprocess, write_by=write_by)
             for j, strand_res in enumerate(data_gen):
                 data, zarr_coords = strand_res
                 self._save_data(data)

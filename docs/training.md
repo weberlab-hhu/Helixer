@@ -8,9 +8,9 @@ the numerical matrices that will be directly used during training.
 ## Generating training-ready data
 
 ### Pre-processing w/ GeenuFF
->Note: you will be able to skip working with GeenuFF if
+> Note: you will be able to skip working with GeenuFF if you
 > only wish to predict, and not train. See instead the
-> fasta2zarr.py script.
+> [fasta2h5.py options](helixer_options.md#2-fasta2h5py-options).
 
 First we will need to pre-process the data (Fasta & GFF3 files)
 using GeenuFF. This provides a more biologically-realistic
@@ -23,24 +23,25 @@ have overlapping exons within one transcript).
 
 See the GeenuFF repository for more information.
 
-For now we can just run the provided example script to
-download and pre-process some algae data.
+For now, we can just run the provided example script to
+download and pre-process our example algae data.
 
 ```shell script
 # this script downloads + organizes data
 # and then runs import2geenuff.py for three algae genomes
 wget https://raw.githubusercontent.com/weberlab-hhu/GeenuFF/main/example.sh
+# execution will take ~ 1-2 minutes depending on your system
 bash example.sh
 # store full path in a variable for later usage
-data_at=`readlink -f three_algae`
+export data_at=`readlink -f three_algae`
 ```
 
 This downloads and pre-processes data for the species
-(Chlamydomonas_reinhardtii,  Cyanidioschyzon_merolae, and  Ostreococcus_lucimarinus)
-as you can see with `ls $data_at`
+(Chlamydomonas_reinhardtii,  Cyanidioschyzon_merolae, and  Ostreococcus_lucimarinus),
+as you can see with `ls $data_at`.
 
 To run other genomes, simply provide a fasta and gff3 
-file to the `import2geenuff.py` script according to the help function,
+file to the `import2geenuff.py` script according to the help function/the [Helixer options documentation](helixer_options.md#5-import2geenuffpy-options),
 and supply a species name. The example.sh shows one way to do so.
 
 ### numeric encoding of data
@@ -63,7 +64,7 @@ testing / predicting / etc.
 
 ```shell script
 # The training script requires at least two files in the data folder: one matching
-# training_data*h5 and one matching validation_data*h5, respectively.
+# training_data*h5 and one matching validation_data*h5 (* = bash wildcard), respectively.
 #
 # For this as-simple-as-possible example we will point to one species each
 # of training and validation with symlinks
@@ -97,7 +98,7 @@ example
 > important to train it on _multiple_ training species, and also to
 > validate it on _multiple_ validation species.
 >
-> All files matching `training_data*h5` and `validation_data*h5` (bash wildcard),
+> All files matching `training_data*h5` and `validation_data*h5` (* = bash wildcard),
 > that are found in the directory supplied to `--data-dir` below will be used
 > for training, and validation, respectively.
 >
@@ -124,7 +125,8 @@ LSTM architecture for 5 epochs and save the best iteration
 (according to the Genic F1 on the validation dataset) to 
 `example/best_helixer_model.h5`. The parameter `--predict-phase`
 is necessary so that the resulting models are compatible with post-processing
-via HelixerPost.
+via HelixerPost. For a detailed explanation of all possible parameters see the
+[Helixer options documentation](helixer_options.md#3-hybridmodelpy-options).
 
 ```shell script
 HybridModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 \
@@ -133,9 +135,9 @@ HybridModel.py --data-dir example/train/ --save-model-path example/best_helixer_
 
 The rest of this example will continue with the model example/best_helixer_model.h5 produced above. 
 
-### Full size aside
+### Interlude: Full size model
 The current 'full size' architecture that has been performing well
-in hyper optimization runs is:
+in hyperparameter optimization runs is:
 
 ```shell script
 # the indicated batch size and val-test-batch size have been chosen to work on a GTX 2080ti with 11GB RAM
@@ -148,7 +150,7 @@ HybridModel.py -v --pool-size 9 --batch-size 50 --val-test-batch-size 100 \
   --data-dir example/train/ --save-model-path example/fullsize_helixer_model.h5
 ```
 
-But make sure you have a full size dataset to go with that model, and up to a couple days,
+But make sure you have a full size dataset to go with that model, and up to a couple of days,
 if you're going to train it.
 
 ## Model evaluation
@@ -159,9 +161,9 @@ calling `Helixer.py` with `--model-filepath example/best_helixer_model.h5`, but 
 in the main README.md, and if you're training models you might want some finer
 tuned / intermediate predictions and evaluation, so see below:
 
-NOTE: Generating predictions can produce very large files as 
-we save every individual softmax value in 32 bit floating point format. 
-For this very small genome the predictions require 524MB of disk space. 
+> NOTE: Generating predictions can produce very large files as 
+> we save every individual softmax value in 32 bit floating point format. 
+> For this very small genome the predictions require 524MB of disk space. 
 ```shell script
 HybridModel.py --load-model-path example/best_helixer_model.h5 \
   --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 \
@@ -217,9 +219,8 @@ metrics calculation took: 0.08 minutes
 
 In the demo run above (yours may vary) the model predicted
 perhaps better than random, but poorly. It practically
-needs more and more varied (from different species) data
-to train it (this result is for the small model example),
-as well as for the network to be larger and trained for longer.
+needs more data and more phylogenetic variation in the dataset (different species),
+as well as for the network to be larger and trained for a longer period of time.
 
 ## Practical considerations
 While the above covers technically how to train a model, here are some
@@ -239,7 +240,7 @@ but nevertheless some patterns are clear. You will probably want to:
 - include more and _more diverse_ species to boost performance (current performant released models were trained
   on many dozens of species)
 - include only higher quality annotations to boost performance
-- wrestle with the obvious tradeoff between the proceeding two points... 
+- figure out the best tradeoff between phylogenetic variety and availability of high quality annotations
 
 Trial and error has been a major part of the training process, 
 particularly for species selection. Eventually we automated that
@@ -261,7 +262,7 @@ worse. Validation files _can_ be
 for speed purposes. 
 
 ### Hyperparameter optimization
-The helixer codebase is built to work with [nni](https://github.com/microsoft/nni)
+The Helixer codebase is built to work with [nni](https://github.com/microsoft/nni)
 for hyperparameter optimization. If you want to optimize the hyperparameters, we recommend
 following standard nni instructions on setting up the config.yml
 and search_space.json files and additionally adding

@@ -4,7 +4,7 @@ import argparse
 from pprint import pprint
 from termcolor import colored
 from abc import ABC, abstractmethod
-
+from importlib.metadata import version
 
 class ParameterParser(ABC):
     """Bundles code that parses script parameters from the command line and a config file."""
@@ -22,7 +22,7 @@ class ParameterParser(ABC):
         self.data_group.add_argument('--no-multiprocess', action='store_true',
                                      help='Whether to not parallize the numerification of large sequences. Uses half the memory '
                                           'but can be much slower when many CPU cores can be utilized.')
-
+        self.parser.add_argument('--version', action='version', version='%(prog)s ' + version('helixer'))
         # Default values have to be specified - and potentially added - here
         self.defaults = {'no_multiprocess': False}
 

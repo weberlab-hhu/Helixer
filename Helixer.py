@@ -19,7 +19,7 @@ class HelixerParameterParser(ParameterParser):
     def __init__(self, config_file_path=''):
         super().__init__(config_file_path)
         self.io_group.add_argument('--fasta-path', type=str, required=True, help='FASTA input file.')
-        self.io_group.add_argument('--gff-output-path', type=str, required=True, help='Output GFF file path.')
+        self.io_group.add_argument('--gff-output-path', type=str, required=True, help='Output GFF3 file path.')
         self.io_group.add_argument('--species', type=str, help='Species name.')
         self.io_group.add_argument('--temporary-dir', type=str,
                                    help='use supplied (instead of system default) for temporary directory')
@@ -29,6 +29,12 @@ class HelixerParameterParser(ParameterParser):
                                           'typical genic loci. Tested up to 213840. Must be evenly divisible by the '
                                           'timestep width of the used model, which is typically 9. (Default is '
                                           'lineage dependent from 21384 to 213840).')
+        self.data_group.add_argument('--write-by', type=int,
+                                     help='convert genomic sequence in super-chunks to numerical matrices with this '
+                                          'many base pairs; for lower memory consumption, which will be rounded to be '
+                                          'divisible by subsequence-length; ; needs to be equal to or larger than '
+                                          'subsequence length, for lower memory consumption, consider setting a '
+                                          'lower number')
         self.data_group.add_argument('--lineage', type=str, default=None,
                                      choices=['vertebrate', 'land_plant', 'fungi', 'invertebrate'],
                                      help='What model to use for the annotation.')
@@ -54,25 +60,32 @@ class HelixerParameterParser(ParameterParser):
                                           'quality if overlapping is enabled. Smaller values may lead to better '
                                           'predictions but will take longer. Has to be smaller than subsequence_length '
                                           '(Default is subsequence_length * 3 / 4)')
-        self.pred_group.add_argument('--debug', action='store_true', help='add this to quickly the code runs through'
-                                                                          'without loading/predicting on the full file')
 
-        self.post_group = self.parser.add_argument_group("Post processing parameters")
-        self.post_group.add_argument('--window-size', type=int, help='')
-        self.post_group.add_argument('--edge-threshold', type=float, help='')
-        self.post_group.add_argument('--peak-threshold', type=float, help='')
-        self.post_group.add_argument('--min-coding-length', type=int, help='')
+        self.post_group = self.parser.add_argument_group("Post-processing parameters")
+        self.post_group.add_argument('--window-size', type=int,
+                                     help='width of the sliding window that is assessed for intergenic vs genic '
+                                          '(UTR/Coding Sequence/Intron) content')
+        self.post_group.add_argument('--edge-threshold', type=float,
+                                     help='threshold specifies the genic score which defines the start/end boundaries '
+                                          'of each candidate region within the sliding window')
+        self.post_group.add_argument('--peak-threshold', type=float,
+                                     help='threshold specifies the minimum peak genic score required to accept the '
+                                          'candidate region; the candidate region is accepted if it contains at least '
+                                          'one window with a genic score above this threshold')
+        self.post_group.add_argument('--min-coding-length', type=int,
+                                     help='output is filtered to remove genes with a total coding length shorter '
+                                          'than this value')
 
         helixer_defaults = {
             'fasta_path': '',
             'temporary_dir': None,
             'species': '',
             'subsequence_length': None,
+            'write_by': 20_000_000,
             'lineage': None,
             'model_filepath': None,
             'batch_size': 32,
             'no_overlap': False,
-            'debug': False,
             'overlap_offset': None,
             'overlap_core_length': None,
             'window_size': 100,
@@ -104,7 +117,8 @@ class HelixerParameterParser(ParameterParser):
                   'genomic loci. E.g. 21384, 64152, or 213840 for fungi, plants, and animals, respectively.'
             assert args.subsequence_length is not None, msg
         else:
-            assert args.lineage is not None, "Either --lineage or --model-filepath is required. Run `Helixer.py --help` to see lineage options."
+            assert args.lineage is not None, ("Either --lineage or --model-filepath is required. Run `Helixer.py "
+                                              "--help` to see lineage options.")
             model_filepath = self.check_for_lineage_model(args.lineage)
             if args.subsequence_length is None:
                 key = {'vertebrate': 213840, 'land_plant': 64152, 'fungi': 21384, 'invertebrate': 213840}
@@ -127,19 +141,22 @@ class HelixerParameterParser(ParameterParser):
                    f'has to be evenly divisible by {timestep_width}')
             assert args.subsequence_length % timestep_width == 0, msg
 
-        if not args.no_overlap:
-            # check user params are valid or set defaults relative to subsequence_length
-            if args.overlap_offset is not None:
-                msg = '--overlap-offset has to evenly divide --subsequence-length'
-                assert args.subsequence_length % args.overlap_offset == 0, msg
-            else:
-                args.overlap_offset = args.subsequence_length // 2
+        # check user params are valid or set defaults relative to subsequence_length
+        # set overlap parameters no matter if overlap is used or not to prevent HelixerModel
+        # from throwing an argparse type error when None gets passed as an argument
+        if args.overlap_offset is not None and not args.no_overlap:
+            msg = (f'the given --overlap-offset of {args.overlap_offset} has to evenly '
+                   f'divide --subsequence-length, which is {args.subsequence_length}')
+            assert args.subsequence_length % args.overlap_offset == 0, msg
+        else:
+            args.overlap_offset = args.subsequence_length // 2
 
-            if args.overlap_core_length is not None:
-                msg = '--overlap-core-length has to be smaller than --subsequence-length'
-                assert args.subsequence_length > args.overlap_core_length, msg
-            else:
-                args.overlap_core_length = int(args.subsequence_length * 3 / 4)
+        if args.overlap_core_length is not None and not args.no_overlap:
+            msg = (f'the given --overlap-core-length of {args.overlap_core_length} has to be smaller '
+                   f'than --subsequence-length, which is {args.subsequence_length}')
+            assert args.subsequence_length > args.overlap_core_length, msg
+        else:
+            args.overlap_core_length = int(args.subsequence_length * 3 / 4)
 
         # check if custom temporary dir actually exists
         if args.temporary_dir is not None:
@@ -204,7 +221,8 @@ def main():
         controller = HelixerFastaToH5Controller(args.fasta_path, tmp_genome_h5_path)
         # hard coded subsequence length due to how the models have been created
         controller.export_fasta_to_h5(chunk_size=args.subsequence_length, compression=args.compression,
-                                      multiprocess=not args.no_multiprocess, species=args.species)
+                                      multiprocess=not args.no_multiprocess, species=args.species,
+                                      write_by=args.write_by)
 
         msg = 'with' if args.overlap else 'without'
         msg = 'FASTA to H5 conversion done. Starting neural network prediction ' + msg + ' overlapping.'
@@ -222,8 +240,6 @@ def main():
         ]
         if args.overlap:
             hybrid_model_args.append('--overlap')
-        if args.debug:
-            hybrid_model_args.append('--debug')
         model = HybridModel(cli_args=hybrid_model_args)
         model.run()
 

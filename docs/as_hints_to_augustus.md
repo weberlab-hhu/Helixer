@@ -20,12 +20,12 @@ for integration with any extrinsic data sources that AUGUSTUS supports.
 ## The process
 
 First, generate Helixer predictions for the genome in question 
-(using the same example data as the main readme).
+(using the same example data as the main README).
 
 ```
 # this exactly matches the 'example broken into individual steps' from the README.md
-fasta2zarr.py --species Arabidopsis_lyrata --h5-output-path Arabidopsis_lyrata.h5 --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa
-helixer/prediction/HybridModel.py --load-model-path models/land_plant.h5 --test-data Arabidopsis_lyrata.h5 --overlap --val-test-batch-size 32 -v
+fasta2zarr.py --species Arabidopsis_lyrata --zarr-output-path Arabidopsis_lyrata.zarr --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa.gz
+helixer/prediction/HybridModel.py --load-model-path models/land_plant.h5 --test-data Arabidopsis_lyrata.zarr --overlap --val-test-batch-size 32 -v
 ```
 
 Second, convert these predictions into hints

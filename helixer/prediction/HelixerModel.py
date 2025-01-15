@@ -4,7 +4,6 @@ import sys
 import inspect
 
 import helixer.core.helpers
-from helixer.core.strs import *
 
 try:
     import nni
@@ -16,7 +15,7 @@ import zarr
 import numcodecs
 import argparse
 import datetime
-import pkg_resources
+from importlib.metadata import version
 import subprocess
 import numpy as np
 from sklearn.utils import shuffle
@@ -231,7 +230,7 @@ class HelixerSequence(Dataset):
                                   zarr_file[DATA_ERR_SAMPLES])
             n_masked = x_dset.shape[0] - np.sum(mask)
             print(f'\nmasking {n_masked} completely un-annotated or completely erroneous sequences')
-                
+
         else:
             mask = np.ones(zarr_file[DATA_X].shape[0], dtype=bool)
             n_masked = 0
@@ -486,7 +485,7 @@ class HelixerModel(nn.Module, ABC):
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument('-d', '--data-dir', type=str, default=None)
         self.parser.add_argument('-s', '--save-model-path', type=str, default='./best_model.h5')
-        self.parser.add_argument('--large-eval-folder', type=str, default='')
+        self.parser.add_argument('--large-eval-folder', type=str, default='', help=argparse.SUPPRESS)
         # training params
         self.parser.add_argument('-e', '--epochs', type=int, default=10000)
         self.parser.add_argument('-b', '--batch-size', type=int, default=8)
@@ -500,9 +499,11 @@ class HelixerModel(nn.Module, ABC):
         self.parser.add_argument('--weight-decay', type=float, default=3.5e-5)
         self.parser.add_argument('--class-weights', type=str, default='None')
         self.parser.add_argument('--transition-weights', type=str, default='None')
-        self.parser.add_argument('--coverage-weights', action='store_true')
-        self.parser.add_argument('--coverage-offset', type=float, default=0.0)
-        self.parser.add_argument('--calculate-uncertainty', action='store_true')
+
+        self.parser.add_argument('--stretch-transition-weights', type=int, default=0, help=argparse.SUPPRESS)  # bc no clear effect on result quality
+        self.parser.add_argument('--coverage-weights', action='store_true', help=argparse.SUPPRESS)
+        self.parser.add_argument('--coverage-offset', type=float, default=0.0, help=argparse.SUPPRESS)
+        self.parser.add_argument('--calculate-uncertainty', action='store_true', help=argparse.SUPPRESS)
         self.parser.add_argument('--no-utrs', action='store_true', help=argparse.SUPPRESS)  # is this still needed?
         self.parser.add_argument('--predict-phase', action='store_true')
         self.parser.add_argument('--load-predictions', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
@@ -525,12 +526,15 @@ class HelixerModel(nn.Module, ABC):
                                       "region will be cropped. (default: subsequence_length * 3 / 4)")
         # resources
         self.parser.add_argument('--float-precision', type=str, default='float32')
-        self.parser.add_argument('--cpus', type=int, default=8)
-        self.parser.add_argument('--gpu-id', type=int, default=-1)  # todo: remove
+        self.parser.add_argument('--cpus', type=int, default=8, help=argparse.SUPPRESS)
+        self.parser.add_argument('--gpu-id', type=int, default=-1,
+                                 help='sets GPU index, use if you want to train on one GPU on a multi-GPU machine '
+                                      'without a job scheduler system')  # todo: remove
         self.parser.add_argument('--device', type=str, default='gpu')  # todo: check if available, if not switch to CPU and print info
         self.parser.add_argument('--num-devices', type=int, default=1)
         self.parser.add_argument('--workers', type=int, default=1,
-                                 help='consider setting to match the number of GPUs')
+                                 help='number of threads used to fetch input data for training; '
+                                      'consider setting to match the number of GPUs')
         # misc flags
         self.parser.add_argument('--save-every-check', action='store_true')
         self.parser.add_argument('--nni', action='store_true')
@@ -570,6 +574,18 @@ class HelixerModel(nn.Module, ABC):
         takes a list of cli arguments from self.cli_args. This can be used to invoke a HelixerModel from
         another script."""
         args = vars(self.parser.parse_args(args=self.cli_args))
+
+        # hack to deprecate a few args
+        for arg in ['large_eval_folder', 'cpus', 'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
+                    'calculate_uncertainty', 'no_utrs', 'load_predictions']:
+            default = self.parser.get_default(arg)
+            if args[arg] != default:
+                print(colored(
+                    f"Warning: the argument '{arg}' is deprecated and will be "
+                    f"removed in the future. The argument will have no effect.", 'yellow'))
+                # set arg back to default
+                args[arg] = default
+
         self.__dict__.update(args)
 
         if self.nni:
@@ -961,8 +977,7 @@ class HelixerModel(nn.Module, ABC):
             commit = subprocess.check_output(cmd, stderr=subprocess.STDOUT).strip().decode()
             print(f'Current Helixer branch: {branch} ({commit})')
         except subprocess.CalledProcessError:
-            version = pkg_resources.require('helixer')[0].version
-            print(f'Current Helixer version: {version}')
+            print(f'Current Helixer version: {version("helixer")}')
 
         try:
             if os.path.isfile(self.load_model_path):
@@ -1054,6 +1069,25 @@ class HelixerModel(nn.Module, ABC):
 
 
     def run(self):
+        def load_model_strategy():
+            if not self.input_coverage:
+                model = load_model(self.load_model_path)
+            else:
+                # for whatever reason, the fine tuning method is not saving the full model
+                # in an entirely valid h5 file (depending on if you ask h5py or h5ls). puh.
+                # thus loading the original model is both the easiest way to get architecture
+                # setup and seems safer to make sure _all_ and not just _new_ weights are there
+                oldmodel = load_model(self.pretrained_model_path)
+                # repeat everything done setting up training to get exact architecture
+                # freeze weights and replace everything from the dense layer
+                dense_at = [l.name for l in oldmodel.layers].index('dense')
+                for layer in oldmodel.layers:
+                    layer.trainable = False
+
+                model = self.insert_coverage_before_hat(oldmodel, dense_at)
+                model.load_weights(self.load_model_path)
+            return model
+
         self.set_resources()
         #self.open_data_files()
         #if self.input_coverage:
@@ -1139,3 +1173,7 @@ class HelixerModel(nn.Module, ABC):
 #
 #        model = Model(raw_input, output)
 #        return model
+
+if __name__ == '__main__':
+    print(colored("ERROR: 'HelixerModel.py' is not meant to be executed by the user. "
+                  "Please use 'Helixer.py' or 'HybridModel.py'.", 'red'))
