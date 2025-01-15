@@ -159,7 +159,7 @@ class OverlapSeqHelper(object):
 
         for crange in contiguous_ranges:
             # step through sequence so that non-edges can have 1-chunk cropped off start/end
-            # and regenerate original sequence with a simple concatenation there after
+            # and regenerate original sequence with a simple concatenation after that
             for i in range(crange['start_i'], crange['end_i'], step):
                 sub_batch_start = max(i - 1, crange['start_i'])  # pad 1 left (except seq edge)
                 keep_start = max(i, crange['start_i'])
@@ -175,7 +175,7 @@ class OverlapSeqHelper(object):
                              overlap_offset=overlap_offset, chunk_size=chunk_size)
                 )
 
-        # group into final batches, so as to keep total size <= max_batch_size
+        # group into final batches, to keep total size <= max_batch_size
         # i.e. achieve consistent (& user adjustable) memory usage on graphics card
         sliding_batches = []
         batch = []
@@ -212,7 +212,7 @@ class OverlapSeqHelper(object):
         x_as_list = []
         for start, length, sb in zip(sb_input_starts, sb_input_lengths, sub_batches):
             x_as_list.append(sb.mk_sliding_overlaps_for_data_sub_batch(data_batch[start:(start + length)]))
-        sliding_input = np.concatenate(x_as_list)
+        sliding_input = np.concatenate(x_as_list, axis=0)
         return sliding_input
 
     def overlap_predictions(self, batch_idx, predictions):

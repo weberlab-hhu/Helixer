@@ -29,7 +29,8 @@ from torch import nn
 from torch.utils.data import Dataset
 
 from helixer.prediction.Metrics import Metrics
-from helixer.core import overlap, strs
+from helixer.core import overlap
+from helixer.core.strs import *
 
 #class ConfusionMatrixTrain(Callback):
 class ConfusionMatrixTrain():
@@ -128,10 +129,10 @@ class ConfusionMatrixTrain():
 #            self.train_generator.shuffle_data()
 
 
-#class HelixerSequence(Sequence):
 class HelixerSequence(Dataset):
     def __init__(self, model, zarr_files, mode, batch_size, shuffle):
-        assert mode in [strs.TEST, strs.TRAIN, strs.VAL]
+        # todo: remove batch_size and shuffle, this is handled by the dataloader
+        assert mode in [TEST, TRAIN, VAL]
         self.model = model
         self.zarr_files = zarr_files  # generators, opened in read mode by HelixerModel class
         self.mode = mode
@@ -140,9 +141,10 @@ class HelixerSequence(Dataset):
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
                                  'coverage_count', 'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
                                  'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
-                                 'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions', 'debug'])
+                                 'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions',
+                                 'num_devices', 'debug'])
 
-        if self.mode == strs.TEST:
+        if self.mode == TEST:
             assert len(self.zarr_files) == 1, "predictions and eval should be applied to individual files only"
 
         # set chunk size and overlap parameters
@@ -171,7 +173,7 @@ class HelixerSequence(Dataset):
                     self.data_list_names.append('scores/by_bp')
 
         if self.overlap:
-            assert self.mode == strs.TEST, "overlapping currently only works for test (predictions & eval)"
+            assert self.mode == TEST, "overlapping currently only works for test (predictions & eval)" # todo: available for training?
             # can take [0] below bc we've asserted that test means len(self.zarr_files) == 1 above
             contiguous_ranges = helixer.core.helpers.get_contiguous_ranges(self.zarr_files[0])
             self.ol_helper = overlap.OverlapSeqHelper(contiguous_ranges=contiguous_ranges,
@@ -189,7 +191,8 @@ class HelixerSequence(Dataset):
         self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)  # use BITSHUFFLE
 
         print(f'\nstarting to load {self.mode} data into memory..')
-
+        # todo: implement shard logic here, so dataset either gets sharded or not depending on device count
+        # todo: transfer chunk down below into its own logic?
         for zarr_file in self.zarr_files:
             self._load_one_zarr(zarr_file)
 
@@ -200,7 +203,7 @@ class HelixerSequence(Dataset):
         self.n_seqs = len(self.data_lists[0])
         print(f'setting self.n_seqs to {self.n_seqs}, bc that is len of {self.data_list_names[0]}')
 
-        if self.mode == strs.TEST:
+        if self.mode == TEST:
             if self.class_weights is not None:
                 print(f'ignoring the class_weights of {self.class_weights} in mode "test"')
                 self.class_weights = None
@@ -216,14 +219,14 @@ class HelixerSequence(Dataset):
         if not self.only_predictions:
             y_dset = zarr_file[DATA_Y]
             print(f'y shape: {y_dset.shape}')
-
+        # todo: exclude debug and make mini_zarr the debug stand-ins, debug script/routine instead?
         if self.debug:
             # so that total sequences between all files add to ~1000
             n_seqs = max(1000 // len(self.zarr_files), 1)
         else:
             n_seqs = x_dset.shape[0]
 
-        if self.mode == strs.TRAIN or self.mode == strs.VAL:
+        if self.mode == TRAIN or self.mode == VAL:
             mask = np.logical_and(zarr_file[DATA_IS_ANNOTATED],
                                   zarr_file[DATA_ERR_SAMPLES])
             n_masked = x_dset.shape[0] - np.sum(mask)
@@ -256,7 +259,7 @@ class HelixerSequence(Dataset):
         #y[..., 0] = np.logical_or(y[..., 0], y[..., 1])
         #y[..., 1] = 0
 
-    # not needed when the PyTorch Dataloader handels that
+    # not needed when the PyTorch Dataloader handels that, but preshuffling for sharding is worth a thought
     def shuffle_data(self):
         start_time = time.time()
         self.data_lists = shuffle(*self.data_lists)
@@ -278,7 +281,7 @@ class HelixerSequence(Dataset):
                 decoded_list = self.get_batch_of_one_dataset(name, batch_idx)
 
                 # append coverage to X directly, might be clearer elsewhere once working, but this needs little code...
-                # TODO delete/comment out and rework (be strict, just accept rnaseq as prefix)
+                # TODO delete/comment out and rework (be strict, not just accept rnaseq as prefix)
                 if name == DATA_X and self.input_coverage:
                     decode_coverage = self.get_batch_of_one_dataset('evaluation/rnaseq_coverage', batch_idx)
                     decode_coverage = [self._cov_norm(x.reshape(-1, self.coverage_count)).astype(np.float16) for x in decode_coverage]
@@ -389,7 +392,6 @@ class HelixerSequence(Dataset):
 
         return summed_trns
 
-
     @staticmethod
     def to_torch_tensor(data):
         if isinstance(data, np.ndarray):
@@ -401,7 +403,6 @@ class HelixerSequence(Dataset):
                raise Exception(f'expected list of numpy.ndarrays, got {type(data[0])}')
         else:
             raise Exception(f'expected numpy.ndarray, got {type(data)}')
-
 
     def __len__(self):
         """how many total samples"""
@@ -432,7 +433,7 @@ class HelixerSequence(Dataset):
                     sw = sw[:, :-overhang]
                     if self.predict_phase:
                         phases = phases[:, :-overhang]
-                    if self.mode == strs.TRAIN and self.transition_weights is not None:
+                    if self.mode == TRAIN and self.transition_weights is not None:
                         transitions = transitions[:, :-overhang]
 
             if not self.only_predictions:
@@ -440,7 +441,7 @@ class HelixerSequence(Dataset):
                 sw = sw.reshape((sw.shape[0], -1, pool_size))
                 sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
 
-            if self.mode == strs.TRAIN:
+            if self.mode == TRAIN:
                 if self.class_weights is not None:
                     # class weights are additive for the individual timestep predictions
                     # giving even more weight to transition points
@@ -525,7 +526,9 @@ class HelixerModel(nn.Module, ABC):
         # resources
         self.parser.add_argument('--float-precision', type=str, default='float32')
         self.parser.add_argument('--cpus', type=int, default=8)
-        self.parser.add_argument('--gpu-id', type=int, default=-1)
+        self.parser.add_argument('--gpu-id', type=int, default=-1)  # todo: remove
+        self.parser.add_argument('--device', type=str, default='gpu')  # todo: check if available, if not switch to CPU and print info
+        self.parser.add_argument('--num-devices', type=int, default=1)
         self.parser.add_argument('--workers', type=int, default=1,
                                  help='consider setting to match the number of GPUs')
         # misc flags
@@ -597,16 +600,16 @@ class HelixerModel(nn.Module, ABC):
             args['prediction_output_path'] = nni_pred_output_path
 
         # there are 3 main purposes of running a model, train, eval, predict
-        self.run_purpose = strs.TRAIN
+        self.run_purpose = TRAIN
 
         if self.load_model_path and not self.resume_training:
             if self.eval:
-                self.run_purpose = strs.EVAL
+                self.run_purpose = EVAL
             else:
-                self.run_purpose = strs.PREDICT
+                self.run_purpose = PREDICT
 
         # check consistency with other parameters
-        if self.run_purpose == strs.TRAIN:
+        if self.run_purpose == TRAIN:
             assert self.data_dir is not None, '--data-dir required for training'
             assert not self.test_data_path, '--test-data-path cannot be set when training'
         else:
@@ -669,7 +672,7 @@ class HelixerModel(nn.Module, ABC):
         if self._training_data is None:
             SequenceCls = self.sequence_cls()
             self._training_data = SequenceCls(model=self, zarr_files=self.zarr_trains,
-                                              mode=strs.TRAIN, batch_size=self.batch_size,
+                                              mode=TRAIN, batch_size=self.batch_size,
                                               shuffle=True)
         return self._training_data
 
@@ -678,7 +681,7 @@ class HelixerModel(nn.Module, ABC):
         if self._validation_data is None:
             SequenceCls = self.sequence_cls()
             self._validation_data = SequenceCls(model=self, zarr_files=self.zarr_vals,
-                                                mode=strs.VAL, batch_size=self.val_test_batch_size,
+                                                mode=VAL, batch_size=self.val_test_batch_size,
                                                 shuffle=False)
         return self._validation_data
 
@@ -687,7 +690,7 @@ class HelixerModel(nn.Module, ABC):
         if self._test_data is None:
             SequenceCls = self.sequence_cls()
             self._test_data = SequenceCls(model=self, zarr_files=self.zarr_tests,
-                                          mode=strs.TEST, batch_size=self.val_test_batch_size,
+                                          mode=TEST, batch_size=self.val_test_batch_size,
                                           shuffle=False)
         return self._test_data
 
@@ -807,7 +810,7 @@ class HelixerModel(nn.Module, ABC):
                 sum_n_fully_ig += n_fully_ig
             return sum_n_fully_ig
 
-        if self.run_purpose == strs.TRAIN:
+        if self.run_purpose == TRAIN:
             self.zarr_trains = [zarr.open(f, mode='r') for f in glob.glob(os.path.join(self.data_dir, 'training_data*.zarr'))]
             self.zarr_vals = [zarr.open(f, mode='r') for f in glob.glob(os.path.join(self.data_dir, 'validation_data*.zarr'))]
             try:
@@ -841,7 +844,7 @@ class HelixerModel(nn.Module, ABC):
 
         if self.verbose:
             print('\nData config: ')
-            if self.run_purpose == strs.TRAIN:
+            if self.run_purpose == TRAIN:
                 print([dict(x.attrs) for x in self.zarr_trains])
                 print('\nTraining {} shape: {}'.format(DATA_X, self.shape_train[:2]))
                 print('Validation {} shape: {}'.format(DATA_X, self.shape_val[:2]))
@@ -1062,7 +1065,7 @@ class HelixerModel(nn.Module, ABC):
         #        h5_files = self.h5_trains
         #    self.coverage_count = h5_files[0]['evaluation/rnaseq_coverage'].shape[2]
 
-        if self.run_purpose == strs.TRAIN:
+        if self.run_purpose == TRAIN:
             if self.resume_training:
                 self.load_model()
                 pass  
@@ -1104,7 +1107,7 @@ class HelixerModel(nn.Module, ABC):
             self.compile_model()  # todo, this is likely optional once metrics are in and loss not reported
             self._print_model_info()
 
-            if self.run_purpose == strs.EVAL:
+            if self.run_purpose == EVAL:
                 # TODO, next line only, mvp
                 #_, _, _ = HelixerModel.run_metrics(test_generator, model, calc_H=self.calculate_uncertainty)
                 self.eval_epoch(self.test_data)
@@ -1113,12 +1116,12 @@ class HelixerModel(nn.Module, ABC):
                 #    training_species = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r').attrs['genomes']
                 #    _ = HelixerModel.run_large_eval(self.large_eval_folder, model, test_generator, training_species,
                 #                                    print_to_stdout=True, calc_H=self.calculate_uncertainty)
-            elif self.run_purpose == strs.PREDICT:
+            elif self.run_purpose == PREDICT:
                 if os.path.isfile(self.prediction_output_path):
                     print(f'{self.prediction_output_path} already exists and will be overwritten.')
                 self._make_predictions(self.model)  # callback candidate?
             else:
-                assert ValueError, f"run_purpose should be in {strs.TRAIN}, {strs.EVAL}, {strs.PREDICT}"
+                assert ValueError, f"run_purpose should be in {TRAIN}, {EVAL}, {PREDICT}"
 
 
 #    def insert_coverage_before_hat(self, oldmodel, dense_at):
