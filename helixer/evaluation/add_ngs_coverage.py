@@ -1,34 +1,34 @@
 #! /usr/bin/env python3
-
+# todo: add strs and use them instead of hardcoded strings
+# todo: more elegant rewrite like in exporter.py
 import sys
 import argparse
 import HTSeq
-import h5py
+import zarr
 import random
 import os
 import shutil
 import copy
 
-import h5py.utils
 import numpy as np
 from multiprocessing import Pool
 
 
 class ContiguousBit:
-    def __init__(self, seqid, start_ends, start_i_h5, end_i_h5):
+    def __init__(self, seqid, start_ends, start_i_zarr, end_i_zarr):
         self.seqid = seqid
         self.start_ends = start_ends
-        # indexes in h5 file
-        self.start_i_h5 = start_i_h5
-        self.end_i_h5 = end_i_h5
-        assert len(self.start_ends) == end_i_h5 - start_i_h5, '{} {} {}'.format(len(self.start_ends), start_i_h5,
-                                                                                end_i_h5)
+        # indexes in zarr file
+        self.start_i_zarr = start_i_zarr
+        self.end_i_zarr = end_i_zarr
+        assert len(self.start_ends) == end_i_zarr - start_i_zarr, '{} {} {}'.format(len(self.start_ends),
+                                                                                    start_i_zarr, end_i_zarr)
 
     def __repr__(self):
-        return "array from {}-{}; h5 from [{},{}) in h5 in {} pieces".format(self.start_ends[0][0],
+        return "array from {}-{}; zarr from [{},{}) in zarr in {} pieces".format(self.start_ends[0][0],
                                                                              self.start_ends[-1][1],
-                                                                             self.start_i_h5,
-                                                                             self.end_i_h5,
+                                                                             self.start_i_zarr,
+                                                                             self.end_i_zarr,
                                                                              len(self.start_ends))
 
 
@@ -150,12 +150,12 @@ def get_shifted_interval(read):
         raise ValueError(f'unknown strand {read.iv.strand}')
 
 
-def write_in_bits(array, contiguous_bits, h5_dataset, chunk_size, target_row=None):
+def write_in_bits(array, contiguous_bits, zarr_dataset, chunk_size, target_row=None):
     for bit in contiguous_bits:
-        write_a_bit(array, bit, h5_dataset, chunk_size, target_row)
+        write_a_bit(array, bit, zarr_dataset, chunk_size, target_row)
 
 
-def write_a_bit(array, bit, h5_dataset, chunk_size, target_row=None):
+def write_a_bit(array, bit, zarr_dataset, chunk_size, target_row=None):
     start_array = bit.start_ends[0][0]
     end_array = bit.start_ends[-1][1]
 
@@ -181,17 +181,17 @@ def write_a_bit(array, bit, h5_dataset, chunk_size, target_row=None):
     array_slice = np.reshape(array_slice, [n_chunks, chunk_size])
     # and write to file
     if target_row is None:
-        h5_dataset[bit.start_i_h5:bit.end_i_h5] = array_slice
+        zarr_dataset[bit.start_i_zarr:bit.end_i_zarr] = array_slice
     else:
-        h5_dataset[bit.start_i_h5:bit.end_i_h5, :, target_row] = array_slice
+        zarr_dataset[bit.start_i_zarr:bit.end_i_zarr, :, target_row] = array_slice
 
 
-def find_contiguous_segments(h5, start_i, end_i, chunk_size):
+def find_contiguous_segments(zarr_file, start_i, end_i, chunk_size):
     bits_plus = []
     bits_minus = []
 
-    seqids = h5['data/seqids'][start_i:end_i]
-    start_ends = h5['data/start_ends'][start_i:end_i]
+    seqids = zarr_file['data/seqids'][start_i:end_i]
+    start_ends = zarr_file['data/start_ends'][start_i:end_i]
 
     # these reset every step
     prev_seqid = seqids[0]
@@ -200,7 +200,7 @@ def find_contiguous_segments(h5, start_i, end_i, chunk_size):
 
     # these reset every contiguous bit
     current_start_ends = [(prev_start, prev_end)]
-    curr_start_i_h5 = start_i
+    curr_start_i_zarr = start_i
 
     for i_rel in range(1, start_ends.shape[0]):
         curr_seqid = seqids[i_rel]
@@ -216,8 +216,8 @@ def find_contiguous_segments(h5, start_i, end_i, chunk_size):
         else:
             continguous_bit = ContiguousBit(seqid=prev_seqid,
                                             start_ends=current_start_ends,
-                                            start_i_h5=curr_start_i_h5,
-                                            end_i_h5=curr_start_i_h5 + len(current_start_ends))
+                                            start_i_zarr=curr_start_i_zarr,
+                                            end_i_zarr=curr_start_i_zarr + len(current_start_ends))
             # save
             if prev_is_plus:
                 bits_plus.append(continguous_bit)
@@ -226,14 +226,14 @@ def find_contiguous_segments(h5, start_i, end_i, chunk_size):
 
             # reset after save
             current_start_ends = [(curr_start, curr_end)]
-            curr_start_i_h5 = start_i + i_rel
+            curr_start_i_zarr = start_i + i_rel
         # step
         prev_seqid, prev_start, prev_end, prev_is_plus = curr_seqid, curr_start, curr_end, curr_is_plus
     # save final step
     continguous_bit = ContiguousBit(seqid=prev_seqid,
                                     start_ends=current_start_ends,
-                                    start_i_h5=curr_start_i_h5,
-                                    end_i_h5=curr_start_i_h5 + len(current_start_ends))
+                                    start_i_zarr=curr_start_i_zarr,
+                                    end_i_zarr=curr_start_i_zarr + len(current_start_ends))
     if prev_is_plus:
         bits_plus.append(continguous_bit)
     else:
@@ -242,36 +242,29 @@ def find_contiguous_segments(h5, start_i, end_i, chunk_size):
     return bits_plus, bits_minus
 
 
-def add_empty_ngs_datasets(h5, n):
-    length = h5['data/X'].shape[0]
-    chunk_len = h5['data/X'].shape[1]
-    if 'evaluation' not in h5.keys():
-        h5.create_group('evaluation')
+def add_empty_ngs_datasets(zarr_file, n):
+    length = zarr_file['data/X'].shape[0]
+    chunk_len = zarr_file['data/X'].shape[1]
     for key in NGS_COVERAGE_SETS:
-        h5.create_dataset('evaluation/' + key,
-                          shape=(length, chunk_len, n),
-                          maxshape=(None, chunk_len, None),
-                          chunks=(1, chunk_len, 1),
-                          dtype="int",
-                          compression="lzf",
-                          fillvalue=-1,
-                          shuffle=True)
+        zarr_file['evaluation/' + key] = zarr.array(np.full(shape=(length, chunk_len, n), fill_value=-1),
+                                                    maxshape=(None, chunk_len, None),
+                                                    chunks=(1, chunk_len, 1),
+                                                    dtype="int",
+                                                    compression="lzf",
+                                                    shuffle=True)
 
 
-def add_empty_cov_meta(h5, n):
+def add_empty_cov_meta(zarr_file, n):
     meta_str = META_STR
-    if meta_str not in h5['evaluation'].keys():
-        h5.create_group(f'evaluation/{meta_str}')
-    h5.create_dataset(f'evaluation/{meta_str}/{BAMFILES_DATASET}',
-                      shape=(n,),
-                      maxshape=(None, ),
-                      dtype='S512',
-                      fillvalue=''.encode('ASCII'))
+    zarr_file[f'evaluation/{meta_str}/{BAMFILES_DATASET}'] = zarr.array(np.full(shape=(n,),
+                                                                                fill_value=''.encode('ASCII')),
+                                                                        maxshape=(None, ),
+                                                                        dtype='S512')
 
 
 def cov_by_chrom(chrm_bam_strandedness_shift):
     chromosome, bam_file, strandedness,  shift = chrm_bam_strandedness_shift
-    htseqbam = H5_BAMS[bam_file]
+    htseqbam = ZARR_BAMS[bam_file]
 
     # setup dir for memmap array (AKA, don't try and store the whole chromosome in RAM
     memmap_dirs = ("memmap_dir_{}".format(random.getrandbits(128)),
@@ -305,15 +298,15 @@ def cov_by_chrom(chrm_bam_strandedness_shift):
     return cov_array, spliced_array, length, counts, memmap_dirs
 
 
-def gen_coords(h5_sorted, sp_start_i=0, sp_end_i=None):
-    """gets unique seqids, range, and seq length from h5 file"""
+def gen_coords(zarr_sorted, sp_start_i=0, sp_end_i=None):
+    """gets unique seqids, range, and seq length from zarr file"""
     # uses tuple with (seqid, max_coord)
-    previous = just_seqid(h5_sorted, sp_start_i)
+    previous = just_seqid(zarr_sorted, sp_start_i)
     coord_start_i = sp_start_i
     if sp_end_i is None:
-        sp_end_i = h5_sorted['data/seqids'].shape[0]
+        sp_end_i = zarr_sorted['data/seqids'].shape[0]
     for i in range(sp_start_i + 1, sp_end_i):
-        current = just_seqid(h5_sorted, i)
+        current = just_seqid(zarr_sorted, i)
         if current != previous:
             yield previous, coord_start_i, i
             coord_start_i = i
@@ -321,8 +314,8 @@ def gen_coords(h5_sorted, sp_start_i=0, sp_end_i=None):
     yield previous, coord_start_i, sp_end_i
 
 
-def just_seqid(h5, i):
-    return h5['data/seqids'][i]
+def just_seqid(zarr_file, i):
+    return zarr_file['data/seqids'][i]
 
 
 def matches_and_no_end_case(starts, ends, is_plusses, chunk_size):
@@ -332,7 +325,7 @@ def matches_and_no_end_case(starts, ends, is_plusses, chunk_size):
     if is_plusses[0] != is_plusses[1]:
         out = False
     # detect edge cases (bc padding choices cause non-contiguity of minus strand edge case)
-    # break both before and after edge case (to make sure it's on it's own)
+    # break both before and after edge case (to make sure it's on its own)
     elif abs(curr_start - curr_end) != chunk_size:
         out = False
     elif abs(prev_start - prev_end) != chunk_size:
@@ -342,12 +335,12 @@ def matches_and_no_end_case(starts, ends, is_plusses, chunk_size):
     return out
 
 
-def species_range(h5, species):
-    mask = np.array(h5['/data/species'][:] == species.encode('utf-8'))
+def species_range(zarr_file, species):
+    mask = np.array(zarr_file['/data/species'][:] == species.encode('utf-8'))
     stretches = list(get_bool_stretches(mask.tolist()))  # [(False, Count), (True, Count), (False, Count)]
     print(stretches)
     i_of_true = [i for i in range(len(stretches)) if stretches[i][0]]
-    assert len(i_of_true) == 1, "not contiguous or missing species ({}) in h5???".format(species)
+    assert len(i_of_true) == 1, "not contiguous or missing species ({}) in zarr file???".format(species)
     iot = i_of_true[0]
     if iot == 0:
         return 0, stretches[0][1]
@@ -356,7 +349,7 @@ def species_range(h5, species):
         length = stretches[1][1]
         return start, start + length
     else:
-        raise ValueError("should never be reached, maybe h5 sorting something or failed bool comparisons (None or so?)")
+        raise ValueError("should never be reached, maybe zarr file sorting something or failed bool comparisons (None or so?)")
 
 
 def get_bool_stretches(alist):
@@ -379,20 +372,20 @@ def pad_cov_right(short_arr, length, fill_value=-1.):
     return out
 
 
-def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_final_dimension, threads,
+def cage_coverage_from_coord_to_zarr(coord, zarr_out, strandedness, chunk_size, old_final_dimension, threads,
                                    shift):
-    """calculates coverage for a coordinate from bam, saves to h5, returns counts for aggregating"""
+    """calculates coverage for a coordinate from bam, saves to zarr, returns counts for aggregating"""
     b_seqid, start_i, end_i = coord
     seqid = b_seqid.decode('utf-8')
     print('{}: chunks from {}-{}'.format(seqid, start_i, end_i), file=sys.stderr)
-    # prep contiguous bits (h5 will be written in chunks of this size)
-    bits_plus, bits_minus = find_contiguous_segments(h5_out, start_i, end_i, chunk_size)
+    # prep contiguous bits (zarr will be written in chunks of this size)
+    bits_plus, bits_minus = find_contiguous_segments(zarr_out, start_i, end_i, chunk_size)
     bits = {"+": bits_plus, "-": bits_minus}
 
     # calculate coverage
-    nbams = len(H5_BAMS)
+    nbams = len(ZARR_BAMS)
     # todo, guarnatee order?
-    mapargs = zip([seqid] * nbams, H5_BAMS.keys(), [strandedness] * nbams, [shift] * nbams)
+    mapargs = zip([seqid] * nbams, ZARR_BAMS.keys(), [strandedness] * nbams, [shift] * nbams)
     if threads > 1:
         with Pool(threads) as p:
             coverage_out = p.map(cov_by_chrom, mapargs)
@@ -405,12 +398,12 @@ def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_
         cov_array, spliced_array, length, counts, memmap_dirs = cov_sample
         all_coverage = {NGS_COVERAGE_SETS[0]: cov_array, NGS_COVERAGE_SETS[1]: spliced_array}
 
-        # write to h5 contiguous bit by contiguous bit
+        # write to zarr contiguous bit by contiguous bit
         for direction in bits:
             for cov_type in all_coverage:
                 htseq_array = all_coverage[cov_type]
                 array = htseq_array[HTSeq.GenomicInterval(seqid, 0, length, direction)].array
-                write_in_bits(array, bits[direction], h5_out['evaluation/{}'.format(cov_type)], chunk_size,
+                write_in_bits(array, bits[direction], zarr_out['evaluation/{}'.format(cov_type)], chunk_size,
                               old_final_dimension + i)
 
         for d in memmap_dirs:
@@ -422,59 +415,59 @@ def cage_coverage_from_coord_to_h5(coord, h5_out, strandedness, chunk_size, old_
     return counts
 
 
-def main(species, h5_data, strandedness, prefix, threads, shift):
-    # open h5
-    h5 = h5py.File(h5_data, 'r+')
+def main(species, zarr_data, strandedness, prefix, threads, shift):
+    # open zarr
+    zarr_file = zarr.open(zarr_data, 'r+')
     # create evaluation, score, & metadata placeholders if they don't exist
     # (evaluation/{prefix}_coverage, "evaluation/{prefix}_spliced_coverage, , meta/*)
 
-    nbams = len(H5_BAMS)
+    nbams = len(ZARR_BAMS)
     try:
-        old_shape = h5['evaluation/' + NGS_COVERAGE_SETS[0]].shape
+        old_shape = zarr_file['evaluation/' + NGS_COVERAGE_SETS[0]].shape
         # if the dataset is already there, enlarge and increment
         assert len(old_shape) == 3
         old_final_dimension = old_shape[2]  # +1 for incrementing -1 to count from 0, stays the same
         for cov_set in NGS_COVERAGE_SETS:
             new_size = list(old_shape[:2])
             new_size.append(old_final_dimension + nbams)
-            h5['evaluation/' + cov_set].resize(tuple(new_size))
+            zarr_file['evaluation/' + cov_set].resize(tuple(new_size))
     except KeyError:
-        add_empty_ngs_datasets(h5, nbams)
+        add_empty_ngs_datasets(zarr_file, nbams)
         old_final_dimension = 0
 
     try:
-        h5[f'evaluation/{META_STR}/{BAMFILES_DATASET}'].resize((old_final_dimension + nbams,))
+        zarr_file[f'evaluation/{META_STR}/{BAMFILES_DATASET}'].resize((old_final_dimension + nbams,))
     except KeyError:
-        add_empty_cov_meta(h5, nbams)
+        add_empty_cov_meta(zarr_file, nbams)
 
-    bams_as_meta = np.array([str(x).encode('ASCII') for x in H5_BAMS.keys()])
-    h5[f'evaluation/{META_STR}/{BAMFILES_DATASET}'][old_final_dimension:old_final_dimension + nbams] = bams_as_meta
+    bams_as_meta = np.array([str(x).encode('ASCII') for x in ZARR_BAMS.keys()])
+    zarr_file[f'evaluation/{META_STR}/{BAMFILES_DATASET}'][old_final_dimension:old_final_dimension + nbams] = bams_as_meta
 
-    # identify regions in h5 corresponding to species
-    species_start, species_end = species_range(h5, species)
+    # identify regions in zarr corresponding to species
+    species_start, species_end = species_range(zarr_file, species)
 
     # insert coverage into said regions
-    coords = gen_coords(h5, species_start, species_end)
+    coords = gen_coords(zarr_file, species_start, species_end)
     print('start, end', species_start, species_end, file=sys.stderr)
 
-    chunk_size = h5['evaluation/' + NGS_COVERAGE_SETS[0]].shape[1]
+    chunk_size = zarr_file['evaluation/' + NGS_COVERAGE_SETS[0]].shape[1]
 
     # open bam (read alignment file)
 
     for coord in coords:
         print(coord, file=sys.stderr)
-        cage_coverage_from_coord_to_h5(
-            coord, h5, strandedness=strandedness,
+        cage_coverage_from_coord_to_zarr(
+            coord, zarr_file, strandedness=strandedness,
             chunk_size=chunk_size, old_final_dimension=old_final_dimension,
             threads=threads, shift=shift)
 
-    h5.close()
+    # todo: need to close zarr?
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-s', '--species', help="species name, matching geenuff db and h5 files", required=True)
-    parser.add_argument('-d', '--h5-data', help='h5 data file (with /data/{X, y, species, seqids, etc...}) '
+    parser.add_argument('-s', '--species', help="species name, matching geenuff db and zarr files", required=True)
+    parser.add_argument('-d', '--zarr-data', help='zarr data file (with /data/{X, y, species, seqids, etc...}) '
                                                 'to which evaluation coverage will be added',
                         required=True)
     parser.add_argument('-b', '--bam', help='sorted (and indexed) bam file. Omit to only score existing coverage.',
@@ -508,17 +501,17 @@ if __name__ == "__main__":
               "--unstranded] must be set", file=sys.stderr)
         sys.exit(1)
 
-    if not os.path.exists(args.h5_data):
-        raise FileNotFoundError(f"file {args.h5_data} doesn't exist")
+    if not os.path.exists(args.zarr_data):
+        raise FileNotFoundError(f"file {args.zarr_data} doesn't exist")
 
     try:
-        h5py.File(args.h5_data, "r")
+        zarr.open(args.zarr_data, "r")
     except OSError as e:
-        raise OSError(f"{args.h5_data} is not a h5 file, please provide a valid h5 file") from e
+        raise OSError(f"{args.zarr_data} is not a zarr file, please provide a valid zarr file") from e
 
-    H5_BAMS = {}
+    ZARR_BAMS = {}
     for bam in args.bam:
-        H5_BAMS[bam] = HTSeq.BAM_Reader(bam)
+        ZARR_BAMS[bam] = HTSeq.BAM_Reader(bam)
 
     pfx = args.dataset_prefix
 
@@ -528,7 +521,7 @@ if __name__ == "__main__":
     META_STR = f'{pfx}_meta'
 
     main(args.species,
-         args.h5_data,
+         args.zarr_data,
          strandedness,
          pfx,
          args.threads,

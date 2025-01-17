@@ -1,11 +1,11 @@
 # Helixer options
 The most important scripts and their options are listed.
 1. [Helixer.py](#1-helixerpy-options)
-2. [fasta2h5.py](#2-fasta2h5py-options)
+2. [fasta2zarr.py](#2-fasta2zarrpy-options)
 3. [HybridModel.py](#3-hybridmodelpy-options)
 4. [HelixerPost](#4-helixerpost-options) (the same as the [post-processing parameters](#post-processing-parameters) for Helixer.py)
 5. [import2geenuff.py](#5-import2geenuffpy-options)
-6. [geenuff2h5.py](#6-geenuff2h5py-options)
+6. [geenuff2zarr.py](#6-geenuff2zarrpy-options)
 
 ## 1. Helixer.py options
 Helixer.py always searches for the configuration file ``config/helixer_config.yaml`` in the current
@@ -13,16 +13,16 @@ working directory. If that file isn't provided, the parameters are expected to b
 command line.
 
 ### General parameters
-| Parameter            | Default                                                                   | Explanation                                                                                                                                                                                                                                                                                   |
-|:---------------------|:--------------------------------------------------------------------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| --fasta-path         | /                                                                         | FASTA input file                                                                                                                                                                                                                                                                              |
-| --gff-output-path    | /                                                                         | Output GFF3 file path                                                                                                                                                                                                                                                                         |
-| --species            | /                                                                         | Species name. Will be added to the GFF3 file.                                                                                                                                                                                                                                                 |
-| --temporary-dir      | system default                                                            | Use supplied (instead of system default) for temporary directory (place where temporary h5 files from fasta to h5 conversion and Helixer's raw base-wise predictions get saved)                                                                                                               |
-| --subsequence-length | vertebrate: 213840, land_plant: 64152, fungi: 21384, invertebrate: 213840 | How to slice the genomic sequence. Set moderately longer than length of typical genic loci. Tested up to 213840. Must be evenly divisible by the timestep width of the used model, which is typically 9. (Lineage dependent defaults)                                                         |
-| --write-by           | 20_000_000                                                                | Convert genomic sequence in super-chunks to numerical matrices with this many base pairs, which will be rounded to be divisible by subsequence-length; needs to be equal to or larger than subsequence length; for lower memory consumption, consider setting a lower number                  |
-| --lineage            | /                                                                         | What model to use for the annotation. Options are: vertebrate, land_plant, fungi or invertebrate.                                                                                                                                                                                             |
-| --model-filepath     | /                                                                         | Set this to override the default model for any given lineage and instead take a specific model                                                                                                                                                                                                |
+| Parameter            | Default                                                                   | Explanation                                                                                                                                                                                                                                                                  |
+|:---------------------|:--------------------------------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| --fasta-path         | /                                                                         | FASTA input file                                                                                                                                                                                                                                                             |
+| --gff-output-path    | /                                                                         | Output GFF3 file path                                                                                                                                                                                                                                                        |
+| --species            | /                                                                         | Species name. Will be added to the GFF3 file.                                                                                                                                                                                                                                |
+| --temporary-dir      | system default                                                            | Use supplied (instead of system default) for temporary directory (place where temporary zarr files from fasta to zarr conversion and Helixer's raw base-wise predictions get saved)                                                                                          |
+| --subsequence-length | vertebrate: 213840, land_plant: 64152, fungi: 21384, invertebrate: 213840 | How to slice the genomic sequence. Set moderately longer than length of typical genic loci. Tested up to 213840. Must be evenly divisible by the timestep width of the used model, which is typically 9. (Lineage dependent defaults)                                        |
+| --write-by           | 20_000_000                                                                | Convert genomic sequence in super-chunks to numerical matrices with this many base pairs, which will be rounded to be divisible by subsequence-length; needs to be equal to or larger than subsequence length; for lower memory consumption, consider setting a lower number |
+| --lineage            | /                                                                         | What model to use for the annotation. Options are: vertebrate, land_plant, fungi or invertebrate.                                                                                                                                                                            |
+| --model-filepath     | /                                                                         | Set this to override the default model for any given lineage and instead take a specific model                                                                                                                                                                               |
 
 ### Prediction parameters
 | Parameter             | Default                                                                                                     | Explanation                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -40,25 +40,25 @@ command line.
 | --peak-threshold    | 0.8     | Threshold specifies the minimum peak genic score required to accept the candidate region; the candidate region is accepted if it contains at least one window with a genic score above this threshold |
 | --min-coding-length | 60      | Output is filtered to remove genes with a total coding length shorter than this value                                                                                                                 |
 
-## 2. fasta2h5.py options
-fasta2h5.py always searches for the configuration file ``config/fasta2h5_config.yaml`` in the current
+## 2. fasta2zarr.py options
+fasta2zarr.py always searches for the configuration file ``config/fasta2zarr_config.yaml`` in the current
 working directory. If that file isn't provided, the parameters are expected to be given via the
 command line.
 
 | Parameter            | Default    | Explanation                                                                                                                                                                                                                         |
 |:---------------------|:-----------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | --fasta-path         | /          | **Required**; FASTA input file                                                                                                                                                                                                      |
-| --h5-output-path     | /          | **Required**; HDF5 output file for the encoded data. Must end with ".h5".                                                                                                                                                           |
-| --species            | /          | **Required**; Species name. Will be added to the .h5 file.                                                                                                                                                                          |
+| --zarr-output-path   | /          | **Required**; Zarr output file for the encoded data. Must end with ".zarr".                                                                                                                                                         |
+| --species            | /          | **Required**; Species name. Will be added to the .zarr file.                                                                                                                                                                        |
 | --subsequence-length | 21384      | Size of the chunks each genomic sequence gets cut into.                                                                                                                                                                             |
 | --write-by           | 20_000_000 | Write in super-chunks with this many base pairs, which will be rounded to be divisible by subsequence-length; needs to be equal to or larger than subsequence length; for lower memory consumption, consider setting a lower number |
 ## 3. HybridModel.py options
 (for training and evaluation)
 ### General parameters
-| Parameter            | Default         | Explanation                                                                                                                                                                                       |
-|:---------------------|:----------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| -d/--data-dir        | /               | Directory containing training and validation data (.h5 files). The naming convention for the training and validation files is "training_data[...].h5" and "validation_data[...].h5" respectively. |
-| -s/--save-model-path | ./best_model.h5 | Path to save the best model (model with the best validation genic F1 (the F1 for the classes CDS, UTR and Intron)) to.                                                                            |
+| Parameter            | Default         | Explanation                                                                                                                                                                                             |
+|:---------------------|:----------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| -d/--data-dir        | /               | Directory containing training and validation data (.zarr files). The naming convention for the training and validation files is "training_data[...].zarr" and "validation_data[...].zarr" respectively. |
+| -s/--save-model-path | ./best_model.h5 | Path to save the best model (model with the best validation genic F1 (the F1 for the classes CDS, UTR and Intron)) to.                                                                                  |
 
 ### Model parameters
 | Parameter      | Default | Explanation                                                                                           |
@@ -95,9 +95,9 @@ command line.
 | Parameter                   | Default                    | Explanation                                                                                                                                                                                                             |
 |:----------------------------|:---------------------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | -l/--load-model-path        | /                          | Path to a trained/pretrained model checkpoint. (HDF5 format)                                                                                                                                                            |
-| -t/--test-data              | /                          | Path to one test HDF5 file.                                                                                                                                                                                             |
-| -p/--prediction-output-path | predictions.h5             | Output path of the HDF5 prediction file. (Helixer base-wise predictions)                                                                                                                                                |
-| --compression               | gzip                       | compression used for datasets in predictions h5 file ("lzf" or "gzip").                                                                                                                                                 |
+| -t/--test-data              | /                          | Path to one test Zarr file.                                                                                                                                                                                             |
+| -p/--prediction-output-path | predictions.zarr           | Output path of the Zarr prediction file. (Helixer base-wise predictions)                                                                                                                                                |
+| --compression               | gzip                       | compression used for datasets in the predictions Zarr file ("lzf" or "gzip").                                                                                                                                           |
 | --eval                      | False                      | Add to run test/validation run instead of predicting.                                                                                                                                                                   |
 | --overlap                   | False                      | Add to improve prediction quality at subsequence ends by creating and overlapping sliding-window predictions (with proportional increase in time usage).                                                                |
 | --overlap-offset            | subsequence_length / 2     | Distance to 'step' between predicting subsequences when overlapping. Smaller values may lead to better predictions but will take longer. The subsequence_length should be evenly divisible by this value.               |
@@ -123,7 +123,7 @@ command line.
 |:-----------------------------|:--------|:----------------------------------------------------------------------------------------------------------------------------------------|
 | --fine-tune                  | False   | Add/Use with --resume-training to replace and fine tune just the very last layer                                                        |
 | --pretrained-model-path      | /       | Required when predicting with a model fine tuned with coverage                                                                          |
-| --input-coverage             | False   | Add to use "evaluation/rnaseq_(spliced_)coverage" from HDF5 training/validation files as additional input for a late layer of the model |
+| --input-coverage             | False   | Add to use "evaluation/rnaseq_(spliced_)coverage" from Zarr training/validation files as additional input for a late layer of the model |
 | --coverage-norm              | None    | None, linear or log (recommended); how coverage will be normalized before inputting                                                     |
 | --post-coverage-hidden-layer | False   | Adds extra dense layer between concatenating coverage and final output layer                                                            |
 
@@ -132,7 +132,7 @@ The options for HelixerPost are either chosen when directly using Helixer.py (se
 [post-processing parameters](#post-processing-parameters)) or by using HelixerPost directly after
 HybridModel.py. In that case the parameters are not defined by name but position.
 ```bash
-helixer_post_bin <genome.h5> <predictions.h5> <window_size> <edge_threshold> <peak_threshold> \
+helixer_post_bin <genome.zarr> <predictions.zarr> <window_size> <edge_threshold> <peak_threshold> \
 <min_coding_length> <output.gff3>
 ```
 
@@ -167,15 +167,15 @@ These parameters are **required** if ``--base-dir`` is not set.
 |:-------------|:--------|:-------------------------------------------------------------------------------------------------------|
 | --replace-db | /       | Whether to override a GeenuFF database file found at the default location/at the location of --db_path |
 
-## 6. geenuff2h5.py options
-geenuff2h5.py always searches for the configuration file ``config/fasta2h5_config.yaml`` in the current
+## 6. geenuff2zarr.py options
+geenuff2zarr.py always searches for the configuration file ``config/geebuff2zarr_config.yaml`` in the current
 working directory. If that file isn't provided, the parameters are expected to be given via the
 command line.
 
 | Parameter            | Default        | Explanation                                                                                                                                                                                                                                                                                                                                                             |
 |:---------------------|:---------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | --input-db-path      | /              | **Required**; Path to the GeenuFF SQLite input file/database (has to contain only one genome)                                                                                                                                                                                                                                                                           |
-| --h5-output-path     | /              | **Required**; HDF5 output file for the encoded data. Must end with ".h5"                                                                                                                                                                                                                                                                                                |
+| --zarr-output-path   | /              | **Required**; Zarr output file for the encoded data. Must end with ".zarr"                                                                                                                                                                                                                                                                                              |
 | --add-additional     | /              | Outputs the datasets under alternatives/{add-additional}/ (and checks sort order against existing "data" datasets). Use to add e.g. additional annotations from Augustus                                                                                                                                                                                                |
 | --subsequence-length | 21384          | Length of the subsequences that the model will use at once.                                                                                                                                                                                                                                                                                                             |
 | --modes              | all            | Either "all" (default), or a comma separated list with desired members of the following {X, y, anno_meta, transitions} that should be exported. This can be useful, for instance when skipping transitions (to reduce size/mem) or skipping X because you are adding an additional annotation set to an existing file (i.e. y,anno_meta,transitions <- no whitespaces!) |

@@ -2,7 +2,7 @@
 
 We will set up a working example with a limited amount of data. 
 For this, we will process species for each of training, validation and testing.
-We will pre-process each species with GeenuFF, and then write to h5 files containing
+We will pre-process each species with GeenuFF, and then write to zarr files containing
 the numerical matrices that will be directly used during training.
 
 ## Generating training-ready data
@@ -10,7 +10,7 @@ the numerical matrices that will be directly used during training.
 ### Pre-processing w/ GeenuFF
 > Note: you will be able to skip working with GeenuFF if you
 > only wish to predict, and not train. See instead the
-> [fasta2h5.py options](helixer_options.md#2-fasta2h5py-options).
+> [fasta2zarr.py options](helixer_options.md#2-fasta2zarrpy-options).
 
 First we will need to pre-process the data (Fasta & GFF3 files)
 using GeenuFF. This provides a more biologically-realistic
@@ -49,12 +49,12 @@ To actually train (or predict) we will need to encode the
 data numerically (e.g. as 1s and 0s). 
 
 ```shell script
-mkdir -p example/h5s
+mkdir -p example/zarrs
 for species in `ls $data_at`
 do
-  mkdir example/h5s/$species
+  mkdir example/zarrs/$species
   geenuff2zarr.py --input-db-path $data_at/$species/output/$species.sqlite3 \
-    --h5-output-path example/h5s/$species/test_data.h5
+    --zarr-output-path example/zarrs/$species/test_data.zarr
 done
 ```
 To create the simplest working example, we will use Chlamydomonas_reinhardtii 
@@ -64,16 +64,16 @@ testing / predicting / etc.
 
 ```shell script
 # The training script requires at least two files in the data folder: one matching
-# training_data*h5 and one matching validation_data*h5 (* = bash wildcard), respectively.
+# training_data*zarr and one matching validation_data*zarr (* = bash wildcard), respectively.
 #
 # For this as-simple-as-possible example we will point to one species each
 # of training and validation with symlinks
 mkdir example/train
 cd example/train/
 # set training data 
-ln -s ../h5s/Chlamydomonas_reinhardtii/test_data.h5 training_data.h5
+ln -s ../zarrs/Chlamydomonas_reinhardtii/test_data.zarr training_data.zarr
 # and validation
-ln -s ../h5s/Cyanidioschyzon_merolae/test_data.h5 validation_data.h5
+ln -s ../zarrs/Cyanidioschyzon_merolae/test_data.zarr validation_data.zarr
 cd ../..
 ```
 
@@ -81,16 +81,16 @@ We should now have the following files in `example/`.
 
 ```
 example
-├── h5s
+├── zarrs
 │   ├── Chlamydomonas_reinhardtii
-│   │   └── test_data.h5
+│   │   └── test_data.zarr
 │   ├── Cyanidioschyzon_merolae
-│   │   └── test_data.h5
+│   │   └── test_data.zarr
 │   └── Ostreococcus_lucimarinus
-│       └── test_data.h5
+│       └── test_data.zarr
 └── train
-    ├── training_data.h5 -> ../h5s/Chlamydomonas_reinhardtii/test_data.h5
-    └── validation_data.h5 -> ../h5s/Cyanidioschyzon_merolae/test_data.h5
+    ├── training_data.zarr -> ../zarrs/Chlamydomonas_reinhardtii/test_data.zarr
+    └── validation_data.zarr -> ../zarrs/Cyanidioschyzon_merolae/test_data.zarr
 ```
 > **Side note: Including multiple species in datasets.**
 > 
@@ -98,7 +98,7 @@ example
 > important to train it on _multiple_ training species, and also to
 > validate it on _multiple_ validation species.
 >
-> All files matching `training_data*h5` and `validation_data*h5` (* = bash wildcard),
+> All files matching `training_data*zarr` and `validation_data*zarr` (* = bash wildcard),
 > that are found in the directory supplied to `--data-dir` below will be used
 > for training, and validation, respectively.
 >
@@ -107,15 +107,15 @@ example
 >
 > ```
 > train
-> ├── training_data.species_01.h5
-> ├── training_data.species_02.h5
-> ├── training_data.species_03.h5
-> ├── training_data.species_04.h5
-> ├── validation_data.species_05.h5
-> ├── validation_data.species_06.h5
-> ├── validation_data.species_07.h5
-> ├── validation_data.species_08.h5
-> └── validation_data.species_09.h5
+> ├── training_data.species_01.zarr
+> ├── training_data.species_02.zarr
+> ├── training_data.species_03.zarr
+> ├── training_data.species_04.zarr
+> ├── validation_data.species_05.zarr
+> ├── validation_data.species_06.zarr
+> ├── validation_data.species_07.zarr
+> ├── validation_data.species_08.zarr
+> └── validation_data.species_09.zarr
 > ```
 
 
@@ -166,15 +166,15 @@ tuned / intermediate predictions and evaluation, so see below:
 > For this very small genome the predictions require 524MB of disk space. 
 ```shell script
 HybridModel.py --load-model-path example/best_helixer_model.h5 \
-  --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 \
-  --prediction-output-path example/Ostreococcus_lucimarinus_predictions.h5
+  --test-data example/zarrs/Ostreococcus_lucimarinus/test_data.zarr \
+  --prediction-output-path example/Ostreococcus_lucimarinus_predictions.zarr
 ```
 
 Or we can directly evaluate the predictive performance of our model. 
 
 ```shell script
 HybridModel.py --load-model-path example/best_helixer_model.h5 \
-  --test-data example/h5s/Ostreococcus_lucimarinus/test_data.h5 \
+  --test-data example/zarrs/Ostreococcus_lucimarinus/test_data.zarr \
   --predict-phase --eval
 ```
 

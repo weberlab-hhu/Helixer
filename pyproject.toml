@@ -26,7 +26,8 @@ dependencies = [
     "HTSeq",
     "intervaltree",
     "numpy",
-    "h5py",
+    "zarr",
+    "torch",
     "multiprocess",
     "numcodecs",
     "appdirs"

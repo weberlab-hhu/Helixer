@@ -72,15 +72,15 @@ depends on the amount of high quality genome assemblies you can acquire
 for your phylogenetic family/order of interest):
   ```raw
   train
-    ├── training_data.species_01.h5
-    ├── training_data.species_02.h5
-    ├── training_data.species_03.h5
-    ├── training_data.species_04.h5
-    ├── validation_data.species_05.h5
-    ├── validation_data.species_06.h5
-    ├── validation_data.species_07.h5
-    ├── validation_data.species_08.h5
-    └── validation_data.species_09.h5
+    ├── training_data.species_01.zarr
+    ├── training_data.species_02.zarr
+    ├── training_data.species_03.zarr
+    ├── training_data.species_04.zarr
+    ├── validation_data.species_05.zarr
+    ├── validation_data.species_06.zarr
+    ├── validation_data.species_07.zarr
+    ├── validation_data.species_08.zarr
+    └── validation_data.species_09.zarr
   ```
   The training data can be created following these steps
   (`import2geenuff.py` can be found in the
@@ -92,10 +92,10 @@ for your phylogenetic family/order of interest):
    --species <speces_name_or_prefix>
   
   # conversion of the database to numerical matrices
-  geenuff2h5.py --input-db-path <your_species>.sqlite3 \
-   --h5-output-path <your_species>.h5 --subsequence-length <best_length_depending_on_lineage>
-  # the output h5 file <species>.h5 is the same that was created in the fasta2h5.py
-  #!!!!!!!!!!!!!!!! step, so you add the annotation to an EXISTING h5 file; you can copy your fasta-h5
+  geenuff2zarr.py --input-db-path <your_species>.sqlite3 \
+   --zarr-output-path <your_species>.zarr --subsequence-length <best_length_depending_on_lineage>
+  # the output zarr file <species>.zarr is the same that was created in the fasta2zarr.py
+  #!!!!!!!!!!!!!!!! step, so you add the annotation to an EXISTING zarr file; you can copy your fasta-zarr
   # file to another directory so you don't have to recreate it if
   # adding the annotation doesn't work on the first try
   ```
@@ -120,7 +120,7 @@ HybridModel.py --data-dir <path_to_your_training_data>/train/ \
 #### Parameter explanation
 | Parameter            | Default         | Explanation                                                                                                                                                                                                                  |
 |:---------------------|:----------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| -d/--data-dir        | /               | Directory containing training and validation data (.h5 files). The naming convention for the training and validation files is "training_data[...].h5" and "validation_data[...].h5" respectively.                            |
+| -d/--data-dir        | /               | Directory containing training and validation data (.zarr files). The naming convention for the training and validation files is "training_data[...].zarr" and "validation_data[...].zarr" respectively.                      |
 | -s/--save-model-path | ./best_model.h5 | Path to save the best model (model with the best validation genic F1 (the F1 for the classes CDS, UTR and Intron)) to.                                                                                                       |
 | -e/--epochs*         | 10,000          | Number of training runs                                                                                                                                                                                                      |
 | --predict-phase      | False           | Add this to also predict phases for CDS (recommended);  format: [None, 0, 1, 2]; 'None' is used for non-CDS regions, within CDS regions 0, 1, 2 correspond to phase (number of base pairs until the start of the next codon) |
@@ -226,7 +226,7 @@ and the fasta file to Helixer's training data format
      --species <speces_name_or_prefix>
       
       # export to numeric matrices
-      geenuff2h5.py --h5-output-path <your_species>.h5 \
+      geenuff2zarr.py --zarr-output-path <your_species>.zarr \
         --input-db-path <your_species>.sqlite3
   ```
 
@@ -243,7 +243,7 @@ Before starting, download a couple of helper scripts:
 [n90_train_val_split.py](https://raw.githubusercontent.com/weberlab-hhu/helixer_scratch/master/data_scripts/n90_train_val_split.py); and put them in the same folder.
 
 How 'confident' a prediction is, is evaluated per subsequence
-the fasta file is cut into by `fasta2h5.py` (default of 21384bp each).
+the fasta file is cut into by `fasta2zarr.py` (default of 21384bp each).
 Here, 'most confident' is defined as the predictions with the smallest
 absolute discrepancy between the raw predictions (output of
 `HybridModel.py`) and the post-processed predictions (output of
@@ -305,7 +305,7 @@ ls -sSh <fine_tuning_data_dir>/
 > with real data, and you should also _definitely not_ do the following hack with real data,
 > as it just about guarantees overfitting. But just for the sake of *making an example run*,
 > and if and _only if_ the above applies to you, copy the training file to be a mock non-empty validation file, 
-> e.g. `cp <fine_tuning_data_dir>/training_data.h5 <fine_tuning_data_dir>/validation_data.h5`.
+> e.g. `cp <fine_tuning_data_dir>/training_data.zarr <fine_tuning_data_dir>/validation_data.zarr`.
 
 #### 2.3.3 Fine-tune the model
 ```bash
@@ -332,7 +332,7 @@ HybridModel.py --batch-size 50 --val-test-batch-size 100 -e 100 \
 | --resume-training     | False           | Add this to resume training (pretrained model checkpoint necessary)                                                                                                                                                          |
 | --fine-tune           | False           | Add/Use with --resume-training to replace and fine tune just the very last layer                                                                                                                                             |
 | -l/--load-model-path  | /               | Path to a trained/pretrained model checkpoint. (HDF5 format)                                                                                                                                                                 |
-| -d/--data-dir         | /               | Directory containing training and validation data (.h5 files). The naming convention for the training and validation files is "training_data[...].h5" and "validation_data[...].h5" respectively.                            |
+| -d/--data-dir         | /               | Directory containing training and validation data (.zarr files). The naming convention for the training and validation files is "training_data[...].zarr" and "validation_data[...].zarr" respectively.                      |
 | -s/--save-model-path  | ./best_model.h5 | Path to save the best model (model with the best validation genic F1 (the F1 for the classes CDS, UTR and Intron)) to.                                                                                                       |
 | -v/--verbose          | False           | Add to run HybridModel.py in verbosity mode (additional information will be printed)                                                                                                                                         |
 
@@ -386,23 +386,23 @@ tool for a better overall performance)
 This process starts with creating the training data in the
 same way as [before](#231-create-training-data) when fine-tuning
 with genome annotations from other sources/pseudolabels from
-Helixer. Here, coverage track(s) are added to the h5 file of the
+Helixer. Here, coverage track(s) are added to the zarr file of the
 other annotation/pseudolabels from HelixerPost.
 
-##### Add aligned reads to the h5 file as coverage tracks
-*RECOMMENDED:* Make a back-up of the `<your_species>.h5` file
+##### Add aligned reads to the zarr file as coverage tracks
+*RECOMMENDED:* Make a back-up of the `<your_species>.zarr` file
 from the previous steps (see
 [create training data section above](#231-create-training-data)).
-Adding coverage data to the h5 file will change it in place, like
+Adding coverage data to the zarr file will change it in place, like
 adding the genome annotation/pseudolabels did.
 
 ```bash
-cp <your_species.h5> <your_species_backup.h5>
+cp <your_species.zarr> <your_species_backup.zarr>
 ```
 If anything goes wrong, you can copy this back to start over from here.
 
 Now on to adding the extrinsic data.
-This script changes the file given to `--h5-data` in place, adding
+This script changes the file given to `--zarr-data` in place, adding
 the datasets `rnaseq_coverage` and `rnaseq_spliced_coverage` which
 will be used as coverage input:
 ```bash
@@ -412,15 +412,15 @@ will be used as coverage input:
 # on your machine
 python3 <path_to>/Helixer/helixer/evaluation/add_ngs_coverage.py \
   -s <species_name_or_prefix> --second-read-is-sense-strand 
-  --bam <your_sorted_indexed_bam_file(s)> --h5-data <your_species.h5> \
+  --bam <your_sorted_indexed_bam_file(s)> --zarr-data <your_species.zarr> \
    --dataset-prefix rnaseq --threads 1
 ```
 | Parameter                     | Default | Explanation                                                                                                                                                                              |
 |:------------------------------|:--------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| -s/--species                  | /       | **Required**. Species name; needs to match GeenuFF database (`.sqlite3` file) and h5 files                                                                                               |
+| -s/--species                  | /       | **Required**. Species name; needs to match GeenuFF database (`.sqlite3` file) and zarr files                                                                                             |
 | --second-read-is-sense-strand | False   | Add to define that the second strand is the sense strand, e.g. reads ARE from a typical dUTP protocol                                                                                    |
 | -b/-bam                       | /       | Sorted (and indexed) bam file(s). Coverage to be added.                                                                                                                                  |
-| -d/--h5-data                  | /       | H5 data file with assembly (result of `fasta2h5.py`) and annotation information (result of `import2geenuff.py` and `geenuff2h5.py`) to which evaluation coverage will be added           |
+| -d/--zarr-data                | /       | Zarr data file with assembly (result of `fasta2zarr.py`) and annotation information (result of `import2geenuff.py` and `geenuff2zarr.py`) to which evaluation coverage will be added     |
 | --dataset-prefix              | cage    | Prefix for the datasets file to store the resulting coverage, i.e. 'rnaseq', 'cage', ... ; datasets will be: `/evaluation/{prefix}_coverage` and `/evaluation/{prefix}_spliced_coverage` |
 | --threads                     | 8       | How many threads to use, set to a value <= 1 to not use multiprocessing. Hint: if you have multiple `.bam` files, you could set the number to the amount of bam files                    |
 
@@ -467,18 +467,18 @@ HybridModel.py -v --batch-size 140 --val-test-batch-size 280 \
 | --resume-training     | False           | Add this to resume training (pretrained model checkpoint necessary)                                                                                                                                                          |
 | --fine-tune           | False           | Add/Use with --resume-training to replace and fine tune just the very last layer                                                                                                                                             |
 | -l/--load-model-path  | /               | Path to a trained/pretrained model checkpoint. (HDF5 format)                                                                                                                                                                 |
-| -d/--data-dir         | /               | Directory containing training and validation data (.h5 files). The naming convention for the training and validation files is "training_data[...].h5" and "validation_data[...].h5" respectively.                            |
+| -d/--data-dir         | /               | Directory containing training and validation data (.zarr files). The naming convention for the training and validation files is "training_data[...].zarr" and "validation_data[...].zarr" respectively.                      |
 | -s/--save-model-path  | ./best_model.h5 | Path to save the best model (model with the best validation genic F1 (the F1 for the classes CDS, UTR and Intron)) to.                                                                                                       |
 | -v/--verbose          | False           | Add to run HybridModel.py in verbosity mode (additional information will be printed)                                                                                                                                         |
 
 ###### New parameters
-| Parameter        | Default | Explanation                                                                                                   |
-|:-----------------|:--------|:--------------------------------------------------------------------------------------------------------------|
-| --input-coverage | False   | Add to use "evaluation/{prefix}_(spliced_)coverage" from h5 as additional input for a late layer of the model |
-| --coverage-norm  | None    | None, linear or log (recommended); how coverage will be normalized before inputting                           |
+| Parameter        | Default | Explanation                                                                                                     |
+|:-----------------|:--------|:----------------------------------------------------------------------------------------------------------------|
+| --input-coverage | False   | Add to use "evaluation/{prefix}_(spliced_)coverage" from zarr as additional input for a late layer of the model |
+| --coverage-norm  | None    | None, linear or log (recommended); how coverage will be normalized before inputting                             |
 
 - here `--input-coverage` causes any data
-in the h5 datasets `rnaseq_coverage` and `rnaseq_spliced_coverage` 
+in the zarr datasets `rnaseq_coverage` and `rnaseq_spliced_coverage` 
 to be provided to the network before the new final layer(s); the
 weights of the other layers are frozen (they cannot be trained/changed)
 and only use the DNA sequence to make predictions
@@ -504,7 +504,7 @@ First, and unsurprisingly, you must provide the model
 coverage at inference time. This means that
 - you will have to take the
 [three-step inference process](../README.md#3-step-inference),
-and make sure the h5 file contains the coverage (added with
+and make sure the zarr file contains the coverage (added with
 [add_ngs_coverage.py](../helixer/evaluation/add_ngs_coverage.py))
   - you could take the file from above that was used as input
   during fine-tuning, if and _only if_ the subsequence length
@@ -512,7 +512,7 @@ and make sure the h5 file contains the coverage (added with
   genetic loci length; i.e. this probably works for plants and
   fungi, not for animals.
   - if you need a longer subsequence-length at inference time,
-  the only currently implemented option is to make an h5 each
+  the only currently implemented option is to make an zarr each
   for training and inference and then add coverage to each.
   **Make sure the coverage is added (i.e. the bam files are
   specified) in exactly the same order as at training time!**
@@ -529,7 +529,7 @@ Example command for inference:
 ```bash
 HybridModel.py --load-model-path <fine_tuned_model>.h5 \
  --pretrained-model-path <pretrained_model>.h5 \
- --test-data <your_species_with_coverage>.h5 --overlap \
+ --test-data <your_species_with_coverage>.zarr --overlap \
  --val-test-batch-size 32 -v --input-coverage --coverage-norm log
  --predict-phase
 # example pretrained model: land_plant_v0.3_a_0080.h5

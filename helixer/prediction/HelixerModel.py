@@ -129,19 +129,18 @@ class ConfusionMatrixTrain():
 
 
 class HelixerSequence(Dataset):
-    def __init__(self, model, zarr_files, mode, batch_size, shuffle):
-        # todo: remove batch_size and shuffle, this is handled by the dataloader
+    def __init__(self, model, zarr_files, mode, batch_size, rank, world_size):
+        # todo: handle batch_size and shuffle in the dataloader
         assert mode in [TEST, TRAIN, VAL]
         self.model = model
         self.zarr_files = zarr_files  # generators, opened in read mode by HelixerModel class
         self.mode = mode
-        self.shuffle = shuffle
         self.batch_size = batch_size
+        self.rank = rank
+        self.world_size = world_size
         self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
                                  'coverage_count', 'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
-                                 'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
-                                 'no_utrs', 'predict_phase', 'load_predictions', 'only_predictions',
-                                 'num_devices', 'debug'])
+                                 'predict_phase', 'only_predictions', 'num_devices', 'debug'])
 
         if self.mode == TEST:
             assert len(self.zarr_files) == 1, "predictions and eval should be applied to individual files only"
@@ -172,7 +171,8 @@ class HelixerSequence(Dataset):
                     self.data_list_names.append('scores/by_bp')
 
         if self.overlap:
-            assert self.mode == TEST, "overlapping currently only works for test (predictions & eval)" # todo: available for training?
+            assert self.mode == TEST, "overlapping currently only works for test (predictions & eval)"
+            # todo: available for training?, if yes, this needs to be integrated into the sharding logic
             # can take [0] below bc we've asserted that test means len(self.zarr_files) == 1 above
             contiguous_ranges = helixer.core.helpers.get_contiguous_ranges(self.zarr_files[0])
             self.ol_helper = overlap.OverlapSeqHelper(contiguous_ranges=contiguous_ranges,
@@ -189,11 +189,20 @@ class HelixerSequence(Dataset):
         # TODO: maybe convert X.dtype=float16 (less RAM usage while compressed)
         self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)  # use BITSHUFFLE
 
-        print(f'\nstarting to load {self.mode} data into memory..')
-        # todo: implement shard logic here, so dataset either gets sharded or not depending on device count
-        # todo: transfer chunk down below into its own logic?
-        for zarr_file in self.zarr_files:
-            self._load_one_zarr(zarr_file)
+        if self.num_devices > 1 and self.mode != TEST:
+            # shard dataset across devices
+            # get all samples/chunks per zarr file to distribute them evenly to the different processes
+            self.sample_coordinates = self._load_zarr_indices()
+            self.shard_lengths = self._create_shards(self.sample_coordinates.shape[0], self.world_size)
+            self.shard_start_idx = sum(self.shard_lengths[:self.rank])
+            self.shard_end_idx = sum(self.shard_lengths[:(self.rank+1)])
+            self.shard_coordinates = self.sample_coordinates[self.shard_start_idx:self.shard_end_idx]
+            self._load_shard()
+        else:
+            print(f'\nstarting to load {self.mode} data into memory..')
+            # todo: transfer chunk down below into its own logic?
+            for zarr_file in self.zarr_files:
+                self._load_one_zarr(zarr_file)
 
         for name, data_list in zip(self.data_list_names, self.data_lists):
             comp_data_size = sum([sys.getsizeof(e) for e in data_list])
@@ -210,6 +219,35 @@ class HelixerSequence(Dataset):
                 print(f'ignoring the transition_weights of {self.transition_weights} in mode "test"')
                 self.transition_weights = None
 
+    def _load_zarr_indices(self):
+        if self.mode == TRAIN or self.mode == VAL:
+            mask = [np.logical_and(zf[DATA_IS_ANNOTATED], zf[DATA_ERR_SAMPLES]) for zf in self.zarr_files]
+            idxs = [np.where(m == True)[0] for m in mask]
+            # entire dataset, todo: print only on rank zero OR print somewhere else?
+            print(f'\nmasking {sum([np.sum(m) for m in mask])} completely un-annotated or completely erroneous sequences')
+        else:
+            idxs = [np.arange(zf[DATA_X].shape[0]) for zf in self.zarr_files]
+        file_idxs = [np.full((idxs[i].shape[0],), fill_value=i) for i in range(len(idxs))]
+        # concatenate indices and zarr file indices, and the stack them up
+        # result: [[0,0], [0,1], [0,2], ..., [3,2], ...]
+        return np.stack([np.hstack(file_idxs), np.hstack(idxs)], axis=1)
+
+    @staticmethod
+    def _create_shards(total_dataset_length, world_size):
+        count, remainder = divmod(total_dataset_length, world_size)
+        return [count + 1 if i < remainder else count for i in range(world_size)]
+
+    def _load_shard(self):
+        file_idxs = np.unique(self.shard_coordinates[:,0])
+        for i in file_idxs:
+            zarr_file = self.zarr_files[i]
+            indices = self.shard_coordinates[:,1][self.shard_coordinates[:,0]==i]
+            n_seqs = len(indices)
+            max_at_once = min(2000, n_seqs)
+            for name, data_list in zip(self.data_list_names, self.data_lists):
+                for offset in range(0, n_seqs, max_at_once):
+                    data_slice = zarr_file[name][indices[offset:offset + max_at_once]]
+                    data_list.extend([self.compressor.encode(e) for e in data_slice])
 
     def _load_one_zarr(self, zarr_file):
         print(f'For zarr file starting with species = {zarr_file[DATA_SPECIES][0]}:')
@@ -236,6 +274,7 @@ class HelixerSequence(Dataset):
             n_masked = 0
 
         # load at most 2000 uncompressed samples at a time in memory
+        # todo: make this dependent on the sequence length as well
         max_at_once = min(2000, n_seqs)
         for name, data_list in zip(self.data_list_names, self.data_lists):
             start_time_dset = time.time()
@@ -245,8 +284,6 @@ class HelixerSequence(Dataset):
                     data_slice = zarr_file[name][0, offset:offset + max_at_once][step_mask]  # only use one prediction for now
                 else:
                     data_slice = zarr_file[name][offset:offset + max_at_once][step_mask]
-                #if self.no_utrs and name == 'data/y':
-                #    HelixerSequence._zero_out_utrs(data_slice)
                 data_list.extend([self.compressor.encode(e) for e in data_slice])
             print(f'Data loading of {n_seqs - n_masked} (total so far {len(data_list)}) samples of {name} '
                   f'into memory took {time.time() - start_time_dset:.2f} secs')
@@ -418,7 +455,7 @@ class HelixerSequence(Dataset):
         pass
 
     def _generic_get_item(self, idx):
-        """covers the data preprocessing (reshape, trim, weighting, etc) common to all models"""
+        """covers the data preprocessing (reshape, trim, weighting, etc.) common to all models"""
         X, y, sw, transitions, phases, _, coverage_scores = self._get_batch_data(idx)
         pool_size = self.model.pool_size
 
