@@ -94,10 +94,6 @@ for your phylogenetic family/order of interest):
   # conversion of the database to numerical matrices
   geenuff2h5.py --input-db-path <your_species>.sqlite3 \
    --h5-output-path <your_species>.h5 --subsequence-length <best_length_depending_on_lineage>
-  # the output h5 file <species>.h5 is the same that was created in the fasta2h5.py
-  #!!!!!!!!!!!!!!!! step, so you add the annotation to an EXISTING h5 file; you can copy your fasta-h5
-  # file to another directory so you don't have to recreate it if
-  # adding the annotation doesn't work on the first try
   ```
 - a validation set representative of the prediction target(s),
 i.e. your species of interest
