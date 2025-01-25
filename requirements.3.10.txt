@@ -3,7 +3,7 @@ appdirs==1.4.4
 astor==0.8.1
 astunparse==1.6.3
 cachetools==5.3.3
-certifi==2024.2.2
+certifi==2024.7.4
 charset-normalizer==3.3.2
 cloudpickle==3.0.0
 colorama==0.4.6
