@@ -786,6 +786,10 @@ class HelixerModel(ABC):
         if not self.testing:
             self.h5_trains = [h5py.File(f, 'r') for f in glob.glob(os.path.join(self.data_dir, 'training_data*h5'))]
             self.h5_vals = [h5py.File(f, 'r') for f in glob.glob(os.path.join(self.data_dir, 'validation_data*h5'))]
+            assert len(self.h5_trains) >= 1, (f"no training data found, please make sure your data directory "
+                                              f"{self.data_dir} contains h5 files named 'training_data*h5'")
+            assert len(self.h5_vals) >= 1, (f"no validation data found, please make sure your data directory "
+                                            f"{self.data_dir} contains h5 files named 'validation_data*h5'")
             try:
                 self.shape_train = self.sum_shapes([h5['/data/X'] for h5 in self.h5_trains])
             except IndexError as e:
@@ -808,6 +812,8 @@ class HelixerModel(ABC):
             n_intergenic_train_seqs = get_n_intergenic_seqs(self.h5_trains)
             n_intergenic_val_seqs = get_n_intergenic_seqs(self.h5_vals)
         else:
+            assert os.path.exists(self.test_data), (f'no test data found, please make sure your test data '
+                                                    f'file {self.test_data} exists')
             self.h5_tests = [h5py.File(self.test_data, 'r')]  # list for consistency with train/val
             self.shape_test = self.h5_tests[0]['/data/X'].shape
 

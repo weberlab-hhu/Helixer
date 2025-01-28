@@ -150,7 +150,7 @@ the 3-step-inference demo below to run (when using a GPU).
 # ---------------------------------------
 # Consider adding the --subsequence-length parameter:  This number should be large enough to contain typical gene lengths of your species
 # while being divisible by at least the timestep width of the used model, which is typically 9. (Lineage dependent defaults)
-# Recommendations per lineage: vertebrate: 213840, land_plant: 106920, fungi: 21384, invertebrate: 213840
+# Recommendations per lineage: vertebrate: 213840, land_plant: 64152/106920, fungi: 21384, invertebrate: 213840
 # Default: 21384
 fasta2h5.py --species Arabidopsis_lyrata --h5-output-path Arabidopsis_lyrata.h5 --fasta-path Arabidopsis_lyrata.v.1.0.dna.chromosome.8.fa.gz
 

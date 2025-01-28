@@ -214,17 +214,22 @@ and the fasta file to Helixer's training data format
       only use the 'most certain' ones (see
       [here](#interlude-select-the-most-confident-predictions)), you
       _need_ to use the [3-step method](../README.md#3-step-inference).
-- You can find `import2geenuff.py` in the [GeenuFF repository](https://github.com/weberlab-hhu/GeenuFF).
-   ```bash
-   # read into the GeenuFF database
-   import2geenuff.py --fasta <genome_assembly.fa> --gff3 <helixer_post_output.gff3> \
-     --db-path <your_species>.sqlite3 --log-file <your_species_import>.log \
-     --species <speces_name_or_prefix>
+   - You can find `import2geenuff.py` in the [GeenuFF repository](https://github.com/weberlab-hhu/GeenuFF).
+      ```bash
+      # read into the GeenuFF database
+      import2geenuff.py --fasta <genome_assembly.fa> --gff3 <helixer_post_output.gff3> \
+        --db-path <your_species>.sqlite3 --log-file <your_species_import>.log \
+        --species <speces_name_or_prefix>
       
       # export to numeric matrices
       geenuff2h5.py --h5-output-path <your_species>.h5 \
         --input-db-path <your_species>.sqlite3
-  ```
+     ```
+> WARNING: if you want to filter to the most certain predictions make sure that
+> if you didn't use the default subsequence length when predicting, you use that
+> subsequence length also for the `geenuff2h5.py` command above by adding
+> `--subsequence-length <your_custom_length>` (the custom length you used for this
+> and generating the predictions should be divisible by 9).
 
 #### Interlude: Select the 'most confident' predictions
 > **Note**: ONLY applies when Helixer's predictions are used for fine-tuning
@@ -508,7 +513,7 @@ and make sure the h5 file contains the coverage (added with
   genetic loci length; i.e. this probably works for plants and
   fungi, not for animals.
   - if you need a longer subsequence-length at inference time,
-  the only currently implemented option is to make an h5 each
+  the only currently implemented option is to make an h5 file each
   for training and inference and then add coverage to each.
   **Make sure the coverage is added (i.e. the bam files are
   specified) in exactly the same order as at training time!**
