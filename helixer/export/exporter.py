@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import h5py
 import numpy as np
@@ -114,7 +115,12 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
         fasta_seqs = fasta_importer.parse_fasta(self.input_path)
         self.h5 = h5py.File(self.output_path, 'w')
 
+        seqids = []
         for i, (seqid, seq) in enumerate(fasta_seqs):
+            if seqid in seqids:
+                raise ValueError(f"found duplicate seqid '{seqid}' in fasta file '{self.input_path}', "
+                                 f"please remove or rename it")
+            seqids.append(seqid)
             start_time = time.time()
             coord = HelixerFastaToH5Controller.CoordinateSurrogate(seqid, seq)
             n_chunks = HelixerExportControllerBase.calc_n_chunks(coord.length, chunk_size)

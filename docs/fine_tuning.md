@@ -53,6 +53,7 @@ We also provide short instructions on
 > During training these weights change until the best network with the highest
 > prediction accuracy for the validation set is found.
 
+> **NOTE 3**: 
 ## Helixer's architecture
 (shown for better understanding of Helixer's core architecture, input and output)
 ![](../img/network.png)
@@ -66,10 +67,15 @@ While simple, and requiring slightly less training time; _**the advantages over
 retraining from scratch may be limited**_. 
 
 ### 1.2 Prerequisites:
-- directory with training data (The example below doesn't represent the
+- directory with training data
+> **Important**: The example below doesn't represent the
 exact amount of training data you need/would want. The amount of data
 depends on the amount of high quality genome assemblies you can acquire
-for your phylogenetic family/order of interest):
+for your phylogenetic family/order of interest. Of course, the amount of data
+required for Helixer to improve the predictions for your species can be highly
+variable depending on how diverse these genomes are in comparison to each other
+and to the ones Helixer has been trained on. In general, the more high quality
+data with you can acquire the better.
   ```raw
   train
     ├── training_data.species_01.h5
@@ -225,15 +231,16 @@ and the fasta file to Helixer's training data format
       geenuff2h5.py --h5-output-path <your_species>.h5 \
         --input-db-path <your_species>.sqlite3
      ```
+
+#### Interlude: Select the 'most confident' predictions
+> **Note**: ONLY applies when Helixer's predictions are used for fine-tuning
+
 > WARNING: if you want to filter to the most certain predictions make sure that
 > if you didn't use the default subsequence length when predicting, you use that
 > subsequence length also for the `geenuff2h5.py` command above by adding
 > `--subsequence-length <your_custom_length>` (the custom length you used for this
 > and generating the predictions should be divisible by 9).
-
-#### Interlude: Select the 'most confident' predictions
-> **Note**: ONLY applies when Helixer's predictions are used for fine-tuning
-
+>
 Regions within genomes differ in their difficulty level
 for gene callers. The following is an idea to leverage these differences,
 by fine-tuning Helixer on regions predicted confidently, so-as to make
@@ -531,8 +538,8 @@ Example command for inference:
 HybridModel.py --load-model-path <fine_tuned_model>.h5 \
  --pretrained-model-path <pretrained_model>.h5 \
  --test-data <your_species_with_coverage>.h5 --overlap \
- --val-test-batch-size 32 -v --input-coverage --coverage-norm log
- --predict-phase
+ --val-test-batch-size 32 -v --input-coverage --coverage-norm log \
+ --predict-phase --prediction-output-path <your_species_fine_tuned_predictions.h5>
 # example pretrained model: land_plant_v0.3_a_0080.h5
 ```
 Afterward, use HelixerPost as shown in the [README](../README.md#3-step-inference)

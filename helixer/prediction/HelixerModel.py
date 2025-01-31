@@ -232,6 +232,7 @@ class HelixerSequence(Sequence):
             n_masked = 0
 
         # load at most 2000 uncompressed samples at a time in memory
+        # todo: seq_len dependent!!!!
         max_at_once = min(2000, n_seqs)
         for name, data_list in zip(self.data_list_names, self.data_lists):
             start_time_dset = time.time()
@@ -425,7 +426,7 @@ class HelixerSequence(Sequence):
         pass
 
     def _generic_get_item(self, idx):
-        """covers the data preprocessing (reshape, trim, weighting, etc) common to all models"""
+        """covers the data preprocessing (reshape, trim, weighting, etc.) common to all models"""
         X, y, sw, transitions, phases, _, coverage_scores = self._get_batch_data(idx)
         pool_size = self.model.pool_size
 
@@ -603,7 +604,7 @@ class HelixerModel(ABC):
             self.__dict__['save_model_path'] = nni_save_model_path
             self.__dict__['prediction_output_path'] = nni_pred_output_path
             args.update(hyperopt_args)
-            # for the print out
+            # for the print-out
             args['save_model_path'] = nni_save_model_path
             args['prediction_output_path'] = nni_pred_output_path
 
@@ -957,7 +958,7 @@ class HelixerModel(ABC):
             if not self.input_coverage:
                 model = load_model(self.load_model_path)
             else:
-                # for whatever reason, the fine tuning method is not saving the full model
+                # for whatever reason, the fine-tuning method is not saving the full model
                 # in an entirely valid h5 file (depending on if you ask h5py or h5ls). puh.
                 # thus loading the original model is both the easiest way to get architecture
                 # setup and seems safer to make sure _all_ and not just _new_ weights are there
