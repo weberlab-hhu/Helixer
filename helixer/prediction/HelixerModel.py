@@ -228,7 +228,7 @@ class HelixerSequence(Dataset):
         else:
             idxs = [np.arange(zf[DATA_X].shape[0]) for zf in self.zarr_files]
         file_idxs = [np.full((idxs[i].shape[0],), fill_value=i) for i in range(len(idxs))]
-        # concatenate indices and zarr file indices, and the stack them up
+        # concatenate indices and zarr file indices, and then stack them up
         # result: [[0,0], [0,1], [0,2], ..., [3,2], ...]
         return np.stack([np.hstack(file_idxs), np.hstack(idxs)], axis=1)
 
@@ -295,10 +295,12 @@ class HelixerSequence(Dataset):
         #y[..., 0] = np.logical_or(y[..., 0], y[..., 1])
         #y[..., 1] = 0
 
-    # not needed when the PyTorch Dataloader handels that, but preshuffling for sharding is worth a thought
-    def shuffle_data(self):
+    # todo: shuffler needs then to be independent of fabric's seed_everything
+    def preshuffle_data(self):
         start_time = time.time()
-        self.data_lists = shuffle(*self.data_lists)
+        # todo: don't use data_lists for multi GPU training, but zarr_indices
+        #  don't preshuffle when training on 1 GPU at all
+        self.data_lists = shuffle(*self.data_lists)  # todo: add random_state=seed -> deterministic
         print(f'Reshuffled {self.mode} data in {time.time() - start_time:.2f} secs')
 
     def _cp_into_namespace(self, names):
@@ -430,6 +432,8 @@ class HelixerSequence(Dataset):
 
     @staticmethod
     def to_torch_tensor(data):
+        # todo: can this be accelerated by creating the final tensor on the GPU directly with init_tensor()
+        #  or will this mess up prefetching and pin_memory?
         if isinstance(data, np.ndarray):
             return torch.from_numpy(data).float()
         elif isinstance(data, list):
@@ -511,7 +515,7 @@ class HelixerSequence(Dataset):
 
             return [self.to_torch_tensor(d) for d in (X, y, sw, transitions, phases, _, coverage_scores)]
 
-
+# todo: maybe separate model itself and training/trainer
 class HelixerModel(nn.Module, ABC):
     def __init__(self, cli_args=None, *args, **kwargs):
         # todo: move to parser class, maybe with click not argparse, don't write cli args into init
@@ -1090,7 +1094,7 @@ class HelixerModel(nn.Module, ABC):
         self.loss = checkpoint['loss']
 
     def fit(self, training_data, eval_data):
-        # todo, this needs to grow to be s.t. with early stopping, call backs, etc... (torch.tnt)
+        # todo, this needs to grow to be s.t. with early stopping, call backs, etc... (torch.tnt or better yet fabric)
         epochs = 3
         for epoch in range(epochs):
             self.epoch = epoch + 1

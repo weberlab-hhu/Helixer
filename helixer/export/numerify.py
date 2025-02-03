@@ -319,7 +319,7 @@ class MatAndInfo:
         self.dtype = dtype
 
     def __repr__(self):
-        return "key: {}, matrix shape: {}, matrix dtype {}: target dtype {}".format(self.key, self.matrix.shape,
+        return "key: {}, matrix shape: {}, matrix dtype {}, target dtype {}".format(self.key, self.matrix.shape,
                                                                                     self.matrix.dtype, self.dtype)
 
 

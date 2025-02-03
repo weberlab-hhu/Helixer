@@ -4,7 +4,6 @@ import random
 import shutil
 import sys
 import time
-import h5py
 import tempfile
 import subprocess
 from termcolor import colored
@@ -12,7 +11,7 @@ from termcolor import colored
 from helixer.core.scripts import ParameterParser
 from helixer.core.data import prioritized_models, report_if_current_not_best, identify_current, MODEL_PATH
 from helixer.prediction.HybridModel import HybridModel
-from helixer.export.exporter import HelixerFastaToH5Controller
+from helixer.export.exporter import HelixerFastaToZarrController
 
 
 class HelixerParameterParser(ParameterParser):
@@ -127,8 +126,9 @@ class HelixerParameterParser(ParameterParser):
         args.model_filepath = model_filepath
 
         # check if model timestep width fits the subsequence length (has to be evenly divisible)
+        # todo: adapt to pytorch's/fabric's ckpt files
         with h5py.File(args.model_filepath, 'r') as model:
-            # todo, safer way to find this
+            # todo, safer way to find this, i.e. add to ckpt model infos
             try:
                 timestep_width = model['/model_weights/dense_1/dense_1/bias:0'].shape[0] // 8
             except KeyError:
@@ -215,24 +215,23 @@ def main():
     # generate the .h5 file in a temp dir, which is then deleted
     with tempfile.TemporaryDirectory(dir=args.temporary_dir) as tmp_dirname:
         print(f'storing temporary files under {tmp_dirname}')
-        tmp_genome_h5_path = os.path.join(tmp_dirname, f'tmp_species_{args.species}.h5')
-        tmp_pred_h5_path = os.path.join(tmp_dirname, f'tmp_predictions_{args.species}.h5')
+        tmp_genome_zarr_path = os.path.join(tmp_dirname, f'tmp_species_{args.species}.zarr')
+        tmp_pred_zarr_path = os.path.join(tmp_dirname, f'tmp_predictions_{args.species}.zarr')
 
-        controller = HelixerFastaToH5Controller(args.fasta_path, tmp_genome_h5_path)
+        controller = HelixerFastaToZarrController(args.fasta_path, tmp_genome_zarr_path)
         # hard coded subsequence length due to how the models have been created
-        controller.export_fasta_to_h5(chunk_size=args.subsequence_length, compression=args.compression,
-                                      multiprocess=not args.no_multiprocess, species=args.species,
-                                      write_by=args.write_by)
+        controller.export_fasta_to_zarr(chunk_size=args.subsequence_length, multiprocess=not args.no_multiprocess,
+                                        species=args.species, write_by=args.write_by)
 
         msg = 'with' if args.overlap else 'without'
-        msg = 'FASTA to H5 conversion done. Starting neural network prediction ' + msg + ' overlapping.'
+        msg = 'FASTA to Zarr conversion done. Starting neural network prediction ' + msg + ' overlapping.'
         print(colored(msg, 'green'))
 
         hybrid_model_args = [
             '--verbose',
             '--load-model-path', args.model_filepath,
-            '--test-data', tmp_genome_h5_path,
-            '--prediction-output-path', tmp_pred_h5_path,
+            '--test-data', tmp_genome_zarr_path,
+            '--prediction-output-path', tmp_pred_zarr_path,
             '--val-test-batch-size', str(args.batch_size),
             '--overlap-offset', str(args.overlap_offset),
             '--core-length', str(args.overlap_core_length),
@@ -246,7 +245,7 @@ def main():
         print(colored('Neural network prediction done. Starting post processing.', 'green'))
 
         # call to HelixerPost, has to be in PATH
-        helixerpost_cmd = [helixer_post_bin, tmp_genome_h5_path, tmp_pred_h5_path]
+        helixerpost_cmd = [helixer_post_bin, tmp_genome_zarr_path, tmp_pred_zarr_path]
         helixerpost_params = [args.window_size, args.edge_threshold, args.peak_threshold, args.min_coding_length]
         helixerpost_cmd += [str(e) for e in helixerpost_params] + [args.gff_output_path]
 

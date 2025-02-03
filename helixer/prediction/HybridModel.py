@@ -129,5 +129,6 @@ class HybridModel(HelixerModel):
 
 
 if __name__ == '__main__':
+    # todo: somehow get args BEFORE initializing the model or anything to launch fabric as early as possible
     model = HybridModel()
     model.run()
