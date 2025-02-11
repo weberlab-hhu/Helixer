@@ -25,6 +25,7 @@ dependencies = [
     "numpy",
     "zarr < 3.0.0",
     "torch",
+    "lightning",
     "multiprocess",
     "numcodecs",
     "appdirs"
@@ -45,6 +46,7 @@ authors = [
 [tool.setuptools]
 packages = [
     "helixer",
+    "helixer.cli",
     "helixer.core",
     "helixer.prediction",
     "helixer.evaluation",

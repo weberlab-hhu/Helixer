@@ -5,7 +5,7 @@ from pprint import pprint
 from termcolor import colored
 from abc import ABC, abstractmethod
 from importlib.metadata import version
-
+# todo: entire file will be deprecated!!
 class ParameterParser(ABC):
     """Bundles code that parses script parameters from the command line and a config file."""
 
@@ -75,4 +75,3 @@ class ExportParameterParser(ParameterParser):
 
     def check_args(self, args):
         assert args.zarr_output_path.endswith('.zarr'), '--output-path must end with ".zarr"'
-

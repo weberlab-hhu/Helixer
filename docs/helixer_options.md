@@ -52,44 +52,29 @@ command line.
 | --species            | /          | **Required**; Species name. Will be added to the .zarr file.                                                                                                                                                                        |
 | --subsequence-length | 21384      | Size of the chunks each genomic sequence gets cut into.                                                                                                                                                                             |
 | --write-by           | 20_000_000 | Write in super-chunks with this many base pairs, which will be rounded to be divisible by subsequence-length; needs to be equal to or larger than subsequence length; for lower memory consumption, consider setting a lower number |
+
 ## 3. HybridModel.py options
 (for training and evaluation)
-### General parameters
-| Parameter            | Default         | Explanation                                                                                                                                                                                             |
-|:---------------------|:----------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| -d/--data-dir        | /               | Directory containing training and validation data (.zarr files). The naming convention for the training and validation files is "training_data[...].zarr" and "validation_data[...].zarr" respectively. |
-| -s/--save-model-path | ./best_model.h5 | Path to save the best model (model with the best validation genic F1 (the F1 for the classes CDS, UTR and Intron)) to.                                                                                  |
-
-### Model parameters
-| Parameter      | Default | Explanation                                                                                           |
-|:---------------|:--------|:------------------------------------------------------------------------------------------------------|
-| --cnn-layers   | 1       | Number of convolutional layers                                                                        |
-| --lstm-layers  | 1       | Number of bidirectional LSTM layers                                                                   |
-| --units        | 32      | Number of LSTM units per bLSTM layer                                                                  |
-| --filter-depth | 32      | Filter depth for convolutional layers                                                                 |
-| --kernel-size  | 26      | Kernel size for convolutional layers                                                                  |
-| --pool-size    | 9       | Best set to a multiple of 3 (codon/nucleotide triplet size)                                           |
-| --dropout1     | 0.0     | If > 0, will add dropout layer with given dropout probability after the CNN. (range: 0.0-1.0)         |
-| --dropout2     | 0.0     | If > 0, will add dropout layer with given dropout probability after the bLSTM block. (range: 0.0-1.0) |
-
 
 ### Training parameters
-| Parameter               | Default   | Explanation                                                                                                                                                                                                                  |
-|:------------------------|:----------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| -e/--epochs             | 10,000    | Number of training runs                                                                                                                                                                                                      |
-| -b/--batch-size         | 8         | Batch size for training data                                                                                                                                                                                                 |
-| --val-test-batch-size   | 32        | Batch size for validation/test data                                                                                                                                                                                          |
-| --loss                  | /         | Loss function specification                                                                                                                                                                                                  |
-| --patience              | 3         | Allowed epochs without the validation genic F1 improving before stopping training                                                                                                                                            |
-| --check-every-nth-batch | 1,000,000 | Check validation genic F1 every nth batch, on default this check gets executed once every epoch regardless of the number of batches                                                                                          |
-| --optimizer             | adamw     | Optimizer algorithm; options: adam or adamw                                                                                                                                                                                  |
-| --clip-norm             | 3.0       | The gradient of each weight is individually clipped so that its norm is no higher than this value                                                                                                                            |
-| --learning-rate         | 3e-4      | Learning rate for training                                                                                                                                                                                                   |
-| --weight-decay          | 3.5e-5    | Weight decay for training; penalizes complexity and prevents overfitting                                                                                                                                                     |
-| --class-weights         | /         | Weighting of the 4 classes [intergenic, UTR, CDS, Intron] (Helixer predictions)                                                                                                                                              |
-| --transition-weights    | /         | Weighting of the 6 transition categories [transcription start site, start codon, donor splice site, transcription stop site, stop codon, acceptor splice site]                                                               |
-| --predict-phase         | False     | Add this to also predict phases for CDS (recommended);  format: [None, 0, 1, 2]; 'None' is used for non-CDS regions, within CDS regions 0, 1, 2 correspond to phase (number of base pairs until the start of the next codon) |
-| --resume-training       | False     | Add this to resume training (pretrained model checkpoint necessary)                                                                                                                                                          |
+| Parameter               | Default         | Explanation                                                                                                                                                                                                                  |
+|:------------------------|:----------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| -d/--data-dir           | /               | Directory containing training and validation data (.zarr files). The naming convention for the training and validation files is "training_data[...].zarr" and "validation_data[...].zarr" respectively.                      |
+| -s/--save-model-path    | ./best_model.h5 | Path to save the best model (model with the best validation genic F1 (the F1 for the classes CDS, UTR and Intron)) to.                                                                                                       |
+| -e/--epochs             | 10,000          | Number of training runs                                                                                                                                                                                                      |
+| -b/--batch-size         | 8               | Batch size for training data                                                                                                                                                                                                 |
+| --val-test-batch-size   | 32              | Batch size for validation/test data                                                                                                                                                                                          |
+| --loss                  | /               | Loss function specification                                                                                                                                                                                                  |
+| --patience              | 3               | Allowed epochs without the validation genic F1 improving before stopping training                                                                                                                                            |
+| --check-every-nth-batch | 1,000,000       | Check validation genic F1 every nth batch, on default this check gets executed once every epoch regardless of the number of batches                                                                                          |
+| --optimizer             | adamw           | Optimizer algorithm; options: adam or adamw                                                                                                                                                                                  |
+| --clip-norm             | 3.0             | The gradient of each weight is individually clipped so that its norm is no higher than this value                                                                                                                            |
+| --learning-rate         | 3e-4            | Learning rate for training                                                                                                                                                                                                   |
+| --weight-decay          | 3.5e-5          | Weight decay for training; penalizes complexity and prevents overfitting                                                                                                                                                     |
+| --class-weights         | /               | Weighting of the 4 classes [intergenic, UTR, CDS, Intron] (Helixer predictions)                                                                                                                                              |
+| --transition-weights    | /               | Weighting of the 6 transition categories [transcription start site, start codon, donor splice site, transcription stop site, stop codon, acceptor splice site]                                                               |
+| --predict-phase         | False           | Add this to also predict phases for CDS (recommended);  format: [None, 0, 1, 2]; 'None' is used for non-CDS regions, within CDS regions 0, 1, 2 correspond to phase (number of base pairs until the start of the next codon) |
+| --resume-training       | False           | Add this to resume training (pretrained model checkpoint necessary)                                                                                                                                                          |
 
 ### Testing/Predicting parameters
 | Parameter                   | Default                    | Explanation                                                                                                                                                                                                             |
@@ -126,6 +111,18 @@ command line.
 | --input-coverage             | False   | Add to use "evaluation/rnaseq_(spliced_)coverage" from Zarr training/validation files as additional input for a late layer of the model |
 | --coverage-norm              | None    | None, linear or log (recommended); how coverage will be normalized before inputting                                                     |
 | --post-coverage-hidden-layer | False   | Adds extra dense layer between concatenating coverage and final output layer                                                            |
+
+### Model parameters
+| Parameter      | Default | Explanation                                                                                           |
+|:---------------|:--------|:------------------------------------------------------------------------------------------------------|
+| --cnn-layers   | 1       | Number of convolutional layers                                                                        |
+| --lstm-layers  | 1       | Number of bidirectional LSTM layers                                                                   |
+| --units        | 32      | Number of LSTM units per bLSTM layer                                                                  |
+| --filter-depth | 32      | Filter depth for convolutional layers                                                                 |
+| --kernel-size  | 26      | Kernel size for convolutional layers                                                                  |
+| --pool-size    | 9       | Best set to a multiple of 3 (codon/nucleotide triplet size)                                           |
+| --dropout1     | 0.0     | If > 0, will add dropout layer with given dropout probability after the CNN. (range: 0.0-1.0)         |
+| --dropout2     | 0.0     | If > 0, will add dropout layer with given dropout probability after the bLSTM block. (range: 0.0-1.0) |
 
 ## 4. HelixerPost options
 The options for HelixerPost are either chosen when directly using Helixer.py (see 

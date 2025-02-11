@@ -1,10 +1,13 @@
 #! /usr/bin/env python3
-import tensorflow as tf
+import click
+#import tensorflow as tf
 
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, Dropout, Reshape,
-                                     Activation, Input, BatchNormalization)
+#from tensorflow.keras.models import Model
+#from tensorflow.keras.layers import (Conv1D, LSTM, Dense, Bidirectional, Dropout, Reshape,
+#                                     Activation, Input, BatchNormalization)
 from helixer.prediction.HelixerModel import HelixerModel, HelixerSequence
+from helixer.cli.model_cli import helixer_base_model_parameters, hybrid_model_parameters
+from helixer.cli.cli_formatter import HelpGroupCommand
 
 
 class HybridSequence(HelixerSequence):
@@ -21,17 +24,17 @@ class HybridSequence(HelixerSequence):
 
 
 class HybridModel(HelixerModel):
-    def __init__(self, cli_args=None):
-        super().__init__(cli_args=cli_args)
-        self.parser.add_argument('--cnn-layers', type=int, default=1)
-        self.parser.add_argument('--lstm-layers', type=int, default=1)
-        self.parser.add_argument('--units', type=int, default=32)
-        self.parser.add_argument('--filter-depth', type=int, default=32)
-        self.parser.add_argument('--kernel-size', type=int, default=26)
-        self.parser.add_argument('--pool-size', type=int, default=9)
-        self.parser.add_argument('--dropout1', type=float, default=0.0)
-        self.parser.add_argument('--dropout2', type=float, default=0.0)
-        self.parse_args()
+    def __init__(self, cnn_layers, lstm_layers, units, filter_depth,
+                 kernel_size, pool_size, dropout1, dropout2):
+        super().__init__()
+        self.cnn_layers = cnn_layers
+        self.lstm_layers = lstm_layers
+        self.units = units
+        self.filter_depth = filter_depth
+        self.kernel_size = kernel_size
+        self.pool_size = pool_size
+        self.dropout1 = dropout1
+        self.dropout2 = dropout2
 
     @staticmethod
     def sequence_cls():
@@ -128,7 +131,17 @@ class HybridModel(HelixerModel):
                       sample_weight_mode='temporal')
 
 
+# hint: CLI loading slowly? --> cause: importing large packages at the start of the file
+@click.command(cls=HelpGroupCommand, context_settings={'show_default': True})
+@helixer_base_model_parameters
+@hybrid_model_parameters
+def run_hybrid_model(**kwargs):
+    """Run Helixer's Hybrid Model directly for training, evaluation or prediction."""
+    pass
+    # todo: fabric setup function here, can be called from multiple scripts fabric.launch()
+    #model = HybridModel(**kwargs)  # launch fabric on model init or outside??
+    #model.run()
+
+
 if __name__ == '__main__':
-    # todo: somehow get args BEFORE initializing the model or anything to launch fabric as early as possible
-    model = HybridModel()
-    model.run()
+    run_hybrid_model()
