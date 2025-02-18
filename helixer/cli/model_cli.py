@@ -2,7 +2,7 @@ import click
 import functools
 
 from helixer.cli.cli_callbacks import *
-from helixer.cli.cli_formatter import ColumnHelpFormatter, HelpGroupCommand, HelpGroupOption
+from helixer.cli.cli_formatter import ColumnHelpFormatter, HelpGroupOption
 
 click.Context.formatter_class = ColumnHelpFormatter
 
@@ -251,4 +251,3 @@ def hybrid_model_parameters(func):
         # todo: add config file stuff, then use **params in return instead kwargs
         return func(*args, **kwargs)
     return wrapper
-

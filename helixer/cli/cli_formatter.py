@@ -68,6 +68,11 @@ class HelpGroupCommand(click.Command):
                 # Extract help text and split off constraints
                 #  constraint examples: [x>=1], [x>=2, required], etc.
                 help_text = rv[1]
+                if type_str == "CHOICE":
+                    # adapted from click's way to format the choices, as we want to display them
+                    # in the help text instead of in the type column
+                    choices = f"  [choices: {', '.join(map(str, param.type.choices))}]"
+                    help_text += choices
                 # Create row in custom order
                 row = (opt_str, type_str, help_text.strip())
                 # If a help_group was set when defining the option, add the row to the specified options group
@@ -82,6 +87,8 @@ class HelpGroupCommand(click.Command):
         col_widths = click.formatting.measure_table(all_rows)
 
         # Write every options group and their options in order to the CLI help message
+        # The group "Other" is always at the end.
+        options.move_to_end('Other')
         for name, opts_group in options.items():
             with formatter.section(name):
                 if isinstance(formatter, ColumnHelpFormatter):
