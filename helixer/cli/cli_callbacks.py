@@ -8,7 +8,8 @@ def validate_path_fragment(ctx, param, path):
     """Check if the path exists up until the final filename. The file itself will be created by Helixer."""
     dir_path = os.path.dirname(path)
     if not os.path.exists(dir_path):
-        raise FileNotFoundError(f'{dir_path} given to option {param.name} does not exist')
+        raise FileNotFoundError(f'{dir_path} given to option {param.name} to write output file to does not exist')
+    return path
 
 
 def validate_weights(ctx, param, weights):
@@ -28,4 +29,20 @@ def validate_device(ctx, param, device):
         click.secho(msg, fg='yellow', bold=True)
         return 'cpu'
     return device
+
+
+def validate_file_extension(ctx, param, path):
+    if not path.endswith('.zarr'):
+        raise ValueError(f'{param.name} must end with .zarr, got {path} instead')
+    return path
+
+
+# combine multiple callbacks
+def combine_callbacks(*callbacks):
+    def wrapper(ctx, param, value):
+        for callback in callbacks:
+            value = callback(ctx, param, value)
+        return value
+    return wrapper
+
 # todo: add model validation, load and merge parameters and so on

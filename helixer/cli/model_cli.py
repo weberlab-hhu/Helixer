@@ -103,7 +103,7 @@ def helixer_base_model_parameters(func):
     @click.option('-p', '--prediction-output-path',
                   type=str,
                   default='./predictions.zarr',
-                  callback=validate_path_fragment,
+                  callback=combine_callbacks(validate_path_fragment, validate_file_extension),
                   help='Output path of the Zarr prediction file. (Helixer base-wise predictions)',
                   cls=HelpGroupOption, help_group='Testing/prediction parameters')
     @click.option('--compression',

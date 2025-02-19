@@ -70,8 +70,8 @@ class HelpGroupCommand(click.Command):
                 help_text = rv[1]
                 if type_str == "CHOICE":
                     # adapted from click's way to format the choices, as we want to display them
-                    # in the help text instead of in the type column
-                    choices = f"  [choices: {', '.join(map(str, param.type.choices))}]"
+                    # in the help text instead of in the type column which is the default
+                    choices = f"  [one of: {', '.join(map(str, param.type.choices))}]"
                     help_text += choices
                 # Create row in custom order
                 row = (opt_str, type_str, help_text.strip())

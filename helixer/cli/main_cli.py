@@ -6,51 +6,114 @@ from helixer.cli.cli_formatter import ColumnHelpFormatter, HelpGroupOption
 
 click.Context.formatter_class = ColumnHelpFormatter
 
-# todo: print out versions of modules used like we already do, maybe still the commit unless we install through pipy?
-#  also MAYBE the command that was used, but only maybe
-def helixer_main_parameters(func):
+
+# todo: add universal params here
+def universal_parameters(func):
+    # I/O params
+    @click.option('--subsequence-length',
+                  type=click.IntRange(1,),
+                  default=21384,
+                  help='How to slice the genomic sequence. Set moderately longer than length of '
+                       'typical genic loci. Tested up to 213840. Must be evenly divisible by the '
+                       'timestep width of the used model, which is typically 9. (Default is '
+                       'lineage dependent from 21384 to 213840).',  # todo: rewrite to fit all 3 scripts
+                  cls=HelpGroupOption, help_group='I/O parameters')
+    # Processing params
+    @click.option('--write-by',
+                  type=click.IntRange(1,),
+                  default=21_384_000,
+                  help='Convert genomic sequence in super-chunks to numerical matrices with this many '
+                       'base pairs, which will be rounded to be divisible by subsequence-length; needs '
+                       'to be equal to or larger than subsequence length; for lower memory consumption, '
+                       'consider setting a lower number',
+                  cls=HelpGroupOption, help_group='Processing parameters')
+    @click.option('--no-multiprocess',
+                  is_flag=True,
+                  help='Whether to not parallize the numerification of large sequences. Uses half the memory '
+                       'but can be much slower when many CPU cores can be utilized.',
+                  cls=HelpGroupOption, help_group='Processing parameters')
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper
+
+
+def main_and_fasta_export_parameters(func):
     # IO params
     @click.option('--fasta-path',
                   type=click.Path(exists=True),
                   required=True,
                   help='FASTA input file.',
-                  cls=HelpGroupOption, help_group='IO parameters')
+                  cls=HelpGroupOption, help_group='I/O parameters')
+    @click.option('--species',
+                  type=str,
+                  required=True,
+                  default='',
+                  help='Species name.',
+                  cls=HelpGroupOption, help_group='I/O parameters')
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper
+
+
+def universal_export_parameters(func):
+    # I/O params
+    @click.option('--zarr-output-path',
+                  type=str,
+                  required=True,
+                  callback=combine_callbacks(validate_path_fragment, validate_file_extension),
+                  help='Zarr output file for the encoded data. Must end with ".zarr"',
+                  cls=HelpGroupOption, help_group='I/O parameters')
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper
+
+
+def geenuff2zarr_parameters(func):
+    # IO params
+    @click.option('--input-db-path',
+                  type=click.Path(exists=True),
+                  required=True,
+                  help='Path to the GeenuFF SQLite input database (has to contain only one genome).',
+                  cls=HelpGroupOption, help_group='I/O parameters')
+    @click.option('--additional',
+                  type=str,
+                  default=None,
+                  help='Outputs the datasets under alternatives/{additional}/ (and checks sort order '
+                       'against existing "data" datasets). Use to add e.g. additional annotations from '
+                       'Augustus.',
+                  cls=HelpGroupOption, help_group='I/O parameters')
+    @click.option('--modes',
+                  type=str,
+                  default='all',
+                  help='Either "all", or a comma separated list (no spaces!) with desired members of the '
+                       'following {X,y,anno_meta,transitions} that should be exported. This can be '
+                       'useful, for instance when skipping transitions (to reduce size/mem) or skipping '
+                       'X because you are adding an additional annotation set to an existing file.',
+                  cls=HelpGroupOption, help_group='Processing parameters')
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper
+
+
+# todo: print out versions of modules used like we already do, maybe still the commit unless we install through pipy?
+#  also MAYBE the command that was used, but only maybe
+def helixer_main_parameters(func):
+    # IO params
     @click.option('--gff-output-path',
                   type=str,
                   required=True,
                   callback=validate_path_fragment,
                   help='Output GFF3 file path.',
-                  cls=HelpGroupOption, help_group='IO parameters')
-    @click.option('--species',
-                  type=str,
-                  help='Species name.',
-                  cls=HelpGroupOption, help_group='IO parameters')
+                  cls=HelpGroupOption, help_group='I/O parameters')
     @click.option('--temporary-dir',
                   type=click.Path(exists=True),
                   help='use supplied (instead of system default) for temporary directory',
-                  cls=HelpGroupOption, help_group='IO parameters')
+                  cls=HelpGroupOption, help_group='I/O parameters')
     # Data params
-    @click.option('--subsequence-length',
-                  type=click.IntRange(1,),
-                  default=None,
-                  help='How to slice the genomic sequence. Set moderately longer than length of '
-                       'typical genic loci. Tested up to 213840. Must be evenly divisible by the '
-                       'timestep width of the used model, which is typically 9. (Default is '
-                       'lineage dependent from 21384 to 213840).',
-                  cls=HelpGroupOption, help_group='Data parameters')
-    @click.option('--write-by',
-                  type=click.IntRange(1,),
-                  default=20_000_000,
-                  help='Convert genomic sequence in super-chunks to numerical matrices with this many '
-                       'base pairs, which will be rounded to be divisible by subsequence-length; needs '
-                       'to be equal to or larger than subsequence length; for lower memory consumption, '
-                       'consider setting a lower number',
-                  cls=HelpGroupOption, help_group='Data parameters')
-    @click.option('--no-multiprocess',
-                  is_flag=True,
-                  help='Whether to not parallize the numerification of large sequences. Uses half the memory '
-                       'but can be much slower when many CPU cores can be utilized.',
-                  cls=HelpGroupOption, help_group='Data parameters')
     @click.option('--lineage',
                   type=click.Choice(['vertebrate', 'land_plant', 'fungi', 'invertebrate']),
                   show_choices=True,
