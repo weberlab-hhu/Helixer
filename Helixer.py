@@ -9,7 +9,7 @@ import tempfile
 import subprocess
 from termcolor import colored
 
-from helixer.cli.main_cli import helixer_main_parameters, universal_parameters, main_and_fasta_export_parameters
+from helixer.cli.main_cli import helixer_main_options
 from helixer.cli.cli_formatter import HelpGroupCommand
 from helixer.core.data import prioritized_models, report_if_current_not_best, identify_current, MODEL_PATH
 from helixer.prediction.HybridModel import HybridModel
@@ -68,9 +68,7 @@ def check_overlap_args(subsequence_length, overlap_offset, overlap_core_length):
 
 
 @click.command(cls=HelpGroupCommand, context_settings={'show_default': True})
-@main_and_fasta_export_parameters
-@universal_parameters
-@helixer_main_parameters
+@helixer_main_options
 def main(fasta_path, gff_output_path, species, temporary_dir, subsequence_length, write_by, no_multiprocess,
          lineage, model_filepath, batch_size, no_overlap, overlap_offset, overlap_core_length, window_size,
          edge_threshold, peak_threshold, min_coding_length):
