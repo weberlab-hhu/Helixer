@@ -4,6 +4,22 @@ import textwrap
 from collections import OrderedDict
 
 
+class HelpGroups:
+    """Class to bundle all help groups used by the cli module."""
+    def __init__(self):
+        self.io = 'I/O options'
+        self.data = 'Data options'
+        self.train = 'Training options'
+        self.test = 'Test options'
+        self.pred = 'Prediction options'
+        self.proc = 'Processing options'
+        self.post = 'Postprocessing options'
+        self.resource = 'Resource options'
+        self.misc = 'Miscellaneous options'
+        self.fine_tune = 'Fine-tuning options'
+        self.model = 'Model options'
+
+
 class HelpGroupOption(click.Option):
     def __init__(self, *args, **kwargs):
         """Adds the custom help_group option to click's options.
