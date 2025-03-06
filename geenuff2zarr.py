@@ -1,15 +1,13 @@
 #! /usr/bin/env python3
 import click
 
-from helixer.cli.main_cli import geenuff2zarr_parameters, universal_export_parameters, universal_parameters
+from helixer.cli.data_cli import geenuff2zarr_parameters
 from helixer.cli.cli_formatter import HelpGroupCommand
 from helixer.export.exporter import HelixerExportController
 
 
 @click.command(cls=HelpGroupCommand, context_settings={'show_default': True})
 @geenuff2zarr_parameters
-@universal_parameters
-@universal_export_parameters
 def main(input_db_path, zarr_output_path, subsequence_length, modes, write_by, no_multiprocess, additional):
     """Convert GeenuFF's sqlite database into a zarr file Helixer can use for training and testing"""
     if modes == 'all':
