@@ -1,5 +1,7 @@
 import numpy as np
+import click
 from helixer.core.strs import *
+
 
 # todo: way more comments what each function does
 # some helpers for handling / sorting / or checking sort of our zarr files
@@ -55,7 +57,7 @@ def get_sp_seq_ranges(zarr_file):
 # additional helping functions for predictions to hints, here so they can be tested
 # also probably some redundancy with above to clean up (-_-)
 def get_contiguous_ranges(zarr_file):
-    """gets h5 coordinates for same species, sequence and strand AKA end to end across a chromosome/scaffold"""
+    """gets zarr coordinates for same species, sequence and strand AKA end to end across a chromosome/scaffold"""
     start_ends = zarr_file[DATA_START_ENDS][:]
     marks_unique = np.stack((zarr_file[DATA_SEQIDS], zarr_file[DATA_SPECIES], start_ends[:, 1] > start_ends[:, 0]))
     items, indexes, lengths = np.unique(marks_unique, axis=1, return_index=True, return_counts=True)
@@ -149,7 +151,16 @@ def divvy_by_confidence(one_class_chunk, step_key, pad=5, stability_threshold=0.
             end_of_last_yield = end
             cdiff_at_last_yield = cumulative_diffs[end]
 
+
 def file_stem(path):
     """Returns the file name without extension"""
     import os  # todo: move import to the top
     return os.path.basename(path).split('.')[0]
+
+
+def rank_zero_click_secho(local_rank, msg, file=None, nl: bool = True,
+                          err: bool = False, color=None, **styles):
+    """Print something only on the first process. If running on multiple machines, it will print from the first
+    process in each machine. The local rank is fabric.local_rank."""
+    if local_rank == 0:
+        click.secho(msg, file, nl, err, color, **styles)
