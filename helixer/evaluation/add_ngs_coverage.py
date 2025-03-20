@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 # todo: add strs and use them instead of hardcoded strings
 # todo: more elegant rewrite like in exporter.py
+# todo: add click
 import sys
 import argparse
 import HTSeq

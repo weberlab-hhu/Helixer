@@ -2,7 +2,8 @@
 import argparse
 import h5py
 from helixer.core.helpers import mk_keys
-
+# todo: is this deprecated??
+# todo: maybe finish this at some point
 
 def match_strands(h5):
     """returns list of (idx +, idx -) tuples for matching positions in h5"""

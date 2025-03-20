@@ -1,8 +1,12 @@
-import argparse
+import click
 import numpy as np
 import h5py
 import csv
 
+from helixer.cli.cli_formatter import ColumnHelpFormatter
+from helixer.cli.cli_callbacks import validate_path_fragment
+
+click.Context.formatter_class = ColumnHelpFormatter
 
 class CoverageCounter(object):
 
@@ -113,6 +117,27 @@ class CoverageCounter(object):
         return out
 
 
+@click.command(context_settings={'show_default': True})
+@click.option('-d', '--h5-data',
+              type=click.Path(exists=True),
+              required=True,
+              help='h5 data file (with data/{X, y, species, seqids, etc ...}'
+                   'and evaluation/{coverage, spliced_coverage}, as output by'
+                   'the rnaseq.py script)')
+@click.option('-o', '--out',
+              required=True,
+              callback=validate_path_fragment,
+              help='output csv file')
+@click.option('-p', '--h5-predictions',
+              type=click.Path(exists=True),
+              help='set if the predictions data set is in a separate (but sort matching!) h5 file')
+@click.option('--ground-truth-dataset',
+              default='data/y',
+              help='name of the dataset in the input h5 file (--h5-data) that contains the ground truth data')
+@click.option('--predictions-dataset',
+              default='predictions',
+              help='name of the dataset in the input h5 file (--h5-data) or the predictions h5 file '
+                   '(--h5-predictions) that contains the prediction data')
 def main(h5_file, out_file, preds_file, predictions='predictions', y='data/y'):
     h5_data = h5py.File(h5_file, 'r')
     if preds_file is not None:
@@ -134,14 +159,4 @@ def main(h5_file, out_file, preds_file, predictions='predictions', y='data/y'):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--h5-data', help='h5 data file (with data/{X, y, species, seqids, etc ...}'
-                                                'and evaluation/{coverage, spliced_coverage}, as output by'
-                                                'the rnaseq.py script)', required=True)
-    parser.add_argument('-o', '--out', help='output csv file name', required=True)
-    parser.add_argument('-p', '--h5-predictions', help='set if the predictions data set is in a separate '
-                                                       '(but sort matching!) h5 file')
-    parser.add_argument('--ground-truth-dataset', default='data/y')
-    parser.add_argument('--predictions-dataset', default='predictions')
-    args = parser.parse_args()
-    main(args.h5_data, args.out, args.h5_predictions, args.predictions_dataset, args.ground_truth_dataset)
+    main()

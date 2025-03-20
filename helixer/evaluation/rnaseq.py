@@ -8,7 +8,7 @@ import os
 import shutil
 import numpy as np
 from helixer.core.helpers import mk_keys
-
+# todo: deprecated?
 
 def skippable(read):
     out = False
