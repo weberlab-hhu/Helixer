@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import os
 import sys
 import inspect
+import click
 
 import helixer.core.helpers
 
@@ -13,23 +14,22 @@ import time
 import glob
 import zarr
 import numcodecs
-import argparse
 import datetime
 from importlib.metadata import version
 import subprocess
 import numpy as np
 from sklearn.utils import shuffle
-from pprint import pprint
-from termcolor import colored
 from terminaltables import AsciiTable
 
 import torch
 from torch import nn
 from torch.utils.data import Dataset
+from lightning.fabric import Fabric
 
 from helixer.prediction.Metrics import Metrics
 from helixer.core import overlap
 from helixer.core.strs import *
+#from helixer.cli.cli_formatter import ClsMethodClickCommand
 
 #class ConfusionMatrixTrain(Callback):
 class ConfusionMatrixTrain():
@@ -118,16 +118,6 @@ class ConfusionMatrixTrain():
             nni.report_final_result(self.best_val_genic_f1)
 
 
-#class PreshuffleCallback(Callback):
-#class PresuffleCallback():
-#    def __init__(self, train_generator):
-#        self.train_generator = train_generator
-
-#    def on_epoch_begin(self, epoch, logs=None):
-#        if self.train_generator.shuffle:
-#            self.train_generator.shuffle_data()
-
-
 class HelixerSequence(Dataset):
     def __init__(self, model, zarr_files, mode, batch_size, rank, world_size):
         # todo: handle batch_size and shuffle in the dataloader
@@ -189,7 +179,7 @@ class HelixerSequence(Dataset):
         # TODO: maybe convert X.dtype=float16 (less RAM usage while compressed)
         self.compressor = numcodecs.blosc.Blosc(cname='blosclz', clevel=4, shuffle=2)  # use BITSHUFFLE
 
-        if self.num_devices > 1 and self.mode != TEST:
+        if self.num_devices > 1 and self.mode != TEST: # todo: != PREDICT
             # shard dataset across devices
             # get all samples/chunks per zarr file to distribute them evenly to the different processes
             self.sample_coordinates = self._load_zarr_indices()
@@ -515,192 +505,42 @@ class HelixerSequence(Dataset):
 
             return [self.to_torch_tensor(d) for d in (X, y, sw, transitions, phases, _, coverage_scores)]
 
-# todo: maybe separate model itself and training/trainer
+
 class HelixerModel(nn.Module, ABC):
-    def __init__(self, cli_args=None, *args, **kwargs):
-        # todo: move to parser class, maybe with click not argparse, don't write cli args into init
-        # todo: inherit from nn.Module to use torch -> adapt parse_args accordingly
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.cli_args = cli_args  # if cli_args is None, the parameters from sys.argv will be used
-
-        self.parser = argparse.ArgumentParser()
-        self.parser.add_argument('-d', '--data-dir', type=str, default=None)
-        self.parser.add_argument('-s', '--save-model-path', type=str, default='./best_model.h5')
-        self.parser.add_argument('--large-eval-folder', type=str, default='', help=argparse.SUPPRESS)
-        # training params
-        self.parser.add_argument('-e', '--epochs', type=int, default=10000)
-        self.parser.add_argument('-b', '--batch-size', type=int, default=8)
-        self.parser.add_argument('--val-test-batch-size', type=int, default=32)
-        self.parser.add_argument('--loss', type=str, default='')
-        self.parser.add_argument('--patience', type=int, default=3)
-        self.parser.add_argument('--check-every-nth-batch', type=int, default=1_000_000)
-        self.parser.add_argument('--optimizer', type=str, default='adamw')
-        self.parser.add_argument('--clip-norm', type=float, default=3.0)
-        self.parser.add_argument('--learning-rate', type=float, default=3e-4)
-        self.parser.add_argument('--weight-decay', type=float, default=3.5e-5)
-        self.parser.add_argument('--class-weights', type=str, default='None')
-        self.parser.add_argument('--transition-weights', type=str, default='None')
-
-        self.parser.add_argument('--stretch-transition-weights', type=int, default=0, help=argparse.SUPPRESS)  # bc no clear effect on result quality
-        self.parser.add_argument('--coverage-weights', action='store_true', help=argparse.SUPPRESS)
-        self.parser.add_argument('--coverage-offset', type=float, default=0.0, help=argparse.SUPPRESS)
-        self.parser.add_argument('--calculate-uncertainty', action='store_true', help=argparse.SUPPRESS)
-        self.parser.add_argument('--no-utrs', action='store_true', help=argparse.SUPPRESS)  # is this still needed?
-        self.parser.add_argument('--predict-phase', action='store_true')
-        self.parser.add_argument('--load-predictions', action='store_true', help=argparse.SUPPRESS)  # bc no models that can use this are available
-        self.parser.add_argument('--resume-training', action='store_true')
-        # testing / predicting
-        self.parser.add_argument('-l', '--load-model-path', type=str, default='')
-        self.parser.add_argument('-t', '--test-data-path', type=str, default='')
-        self.parser.add_argument('-p', '--prediction-output-path', type=str, default='predictions.h5')
-        self.parser.add_argument('--compression', default='gzip', help='compression used for datasets in predictions '
-                                                                       'h5 file. One of "lzf" or "gzip" (default)')
-        self.parser.add_argument('--eval', action='store_true')
-        self.parser.add_argument('--overlap', action="store_true",
-                                 help="will improve prediction quality at 'chunk' ends by creating and overlapping "
-                                      "sliding-window predictions (with proportional increase in time usage)")
-        self.parser.add_argument('--overlap-offset', type=int, default=None,
-                                 help="distance to 'step' between predicting subsequences when overlapping "
-                                      "(default: subsequence_length / 2)")
-        self.parser.add_argument('--core-length', type=int, default=None,
-                                 help="length of 'core' subsequence to retain before overlapping. The ends beyond this"
-                                      "region will be cropped. (default: subsequence_length * 3 / 4)")
-        # resources
-        self.parser.add_argument('--float-precision', type=str, default='float32')
-        self.parser.add_argument('--cpus', type=int, default=8, help=argparse.SUPPRESS)
-        self.parser.add_argument('--gpu-id', type=int, default=-1,
-                                 help='sets GPU index, use if you want to train on one GPU on a multi-GPU machine '
-                                      'without a job scheduler system')  # todo: remove
-        self.parser.add_argument('--device', type=str, default='gpu')  # todo: check if available, if not switch to CPU and print info
-        self.parser.add_argument('--num-devices', type=int, default=1)
-        self.parser.add_argument('--workers', type=int, default=1,
-                                 help='number of threads used to fetch input data for training; '
-                                      'consider setting to match the number of GPUs')
-        # misc flags
-        self.parser.add_argument('--save-every-check', action='store_true')
-        self.parser.add_argument('--nni', action='store_true')
-        self.parser.add_argument('-v', '--verbose', action='store_true')
-        self.parser.add_argument('--debug', action='store_true')
-        tuner = self.parser.add_argument_group('fine tuning',
-                                               'experimental parameters for training (a) final layer(s) '
-                                               'of the model on target species (or other small dataset) '
-                                               'with or without coverage, and '
-                                               'with the rest of the model weights locked to reduce over fitting')
-        tuner.add_argument('--fine-tune', action='store_true',
-                           help='use with --resume-training to replace and fine tune just the very last layer')
-        tuner.add_argument('--pretrained-model-path',
-                           help='required when predicting with a model fine tuned with coverage; hopefully temporary')
-        tuner.add_argument('--input-coverage',
-                           action='store_true',
-                           help='use "evaluation/rnaseq_(spliced_)coverage" from h5 as additional input '
-                                'for a late layer of the model')
-        tuner.add_argument('--coverage-norm', default=None,
-                           help='None, linear or log (recommended); how coverage will be normalized before inputting')
-        tuner.add_argument('--post-coverage-hidden-layer', action='store_true',
-                           help='adds extra dense layer between concatenating coverage and final output layer')
-
-        self.coverage_count = None
-        self.device = None
-        self.model = None
-        self.epoch = 0
-        self.loss = None # todo: rename this or cli arg loss maybe to loss-fn so they don't conflict
-        self._validation_data, self._test_data, self._training_data = None, None, None
-        self.run_purpose = None
-        # place holder to make it run in simplfied form #TODO remove again
-        self.zarr_trains, self.zarr_vals, self.zarr_tests = None, None, None
-        self.test_data_path = None
-
-    def parse_args(self):
-        """Parses the arguments either from the command line via argparse by using self.parser or
-        takes a list of cli arguments from self.cli_args. This can be used to invoke a HelixerModel from
-        another script."""
-        args = vars(self.parser.parse_args(args=self.cli_args))
-
-        # hack to deprecate a few args
-        for arg in ['large_eval_folder', 'cpus', 'stretch_transition_weights', 'coverage_weights', 'coverage_offset',
-                    'calculate_uncertainty', 'no_utrs', 'load_predictions']:
-            default = self.parser.get_default(arg)
-            if args[arg] != default:
-                print(colored(
-                    f"Warning: the argument '{arg}' is deprecated and will be "
-                    f"removed in the future. The argument will have no effect.", 'yellow'))
-                # set arg back to default
-                args[arg] = default
-
-        self.__dict__.update(args)
-
-        if self.nni:
-            hyperopt_args = nni.get_next_parameter()
-            for key in hyperopt_args.keys():
-                has_dash = key.find('-') > -1
-                if key not in args:
-                    if has_dash:
-                        maybe_fixed = key.replace('-', '_')
-                        raise AssertionError(f'Parameter from nni: "{key}" does not match parsed arguments.\n'
-                                             f'Hint: "{key}" contains a "-"; maybe it should be "{maybe_fixed}" '
-                                             'so as to match arguments parsed by ArgumentParser?')
-                    else:
-                        raise AssertionError(f'Parameter from nni: "{key}" does not match processed arguments')
-
-            # cast int params to int as we may get them as float
-            hyperopt_args = {name: (int(value) if isinstance(self.parser.get_default(name), int) else value)
-                             for name, value in hyperopt_args.items()}
-            # add args to class name space
-            self.__dict__.update(hyperopt_args)
-            nni_save_model_path = os.path.expandvars('$NNI_OUTPUT_DIR/best_model.h5')
-            nni_pred_output_path = os.path.expandvars('$NNI_OUTPUT_DIR/predictions.h5')
-            self.__dict__['save_model_path'] = nni_save_model_path
-            self.__dict__['prediction_output_path'] = nni_pred_output_path
-            args.update(hyperopt_args)
-            # for the print-out
-            args['save_model_path'] = nni_save_model_path
-            args['prediction_output_path'] = nni_pred_output_path
-
-        # there are 3 main purposes of running a model, train, eval, predict
-        self.run_purpose = TRAIN
-
-        if self.load_model_path and not self.resume_training:
-            if self.eval:
-                self.run_purpose = EVAL
-            else:
-                self.run_purpose = PREDICT
-
-        # check consistency with other parameters
-        if self.run_purpose == TRAIN:
-            assert self.data_dir is not None, '--data-dir required for training'
-            assert not self.test_data_path, '--test-data-path cannot be set when training'
-        else:
-            assert self.test_data_path.endswith('.zarr'), 'Need a zarr test data file when loading a model'
-            assert self.load_model_path.endswith('.pt'), 'Need a .pt model file'
-
-
-        self.class_weights = eval(self.class_weights)
-        if not isinstance(self.class_weights, (list, np.ndarray, type(None))):
-            raise ValueError(f'--class-weights evaluated to {self.class_weights} of type {type(self.class_weights)}; '
-                             f'this commonly means you need to remove nested quotes if not starting with nni')
-        if type(self.class_weights) is list:
-            self.class_weights = np.array(self.class_weights, dtype=np.float32)
-
-        self.transition_weights = eval(self.transition_weights)
-        if not isinstance(self.transition_weights, (list, np.ndarray, type(None))):
-            raise ValueError(f'--transition-weights evaluated to {self.transition_weights} '
-                             f'of type {type(self.transition_weights)}; '
-                             f'this commonly means you need to remove nested quotes if not starting with nni')
-        if type(self.transition_weights) is list:
-            self.transition_weights = np.array(self.transition_weights, dtype=np.float32)
-
-        if self.verbose:
-            print(colored('HelixerModel config: ', 'yellow'))
-            pprint(args)
 
     def get_hparams(self):
         init_parameters = inspect.signature(self.__init__).parameters
         hyperparameters = {arg: getattr(self, arg) for arg, value in init_parameters.items()}
         return hyperparameters
 
+
+class HelixerBaseModelRunner:
+    """Not an actual Lightning trainer class"""
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def setup_fabric(mode, device, num_devices, callbacks, precision):
+        if mode == "train":
+            strategy = "auto" if num_devices == 1 else "ddp"
+        else:
+            strategy = "auto"
+        # callbacks need to go in here as well BEFORE context
+        # launch fabric after general setup but before loading the dataset or model
+        # when to seed everything/recover the random states? initial seed_everything BEFORE model setup
+        # in setup dataloader: use distributed sampler false
+        precisions = {'float32': '32-true', 'float16': '16-true'}
+        fabric = Fabric(accelerator=device, devices=num_devices, strategy=strategy,
+                        precision=precisions[precision], callbacks=callbacks)
+        fabric.launch()
+        return fabric
+        # init model directly on GPU with fabric.init_module()
+
     def generate_callbacks(self, train_generator):
         pass
-        # TODO torch mvp
+        # TODO torch mvp/runner specific, create callback script
     #    callbacks = [ConfusionMatrixTrain(self.save_model_path, train_generator, self.gen_validation_data(),
     #                                      self.large_eval_folder, self.patience, calc_H=self.calculate_uncertainty,
     #                                      report_to_nni=self.nni, check_every_nth_batch=self.check_every_nth_batch,
@@ -708,49 +548,15 @@ class HelixerModel(nn.Module, ABC):
     #                 PreshuffleCallback(train_generator)]
     #    return callbacks
 
-    def set_resources(self):
-        self.device = (
-            "cuda"
-            if torch.cuda.is_available()
-            else "mps"
-            if torch.backends.mps.is_available()
-            else "cpu"
-        )
-        #gpu_devices = tf.config.experimental.list_physical_devices('GPU')
-        #for device in gpu_devices:
-        #    tf.config.experimental.set_memory_growth(device, True)
+    def init_model(self, model_class, model_checkpoint, **model_kwargs):
+        if model_checkpoint:
+            # load from checkpoint
+            pass
+        else:
+            model = model_class(**model_kwargs)
+        return model
 
-        #K.set_floatx(self.float_precision)
-        #if self.gpu_id > -1:
-        #    tf.config.set_visible_devices([gpu_devices[self.gpu_id]], 'GPU')
-
-    @property
-    def training_data(self):
-        if self._training_data is None:
-            SequenceCls = self.sequence_cls()
-            self._training_data = SequenceCls(model=self, zarr_files=self.zarr_trains,
-                                              mode=TRAIN, batch_size=self.batch_size,
-                                              shuffle=True)
-        return self._training_data
-
-    @property
-    def validation_data(self):
-        if self._validation_data is None:
-            SequenceCls = self.sequence_cls()
-            self._validation_data = SequenceCls(model=self, zarr_files=self.zarr_vals,
-                                                mode=VAL, batch_size=self.val_test_batch_size,
-                                                shuffle=False)
-        return self._validation_data
-
-    @property
-    def test_data(self):
-        if self._test_data is None:
-            SequenceCls = self.sequence_cls()
-            self._test_data = SequenceCls(model=self, zarr_files=self.zarr_tests,
-                                          mode=TEST, batch_size=self.val_test_batch_size,
-                                          shuffle=False)
-        return self._test_data
-
+    # todo: to metrics callback
     @staticmethod
     def run_metrics(generator, model, print_to_stdout=True, calc_H=False):
         start = time.time()
@@ -763,53 +569,6 @@ class HelixerModel(nn.Module, ABC):
         print('\nmetrics calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
         return genic_metrics['precision'], genic_metrics['recall'], genic_metrics['f1']
 
-    #@staticmethod
-    #def run_large_eval(folder, model, generator, training_species, print_to_stdout=False, calc_H=False):
-    #    def print_table(results, table_name, training_species):
-    #        table = [['Name', 'Precision', 'Recall', 'F1-Score']]
-    #        for name, values in results:
-    #            if name.lower() in training_species:
-    #                name += ' (T)'
-    #            table.append([name] + [f'{v:.4f}' for v in values])
-    #        print('\n', AsciiTable(table, table_name).table, sep='')
-
-    #    results = []
-    #    training_species = [s.lower() for s in training_species]
-    #    eval_file_names = glob.glob(f'{folder}/*.h5')
-    #    for i, eval_file_name in enumerate(eval_file_names):
-    #        h5_eval = h5py.File(eval_file_name, 'r')
-    #        species_name = os.path.basename(eval_file_name).split('.')[0]
-    #        print(f'\nEvaluating with a sample of {species_name} ({i + 1}/{len(eval_file_names)})')
-
-    #        # possibly adjust batch size based on sample length, which could be flexible
-    #        # assume the given batch size is for 20k length
-    #        sample_len = h5_eval['data/X'].shape[1]
-    #        adjusted_batch_size = int(generator.batch_size * (20000 / sample_len))
-    #        print(f'adjusted batch size is {adjusted_batch_size}')
-
-    #        # use exactly the data generator that is used during validation
-    #        GenCls = generator.__class__
-    #        gen = GenCls(model=generator.model, h5_file=h5_eval, mode='val',
-    #                     batch_size=adjusted_batch_size, shuffle=False)
-    #        perf_one_species = HelixerModel.run_metrics(gen, model, print_to_stdout=print_to_stdout, calc_H=calc_H)
-    #        results.append([species_name, perf_one_species])
-    #    # print results in tables sorted alphabetically and by f1
-    #    results_by_name = sorted(results, key=lambda r: r[0])
-    #    results_by_f1 = sorted(results, key=lambda r: r[1][2], reverse=True)
-    #    print_table(results_by_name, 'Generalization Validation by Name', training_species)
-    #    print_table(results_by_f1, 'Generalization Validation by Genic F1', training_species)
-
-    #    # print one number summaries
-    #    f1_scores = np.array([r[1][2] for r in results])
-    #    in_train = np.array([r[0].lower() in training_species for r in results], dtype=np.bool)
-    #    table = [['Metric', 'All', 'Training', 'Evaluation']]
-    #    for name, func in zip(['Median F1', 'Average F1', 'Stddev F1'], [np.median, np.mean, np.std]):
-    #        table.append([name, f'{func(f1_scores):.4f}',
-    #                            f'{func(f1_scores[in_train]):.4f}',
-    #                            f'{func(f1_scores[~in_train]):.4f}'])
-    #    print('\n', AsciiTable(table, 'Summary').table, sep='')
-    #    return np.median(f1_scores[~in_train])
-
     @abstractmethod
     def sequence_cls(self):
         pass
@@ -817,21 +576,6 @@ class HelixerModel(nn.Module, ABC):
     @abstractmethod
     def setup_model(self):
         pass
-
-    #@abstractmethod
-    #def model_hat(self, penultimate_layers):
-    #    pass
-
-    @abstractmethod
-    def compile_model(self):
-        pass
-
-    #@staticmethod
-    #def plot_model(model):
-    #    from tensorflow.keras.utils import plot_model
-    #    plot_model(model, to_file='model.png')
-    #    print('Plotted to model.png')
-    #    sys.exit()
 
     @staticmethod
     def sum_shapes(datasets):
@@ -920,92 +664,6 @@ class HelixerModel(nn.Module, ABC):
                     n_intergenic_test_seqs / n_test_seqs_with_intergenic * 100))
                 print('Fully correct test seqs: {:.2f}%\n'.format(
                     n_test_correct_seqs / self.shape_test[0] * 100))
-
-    def _make_predictions(self, model):
-        pass
-        # TODO mvp
-        ## loop through batches and continuously expand output dataset as everything might
-        ## not fit in memory
-        #pred_out = h5py.File(self.prediction_output_path, 'w')
-        #test_sequence = self.gen_test_data()
-
-        #for batch_index in range(len(test_sequence)):
-        #    if self.verbose:
-        #        print(batch_index, '/', len(test_sequence), end='\r')
-        #    if not self.only_predictions:
-        #        input_data = test_sequence[batch_index][0]
-        #    else:
-        #        input_data = test_sequence[batch_index]
-        #    try:
-        #        predictions = model.predict_on_batch(input_data)
-        #    except Exception as e:
-        #        print(colored('Errors at prediction often result from exhausting the GPU RAM.'
-        #                      'Your RAM requirement depends on subsequence_length x (val_test_)batch_size.'
-        #                      'That and the network size (can be changed during training but not inference).',
-        #                      'red'))
-        #        raise e
-        #    if isinstance(predictions, list):
-        #        # when we have two outputs, one is for phase
-        #        output_names = ['predictions', 'predictions_phase']
-        #    else:
-        #        # if we just had one output
-        #        predictions = (predictions,)
-        #        output_names = ['predictions']
-
-        #    for dset_name, pred_dset in zip(output_names, predictions):
-        #        # join last two dims when predicting one hot labels
-        #        pred_dset = pred_dset.reshape(pred_dset.shape[:2] + (-1,))
-        #        # reshape when predicting more than one point at a time
-        #        label_dim = 4
-        #        if pred_dset.shape[2] != label_dim:
-        #            n_points = pred_dset.shape[2] // label_dim
-        #            pred_dset = pred_dset.reshape(
-        #                pred_dset.shape[0],
-        #                pred_dset.shape[1] * n_points,
-        #                label_dim,
-        #            )
-        #            # add 0-padding if needed
-        #            n_removed = self.shape_test[1] - pred_dset.shape[1]
-        #            if n_removed > 0:
-        #                zero_padding = np.zeros((pred_dset.shape[0], n_removed, pred_dset.shape[2]),
-        #                                        dtype=pred_dset.dtype)
-        #                pred_dset = np.concatenate((pred_dset, zero_padding), axis=1)
-        #        else:
-        #            n_removed = 0  # just to avoid crashing with Unbound Local Error setting attrs for dCNN
-
-        #        if self.overlap:
-        #            pred_dset = test_sequence.ol_helper.overlap_predictions(batch_index, pred_dset)
-
-        #        # prepare h5 dataset and save the predictions to disk
-        #        pred_dset = pred_dset.astype(np.float16)
-        #        if batch_index == 0:
-        #            old_len = 0
-        #            pred_out.create_dataset(dset_name,
-        #                                    data=pred_dset,
-        #                                    maxshape=(None,) + pred_dset.shape[1:],
-        #                                    chunks=(1,) + pred_dset.shape[1:],
-        #                                    dtype='float16',
-        #                                    compression=self.compression,
-        #                                    shuffle=True)
-        #        else:
-        #            old_len = pred_out[dset_name].shape[0]
-        #            pred_out[dset_name].resize(old_len + pred_dset.shape[0], axis=0)
-        #        pred_out[dset_name][old_len:] = pred_dset
-
-        ## add model config and other attributes to predictions
-        #h5_model = h5py.File(self.load_model_path, 'r')
-        #pred_out.attrs['model_config'] = h5_model.attrs['model_config']
-        #pred_out.attrs['n_bases_removed'] = n_removed
-        #pred_out.attrs['test_data_path'] = self.test_data_path
-        #pred_out.attrs['model_path'] = self.load_model_path
-        #pred_out.attrs['timestamp'] = str(datetime.datetime.now())
-        #if hasattr(self, 'loaded_model_hash'):
-        #    pred_out.attrs['model_md5sum'] = self.loaded_model_hash
-        #pred_out.close()
-        #h5_model.close()
-
-    def count_params(self):
-        return sum(p.numel() for p in self.model.parameters())
 
     def _print_model_info(self):
         # todo: add model summary; use lightning as an example (leave out parameter size computation for now)
@@ -1215,6 +873,80 @@ class HelixerModel(nn.Module, ABC):
 #        model = Model(raw_input, output)
 #        return model
 
+    # # check if model timestep width fits the subsequence length (has to be evenly divisible)
+    # # todo: adapt to pytorch's/fabric's ckpt files
+    # with h5py.File(args.model_filepath, 'r') as model:
+    #     # todo, safer way to find this, i.e. add to ckpt model infos
+    #     try:
+    #         timestep_width = model['/model_weights/dense_1/dense_1/bias:0'].shape[0] // 8
+    #     except KeyError:
+    #         try:
+    #             timestep_width = model['/model_weights/dense/dense/bias:0'].shape[0] // 8
+    #         except KeyError:
+    #             print("WARNING could not parse timestep width from model, assuming it is 9")
+    #             timestep_width = 9
+    #     msg = (f'subsequence length (currently {args.subsequence_length}) '
+    #            f'has to be evenly divisible by {timestep_width}')
+    #     assert args.subsequence_length % timestep_width == 0, msg
+
+
+class HelixerTrainer(HelixerBaseModelRunner):
+    def __init__(self, data_dir, save_model_path, epochs, batch_size, val_batch_size,
+                 patience, check_every_nth_batch, optimizer, clip_norm, learning_rate, weight_decay,
+                 class_weights, transition_weights, resume_training, load_model_path, save_every_check,
+                 verbose, debug, fine_tune, pretrained_model_path,
+                 input_coverage, coverage_norm, add_hidden_layer, model_class, **model_kwargs):
+        super().__init__()
+        self.fabric = self.setup_fabric()
+        pass
+
+    def generate_callbacks(self):
+        pass
+
+    def train_epoch(self, batch):
+        pass
+
+    def val_epoch(self, batch):
+        pass
+
+    def train(self, batch):
+        pass
+
+
+class HelixerTester(HelixerBaseModelRunner):
+    def __init__(self, test_data_path, load_model_path, batch_size, overlap, overlap_offset,
+                 overlap_core_length, model_class):
+        super().__init__()
+        self.fabric = self.setup_fabric()
+        pass
+
+    def generate_callbacks(self):
+        pass
+
+    def test_epoch(self, batch):
+        pass
+
+    def test(self, batch):
+        pass
+
+
+class HelixerPredictor(HelixerBaseModelRunner):
+    def __init__(self, input_data_path, load_model_path, batch_size, prediction_output_path, overlap,
+                 overlap_offset, overlap_core_length, model_class):
+        super().__init__()
+        self.fabric = self.setup_fabric()
+        pass
+
+    def generate_callbacks(self):
+        pass
+
+    def predict_epoch(self, batch):
+        pass
+
+    def predict(self, batch):
+        pass
+
+
 if __name__ == '__main__':
-    print(colored("ERROR: 'HelixerModel.py' is not meant to be executed by the user. "
-                  "Please use 'Helixer.py' or 'HybridModel.py'.", 'red'))
+    print(click.secho("ERROR: 'HelixerModel.py' is not meant to be executed by the user. "
+                      "Please use 'Helixer.py' or 'HybridModel.py'.", fg='red', bold=True))
