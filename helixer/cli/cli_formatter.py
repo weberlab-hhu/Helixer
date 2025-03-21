@@ -30,36 +30,45 @@ class HelpGroupOption(click.Option):
 
 
 class ColumnHelpFormatter(click.HelpFormatter):
-    def write_dl(self, rows, col_widths, **kwargs):
+    def write_dl(self, rows, col_widths=None, **kwargs):
         """Overrides click's default method to align 4-column help text dynamically.
             rows: list of help text to write
         """
-        row_width = 100
-        # Determine the max length of every column including spacing before the help message
-        padding = sum(col_widths[:2]) + (2 * 2)  # spacing between all 3 columns
+        # Crucial check for using click.Group, groups don't specify the col_width argument, but
+        # they also are MultiCommands and as such can't use the HelpGroupCommand interface down
+        # below to skip the custom formatter. Group formatting is delegated to each individual
+        # subcommand causing issues since col_width is only defined by the HelpGroupCommand that
+        # can't be used for click groups, so this check prevents the error: "TypeError:
+        # ColumnHelpFormatter.write_dl() missing 1 required positional argument: 'col_widths'"
+        if col_widths:
+            row_width = 100
+            # Determine the max length of every column including spacing before the help message
+            padding = sum(col_widths[:2]) + (2 * 2)  # spacing between all 3 columns
 
-        formatted_rows = []
-        for row in rows:
-            # Adjust each row to have all columns align the same way
-            aligned_row = '  '.join(value.ljust(col_widths[i]) for i, value in enumerate(row))
-            # If the row exceeds the max row length (click's default: 78, default here: 100) wrap the
-            #  help message so it can continue on the next line while still aligning with its column
-            aligned_row = textwrap.wrap(aligned_row,
-                                        width=row_width,
-                                        subsequent_indent=' ' * padding  # align wrapped text under the help message
-                                        )
-            # Append the aligned rows
-            formatted_rows.append(aligned_row[0])
-            formatted_rows.extend(aligned_row[1:])
+            formatted_rows = []
+            for row in rows:
+                # Adjust each row to have all columns align the same way
+                aligned_row = '  '.join(value.ljust(col_widths[i]) for i, value in enumerate(row))
+                # If the row exceeds the max row length (click's default: 78, default here: 100) wrap the
+                #  help message so it can continue on the next line while still aligning with its column
+                aligned_row = textwrap.wrap(aligned_row,
+                                            width=row_width,
+                                            subsequent_indent=' ' * padding  # align wrapped text under the help message
+                                            )
+                # Append the aligned rows
+                formatted_rows.append(aligned_row[0])
+                formatted_rows.extend(aligned_row[1:])
 
-        # Add indent at the start of each row
-        formatted_rows = ['  ' + row for row in formatted_rows]
-        text = '\n'.join(formatted_rows)  # print rows on different lines
-        # Use click's built-in write instead of write_text method to print aligned rows and avoid the
-        #   extra wrapping function in write_text messing up the custom formatting above
-        super().write('-' * row_width + '\n')  # add separator between options header and options list
-        super().write(text)
-        super().write('\n')
+            # Add indent at the start of each row
+            formatted_rows = ['  ' + row for row in formatted_rows]
+            text = '\n'.join(formatted_rows)  # print rows on different lines
+            # Use click's built-in write instead of write_text method to print aligned rows and avoid the
+            #   extra wrapping function in write_text messing up the custom formatting above
+            super().write('-' * row_width + '\n')  # add separator between options header and options list
+            super().write(text)
+            super().write('\n')
+        else:
+            super().write_dl(rows)
 
 
 # WARNING: no custom help message is supposed to end on ']', as this will break the custom formatting options

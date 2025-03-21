@@ -1,183 +1,122 @@
 import click
 import functools
+import inspect
 
 from helixer.cli.cli_callbacks import *
-from helixer.cli.cli_formatter import ColumnHelpFormatter, HelpGroupOption
+from helixer.cli.cli_formatter import *
+from helixer.cli.shared_options import *
+from helixer.prediction.HelixerModel import HelixerTrainer, HelixerTester, HelixerPredictor
 
-click.Context.formatter_class = ColumnHelpFormatter
 
-# todo Helixer.py check_lineage model as callback
 # todo: add more checks to give clearer error messages (i.e. file not found, corrupted zarr etc.)
-# todo: seperate train eval and test into click groups?, at least separate the run logic from the model
-def helixer_base_model_parameters(func):
-    # training params
+@click.group()
+def cli():
+    """Choose to train, test or predict."""
+    pass
+
+
+# Train options
+# ----------------------------------------------------------------
+def train_options(func):
+    # io
     @click.option('-d', '--data-dir',
                   type=click.Path(exists=True),
                   default=None,
                   help='Directory containing training and validation data (.zarr files); '
                        'naming convention: "training_data(...).zarr", "validation_data(...).zarr"',
-                  cls=HelpGroupOption, help_group='Training parameters')
+                  cls=HelpGroupOption, help_group=help_groups.io)
     @click.option('-s', '--save-model-path',
                   type=str,
                   default='./best_helixer_model.ckpt',
                   callback=validate_path_fragment,
                   help='Path to save the model with the best validation genic (CDS, UTR and Intron) F1 to',
-                  cls=HelpGroupOption, help_group='Training parameters')
+                  cls=HelpGroupOption, help_group=help_groups.io)
+    # resources
+    @float_precision_option()
+    @device_option()
+    @num_devices_option()
+    # training
     @click.option('-e', '--epochs',
                   type=click.IntRange(1,),
                   default=10000,
                   help='Number of training runs',
-                  cls=HelpGroupOption, help_group='Training parameters')
-    @click.option('-b', '--batch-size',
+                  cls=HelpGroupOption, help_group=help_groups.train)
+    @batch_size_option('training set batch size', help_groups.train)
+    @click.option('--val-batch-size',
                   type=click.IntRange(1,),
-                  default=8,
-                  help='Batch size for training data',
-                  cls=HelpGroupOption, help_group='Training parameters')
-    # todo: also belongs to test predict parameters right now, will be separated
-    @click.option('--val-test-batch-size',
-                  type=click.IntRange(1,),
-                  default=32,
-                  help='Batch size for validation/test data',
-                  cls=HelpGroupOption, help_group='Training parameters')
+                  default=64,
+                  help='validation set batch size',
+                  cls=HelpGroupOption, help_group=help_groups.train)
     @click.option('--patience',
                   type=click.IntRange(1,),
                   default=3,
                   help='Allowed epochs without the validation genic F1 improving before stopping training',
-                  cls=HelpGroupOption, help_group='Training parameters')
+                  cls=HelpGroupOption, help_group=help_groups.train)
     @click.option('--check-every-nth-batch',
                   type=click.IntRange(1,),
                   default=1_000_000,
                   help='Check validation genic F1 every nth batch (default: check once every epoch)',
-                  cls=HelpGroupOption, help_group='Training parameters')
+                  cls=HelpGroupOption, help_group=help_groups.train)
     @click.option('--optimizer',
                   type=str,
                   default='adamw',
                   help='Optimizer algorithm; options: adam or adamw',
-                  cls=HelpGroupOption, help_group='Training parameters')
+                  cls=HelpGroupOption, help_group=help_groups.train)
     @click.option('--clip-norm',
                   type=float,
                   default=3.0,
                   help='The gradient of each weight is individually clipped so that its norm is '
                        'no higher than this value',
-                  cls=HelpGroupOption, help_group='Training parameters')
+                  cls=HelpGroupOption, help_group=help_groups.train)
     @click.option('--learning-rate',
                   type=click.FloatRange(0, 1),
                   default=3e-4,
                   help='Learning rate for training',
-                  cls=HelpGroupOption, help_group='Training parameters')
+                  cls=HelpGroupOption, help_group=help_groups.train)
     @click.option('--weight-decay',
                   type=click.FloatRange(0, .1),
                   default=3.5e-5,
                   help='Weight decay for training; penalizes complexity and prevents overfitting',
-                  cls=HelpGroupOption, help_group='Training parameters')
+                  cls=HelpGroupOption, help_group=help_groups.train)
     @click.option('--class-weights',
                   type=str,
                   default='None',
                   callback=validate_weights,
                   help='Weighting of the 4 classes: Intergenic, UTR, CDS, Intron (Helixer predictions)',
-                  cls=HelpGroupOption, help_group='Training parameters')
+                  cls=HelpGroupOption, help_group=help_groups.train)
     @click.option('--transition-weights',
                   type=str,
                   default='None',
                   callback=validate_weights,
                   help='Weighting of the 6 transition categories: transcription start site, start codon, '
                        'donor splice site, transcription stop site, stop codon, acceptor splice site',
-                  cls=HelpGroupOption, help_group='Training parameters')
+                  cls=HelpGroupOption, help_group=help_groups.train)
     # todo: check the rest of the code, predict phase is now the only option ever!!!
     @click.option('--resume-training',
                   is_flag=True,
                   help='Add this to resume training (pretrained model checkpoint necessary)',
-                  cls=HelpGroupOption, help_group='Training parameters')
-    # testing / predicting
-    # todo: ckpt format soon
-    @click.option('-l', '--load-model-path',
-                  type=click.Path(exists=True),
-                  default=None,
-                  help='Path to a trained/pretrained model checkpoint (HDF5 format)',
-                  cls=HelpGroupOption, help_group='Testing/prediction parameters')
-    @click.option('-t', '--test-data-path',
-                  type=click.Path(exists=True),
-                  default=None,
-                  help='Path to one test Zarr file.',
-                  cls=HelpGroupOption, help_group='Testing/prediction parameters')
-    @click.option('-p', '--prediction-output-path',
-                  type=str,
-                  default='./predictions.zarr',
-                  callback=combine_callbacks(validate_path_fragment, validate_file_extension),
-                  help='Output path of the Zarr prediction file. (Helixer base-wise predictions)',
-                  cls=HelpGroupOption, help_group='Testing/prediction parameters')
-    @click.option('--compression',
-                  type=str,
-                  default='gzip',
-                  help='Compression used in the predictions Zarr file ("lzf" or "gzip")',
-                  cls=HelpGroupOption, help_group='Testing/prediction parameters')
-    # todo: own group
-    @click.option('--eval',
-                  is_flag=True,
-                  help='Add to run test/validation run instead of predicting',
-                  cls=HelpGroupOption, help_group='Testing/prediction parameters')
-    @click.option('--overlap',
-                  is_flag=True,
-                  help='Add to improve prediction quality at subsequence ends by creating and overlapping '
-                       'sliding-window predictions (with proportional increase in time usage)',
-                  cls=HelpGroupOption, help_group='Testing/prediction parameters')
-    # todo: check this later, needs read in zarr file
-    @click.option('--overlap-offset',
-                  type=click.IntRange(1,),
-                  default=None,
-                  help="Distance to 'step' between predicting subsequences when overlapping "
-                       "(default: subsequence_length/2)",
-                  cls=HelpGroupOption, help_group='Testing/prediction parameters')
-    @click.option('--core-length',
-                  type=click.IntRange(1,),
-                  default=None,
-                  help='Predicted sequences will be cut to this length to increase prediction quality '
-                       'if overlapping is enabled (default: subsequence_length * 3 / 4)',
-                  cls=HelpGroupOption, help_group='Testing/prediction parameters')
-    # resources
-    @click.option('--float-precision',
-                  type=str,
-                  default='float32',
-                  help='Precision of model weights and biases',
-                  cls=HelpGroupOption, help_group='Resource parameters')
-    @click.option('--device',
-                  type=str,
-                  default='gpu',
-                  callback=validate_device,
-                  help='Device to train/test/predict on (options: gpu or cpu)',
-                  cls=HelpGroupOption, help_group='Resource parameters')
-    @click.option('--num-devices',
-                  type=click.IntRange(1,),
-                  default=1,
-                  help='Number of devices to use',
-                  cls=HelpGroupOption, help_group='Resource parameters')
-    @click.option('--workers',
-                  type=click.IntRange(0,),
-                  default=0,
-                  help='Number of threads used to fetch input data for training. Consider '
-                       'setting to match the number of GPUs.',
-                  cls=HelpGroupOption, help_group='Resource parameters')
-    # misc flags
+                  cls=HelpGroupOption, help_group=help_groups.train)
+    @load_model_path_option(help_groups.train)
+    @workers_option('Number of threads used to fetch input data for training. Consider '
+                    'setting to match the number of GPUs.')
+    # misc
     @click.option('--save-every-check',
                   is_flag=True,
                   help='Add to save a model checkpoint every validation genic F1 check (see '
                        '--check-every-nth-batch in training parameters)',
-                  cls=HelpGroupOption, help_group='Miscellaneous parameters')
+                  cls=HelpGroupOption, help_group=help_groups.misc)
     # @click.option('--nni', is_flag=True) todo: think about reintegration later
+    # maybe always be verbose to an extent and if debug is set be MORE verbose
     @click.option('-v', '--verbose',
                   is_flag=True,
                   help='Add to run Helixer in verbosity mode (additional information will be printed)',
-                  cls=HelpGroupOption, help_group='Miscellaneous parameters')
+                  cls=HelpGroupOption, help_group=help_groups.misc)
     @click.option('--debug',
                   is_flag=True,
                   help='Add to run in debug mode; truncates input data to small example (for training: '
                        'just runs a few epochs)',
-                  cls=HelpGroupOption, help_group='Miscellaneous parameters')
-    # fine-tuning
-    # experimental parameters for training (a) final layer(s)
-    # of the model on target species (or other small dataset)
-    # with or without coverage, and
-    # with the rest of the model weights locked to reduce over fitting
+                  cls=HelpGroupOption, help_group=help_groups.misc)
+    # fine tune
     @click.option('--fine-tune',
                   is_flag=True,
                   help='Add/Use with --resume-training to replace and fine tune just the very last layer',
@@ -199,6 +138,58 @@ def helixer_base_model_parameters(func):
                   is_flag=True,
                   help='Adds extra dense layer between concatenating coverage and final output layer',
                   cls=HelpGroupOption, help_group='Fine-tuning parameters')
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper
+
+
+def test_options(func):
+    @click.option('-t', '--test-data-path',
+                  type=click.Path(exists=True), # maybe validate_path_fragment for a folder test in a loop
+                  default=None,
+                  help='Path to one test Zarr file.',
+                  cls=HelpGroupOption, help_group=help_groups.io)
+    @load_model_path_option(help_groups.io)
+    # resources
+    @float_precision_option()
+    @device_option()
+    @num_devices_option()
+    # test
+    @batch_size_option('test batch size', help_groups.test)
+    @overlap_option('Add to improve test metrics quality at subsequence ends by creating and overlapping '
+                    'sliding-window predictions (with proportional increase in time usage)', help_groups.test)
+    @overlap_offset_option(help_groups.test)
+    @overlap_core_length_option(help_groups.test)
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper
+
+
+def predict_options(func):
+    @click.option('-i', '--input-data-path',
+                  type=click.Path(exists=True),
+                  default=None,
+                  help='Path to one Zarr file to predict genes for.',
+                  cls=HelpGroupOption, help_group=help_groups.io)
+    @click.option('-p', '--prediction-output-path',
+                  type=str,
+                  default='./predictions.zarr',
+                  callback=combine_callbacks(validate_path_fragment, validate_file_extension),
+                  help='Output path of the Zarr prediction file. (Helixer base-wise predictions)',
+                  cls=HelpGroupOption, help_group=help_groups.io)
+    @load_model_path_option(help_groups.io)
+    # resources
+    @float_precision_option()
+    @device_option()
+    @num_devices_option()
+    # prediction
+    @batch_size_option('prediction batch size', help_groups.pred)
+    @overlap_option('Add to improve prediction quality at subsequence ends by creating and overlapping '
+                    'sliding-window predictions (with proportional increase in time usage)', help_groups.pred)
+    @overlap_offset_option(help_groups.pred)
+    @overlap_core_length_option(help_groups.pred)
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         return func(*args, **kwargs)

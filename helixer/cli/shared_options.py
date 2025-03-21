@@ -54,7 +54,8 @@ def float_precision_option():
 
 def device_option():
     return click.option('--device',
-                        type=str,
+                        type=click.Choice(['gpu', 'cpu']),
+                        show_choices=True,
                         default='gpu',
                         callback=validate_device,
                         help='Device to train/test/predict on (options: gpu or cpu)',
@@ -109,7 +110,7 @@ def load_model_path_option(help_group):
                         cls=HelpGroupOption, help_group=help_group)  # group depends on context (train/test/predict)
 
 
-def batch_size(help_text, help_group):
+def batch_size_option(help_text, help_group):
     return click.option('--batch-size',
                         type=click.IntRange(1,),
                         default=32,
@@ -117,23 +118,30 @@ def batch_size(help_text, help_group):
                         cls=HelpGroupOption, help_group=help_group)  # group depends on context (train/test/predict)
 
 
-def overlap_offset_option():
+def overlap_option(help_text, help_group):
+    return click.option('--overlap',
+                        is_flag=True,
+                        help=help_text,
+                        cls=HelpGroupOption, help_group=help_group)
+
+
+def overlap_offset_option(help_group):
     return click.option('--overlap-offset',
                         type=click.IntRange(1,),
                         help='Offset of the overlap processing. Smaller values may lead to better '
                              'predictions but will take longer. The subsequence_length should be evenly '
                              'divisible by this value. (Default is subsequence_length / 2).',
-                        cls=HelpGroupOption, help_group=help_groups.pred)
+                        cls=HelpGroupOption, help_group=help_group)
 
 
-def overlap_core_length_option():
+def overlap_core_length_option(help_group):
     return click.option('--overlap-core-length',
                         type=click.IntRange(1,),
                         help='Predicted sequences will be cut to this length to increase prediction '
                              'quality if overlapping is enabled. Smaller values may lead to better '
                              'predictions but will take longer. Has to be smaller than subsequence_length '
                              '(Default is subsequence_length * 3 / 4)',
-                        cls=HelpGroupOption, help_group=help_groups.pred)
+                        cls=HelpGroupOption, help_group=help_group)
 
 
 # Misc options options

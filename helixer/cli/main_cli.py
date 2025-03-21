@@ -11,6 +11,7 @@ help_groups = HelpGroups()
 
 # todo: print out versions of modules used like we already do, maybe still the commit unless we install through pipy?
 #  also MAYBE the command that was used, but only maybe
+# todo Helixer.py check_lineage model as callback
 def helixer_main_options(func):
     # IO options
     @fasta_path_option()  # brackets need to be there
