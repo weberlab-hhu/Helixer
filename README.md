@@ -88,13 +88,17 @@ The best models are:
 The best models for all lineages are best downloaded by running:
 
 ```bash
-# the models will be at /home/<user>/.local/share/Helixer/models
+# by default the models will be at /home/<user>/.local/share/Helixer/models
 scripts/fetch_helixer_models.py
 ```
 
 If desired, the `--lineage` (`land_plant`, `vertebrate`, `invertebrate`,
 and `fungi`) can be specified, or `--all` released models
-can be fetched. 
+can be fetched. If the models should be downloaded to another path
+you can specify `fetch_helixer_models.py --custom-path <path_to_download_models_to>`.
+If you want `Helixer.py` to use this custom path to check for new releases/lineage
+models, please provide `--downloaded-model-path <path_to_download_models_to>` when
+running `Helixer.py`. Otherwise, the default folder will be checked.
 
 Downloaded models (and any new releases) can also be found at
 https://zenodo.org/records/10836346, but we recommend simply using
