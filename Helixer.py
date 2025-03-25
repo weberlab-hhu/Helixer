@@ -31,9 +31,9 @@ class HelixerParameterParser(ParameterParser):
                                           'lineage dependent from 21384 to 213840).')
         self.data_group.add_argument('--write-by', type=int,
                                      help='convert genomic sequence in super-chunks to numerical matrices with this '
-                                          'many base pairs; for lower memory consumption, which will be rounded to be '
-                                          'divisible by subsequence-length; ; needs to be equal to or larger than '
-                                          'subsequence length, for lower memory consumption, consider setting a '
+                                          'many base pairs, which will be rounded to be divisible by '
+                                          'subsequence-length; needs to be equal to or larger than '
+                                          'subsequence length; for lower memory consumption, consider setting a '
                                           'lower number')
         self.data_group.add_argument('--lineage', type=str, default=None,
                                      choices=['vertebrate', 'land_plant', 'fungi', 'invertebrate'],
