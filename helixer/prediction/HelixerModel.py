@@ -88,6 +88,7 @@ class ConfusionMatrixTrain(Callback):
         else:
             self.checks_without_improvement += 1
             if self.checks_without_improvement >= self.patience:
+                print(f'stopping training, patience of {self.patience} without improvement exhausted')
                 self.model.stop_training = True
         if batch is None:
             b_str = 'epoch_end'
@@ -613,6 +614,7 @@ class HelixerModel(ABC):
 
         if not self.testing:
             assert self.data_dir is not None, '--data-dir required for training'
+            assert os.path.exists(self.data_dir), f'--data-dir {self.data_dir} does not exist'
 
         assert not (not self.testing and self.test_data)
         assert not (self.resume_training and (not self.load_model_path or not self.data_dir))
