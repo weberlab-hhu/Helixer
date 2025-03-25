@@ -10,7 +10,7 @@ import subprocess
 from termcolor import colored
 
 from helixer.core.scripts import ParameterParser
-from helixer.core.data import prioritized_models, report_if_current_not_best, identify_current, MODEL_PATH
+from helixer.core.data import prioritized_models, report_if_current_not_best, identify_current, set_model_path
 from helixer.prediction.HybridModel import HybridModel
 from helixer.export.exporter import HelixerFastaToH5Controller
 
@@ -42,6 +42,10 @@ class HelixerParameterParser(ParameterParser):
                                      help='set this to override the default model for any given '
                                           'lineage and instead take a specific model',
                                      type=str)
+        self.data_group.add_argument('--downloaded-model-path', type=str,
+                                     help='set to override the default download directory (<users_home_directory>/'
+                                          '.local/share/Helixer/models) Helixer is checking to see if you use the '
+                                          'newest model; only works with --lineage')
         self.pred_group = self.parser.add_argument_group("Prediction parameters")
         self.pred_group.add_argument('--batch-size', type=int,
                                      help='The batch size for the raw predictions in TensorFlow. Should be as large as '
@@ -84,6 +88,7 @@ class HelixerParameterParser(ParameterParser):
             'write_by': 20_000_000,
             'lineage': None,
             'model_filepath': None,
+            'downloaded_model_path': None,
             'batch_size': 32,
             'no_overlap': False,
             'overlap_offset': None,
@@ -96,15 +101,15 @@ class HelixerParameterParser(ParameterParser):
         self.defaults = {**self.defaults, **helixer_defaults}
 
     @staticmethod
-    def check_for_lineage_model(lineage):
+    def check_for_lineage_model(lineage, downloaded_model_path):
         # which models are available?
-        priorty_ms = prioritized_models(lineage)
+        model_path = set_model_path(downloaded_model_path)
+        priorty_ms = prioritized_models(lineage, model_path)
         # which model is already downloaded / will be used?
-        current_model = identify_current(lineage, priorty_ms)
+        current_model = identify_current(lineage, priorty_ms, model_path)
         # provide feedback if not up to date, error out if missing
         report_if_current_not_best(priorty_ms, current_model)
-
-        return os.path.join(MODEL_PATH, lineage, current_model)
+        return os.path.join(model_path, lineage, current_model)
 
     def check_args(self, args):
 
@@ -119,7 +124,7 @@ class HelixerParameterParser(ParameterParser):
         else:
             assert args.lineage is not None, ("Either --lineage or --model-filepath is required. Run `Helixer.py "
                                               "--help` to see lineage options.")
-            model_filepath = self.check_for_lineage_model(args.lineage)
+            model_filepath = self.check_for_lineage_model(args.lineage, args.downloaded_model_path)
             if args.subsequence_length is None:
                 key = {'vertebrate': 213840, 'land_plant': 64152, 'fungi': 21384, 'invertebrate': 213840}
                 args.subsequence_length = key[args.lineage]
