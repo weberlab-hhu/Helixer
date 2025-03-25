@@ -122,6 +122,7 @@ command line.
 | Parameter                    | Default | Explanation                                                                                                                             |
 |:-----------------------------|:--------|:----------------------------------------------------------------------------------------------------------------------------------------|
 | --fine-tune                  | False   | Add/Use with --resume-training to replace and fine tune just the very last layer                                                        |
+| --fine-tune-resume           | False   | Add/Use with --resume-training to resume your fine tuning of the very last layer                                                        |
 | --pretrained-model-path      | /       | Required when predicting with a model fine tuned with coverage                                                                          |
 | --input-coverage             | False   | Add to use "evaluation/rnaseq_(spliced_)coverage" from HDF5 training/validation files as additional input for a late layer of the model |
 | --coverage-norm              | None    | None, linear or log (recommended); how coverage will be normalized before inputting                                                     |

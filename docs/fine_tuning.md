@@ -344,6 +344,15 @@ HybridModel.py --batch-size 50 --val-test-batch-size 100 -e 100 \
 | -s/--save-model-path  | ./best_model.h5 | Path to save the best model (model with the best validation genic F1 (the F1 for the classes CDS, UTR and Intron)) to.                                                                                                       |
 | -v/--verbose          | False           | Add to run HybridModel.py in verbosity mode (additional information will be printed)                                                                                                                                         |
 
+> **RESUMING TRAINING**   
+> Simply replace two arguments:
+> - replace the previous pretrained Helixer model with your fine-tuned model,
+> i.e. `--load-model-path <your_fine_tuned_model>`
+> - replace `--fine-tune` with `--fine-tune-resume`   
+> 
+> **Hint**: if you want to use the same path to save your fine-tuned model to as before,
+> it might be a good idea to back up your previous model checkpoint(s) somewhere
+
 ## 3. Train new final layer(s) with extrinsic information
 ### 3.1 Info
 Extrinsic information that could be used to help gene calling
