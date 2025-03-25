@@ -550,6 +550,8 @@ class HelixerModel(ABC):
                                                'with the rest of the model weights locked to reduce over fitting')
         tuner.add_argument('--fine-tune', action='store_true',
                            help='use with --resume-training to replace and fine tune just the very last layer')
+        tuner.add_argument('--fine-tune-resume', action='store_true',
+                           help='use with --resume-training to resume your fine_tuning of the very last layer')
         tuner.add_argument('--pretrained-model-path',
                            help='required when predicting with a model fine tuned with coverage; hopefully temporary')
         tuner.add_argument('--input-coverage',
@@ -1042,24 +1044,40 @@ class HelixerModel(ABC):
 
     def create_train_model(self):
         if self.resume_training:
-            if not self.fine_tune:
+            if not self.fine_tune and not self.fine_tune_resume:
                 model = load_model(self.load_model_path)
             else:
-                oldmodel = load_model(self.load_model_path)
+                # compile=False to prevent loading optimizer state prematurely
+                oldmodel = load_model(self.load_model_path, compile=False)
                 assert oldmodel.input.shape[2] == 4, \
                     f"input shape of trained model != 4 ({oldmodel.input.shape[2]}); " \
                     f"fine tuning is only supported on models trained without coverage"
-                # freeze weights and replace everything from the dense layer
                 dense_at = [l.name for l in oldmodel.layers].index('dense')
-                for layer in oldmodel.layers:
-                    layer.trainable = False
-                # the following assumes the base-model is trained without coverage
-                if not self.input_coverage:
-                    inp = oldmodel.input
-                    output = self.model_hat((oldmodel.layers[dense_at - 1].output, None))
-                    model = Model(inp, output)
+                if self.fine_tune_resume:
+                    # freeze all layers except the dense and model_hat layers that are trainable during fine-tuning
+                    # since he already fine-tuned layers shouldn't get removed when resuming
+                    for i, layer in enumerate(oldmodel.layers):
+                        if i >= dense_at:
+                            layer.trainable = True
+                        else:
+                            layer.trainable = False
+                    # the following assumes the base-model is trained without coverage
+                    if not self.input_coverage:
+                        model = oldmodel
+                    else:
+                        # still not working with resuming
+                        model = self.insert_coverage_before_hat(oldmodel, dense_at)
                 else:
-                    model = self.insert_coverage_before_hat(oldmodel, dense_at)
+                    # freeze weights and replace everything from the dense layer
+                    for layer in oldmodel.layers:
+                        layer.trainable = False
+                    # the following assumes the base-model is trained without coverage
+                    if not self.input_coverage:
+                        inp = oldmodel.input
+                        output = self.model_hat((oldmodel.layers[dense_at - 1].output, None))
+                        model = Model(inp, output)
+                    else:
+                        model = self.insert_coverage_before_hat(oldmodel, dense_at)
 
         else:
             model = self.model()
