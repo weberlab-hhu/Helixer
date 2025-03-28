@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "helixer"
-version = "0.3.4"
+version = "0.3.5"
 description = "Structural genome annotation utilizing Deep Neural Networks and a Hidden Markov Model"
 readme = "README.md"
 requires-python = ">=3.10.12"
@@ -43,6 +43,9 @@ authors = [
 [project.urls]
 "Homepage" = "https://github.com/weberlab-hhu/Helixer"
 "Documentation" = "https://github.com/weberlab-hhu/Helixer"
+
+[project.license]
+text = "GNU General Public License v3 (GPLv3)"
 
 [tool.setuptools]
 packages = [

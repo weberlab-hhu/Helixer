@@ -201,6 +201,7 @@ class ConfusionMatrixGenic(ConfusionMatrix):
 
         return scores
 
+
 class ConfusionMatrixPhase(ConfusionMatrix):
     """Extension of ConfusionMatrix to differentiate phase shift from CDS vs not mistake"""
     def __init__(self, skip_uncertainty=True):
@@ -245,8 +246,8 @@ class ConfusionMatrixPhase(ConfusionMatrix):
 
         return scores
 
-class Metrics:
 
+class Metrics:
     def __init__(self, generator, print_to_stdout=True, skip_uncertainty=True):
         np.set_printoptions(suppress=True)  # do not use scientific notation for the print out
         self.generator = generator

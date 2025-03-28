@@ -13,11 +13,18 @@ MODEL_LIST_URL = 'https://raw.githubusercontent.com/weberlab-hhu/Helixer/main/re
 MODEL_LIST = 'model_list.csv'
 
 
-def fetch_and_organize_models(priority_models):
+def set_model_path(custom_path):
+    if custom_path is not None:
+        assert os.path.exists(custom_path), \
+            f"the custom directory {custom_path} for downloading Helixer's models does not exist"
+        return custom_path
+    return MODEL_PATH
+
+
+def fetch_and_organize_models(priority_models, model_path):
     """downloads current best models to Helixer's user data directory"""
 
     # main model directory
-    model_path = MODEL_PATH
     if not os.path.exists(model_path):
         os.makedirs(model_path)
 
@@ -41,7 +48,7 @@ def fetch_and_organize_models(priority_models):
         f.write(r.content)
 
 
-def prioritized_models(lineage):
+def prioritized_models(lineage, model_path):
     """get priority sorted list of available models for lineage"""
     model_list_url = MODEL_LIST_URL
 
@@ -50,7 +57,7 @@ def prioritized_models(lineage):
             ml = response.content
             ml = ml.decode().split('\n')
     except requests.exceptions.RequestException as e:
-        existing_list = os.path.join(MODEL_PATH, MODEL_LIST)
+        existing_list = os.path.join(model_path, MODEL_LIST)
         print(f'encountered error: \n{e};\n\ncontinuing with existing list: {existing_list}')
         with open(existing_list) as f:
             ml = f.readlines()
@@ -74,10 +81,10 @@ def prioritized_models(lineage):
     return sorted(models, key=lambda m: m['priority'])
 
 
-def identify_current(lineage, prioritized):
-    """identify which pre-downloaded model has highest priority / should be used"""
+def identify_current(lineage, prioritized, model_path):
+    """identify which pre-downloaded model has the highest priority / should be used"""
     prioritized_dict = {x['model_file_name']: x for x in prioritized}
-    current_models = os.listdir(os.path.join(MODEL_PATH, lineage))
+    current_models = os.listdir(os.path.join(model_path, lineage))
     recognized, unrecognized = [], []
     known = set(x['model_file_name'] for x in prioritized)
     for model in current_models:
@@ -85,13 +92,14 @@ def identify_current(lineage, prioritized):
             recognized.append(model)
         else:
             unrecognized.append(model)
-    print(f'Ignoring the following unexpected models in {MODEL_PATH}:'
-          f'{unrecognized}.\nYou can set --model-filepath in Helixer.py if you wish to use these.', file=sys.stderr)
+    if len(unrecognized) != 0:
+        print(f'Ignoring the following unexpected models in {model_path}:'
+              f'{unrecognized}.\nYou can set --model-filepath in Helixer.py if you wish to use these.', file=sys.stderr)
     if recognized:
         recognized = sorted(recognized, key=lambda x: prioritized_dict[x]['priority'])
         return recognized[0]
     else:
-        print(f'no models found in {MODEL_PATH}', file=sys.stderr)
+        print(f'no models found in {model_path}', file=sys.stderr)
         return None
 
 

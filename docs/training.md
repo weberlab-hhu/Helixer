@@ -132,6 +132,11 @@ via HelixerPost. For a detailed explanation of all possible parameters see the
 HybridModel.py --data-dir example/train/ --save-model-path example/best_helixer_model.h5 \
   --epochs 5 --predict-phase
 ```
+> **Hint**: Multi-GPU training works by using all GPUs available on your machine. To restrict
+> Helixer in training (and eval) mode to only use one GPU, you can provide the ID of the GPU that
+> should be used like so `--gpu-id <ID>` (example: `--gpu-id 0`). If you are using a job scheduler
+> like Sun Grid Engine or PBSPro, the scheduling system will handle how many GPUs Helixer is
+> able to use.
 
 The rest of this example will continue with the model example/best_helixer_model.h5 produced above. 
 

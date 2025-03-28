@@ -88,6 +88,7 @@ class ConfusionMatrixTrain(Callback):
         else:
             self.checks_without_improvement += 1
             if self.checks_without_improvement >= self.patience:
+                print(f'stopping training, patience of {self.patience} without improvement exhausted')
                 self.model.stop_training = True
         if batch is None:
             b_str = 'epoch_end'
@@ -549,6 +550,8 @@ class HelixerModel(ABC):
                                                'with the rest of the model weights locked to reduce over fitting')
         tuner.add_argument('--fine-tune', action='store_true',
                            help='use with --resume-training to replace and fine tune just the very last layer')
+        tuner.add_argument('--fine-tune-resume', action='store_true',
+                           help='use with --resume-training to resume your fine tuning of the very last layer')
         tuner.add_argument('--pretrained-model-path',
                            help='required when predicting with a model fine tuned with coverage; hopefully temporary')
         tuner.add_argument('--input-coverage',
@@ -613,6 +616,7 @@ class HelixerModel(ABC):
 
         if not self.testing:
             assert self.data_dir is not None, '--data-dir required for training'
+            assert os.path.exists(self.data_dir), f'--data-dir {self.data_dir} does not exist'
 
         assert not (not self.testing and self.test_data)
         assert not (self.resume_training and (not self.load_model_path or not self.data_dir))
@@ -986,37 +990,21 @@ class HelixerModel(ABC):
 
         # we're training, not eval nor predict
         if not self.testing:
-            if self.resume_training:
-                if not self.fine_tune:
-                    model = load_model(self.load_model_path)
-                else:
-                    oldmodel = load_model(self.load_model_path)
-                    assert oldmodel.input.shape[2] == 4, \
-                        f"input shape of trained model != 4 ({oldmodel.input.shape[2]}); " \
-                        f"fine tuning is only supported on models trained without coverage"
-                    # freeze weights and replace everything from the dense layer
-                    dense_at = [l.name for l in oldmodel.layers].index('dense')
-                    for layer in oldmodel.layers:
-                        layer.trainable = False
-                    # the following assumes the base-model is trained without coverage
-                    if not self.input_coverage:
-                        inp = oldmodel.input
-                        output = self.model_hat((oldmodel.layers[dense_at - 1].output, None))
-                        model = Model(inp, output)
-                    else:
-                        model = self.insert_coverage_before_hat(oldmodel, dense_at)
-
+            strategy = tf.distribute.MirroredStrategy(
+                cross_device_ops=tf.distribute.ReductionToOneDevice(reduce_to_device="gpu:0"))
+            print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
+            # SunGridEngine doesn't set visible devices properly sometimes, so one should use
+            # --gpu-id <id> when using only one GPU to train
+            if strategy.num_replicas_in_sync > 1:
+                with strategy.scope():
+                    model = self.create_train_model()
+                    self.set_optimizer()
+                    self.compile_model(model)
             else:
-                model = self.model()
+                model = self.create_train_model()
+                self.set_optimizer()
+                self.compile_model(model)
             self._print_model_info(model)
-
-            if self.optimizer.lower() == 'adam':
-                self.optimizer = optimizers.Adam(learning_rate=self.learning_rate, clipnorm=self.clip_norm)
-            elif self.optimizer.lower() == 'adamw':
-                self.optimizer = AdamW(learning_rate=self.learning_rate, clipnorm=self.clip_norm,
-                                       weight_decay=self.weight_decay)
-
-            self.compile_model(model)
 
             train_generator = self.gen_training_data()
             model.fit(train_generator,
@@ -1054,6 +1042,55 @@ class HelixerModel(ABC):
             for h5_test in self.h5_tests:
                 h5_test.close()
 
+    def create_train_model(self):
+        if self.resume_training:
+            if not self.fine_tune and not self.fine_tune_resume:
+                model = load_model(self.load_model_path)
+            else:
+                # compile=False to prevent loading optimizer state prematurely
+                oldmodel = load_model(self.load_model_path, compile=False)
+                dense_at = [l.name for l in oldmodel.layers].index('dense')
+                if self.fine_tune_resume:
+                    if not self.input_coverage:
+                        assert oldmodel.input.shape[2] == 4, \
+                            f"input shape of trained model != 4 ({oldmodel.input.shape[2]}); " \
+                            f"resuming fine tuning with a model trained with coverage is only possible " \
+                            f"when --input-coverage is set"
+                    # freeze all layers except the dense and model_hat layers that are trainable during fine-tuning
+                    # since he already fine-tuned layers shouldn't get removed when resuming
+                    for i, layer in enumerate(oldmodel.layers):
+                        if i >= dense_at:
+                            layer.trainable = True
+                        else:
+                            layer.trainable = False
+                    # works for models with and without coverage
+                    model = oldmodel
+                else:
+                    assert oldmodel.input.shape[2] == 4, \
+                        f"input shape of trained model != 4 ({oldmodel.input.shape[2]}); " \
+                        f"fine tuning from scratch is only supported on models trained without coverage"
+                    # freeze weights and replace everything from the dense layer
+                    for layer in oldmodel.layers:
+                        layer.trainable = False
+                    # the following assumes the base-model is trained without coverage
+                    if not self.input_coverage:
+                        inp = oldmodel.input
+                        output = self.model_hat((oldmodel.layers[dense_at - 1].output, None))
+                        model = Model(inp, output)
+                    else:
+                        model = self.insert_coverage_before_hat(oldmodel, dense_at)
+
+        else:
+            model = self.model()
+        return model
+
+    def set_optimizer(self):
+        if self.optimizer.lower() == 'adam':
+            self.optimizer = optimizers.Adam(learning_rate=self.learning_rate, clipnorm=self.clip_norm)
+        elif self.optimizer.lower() == 'adamw':
+            self.optimizer = AdamW(learning_rate=self.learning_rate, clipnorm=self.clip_norm,
+                                   weight_decay=self.weight_decay)
+
     def insert_coverage_before_hat(self, oldmodel, dense_at):
         """splits input in half, feeds CATG to the main model, and coverage in before tuning layers"""
         # hacking RNAseq coverage in.
@@ -1069,6 +1106,7 @@ class HelixerModel(ABC):
 
         model = Model(raw_input, output)
         return model
+
 
 if __name__ == '__main__':
     print(colored("ERROR: 'HelixerModel.py' is not meant to be executed by the user. "
