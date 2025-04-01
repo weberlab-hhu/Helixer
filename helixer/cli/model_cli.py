@@ -1,11 +1,11 @@
 import click
 import functools
-import inspect
 
 from helixer.cli.cli_callbacks import *
 from helixer.cli.cli_formatter import *
 from helixer.cli.shared_options import *
-from helixer.prediction.HelixerModel import HelixerTrainer, HelixerTester, HelixerPredictor
+
+help_groups = HelpGroups()  # not necessary is in shared options like everything else
 
 
 # todo: add more checks to give clearer error messages (i.e. file not found, corrupted zarr etc.)
@@ -35,6 +35,12 @@ def train_options(func):
     @float_precision_option()
     @device_option()
     @num_devices_option()
+    @click.option('--num-workers',
+                  type=click.IntRange(1,),
+                  default=0,
+                  help='Number of subprocesses to use for data loading (number of CPU cores), '
+                       '0 means data is loaded on the main process',
+                  cls=HelpGroupOption, help_group=help_groups.resource)
     # training
     @click.option('-e', '--epochs',
                   type=click.IntRange(1,),
@@ -47,6 +53,11 @@ def train_options(func):
                   default=64,
                   help='validation set batch size',
                   cls=HelpGroupOption, help_group=help_groups.train)
+    @click.option('--seed',
+                  type=int,
+                  default=None,
+                  help='Random seed for training reproducibility',
+                  cls=HelpGroupOption, help_group=help_groups.train)
     @click.option('--patience',
                   type=click.IntRange(1,),
                   default=3,
@@ -54,8 +65,8 @@ def train_options(func):
                   cls=HelpGroupOption, help_group=help_groups.train)
     @click.option('--check-every-nth-batch',
                   type=click.IntRange(1,),
-                  default=1_000_000,
-                  help='Check validation genic F1 every nth batch (default: check once every epoch)',
+                  default=None,
+                  help='Check validation genic F1 every nth batch (if not set: check once after every epoch)',
                   cls=HelpGroupOption, help_group=help_groups.train)
     @click.option('--optimizer',
                   type=str,
@@ -146,7 +157,7 @@ def train_options(func):
 
 def test_options(func):
     @click.option('-t', '--test-data-path',
-                  type=click.Path(exists=True), # maybe validate_path_fragment for a folder test in a loop
+                  type=click.Path(exists=True),  # maybe validate_path_fragment for a folder test in a loop
                   default=None,
                   help='Path to one test Zarr file.',
                   cls=HelpGroupOption, help_group=help_groups.io)
