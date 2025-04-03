@@ -75,7 +75,7 @@ class ConfusionMatrixTrain(Callback):
         return model
 
     def check_in(self, batch=None):
-        _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, self.model, calc_H=self.calc_H)
+        _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, self.model.compiled_loss, self.model, calc_H=self.calc_H)
         if self.report_to_nni:
             nni.report_intermediate_result(val_genic_f1)
         if val_genic_f1 > self.best_val_genic_f1:
@@ -105,12 +105,12 @@ class ConfusionMatrixTrain(Callback):
             best_model = load_model(self.save_model_path)
             # double check that we loaded the correct model, can be remove if confirmed this works
             print('\nValidation set again:')
-            _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, best_model, print_to_stdout=True,
+            _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, self.model.compiled_loss, best_model, print_to_stdout=True,
                                                           calc_H=self.calc_H)
             assert val_genic_f1 == self.best_val_genic_f1
 
             training_species = self.train_generator.h5_file.attrs['genomes']
-            median_f1 = HelixerModel.run_large_eval(self.large_eval_folder, best_model, self.val_generator, training_species)
+            median_f1 = HelixerModel.run_large_eval(self.large_eval_folder, best_model.compiled_loss, best_model, self.val_generator, training_species)
 
             if self.report_to_nni:
                 nni.report_final_result(median_f1)
@@ -673,9 +673,9 @@ class HelixerModel(ABC):
                            shuffle=False)
 
     @staticmethod
-    def run_metrics(generator, model, print_to_stdout=True, calc_H=False):
+    def run_metrics(generator, loss, model, print_to_stdout=True, calc_H=False):
         start = time.time()
-        metrics_calculator = Metrics(generator, print_to_stdout=print_to_stdout,
+        metrics_calculator = Metrics(generator, loss, print_to_stdout=print_to_stdout,
                                      skip_uncertainty=not calc_H)
         metrics = metrics_calculator.calculate_metrics(model)
         genic_metrics = metrics['genic_base_wise']['genic']
@@ -685,7 +685,7 @@ class HelixerModel(ABC):
         return genic_metrics['precision'], genic_metrics['recall'], genic_metrics['f1']
 
     @staticmethod
-    def run_large_eval(folder, model, generator, training_species, print_to_stdout=False, calc_H=False):
+    def run_large_eval(folder, loss, model, generator, training_species, print_to_stdout=False, calc_H=False):
         def print_table(results, table_name, training_species):
             table = [['Name', 'Precision', 'Recall', 'F1-Score']]
             for name, values in results:
@@ -712,7 +712,7 @@ class HelixerModel(ABC):
             GenCls = generator.__class__
             gen = GenCls(model=generator.model, h5_file=h5_eval, mode='val',
                          batch_size=adjusted_batch_size, shuffle=False)
-            perf_one_species = HelixerModel.run_metrics(gen, model, print_to_stdout=print_to_stdout, calc_H=calc_H)
+            perf_one_species = HelixerModel.run_metrics(gen, loss, model, print_to_stdout=print_to_stdout, calc_H=calc_H)
             results.append([species_name, perf_one_species])
         # print results in tables sorted alphabetically and by f1
         results_by_name = sorted(results, key=lambda r: r[0])
@@ -1028,12 +1028,12 @@ class HelixerModel(ABC):
             self._print_model_info(model)
 
             if self.eval:
-                test_generator = self.gen_test_data()
-                _, _, _ = HelixerModel.run_metrics(test_generator, model, calc_H=self.calculate_uncertainty)
+                test_generator = self.gen_test_data(model)
+                _, _, _ = HelixerModel.run_metrics(test_generator, model.compiled_loss, model, calc_H=self.calculate_uncertainty)
                 if self.large_eval_folder:
                     assert self.data_dir != '', 'need training data of the model for training genome names'
                     training_species = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r').attrs['genomes']
-                    _ = HelixerModel.run_large_eval(self.large_eval_folder, model, test_generator, training_species,
+                    _ = HelixerModel.run_large_eval(self.large_eval_folder, model.compiled_loss, model, test_generator, training_species,
                                                     print_to_stdout=True, calc_H=self.calculate_uncertainty)
             else:
                 if os.path.isfile(self.prediction_output_path):

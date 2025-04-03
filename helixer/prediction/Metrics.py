@@ -1,6 +1,7 @@
 import sys
 
 import numpy as np
+import tensorflow as tf
 import os
 import csv
 from collections import defaultdict
@@ -40,7 +41,7 @@ class ConfusionMatrix:
         if y_pred.size > 0:
             y_pred = ConfusionMatrix._argmax_y(y_pred)
             y_true = ConfusionMatrix._argmax_y(y_true)
-            # taken from here, without the boiler plate:
+            # taken from here, without the boilerplate:
             # https://github.com/scikit-learn/scikit-learn/blob/
             # 42aff4e2edd8e8887478f6ff1628f27de97be6a3/sklearn/metrics/_classification.py#L342
             cm_batch = coo_matrix((np.ones(y_true.shape[0], dtype=np.int8), (y_true, y_pred)),
@@ -205,7 +206,7 @@ class ConfusionMatrixGenic(ConfusionMatrix):
 class ConfusionMatrixPhase(ConfusionMatrix):
     """Extension of ConfusionMatrix to differentiate phase shift from CDS vs not mistake"""
     def __init__(self, skip_uncertainty=True):
-        super().__init__(col_names = ["no_phase", "phase_0", "phase_1", "phase_2"],
+        super().__init__(col_names=["no_phase", "phase_0", "phase_1", "phase_2"],
                          skip_uncertainty=skip_uncertainty)
 
     def _get_scores(self):
@@ -248,14 +249,15 @@ class ConfusionMatrixPhase(ConfusionMatrix):
 
 
 class Metrics:
-    def __init__(self, generator, print_to_stdout=True, skip_uncertainty=True):
-        np.set_printoptions(suppress=True)  # do not use scientific notation for the print out
+    def __init__(self, generator, loss, print_to_stdout=True, skip_uncertainty=True):
+        np.set_printoptions(suppress=True)  # do not use scientific notation for the print-out
         self.generator = generator
         self.print_to_stdout = print_to_stdout
         self.skip_uncertainty = skip_uncertainty
         self.cm_genic = ConfusionMatrixGenic(skip_uncertainty=self.skip_uncertainty)
         self.cm_phase = ConfusionMatrix(['no_phase', 'phase_0', 'phase_1', 'phase_2'],
                                         skip_uncertainty=self.skip_uncertainty)
+        self.compiled_loss = loss
 
     def _overlap_all_data(self, batch_idx, y_true, y_pred, sw):
         assert len(y_pred.shape) == 4, "this reshape assumes shape is " \
@@ -271,6 +273,7 @@ class Metrics:
         return y_true, y_pred, sw
 
     def calculate_metrics(self, model):
+        losses = {'genic_losses': [], 'phase_losses': []}
         for batch_idx in range(len(self.generator)):
             print(batch_idx, '/', len(self.generator) - 1, end="\r")
 
@@ -301,12 +304,34 @@ class Metrics:
                 data['phase_base_wise'] = [self.cm_phase, (y_true_phase, y_pred_phase)]
 
             all_scores = {}
-            for _, (cm, (y_true, y_pred)) in data.items():
+            for key, (cm, (y_true, y_pred)) in data.items():
+                # steps first through genic_base_wise and then if it exists, phase_base_wise, then again genic etc.
                 sw_copy = sw.copy()
-                if self.generator.overlap:
+                if self.generator.overlap:  # this may help, how to integrate?? move loss comp to here??
                     y_true, y_pred, sw_copy = self._overlap_all_data(batch_idx, y_true, y_pred, sw_copy)
-                cm.count_and_calculate_one_batch(y_true, y_pred, sw_copy)
+                if key == 'genic_base_wise':
+                    # here: just genic, adapt message instead, call it val_test_loss
+                    genic_loss = self.compiled_loss._losses[0](tf.convert_to_tensor(y_true),
+                                                               tf.convert_to_tensor(y_pred)).numpy()
+                    losses['genic_losses'].append(genic_loss)
+                else:
+                    phase_loss = self.compiled_loss._losses[1](tf.convert_to_tensor(y_true),
+                                                               tf.convert_to_tensor(y_pred)).numpy()
+                    losses['phase_losses'].append(phase_loss)
 
+                cm.count_and_calculate_one_batch(y_true, y_pred, sw_copy)
+        # print losses
+        if len(losses['phase_losses']) != 0:
+            genic_loss = np.mean(losses['genic_losses'])
+            phase_loss = np.mean(losses['phase_losses'])
+            total_loss = np.mean([self.compiled_loss._loss_weights[0] * genic_loss +
+                                  self.compiled_loss._loss_weights[1] * phase_loss
+                                  for genic_loss, phase_loss in zip(losses['genic_losses'], losses['phase_losses'])])
+            print(f'val_test_loss: {total_loss:.4f}, val_test_genic_loss: {genic_loss:.4f}, '
+                  f'val_test_phase_loss: {phase_loss:.4f}')
+        else:
+            genic_loss = np.mean(losses['genic_losses'])
+            print(f'val_test_loss: {genic_loss:.4f}')
         # data contains cms + metric
         for metric_name, (cm, (_, _)) in data.items():
             scores = cm._get_scores()
