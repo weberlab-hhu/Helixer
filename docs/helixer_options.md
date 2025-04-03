@@ -56,10 +56,10 @@ command line.
 ## 3. HybridModel.py options
 (for training and evaluation)
 ### General parameters
-| Parameter            | Default         | Explanation                                                                                                                                                                                       |
-|:---------------------|:----------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| -d/--data-dir        | /               | Directory containing training and validation data (.h5 files). The naming convention for the training and validation files is "training_data[...].h5" and "validation_data[...].h5" respectively. |
-| -s/--save-model-path | ./best_model.h5 | Path to save the best model (model with the best validation genic F1 (the F1 for the classes CDS, UTR and Intron)) to.                                                                            |
+| Parameter            | Default         | Explanation                                                                                                                                                                                                                                                                                                         |
+|:---------------------|:----------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| -d/--data-dir        | /               | Directory containing training and validation data (.h5 files). The naming convention for the training and validation files is "training_data[...].h5" and "validation_data[...].h5" respectively.                                                                                                                   |
+| -s/--save-model-path | ./best_model.h5 | Path to save the best model (model with the best validation genic F1 (the F1 for the classes CDS, UTR and Intron)) to. If --save-every-check is used, the folder to save the best model to is also used to save interim models (these have a predefined naming convention: model_e<epoch_number>_<batch_number>.h5) |
 
 ### Model parameters
 | Parameter      | Default | Explanation                                                                                           |

@@ -1045,7 +1045,9 @@ class HelixerModel(ABC):
     def create_train_model(self):
         if self.resume_training:
             if not self.fine_tune and not self.fine_tune_resume:
-                model = load_model(self.load_model_path)
+                model = load_model(self.load_model_path, compile=False)
+                for layer in model.layers:
+                    layer.trainable = True
             else:
                 # compile=False to prevent loading optimizer state prematurely
                 oldmodel = load_model(self.load_model_path, compile=False)
