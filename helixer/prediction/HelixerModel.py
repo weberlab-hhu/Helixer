@@ -131,7 +131,7 @@ class PreshuffleCallback(Callback):
 class HelixerSequence(Sequence):
     def __init__(self, model, h5_files, mode, batch_size, shuffle):
         assert mode in ['train', 'val', 'test']
-        self.model = model
+        self.model = model  # not the actual model, the default values, pool_size was replaced
         self.h5_files = h5_files
         self.mode = mode
         self.shuffle = shuffle
@@ -206,7 +206,6 @@ class HelixerSequence(Sequence):
             if self.transition_weights is not None:
                 print(f'ignoring the transition_weights of {self.transition_weights} in mode "test"')
                 self.transition_weights = None
-
 
     def _load_one_h5(self, h5_file):
         print(f'For h5 starting with species = {h5_file["data/species"][0]}:')
@@ -640,6 +639,16 @@ class HelixerModel(ABC):
             print(colored('HelixerModel config: ', 'yellow'))
             pprint(args)
 
+        # this extracts the pool size from the model file without initializing it or any resources
+        # this then sets the pool size to the one inferred from the loaded model
+        if self.load_model_path:
+            import json
+            with h5py.File(self.load_model_path, "r") as f:
+                config = json.loads(f.attrs["model_config"])["config"]
+                for layer in config["layers"]:
+                    if layer['name'] == 'reshape_hat':
+                        self.pool_size = layer['config']['target_shape'][1]  # target shape: [-1, pool_size, n_classes]
+
     def generate_callbacks(self, train_generator):
         callbacks = [ConfusionMatrixTrain(self.save_model_path, train_generator, self.gen_validation_data(),
                                           self.large_eval_folder, self.patience, calc_H=self.calculate_uncertainty,
@@ -871,6 +880,8 @@ class HelixerModel(ABC):
                 raise e
             if isinstance(predictions, list):
                 # when we have two outputs, one is for phase
+                # is dependent on the model with which you predict for Helixer.py
+                # so even though we don't pass in --predict-phase as true, it gets predicted
                 output_names = ['predictions', 'predictions_phase']
             else:
                 # if we just had one output
@@ -959,6 +970,7 @@ class HelixerModel(ABC):
 
     def run(self):
         def load_model_strategy():
+            # used for just eval/predict
             if not self.input_coverage:
                 model = load_model(self.load_model_path)
             else:
@@ -1028,7 +1040,7 @@ class HelixerModel(ABC):
             self._print_model_info(model)
 
             if self.eval:
-                test_generator = self.gen_test_data(model)
+                test_generator = self.gen_test_data()
                 _, _, _ = HelixerModel.run_metrics(test_generator, model.compiled_loss, model, calc_H=self.calculate_uncertainty)
                 if self.large_eval_folder:
                     assert self.data_dir != '', 'need training data of the model for training genome names'
