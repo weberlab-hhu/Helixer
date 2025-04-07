@@ -12,17 +12,19 @@ from helixer.prediction.TorchHelixerModel import Reshape, TransposeDimsOneTwo, b
 
 click.Context.formatter_class = ColumnHelpFormatter
 
+
 class HybridSequence(HelixerSequence):
-    def __init__(self, model, zarr_files, mode, batch_size, rank, world_size):
-        super().__init__(model, zarr_files, mode, batch_size, rank, world_size)
+    def __init__(self, zarr_files, mode, batch_size, rank, world_size):
+        super().__init__(zarr_files, mode, batch_size, rank, world_size)
 
     def __getitem__(self, idx):
+        # todo: don't load everything, check if the dataset does that
         X, y, sw, transitions, phases, _, coverage_scores = self._generic_get_item(idx)
 
         if self.only_predictions:
             return X
         else:
-            return X, y, sw
+            return X, y, sw  # y is list of y and phase
 
 
 class ModelHat(nn.Module):
@@ -47,7 +49,6 @@ class HybridModel(HelixerModel):
     def __init__(self, cnn_layers, lstm_layers, units, filter_depth,
                  kernel_size, pool_size, dropout1, dropout2, n_classes):
         super().__init__()
-        print("layers:", cnn_layers)
         self.cnn_layers = cnn_layers
         self.lstm_layers = lstm_layers
         self.units = units
@@ -101,18 +102,19 @@ class HybridModel(HelixerModel):
         return logits
 
 # todo: integrate these losses into the model setup!! as well as the sample weight mode
-def compile_model(model):
-    #if self.predict_phase:
-    losses = ['categorical_crossentropy', 'categorical_crossentropy']
-    loss_weights = [0.8, 0.2]
-    #else:
-    #    losses = ['categorical_crossentropy']
-    #    loss_weights = [1.0]
+# def compile_model(model):
+#     #if self.predict_phase:
+#     losses = ['categorical_crossentropy', 'categorical_crossentropy']
+#     loss_weights = [0.8, 0.2]
+#     #else:
+#     #    losses = ['categorical_crossentropy']
+#     #    loss_weights = [1.0]
+#
+#     model.compile(optimizer=optimizer, # not part of PyTorch models
+#                   loss=losses,
+#                   loss_weights=loss_weights,
+#                   sample_weight_mode='temporal')
 
-    model.compile(optimizer=optimizer, # not part of PyTorch models
-                  loss=losses,
-                  loss_weights=loss_weights,
-                  sample_weight_mode='temporal')
 
 @cli.command(cls=HelpGroupCommand, context_settings={'show_default': True})
 @train_options
@@ -121,7 +123,9 @@ def compile_model(model):
 def train(ctx):
     """Train the Helixer Hybrid model."""
     ctx.params['model_class'] = HybridModel
+    ctx.params['sequence_class'] = HybridSequence
     HelixerTrainer(**ctx.params).run()
+
 
 @cli.command(cls=HelpGroupCommand, context_settings={'show_default': True})
 @test_options
@@ -129,7 +133,9 @@ def train(ctx):
 def test(ctx):
     """Test the Helixer Hybrid model."""
     ctx.params['model_class'] = HybridModel
+    ctx.params['sequence_class'] = HybridSequence  # base seq seems to always look the same, switch to universal HelixerSequence at one point
     HelixerTester(**ctx.params).run()
+
 
 @cli.command(cls=HelpGroupCommand, context_settings={'show_default': True})
 @predict_options
@@ -137,7 +143,9 @@ def test(ctx):
 def predict(ctx):
     """Predict with the Helixer Hybrid model."""
     ctx.params['model_class'] = HybridModel
+    ctx.params['sequence_class'] = HybridSequence
     HelixerPredictor(**ctx.params).run()
+
 
 if __name__ == '__main__':
     cli()

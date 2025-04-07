@@ -25,6 +25,7 @@ dependencies = [
     "numpy",
     "zarr < 3.0.0",
     "torch",
+    "torchinfo",
     "lightning",
     "multiprocess",
     "numcodecs",

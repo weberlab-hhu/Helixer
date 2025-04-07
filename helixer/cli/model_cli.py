@@ -206,7 +206,8 @@ def predict_options(func):
         return func(*args, **kwargs)
     return wrapper
 
-
+# TODO: ALMOST everything should have no default, so we can safely fail early because something is missing or not hooked up correctly!!
+# add bypass if it works
 def hybrid_model_parameters(func):
     @click.option('--cnn-layers',
                   type=click.IntRange(1,),
