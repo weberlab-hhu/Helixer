@@ -31,6 +31,7 @@ class HybridModel(HelixerModel):
         self.parser.add_argument('--pool-size', type=int, default=9)
         self.parser.add_argument('--dropout1', type=float, default=0.0)
         self.parser.add_argument('--dropout2', type=float, default=0.0)
+        self.parser.add_argument('--add-lstm-bypass', action='store_true')
         self.parse_args()
 
     @staticmethod
@@ -73,6 +74,9 @@ class HybridModel(HelixerModel):
         if self.dropout1 > 0.0:
             x = Dropout(self.dropout1)(x)
 
+        if self.add_lstm_bypass:
+            x_conv = x
+
         x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
         for _ in range(self.lstm_layers - 1):
             x = Bidirectional(LSTM(self.units, return_sequences=True))(x)
@@ -80,6 +84,9 @@ class HybridModel(HelixerModel):
         # do not use recurrent dropout, but dropout on the output of the LSTM stack
         if self.dropout2 > 0.0:
             x = Dropout(self.dropout2)(x)
+
+        if self.add_lstm_bypass:
+            x = tf.concat([x, x_conv], axis=-1)
 
         outputs = self.model_hat((x, coverage_input))
 
