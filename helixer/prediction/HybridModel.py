@@ -32,6 +32,8 @@ class HybridModel(HelixerModel):
         self.parser.add_argument('--dropout1', type=float, default=0.0)
         self.parser.add_argument('--dropout2', type=float, default=0.0)
         self.parser.add_argument('--add-lstm-bypass', action='store_true')
+        self.parser.add_argument('--apply-batch-norm', type=bool, default=True)
+        self.parser.add_argument('--batch-norm-epsilon', type=float, default=0.001)
         self.parse_args()
 
     @staticmethod
@@ -61,7 +63,8 @@ class HybridModel(HelixerModel):
 
         # if there are additional CNN layers
         for _ in range(self.cnn_layers - 1):
-            x = BatchNormalization()(x)
+            if self.apply_batch_norm:
+                x = BatchNormalization(epsilon=self.batch_norm_epsilon)(x)
             x = Conv1D(filters=self.filter_depth,
                        kernel_size=self.kernel_size,
                        padding="same",
