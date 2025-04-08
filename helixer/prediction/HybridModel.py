@@ -29,6 +29,7 @@ class HybridModel(HelixerModel):
         self.parser.add_argument('--filter-depth', type=int, default=32)
         self.parser.add_argument('--kernel-size', type=int, default=26)
         self.parser.add_argument('--pool-size', type=int, default=9)
+        self.parser.add_argument('--dropout0', type=float, default=0.0)
         self.parser.add_argument('--dropout1', type=float, default=0.0)
         self.parser.add_argument('--dropout2', type=float, default=0.0)
         self.parser.add_argument('--add-lstm-bypass', action='store_true')
@@ -55,6 +56,10 @@ class HybridModel(HelixerModel):
                                name='main_input')
             model_input = main_input
             coverage_input = None
+
+        if self.dropout0 > 0.0:
+            drop_input = Dropout(self.dropout0)(main_input)
+            main_input = drop_input
 
         x = Conv1D(filters=self.filter_depth,
                    kernel_size=self.kernel_size,
