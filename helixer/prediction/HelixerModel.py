@@ -501,6 +501,7 @@ class HelixerModel(ABC):
         self.parser.add_argument('--optimizer', type=str, default='adamw')
         self.parser.add_argument('--clip-norm', type=float, default=3.0)
         self.parser.add_argument('--learning-rate', type=float, default=3e-4)
+        self.parser.add_argument('--schedule-lr', action='store_true')
         self.parser.add_argument('--weight-decay', type=float, default=3.5e-5)
         self.parser.add_argument('--class-weights', type=str, default='None')
         self.parser.add_argument('--transition-weights', type=str, default='None')
@@ -582,6 +583,9 @@ class HelixerModel(ABC):
                 args[arg] = default
 
         self.__dict__.update(args)
+
+        assert os.path.exists(os.path.dirname(self.save_model_path)), \
+            f'the path {os.path.dirname(self.save_model_path)} to save the models/best model to does not exist'
 
         if self.nni:
             hyperopt_args = nni.get_next_parameter()
@@ -1099,10 +1103,28 @@ class HelixerModel(ABC):
         return model
 
     def set_optimizer(self):
+        if self.schedule_lr:
+            # Calculate steps
+            steps_per_epoch = self.shape_train[0] // self.batch_size
+            total_steps = self.epochs * steps_per_epoch
+            warmup_steps = int(total_steps * 0.05)  # warmup ratio = 5 %
+            decay_steps = total_steps - warmup_steps
+
+            # Create the learning rate scheduler
+            lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
+                initial_learning_rate=1e-8,
+                decay_steps=decay_steps,
+                alpha=0.0,
+                warmup_target=0.1,
+                warmup_steps=warmup_steps
+            )
+            lr = lr_schedule
+        else:
+            lr = self.learning_rate
         if self.optimizer.lower() == 'adam':
-            self.optimizer = optimizers.Adam(learning_rate=self.learning_rate, clipnorm=self.clip_norm)
+            self.optimizer = optimizers.Adam(learning_rate=lr, clipnorm=self.clip_norm)
         elif self.optimizer.lower() == 'adamw':
-            self.optimizer = AdamW(learning_rate=self.learning_rate, clipnorm=self.clip_norm,
+            self.optimizer = AdamW(learning_rate=lr, clipnorm=self.clip_norm,
                                    weight_decay=self.weight_decay)
 
     def insert_coverage_before_hat(self, oldmodel, dense_at):
