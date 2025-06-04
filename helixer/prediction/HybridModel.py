@@ -60,7 +60,7 @@ class HybridModel(HelixerModel):
         # extract n_classes from the input file for dynamical stuff that may come later
         self.n_classes = n_classes
         # needs to be at the end
-        self.hparams = self.get_hparams()
+        self.model_params = self.get_model_params()
 
         # WARNING!!: without RNA-seq coverage support so far
 
@@ -102,6 +102,7 @@ class HybridModel(HelixerModel):
         return logits
 
 # todo: integrate these losses into the model setup!! as well as the sample weight mode
+#  /Tony's changes
 # def compile_model(model):
 #     #if self.predict_phase:
 #     losses = ['categorical_crossentropy', 'categorical_crossentropy']

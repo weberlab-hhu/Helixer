@@ -47,8 +47,8 @@ def helixer_main_options(func):
     @write_by_option()
     @no_multiprocess_option()
     # Prediction options
-    @batch_size('The batch size for the raw predictions (.zarr format). Should be as large as '
-                'possible on your GPU to save prediction time.', help_groups.pred)
+    @batch_size_option('The batch size for the raw predictions (.zarr format). Should be as large as '
+                       'possible on your GPU to save prediction time.', help_groups.pred)
     @click.option('--no-overlap',
                   is_flag=True,
                   help='Switches off the overlapping after predictions are made. Predictions without'

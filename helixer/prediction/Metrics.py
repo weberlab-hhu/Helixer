@@ -19,6 +19,7 @@ class ConfusionMatrixCallback:
         self.phase_classes = len(self.phase_col_names)
         self.genic_cm = MulticlassConfusionMatrix(num_classes=self.genic_classes)
         self.phase_cm = MulticlassConfusionMatrix(num_classes=self.phase_classes)
+        self.current_genic_f1 = -float('inf')
 
     @staticmethod
     def _argmax_y(tensor):
@@ -60,8 +61,7 @@ class ConfusionMatrixCallback:
         # calculate matrix
         cm.update(preds=y_pred, target=y_true)
 
-    @staticmethod
-    def _get_precision_recall_f1(cm, genic):
+    def _get_precision_recall_f1(self, cm, genic):
         tp = cm.diagonal()
         fp = cm.sum(dim=0) - tp
         fn = cm.sum(dim=1) - tp
@@ -81,6 +81,7 @@ class ConfusionMatrixCallback:
             precision = torch.cat([precision, summary_stats[0][0], summary_stats[1][0]])
             recall = torch.cat([recall, summary_stats[0][1], summary_stats[1][1]])
             f1 = torch.cat([f1, summary_stats[0][2], summary_stats[1][2]])
+            self.current_genic_f1 = summary_stats[1][2].item()
         return precision, recall, f1
 
     def print_results(self, cm, genic=False):
@@ -98,7 +99,7 @@ class ConfusionMatrixCallback:
         conf = [[''] + [name + '_pred' for name in col_names]]
         for name, row in zip(col_names, cm.tolist()):
             conf.append([name + '_ref'] + row)
-            tables.append((conf, 'confusion_matrix'))
+        tables.append((conf, 'confusion_matrix'))
 
         # normalized
         norm_conf = [[''] + [name + '_pred' for name in col_names]]
