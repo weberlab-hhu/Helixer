@@ -3,9 +3,6 @@ import os
 import sys
 import inspect
 import click
-
-import helixer.core.helpers
-
 try:
     import nni
 except ImportError:
@@ -21,116 +18,120 @@ import numpy as np
 from sklearn.utils import shuffle
 from terminaltables import AsciiTable
 
+from torchinfo import summary
 import torch
 from torch import nn
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
+from torch.optim import Adam, AdamW
 from lightning.fabric import Fabric
 
-from helixer.prediction.Metrics import Metrics
+import helixer.core.helpers
+from helixer.prediction.callbacks import SeedCallback, TimeHelixerCallback, PredictCallback
+from helixer.prediction.Metrics import ConfusionMatrixCallback
 from helixer.core import overlap
 from helixer.core.strs import *
-#from helixer.cli.cli_formatter import ClsMethodClickCommand
 
-#class ConfusionMatrixTrain(Callback):
-class ConfusionMatrixTrain():
-    def __init__(self, save_model_path, train_generator, val_generator, large_eval_folder, patience, calc_H=False,
-                 report_to_nni=False, check_every_nth_batch=1_000_000, save_every_check=False):
-        self.save_model_path = save_model_path
-        self.save_dir = os.path.dirname(save_model_path)
-        self.save_every_check = save_every_check
-        self.train_generator = train_generator
-        self.val_generator = val_generator
-        self.large_eval_folder = large_eval_folder
-        self.patience = patience
-        self.calc_H = calc_H
-        self.report_to_nni = report_to_nni
-        self.best_val_genic_f1 = 0.0
-        self.checks_without_improvement = 0
-        self.check_every_nth_batch = check_every_nth_batch  # high default for ~ 1 / epoch
-        self.epoch = 0
-        print(self.save_model_path, 'SAVE MODEL PATH')
+# #class ConfusionMatrixTrain(Callback):
+# class ConfusionMatrixTrain():
+#     def __init__(self, save_model_path, train_generator, val_generator, large_eval_folder, patience, calc_H=False,
+#                  report_to_nni=False, check_every_nth_batch=1_000_000, save_every_check=False):
+#         self.save_model_path = save_model_path
+#         self.save_dir = os.path.dirname(save_model_path)
+#         self.save_every_check = save_every_check
+#         self.train_generator = train_generator
+#         self.val_generator = val_generator
+#         self.large_eval_folder = large_eval_folder
+#         self.patience = patience
+#         self.calc_H = calc_H
+#         self.report_to_nni = report_to_nni
+#         self.best_val_genic_f1 = 0.0
+#         self.checks_without_improvement = 0
+#         self.check_every_nth_batch = check_every_nth_batch  # high default for ~ 1 / epoch
+#         self.epoch = 0
+#         print(self.save_model_path, 'SAVE MODEL PATH')
+#
+#     def on_epoch_begin(self, epoch, logs=None):
+#         self.epoch_start = time.time()
+#
+#     def on_epoch_end(self, epoch, logs=None):
+#         print(f'training took {(time.time() - self.epoch_start) / 60:.2f}m')
+#         self.check_in()
+#         self.epoch += 1
+#
+#     def on_train_batch_end(self, batch, logs=None):
+#         if not (batch + 1) % self.check_every_nth_batch:
+#             print(f'\nvalidation and checkpoint at batch {batch}')
+#             self.check_in(batch)
+#
+#     # todo: find other way to freeze layers
+#     #def freeze_layers(self, model):
+#     #    # thank you https://github.com/keras-team/keras/issues/13279#issuecomment-527705263
+#     #    for i in model.layers:
+#     #        i.trainable = False
+#     #        if isinstance(i, Model):
+#     #           self.freeze_layers(i)
+#     #    return model
+#
+#     def check_in(self, batch=None):
+#         _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, self.model, calc_H=self.calc_H)
+#         if self.report_to_nni:
+#             nni.report_intermediate_result(val_genic_f1)
+#         if val_genic_f1 > self.best_val_genic_f1:
+#             self.best_val_genic_f1 = val_genic_f1
+#             self.freeze_layers(self.model)
+#             self.model.save(self.save_model_path, save_format='h5')
+#             print('saved new best model with genic f1 of {} at {}'.format(self.best_val_genic_f1,
+#                                                                           self.save_model_path))
+#             self.checks_without_improvement = 0
+#         else:
+#             self.checks_without_improvement += 1
+#             if self.checks_without_improvement >= self.patience:
+#                 self.model.stop_training = True
+#         if batch is None:
+#             b_str = 'epoch_end'
+#         else:
+#             b_str = f'b{batch:06}'
+#         if self.save_every_check:
+#             path = os.path.join(self.save_dir, f'model_e{self.epoch}_{b_str}.h5')
+#             self.model.save(path, save_format='h5')
+#             print(f'saved model at {path}')
+#
+#     def on_train_end(self, logs=None):
+#         # TODO rewrite entire function later
+#         if os.path.isdir(self.large_eval_folder):
+#             # load best model
+#             # TODO custom save and load to retain some info in the dict (not just model state dict)
+#             best_model = load_model(self.save_model_path)
+#             # double check that we loaded the correct model, can be remove if confirmed this works
+#             print('\nValidation set again:')
+#             _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, best_model, print_to_stdout=True,
+#                                                           calc_H=self.calc_H)
+#             assert val_genic_f1 == self.best_val_genic_f1
+#
+#             training_species = self.train_generator.h5_file.attrs['genomes']
+#             median_f1 = HelixerModel.run_large_eval(self.large_eval_folder, best_model, self.val_generator, training_species)
+#
+#             if self.report_to_nni:
+#                 nni.report_final_result(median_f1)
+#
+#         elif self.report_to_nni:
+#             nni.report_final_result(self.best_val_genic_f1)
 
-    def on_epoch_begin(self, epoch, logs=None):
-        self.epoch_start = time.time()
-
-    def on_epoch_end(self, epoch, logs=None):
-        print(f'training took {(time.time() - self.epoch_start) / 60:.2f}m')
-        self.check_in()
-        self.epoch += 1
-
-    def on_train_batch_end(self, batch, logs=None):
-        if not (batch + 1) % self.check_every_nth_batch:
-            print(f'\nvalidation and checkpoint at batch {batch}')
-            self.check_in(batch)
-
-    # todo: find other way to freeze layers
-    #def freeze_layers(self, model):
-    #    # thank you https://github.com/keras-team/keras/issues/13279#issuecomment-527705263
-    #    for i in model.layers:
-    #        i.trainable = False
-    #        if isinstance(i, Model):
-    #           self.freeze_layers(i)
-    #    return model
-
-    def check_in(self, batch=None):
-        _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, self.model, calc_H=self.calc_H)
-        if self.report_to_nni:
-            nni.report_intermediate_result(val_genic_f1)
-        if val_genic_f1 > self.best_val_genic_f1:
-            self.best_val_genic_f1 = val_genic_f1
-            self.freeze_layers(self.model)
-            self.model.save(self.save_model_path, save_format='h5')
-            print('saved new best model with genic f1 of {} at {}'.format(self.best_val_genic_f1,
-                                                                          self.save_model_path))
-            self.checks_without_improvement = 0
-        else:
-            self.checks_without_improvement += 1
-            if self.checks_without_improvement >= self.patience:
-                self.model.stop_training = True
-        if batch is None:
-            b_str = 'epoch_end'
-        else:
-            b_str = f'b{batch:06}'
-        if self.save_every_check:
-            path = os.path.join(self.save_dir, f'model_e{self.epoch}_{b_str}.h5')
-            self.model.save(path, save_format='h5')
-            print(f'saved model at {path}')
-
-    def on_train_end(self, logs=None):
-        # TODO rewrite entire function later
-        if os.path.isdir(self.large_eval_folder):
-            # load best model
-            # TODO custom save and load to retain some info in the dict (not just model state dict)
-            best_model = load_model(self.save_model_path)
-            # double check that we loaded the correct model, can be remove if confirmed this works
-            print('\nValidation set again:')
-            _, _, val_genic_f1 = HelixerModel.run_metrics(self.val_generator, best_model, print_to_stdout=True,
-                                                          calc_H=self.calc_H)
-            assert val_genic_f1 == self.best_val_genic_f1
-
-            training_species = self.train_generator.h5_file.attrs['genomes']
-            median_f1 = HelixerModel.run_large_eval(self.large_eval_folder, best_model, self.val_generator, training_species)
-
-            if self.report_to_nni:
-                nni.report_final_result(median_f1)
-
-        elif self.report_to_nni:
-            nni.report_final_result(self.best_val_genic_f1)
-
-
+# todo: at some point 2 diff datasets, one for fasta only, one with anno? or handle that through diff. loading
+# todo: pass in model parameters differently and AFTER loading the model if one is provided
+# todo: check if printing gene count per input file is easy to compute
 class HelixerSequence(Dataset):
-    def __init__(self, model, zarr_files, mode, batch_size, rank, world_size):
+    def __init__(self, zarr_files, mode, batch_size, rank, world_size):
         # todo: handle batch_size and shuffle in the dataloader
         assert mode in [TEST, TRAIN, VAL]
-        self.model = model
         self.zarr_files = zarr_files  # generators, opened in read mode by HelixerModel class
         self.mode = mode
         self.batch_size = batch_size
         self.rank = rank
         self.world_size = world_size
-        self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
-                                 'coverage_count', 'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
-                                 'predict_phase', 'only_predictions', 'num_devices', 'debug'])
+        # self._cp_into_namespace(['float_precision', 'class_weights', 'transition_weights', 'input_coverage',
+        #                          'coverage_count', 'coverage_norm', 'overlap', 'overlap_offset', 'core_length',
+        #                          'predict_phase', 'only_predictions', 'num_devices', 'debug'])
 
         if self.mode == TEST:
             assert len(self.zarr_files) == 1, "predictions and eval should be applied to individual files only"
@@ -472,6 +473,7 @@ class HelixerSequence(Dataset):
                 sw = np.logical_not(np.any(sw == 0, axis=2)).astype(np.int8)
 
             if self.mode == TRAIN:
+                # todo: can be passed to loss fn
                 if self.class_weights is not None:
                     # class weights are additive for the individual timestep predictions
                     # giving even more weight to transition points
@@ -485,9 +487,10 @@ class HelixerSequence(Dataset):
                     sw = np.multiply(cw, sw)
 
                 # todo, while now compressed, the following is still 1:1 with LSTM model... --> HelixerModel
+                # todo how to implement, what is this good for/doing?
                 if self.transition_weights is not None:
                     transitions = self._mk_timestep_pools_class_last(transitions)
-                    # more reshaping and summing  up transition weights for multiplying with sample weights
+                    # more reshaping and summing  up transition weights for multiplying with sample weights, todo: what sample weights???, probably sw
                     sw_t = self.compress_tw(transitions)
                     sw = np.multiply(sw_t, sw)
 
@@ -510,16 +513,21 @@ class HelixerModel(nn.Module, ABC):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def get_hparams(self):
+    def get_model_params(self):
         init_parameters = inspect.signature(self.__init__).parameters
-        hyperparameters = {arg: getattr(self, arg) for arg, value in init_parameters.items()}
-        return hyperparameters
+        model_parameters = {arg: getattr(self, arg) for arg, value in init_parameters.items()}
+        return model_parameters
 
 
 class HelixerBaseModelRunner:
     """Not an actual Lightning trainer class"""
     def __init__(self):
-        pass
+        self.state = {}
+        self.model = None
+        self.optimizer = None
+        self.callbacks = []
+        self.epoch = 0
+        self.global_step = 0  # needs to stay for sure
 
     @staticmethod
     def setup_fabric(mode, device, num_devices, callbacks, precision):
@@ -536,46 +544,34 @@ class HelixerBaseModelRunner:
                         precision=precisions[precision], callbacks=callbacks)
         fabric.launch()
         return fabric
-        # init model directly on GPU with fabric.init_module()
+        # init model directly on GPU with fabric.init_module(), with loading, especially partial more complicated
 
-    def generate_callbacks(self, train_generator):
-        pass
-        # TODO torch mvp/runner specific, create callback script
-    #    callbacks = [ConfusionMatrixTrain(self.save_model_path, train_generator, self.gen_validation_data(),
-    #                                      self.large_eval_folder, self.patience, calc_H=self.calculate_uncertainty,
-    #                                      report_to_nni=self.nni, check_every_nth_batch=self.check_every_nth_batch,
-    #                                      save_every_check=self.save_every_check),
-    #                 PreshuffleCallback(train_generator)]
-    #    return callbacks
+    @staticmethod
+    def loss_fn(outputs, labels, class_weights, sample_weights):
+        # todo: check out if this works
+        genic, phase = outputs  # phase and genic
 
-    def init_model(self, model_class, model_checkpoint, **model_kwargs):
-        if model_checkpoint:
-            # load from checkpoint
-            pass
-        else:
-            model = model_class(**model_kwargs)
-        return model
+        # might be slightly dissimilar to how class weights were computed before, they should be floating point tensors
+        # todo: load from model as well and then go from there, need them to test????
+        genic_loss = nn.functional.cross_entropy(genic, labels[0], weight=class_weights, reduction='none')
+        phase_loss = nn.functional.cross_entropy(phase, labels[1], reduction='none')
+
+        # sample weights get multiplied with transition weights during data read in
+        total_loss = ((0.8 * genic_loss) + (0.2 * phase_loss)) * sample_weights  # dynamic genic and phase loss weights?
+        return total_loss.mean()
 
     # todo: to metrics callback
-    @staticmethod
-    def run_metrics(generator, model, print_to_stdout=True, calc_H=False):
+    #@staticmethod
+    def run_metrics(self, generator, print_to_stdout=True, calc_H=False):
         start = time.time()
         metrics_calculator = Metrics(generator, print_to_stdout=print_to_stdout,
                                      skip_uncertainty=not calc_H)
-        metrics = metrics_calculator.calculate_metrics(model)
+        metrics = metrics_calculator.calculate_metrics(self.model)
         genic_metrics = metrics['genic_base_wise']['genic']
         if np.isnan(genic_metrics['f1']):
             genic_metrics['f1'] = 0.0
         print('\nmetrics calculation took: {:.2f} minutes\n'.format(int(time.time() - start) / 60))
         return genic_metrics['precision'], genic_metrics['recall'], genic_metrics['f1']
-
-    @abstractmethod
-    def sequence_cls(self):
-        pass
-
-    @abstractmethod
-    def setup_model(self):
-        pass
 
     @staticmethod
     def sum_shapes(datasets):
@@ -614,6 +610,9 @@ class HelixerBaseModelRunner:
         if self.run_purpose == TRAIN:
             self.zarr_trains = [zarr.open(f, mode='r') for f in glob.glob(os.path.join(self.data_dir, 'training_data*.zarr'))]
             self.zarr_vals = [zarr.open(f, mode='r') for f in glob.glob(os.path.join(self.data_dir, 'validation_data*.zarr'))]
+            # todo: why do this here? already check if input dir exists, so this is necessary why? or does it check if everything has the same shape?
+            #  ah, to find out how it looks, good, still should check if everything has the same shape though
+            # todo: also check for corrupted files and so on, see Predmoter for that
             try:
                 self.shape_train = self.sum_shapes([zf[DATA_X] for zf in self.zarr_trains])
             except IndexError as e:
@@ -688,10 +687,7 @@ class HelixerBaseModelRunner:
             self.loaded_model_hash = 'error'
 
         print()
-        if self.verbose:
-            print(self.model)
-        else:
-            print('Total params: {:,}'.format(self.count_params()))
+        summary(self.model, input_data=dummy_input) # todo: define!! (dynamic)
         os.chdir(pwd)  # return to previous directory
     
     def eval_epoch(self, data):
@@ -736,20 +732,31 @@ class HelixerBaseModelRunner:
             #          verbose=True)
 
     def save_model(self):
-        # todo: save all hyperparameters and callback states (seed, loop state, ranks, global step?)
-        torch.save({
-            'epoch': self.epoch,
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'loss': self.loss
-        }, self.save_model_path)
+        # todo: save all hyperparameters and callback states (callbacks, global step)
+        #  this is only needed in train, all other runners don't save their models, just load them
+        self.fabric.save(self.save_model_path, self.state)
 
-    def load_model(self):
-        checkpoint = torch.load(self.load_model_path, weights_only=True)
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])  # todo: set self.optimizer in init
-        self.epoch = checkpoint['epoch']
-        self.loss = checkpoint['loss']
+    def load_model(self, mode, model_class, model_checkpoint, fabric: Fabric, **model_kwargs):
+        # todo: to fabric
+        if model_checkpoint is not None:
+            checkpoint = fabric.load(model_checkpoint)
+            if "hparams" in checkpoint:
+                hparams = checkpoint["hparams"]  # todo: add backward support to set hparam to None/exclude if it doesn't exist in the checkpoint, because it was added later?
+                                                 #  maybe add it fusing with model_kwargs to be save
+            else:
+                raise KeyError(f"Hyperparameters not found in the checkpoint {model_checkpoint} under key 'hparams'")
+
+            self.model = model_class(**hparams)
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+            if mode == 'train':
+                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])  # todo: set self.optimizer in init, only needed in train, so don't load otherwise?!
+                self.epoch = checkpoint['epoch']
+                self.global_step = checkpoint['global_step']
+                # todo: init state here as well? when train? (best: put all this in a checkpoint, this is getting confusing), get inspired by modelcheckpoint!!
+                #  have a init model function and
+        else:
+            # init state and create model
+            self.model = model_class(**model_kwargs)
 
     def fit(self, training_data, eval_data):
         # todo, this needs to grow to be s.t. with early stopping, call backs, etc... (torch.tnt or better yet fabric)
@@ -765,96 +772,6 @@ class HelixerBaseModelRunner:
         # todo: still save the best model only or give more options? e.g. at least every epoch for training
         # todo (continued): in case the training stops for non-early stop reasons
         self.save_model()
-
-
-    def run(self):
-        def load_model_strategy():
-            if not self.input_coverage:
-                model = load_model(self.load_model_path)
-            else:
-                # for whatever reason, the fine tuning method is not saving the full model
-                # in an entirely valid h5 file (depending on if you ask h5py or h5ls). puh.
-                # thus loading the original model is both the easiest way to get architecture
-                # setup and seems safer to make sure _all_ and not just _new_ weights are there
-                oldmodel = load_model(self.pretrained_model_path)
-                # repeat everything done setting up training to get exact architecture
-                # freeze weights and replace everything from the dense layer
-                dense_at = [l.name for l in oldmodel.layers].index('dense')
-                for layer in oldmodel.layers:
-                    layer.trainable = False
-
-                model = self.insert_coverage_before_hat(oldmodel, dense_at)
-                model.load_weights(self.load_model_path)
-            return model
-
-        self.set_resources()
-        #self.open_data_files()
-        #if self.input_coverage:
-        #    # preview first h5 file to find number of bam files and set 'coverage_count'
-        #    # which is used to calculate model input size +
-        #    try:
-        #        h5_files = self.h5_tests
-        #    except AttributeError:
-        #        h5_files = self.h5_trains
-        #    self.coverage_count = h5_files[0]['evaluation/rnaseq_coverage'].shape[2]
-
-        if self.run_purpose == TRAIN:
-            if self.resume_training:
-                self.load_model()
-                pass  
-            #    if not self.fine_tune:
-            #        model = load_model(self.load_model_path)
-            #    else:
-            #        oldmodel = load_model(self.load_model_path)
-            #        assert oldmodel.input.shape[2] == 4, \
-            #            f"input shape of trained model != 4 ({oldmodel.input.shape[2]}); " \
-            #            f"fine tuning is only supported on models trained without coverage"
-            #        # freeze weights and replace everything from the dense layer
-            #        dense_at = [l.name for l in oldmodel.layers].index('dense')
-            #        for layer in oldmodel.layers:
-            #            layer.trainable = False
-            #        # the following assumes the base-model is trained without coverage
-            #        if not self.input_coverage:
-            #            inp = oldmodel.input
-            #            output = self.model_hat((oldmodel.layers[dense_at - 1].output, None))
-            #            model = Model(inp, output)
-            #        else:
-            #            model = self.insert_coverage_before_hat(oldmodel, dense_at)
-
-            else:
-                self.model = self.setup_model()
-            self._print_model_info()
-
-            #if self.optimizer.lower() == 'adam':
-            #    self.optimizer = optimizers.Adam(learning_rate=self.learning_rate, clipnorm=self.clip_norm)
-            #elif self.optimizer.lower() == 'adamw':
-            #    self.optimizer = AdamW(learning_rate=self.learning_rate, clipnorm=self.clip_norm,
-            #                           weight_decay=self.weight_decay)
-
-
-            self.compile_model()
-            self.fit(self.training_data, self.validation_data)
-        else:
-            self.model = self.setup_model() 
-            self.load_model()
-            self.compile_model()  # todo, this is likely optional once metrics are in and loss not reported
-            self._print_model_info()
-
-            if self.run_purpose == EVAL:
-                # TODO, next line only, mvp
-                #_, _, _ = HelixerModel.run_metrics(test_generator, model, calc_H=self.calculate_uncertainty)
-                self.eval_epoch(self.test_data)
-                #if self.large_eval_folder:
-                #    assert self.data_dir != '', 'need training data of the model for training genome names'
-                #    training_species = h5py.File(os.path.join(self.data_dir, 'training_data.h5'), 'r').attrs['genomes']
-                #    _ = HelixerModel.run_large_eval(self.large_eval_folder, model, test_generator, training_species,
-                #                                    print_to_stdout=True, calc_H=self.calculate_uncertainty)
-            elif self.run_purpose == PREDICT:
-                if os.path.isfile(self.prediction_output_path):
-                    print(f'{self.prediction_output_path} already exists and will be overwritten.')
-                self._make_predictions(self.model)  # callback candidate?
-            else:
-                assert ValueError, f"run_purpose should be in {TRAIN}, {EVAL}, {PREDICT}"
 
 
 #    def insert_coverage_before_hat(self, oldmodel, dense_at):
@@ -891,36 +808,97 @@ class HelixerBaseModelRunner:
 
 
 class HelixerTrainer(HelixerBaseModelRunner):
-    def __init__(self, data_dir, save_model_path, epochs, batch_size, val_batch_size,
-                 patience, check_every_nth_batch, optimizer, clip_norm, learning_rate, weight_decay,
-                 class_weights, transition_weights, resume_training, load_model_path, save_every_check,
-                 verbose, debug, fine_tune, pretrained_model_path,
-                 input_coverage, coverage_norm, add_hidden_layer, model_class, **model_kwargs):
+    def __init__(self, data_dir, save_model_path, float_precision, device, num_devices, num_workers, epochs,
+                 batch_size, val_batch_size, seed, patience, check_every_nth_batch, optimizer, clip_norm,
+                 learning_rate, weight_decay, class_weights, transition_weights, resume_training,
+                 load_model_path, save_every_check, verbose, debug, fine_tune, pretrained_model_path,
+                 input_coverage, coverage_norm, add_hidden_layer, model_class, sequence_class, **model_kwargs):
         super().__init__()
-        self.fabric = self.setup_fabric()
+        self.callbacks = [SeedCallback(seed, resume_training, load_model_path, device, num_workers),
+                          TimeHelixerCallback(),
+                          ConfusionMatrixCallback('train')]
+        self.fabric = self.setup_fabric('train', device, num_devices, self.callbacks, float_precision)
+        model = model_class(**model_kwargs)  # temporary:, setup model function in base with load checkpoint consideration
+        if optimizer.lower() == 'adam':  # todo: to setup optimizer func?
+            optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        elif optimizer.lower() == 'adamw':
+            optimizer = AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)  # how to use missing params, find equivalent to clip_norm:
+            # like this: Gradient clipping by norm
+            #fabric.clip_gradients(self.model, self.optimizer, max_norm=clip_norm)
+        self.model, self.optimizer = self.fabric.setup(model, optimizer)
+        # loss setup here
+        # self.criterion = nn.CrossEntropyLoss()  # todo: convert to the more complex setup
+        # todo: setup dataset adjustment to work without model and recover some stuff from the checkpoint (save it obviously)
+        train_dataloader = DataLoader(train_dataset, ...)
+        val_dataloader = DataLoader(test_dataset, ...)
+
+        self.train_dataloader, self.val_dataloader = self.fabric.setup_dataloaders(train_dataloader, val_dataloader)
         pass
 
     def generate_callbacks(self):
+        pass  # todo: needed?
+
+    def run(self):
+        # todo: here diff. setup and loading if resume then call train()
+        # check if resume and checkpoint and so on --> all necessary combinations, then load model?, needs to happen in init??, maybe setup func
+        # base args checker in base runner for train test and predict
         pass
 
-    def train_epoch(self, batch):
+    def train_epoch(self):
+        # self.model.train()
+    #     for batch in self.train_dataloader:
+    #         input, target = batch  # careful!!!: batch is made up of 4 diff things
+    #
+    #         self.optimizer.zero_grad()
+    #         output = self.model(input, target)
+    #         loss = loss_fn(output, target)
+    #
+    #
+    #         self.fabric.backward(loss)
+    #         self.optimizer.step()
+    #         self.global_step += 1
+    #         if self.check_every_nth_batch is not None and not (self.global_step + 1) % self.check_every_nth_batch:
+    #             self.val_epoch()
+        # todo: log loss and so on
+        # todo: integrate all fabric calls (who knows when you need them)
+        # todo: this goes to fit, just val loop is separate, because that'll be too much otherwise
         pass
 
-    def val_epoch(self, batch):
+    def val_epoch(self):
+        # todo: own confusion matrix stuff
+        # self.model.eval()
+        # test_loss, correct = 0, 0
+        # with torch.no_grad():
+        #     for X, y in self.dataloader:
+        #         pred = self.model(X)
+        #         test_loss += self.loss_fn(pred, y).item()
+        #         correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+        # test_loss /= num_batches
+        # correct /= size * y.shape[1]
+        # print(f"Test Performance: \n Accuracy: {(100 * correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
+        # _, _, val_genic_f1 = self.run_metrics(self.val_generator, print_to_stdout=True, calc_H=self.calc_H) --> uses generator, needs dataloader and be dumped to batch level
         pass
 
-    def train(self, batch):
-        pass
+    def fit(self):
+        self.fabric.call('on_fit_start', self.fabric)
+        for epoch in range(self.epochs):
+            self.train_epoch()
+            self.validation_epoch()
 
-
+# Notes:
+# each run() should include getting the data (preferably from rust)
 class HelixerTester(HelixerBaseModelRunner):
-    def __init__(self, test_data_path, load_model_path, batch_size, overlap, overlap_offset,
-                 overlap_core_length, model_class):
+    def __init__(self, test_data_path, load_model_path, float_precision, device, num_devices,
+                 batch_size, overlap, overlap_offset, overlap_core_length, model_class, sequence_class):
         super().__init__()
-        self.fabric = self.setup_fabric()
+        self.callbacks = [TimeHelixerCallback(), ConfusionMatrixCallback('test')]
+        self.fabric = self.setup_fabric('test', device, num_devices, self.callbacks, float_precision)
         pass
 
     def generate_callbacks(self):
+        pass
+
+    def run(self):
         pass
 
     def test_epoch(self, batch):
@@ -931,13 +909,18 @@ class HelixerTester(HelixerBaseModelRunner):
 
 
 class HelixerPredictor(HelixerBaseModelRunner):
-    def __init__(self, input_data_path, load_model_path, batch_size, prediction_output_path, overlap,
-                 overlap_offset, overlap_core_length, model_class):
+    def __init__(self, input_data_path, load_model_path, float_precision, device, num_devices, batch_size,
+                 prediction_output_path, overlap, overlap_offset, overlap_core_length, model_class, sequence_class):
         super().__init__()
-        self.fabric = self.setup_fabric()
+        self.callbacks = [TimeHelixerCallback(),
+                          PredictCallback(input_data_path, prediction_output_path, batch_size)]
+        self.fabric = self.setup_fabric('predict', device, num_devices, self.callbacks, float_precision)
         pass
 
     def generate_callbacks(self):
+        pass
+
+    def run(self):
         pass
 
     def predict_epoch(self, batch):
@@ -950,3 +933,4 @@ class HelixerPredictor(HelixerBaseModelRunner):
 if __name__ == '__main__':
     print(click.secho("ERROR: 'HelixerModel.py' is not meant to be executed by the user. "
                       "Please use 'Helixer.py' or 'HybridModel.py'.", fg='red', bold=True))
+# TODO: long term: re-integrate NNI or something similar and use it with Pytorch's learning rate scheduler and so on
