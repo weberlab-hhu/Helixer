@@ -8,31 +8,31 @@ from lightning.fabric.utilities.seed import seed_everything
 from lightning.fabric import Fabric
 
 from helixer.core.helpers import rank_zero_click_secho
+from helixer.prediction.Callback import Callback
 
 
-class ModelCheckpoint:
-    def __init__(self, save_model_path, patience, check_every_nth_batch=None, save_every_check=False):
+class ModelCheckpoint(Callback):
+    def __init__(self, save_model_path, batch_size, save_every_check=False):
         self.local_rank = None
         self.save_model_path = save_model_path
-        self.patience = patience
-        self.check_every_nth_batch = check_every_nth_batch
         self.save_every_check = save_every_check
-        self.best_val_genic_f1 = None
+        self.train_batch_count = 0
+        self.batch_size = batch_size
 
     def on_fit_start(self, fabric: Fabric):
         self.local_rank = fabric.local_rank
 
-    def on_train_batch_end(self, train_batch_number):
-        if self.check_every_nth_batch is not None and not (train_batch_number + 1) % self.check_every_nth_batch:
-            print(f'\nvalidation and checkpoint at batch {train_batch_number}')
-            self.check_in(batch)
+    def on_train_batch_end(self, runner):
+        if runner.validation_interval is not None and not (self.train_batch_count + 1) % runner.validation_interval:
+            print(f'\nvalidation and checkpoint at batch {self.train_batch_count}')
+            self.check_in()
 
-    def on_validation_epoch_end(self):
+    def on_validation_epoch_end(self, runner):
         if self.save_every_check:
             self.save_checkpoint()
-        else:
-            # todo: check if model is better
-            self.check_in()
+        # check if the model is better than the previous one
+        if runner.current_genic_f1 > runner.best_genic_f1:
+            self.save_checkpoint() # todo: add diff. name than each check epochs
 
     def save_checkpoint(self):
         pass
@@ -198,5 +198,6 @@ class PredictCallback:
 
     def on_predict_batch_end(self, outputs, batch):
         pass
+    # todo: this should pass stuff to rust for quick writing
 
 # todo: add early stopping for training

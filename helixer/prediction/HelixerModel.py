@@ -26,7 +26,7 @@ from torch.optim import Adam, AdamW
 from lightning.fabric import Fabric
 
 import helixer.core.helpers
-from helixer.prediction.callbacks import SeedCallback, TimeHelixerCallback, PredictCallback
+from helixer.prediction.callbacks import SeedCallback, TimeHelixerCallback, PredictCallback, ModelCheckpoint
 from helixer.prediction.Metrics import ConfusionMatrixCallback
 from helixer.core import overlap
 from helixer.core.strs import *
@@ -806,37 +806,96 @@ class HelixerBaseModelRunner:
     #            f'has to be evenly divisible by {timestep_width}')
     #     assert args.subsequence_length % timestep_width == 0, msg
 
+def setup_datasets():
+    pass  # dummy to get class ready
+
 
 class HelixerTrainer(HelixerBaseModelRunner):
     def __init__(self, data_dir, save_model_path, float_precision, device, num_devices, num_workers, epochs,
-                 batch_size, val_batch_size, seed, patience, check_every_nth_batch, optimizer, clip_norm,
+                 batch_size, val_batch_size, seed, patience, check_interval_fraction, optimizer, clip_norm,
                  learning_rate, weight_decay, class_weights, transition_weights, resume_training,
                  load_model_path, save_every_check, verbose, debug, fine_tune, pretrained_model_path,
                  input_coverage, coverage_norm, add_hidden_layer, model_class, sequence_class, **model_kwargs):
         super().__init__()
+        # Load params
+        # ------------------------------------------------------------
+        self.data_dir = data_dir
+        self.save_model_path = save_model_path
+        self.device = device
+        self.num_devices = num_devices
+        self.num_workers = num_workers
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.val_batch_size = val_batch_size
+        self.seed = seed
+        self.patience = patience
+        self.check_interval_fraction = check_interval_fraction
+        self.clip_norm = clip_norm
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        self.class_weights = class_weights
+        self.transition_weights = transition_weights
+        self.resume_training = resume_training
+        self.load_model_path = load_model_path
+        self.save_every_check = save_every_check
+        self.verbose = verbose
+        self.debug = debug
+        self.fine_tune = fine_tune
+        self.pretrained_model_path = pretrained_model_path
+        self.input_coverage = input_coverage
+        self.coverage_norm = coverage_norm
+        self.add_hidden_layer = add_hidden_layer
+        self.model_class = model_class
+        self.sequence_class = sequence_class
+
+        # Setup of basic stuff like the model, callbacks and optimizer
+        # ------------------------------------------------------------
         self.callbacks = [SeedCallback(seed, resume_training, load_model_path, device, num_workers),
                           TimeHelixerCallback(),
-                          ConfusionMatrixCallback('train')]
+                          ConfusionMatrixCallback(),
+                          ModelCheckpoint(self.save_model_path, self.batch_size, self.save_every_check)]
         self.fabric = self.setup_fabric('train', device, num_devices, self.callbacks, float_precision)
-        model = model_class(**model_kwargs)  # temporary:, setup model function in base with load checkpoint consideration
-        if optimizer.lower() == 'adam':  # todo: to setup optimizer func?
-            optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-        elif optimizer.lower() == 'adamw':
-            optimizer = AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)  # how to use missing params, find equivalent to clip_norm:
-            # like this: Gradient clipping by norm
-            #fabric.clip_gradients(self.model, self.optimizer, max_norm=clip_norm)
-        self.model, self.optimizer = self.fabric.setup(model, optimizer)
-        # loss setup here
+        self.model = model_class(**model_kwargs)  # todo: temporary:, setup model function in base with load checkpoint consideration
+        self.optimizer = self.setup_optimizer(optimizer)
+        self.model, self.optimizer = self.fabric.setup(self.model, self.optimizer)
+
+        # Setup loss
+        # ------------------------------------------------------------
         # self.criterion = nn.CrossEntropyLoss()  # todo: convert to the more complex setup
+
+        # Setup dataloaders
+        # ------------------------------------------------------------
         # todo: setup dataset adjustment to work without model and recover some stuff from the checkpoint (save it obviously)
-        train_dataloader = DataLoader(train_dataset, ...)
-        val_dataloader = DataLoader(test_dataset, ...)
-
+        train_dataloader = DataLoader(setup_datasets(), batch_size=batch_size, shuffle=True, num_workers=num_workers)
+        val_dataloader = DataLoader(setup_datasets(), batch_size=val_batch_size, shuffle=False, num_workers=num_workers)
         self.train_dataloader, self.val_dataloader = self.fabric.setup_dataloaders(train_dataloader, val_dataloader)
-        pass
 
-    def generate_callbacks(self):
-        pass  # todo: needed?
+        # Setup metrics/states to track
+        # ------------------------------------------------------------
+        self.current_epoch = 0
+        self.global_step = 0
+        self.current_genic_f1 = None
+        self.best_genic_f1 = -float('inf')
+        self.checks_without_improvement = 0
+
+        # Setup sample tracking for interwoven validation loops
+        # ------------------------------------------------------------
+        self.validate_in_between = True if check_interval_fraction < 1.0 else False
+        self.samples_seen = 0
+        self.validation_interval = int(check_interval_fraction * len(self.train_dataloader.dataset))
+
+        # Setup data to track (leave as GPU tensors!)
+        # ------------------------------------------------------------
+        self.current_y_true = None
+        self.current_y_pred = None
+        self.current_sample_weights = None
+
+    def setup_optimizer(self, optimizer):
+        if optimizer.lower() == 'adam':
+            optimizer = Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        elif optimizer.lower() == 'adamw':
+            optimizer = AdamW(self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        return optimizer
 
     def run(self):
         # todo: here diff. setup and loading if resume then call train()
@@ -855,6 +914,7 @@ class HelixerTrainer(HelixerBaseModelRunner):
     #
     #
     #         self.fabric.backward(loss)
+    #         self.fabric.clip_gradients(self.model, self.optimizer, max_norm=self.clip_norm)
     #         self.optimizer.step()
     #         self.global_step += 1
     #         if self.check_every_nth_batch is not None and not (self.global_step + 1) % self.check_every_nth_batch:
@@ -880,7 +940,7 @@ class HelixerTrainer(HelixerBaseModelRunner):
         pass
 
     def fit(self):
-        self.fabric.call('on_fit_start', self.fabric)
+        self.fabric.call('on_fit_start', fabric=self.fabric)
         for epoch in range(self.epochs):
             self.train_epoch()
             self.validation_epoch()
@@ -893,6 +953,7 @@ class HelixerTester(HelixerBaseModelRunner):
         super().__init__()
         self.callbacks = [TimeHelixerCallback(), ConfusionMatrixCallback('test')]
         self.fabric = self.setup_fabric('test', device, num_devices, self.callbacks, float_precision)
+        self.current_genic_f1 = None
         pass
 
     def generate_callbacks(self):

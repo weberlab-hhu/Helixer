@@ -63,10 +63,11 @@ def train_options(func):
                   default=3,
                   help='Allowed epochs without the validation genic F1 improving before stopping training',
                   cls=HelpGroupOption, help_group=help_groups.train)
-    @click.option('--check-every-nth-batch',
-                  type=click.IntRange(1,),
+    @click.option('--check-interval-fraction',
+                  type=click.FloatRange(0, 1),
                   default=None,
-                  help='Check validation genic F1 every nth batch (if not set: check once after every epoch)',
+                  help='Check validation genic F1 every time x % of samples were trained on per epoch'
+                       ' (if not set: check once after every epoch)',
                   cls=HelpGroupOption, help_group=help_groups.train)
     @click.option('--optimizer',
                   type=str,

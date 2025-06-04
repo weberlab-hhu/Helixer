@@ -6,11 +6,13 @@ import csv
 from terminaltables import AsciiTable
 from torchmetrics.classification import MulticlassConfusionMatrix
 
+from helixer.prediction.Callback import Callback
+
 
 # callback (separate out into training and prediction and test callbacks?
 # or completely separate like Tony?, i.e. callbacks module
 # with each class being a different file)
-class ConfusionMatrixCallback:
+class ConfusionMatrixCallback(Callback):
     def __init__(self):
         self.genic_col_names = ['ig', 'utr', 'exon', 'intron']
         self.phase_col_names = ['no_phase', 'phase_0', 'phase_1', 'phase_2']
@@ -19,7 +21,6 @@ class ConfusionMatrixCallback:
         self.phase_classes = len(self.phase_col_names)
         self.genic_cm = MulticlassConfusionMatrix(num_classes=self.genic_classes)
         self.phase_cm = MulticlassConfusionMatrix(num_classes=self.phase_classes)
-        self.current_genic_f1 = -float('inf')
 
     @staticmethod
     def _argmax_y(tensor):
@@ -36,7 +37,8 @@ class ConfusionMatrixCallback:
 
     # todo: this is definitely not working yet
     # todo: is this necessary if we overlap at the start, torch feeds directly in here;
-    #  overlap predictions then before feeding it to different callbacks
+    #  overlap predictions then before feeding it to different callbacks, why overlap those anyway, just feed in direct
+    #  overlap, prediction per chunk also overlapped ones
     # def _overlap_all_data(self, batch_idx, y_true, y_pred, sw):
     #     assert len(y_pred.shape) == 4, "this reshape assumes shape is " \
     #                                    "(batch_size, chunk_size // pool, pool, label dim)" \
@@ -61,7 +63,7 @@ class ConfusionMatrixCallback:
         # calculate matrix
         cm.update(preds=y_pred, target=y_true)
 
-    def _get_precision_recall_f1(self, cm, genic):
+    def _get_precision_recall_f1(self, runner, cm, genic):
         tp = cm.diagonal()
         fp = cm.sum(dim=0) - tp
         fn = cm.sum(dim=1) - tp
@@ -81,14 +83,14 @@ class ConfusionMatrixCallback:
             precision = torch.cat([precision, summary_stats[0][0], summary_stats[1][0]])
             recall = torch.cat([recall, summary_stats[0][1], summary_stats[1][1]])
             f1 = torch.cat([f1, summary_stats[0][2], summary_stats[1][2]])
-            self.current_genic_f1 = summary_stats[1][2].item()
+            runner.current_genic_f1 = summary_stats[1][2].item()
         return precision, recall, f1
 
-    def print_results(self, cm, genic=False):
-        for table, table_name in self.prep_tables(cm, genic):
+    def print_results(self, runner, cm, genic=False):
+        for table, table_name in self.prep_tables(runner, cm, genic):
             print('\n', AsciiTable(table, table_name).table, sep='')
 
-    def prep_tables(self, cm, genic):
+    def prep_tables(self, runner, cm, genic):
         # list of tables: [(table, table_name), (table, table_name), ...]
         tables = []
         col_names = self.genic_col_names if genic else self.phase_col_names
@@ -110,7 +112,7 @@ class ConfusionMatrixCallback:
         # F1
         stats = [['', 'Precision', 'Recall', 'F1-Score']]
         metrics = ''
-        precision, recall, f1 = self._get_precision_recall_f1(cm, genic)
+        precision, recall, f1 = self._get_precision_recall_f1(runner, cm, genic)
         if genic:
             col_names = col_names + self.genic_extra_cols
         for i in range(len(col_names)):
@@ -135,24 +137,30 @@ class ConfusionMatrixCallback:
     #                 for row in table:
     #                     writer.writerow(row)
 
-    def end_calculation_and_logging(self):
+    def end_calculation_and_logging(self, runner):
         # todo: log here as well when logging is enabled, print for now
         final_genic_cm = self.genic_cm.compute()
         final_phase_cm = self.phase_cm.compute()
         # print/log nicely
-        self.print_results(final_genic_cm, genic=True)
-        self.print_results(final_phase_cm)
+        self.print_results(runner, final_genic_cm, genic=True)
+        self.print_results(runner, final_phase_cm)
 
-    def on_validation_batch_end(self, y_true, y_pred, sw):
-        self.count_and_calculate_one_batch(self.genic_cm, y_true[0], y_pred[0], sw)
-        self.count_and_calculate_one_batch(self.phase_cm, y_true[1], y_pred[1], sw)
+    def on_validation_batch_end(self, runner):
+        self.count_and_calculate_one_batch(self.genic_cm, runner.current_y_true[0], runner.current_y_pred[0],
+                                           runner.current_sample_weights)
+        self.count_and_calculate_one_batch(self.phase_cm, runner.current_y_true[1], runner.current_y_pred[1],
+                                           runner.current_sample_weights)
 
-    def on_validation_epoch_end(self):
-        self.end_calculation_and_logging()
+    def on_validation_epoch_end(self, runner):
+        self.end_calculation_and_logging(runner)
 
-    def on_test_batch_end(self, y_true, y_pred, sw, overlap):
-        self.count_and_calculate_one_batch(self.genic_cm, y_true[0], y_pred[0], sw, overlap)
-        self.count_and_calculate_one_batch(self.phase_cm, y_true[1], y_pred[1], sw, overlap)
+    def on_test_batch_end(self, runner):
+        # HINT: overlap is excluded for now until its clear if the calculation needs to overlap itself or
+        # if the dataset handles that
+        self.count_and_calculate_one_batch(self.genic_cm, runner.current_y_true[0], runner.current_y_pred[0],
+                                           runner.current_sample_weights)
+        self.count_and_calculate_one_batch(self.phase_cm, runner.current_y_true[1], runner.current_y_pred[1],
+                                           runner.current_sample_weights)
 
-    def on_test_epoch_end(self):
-        self.end_calculation_and_logging()
+    def on_test_epoch_end(self, runner):
+        self.end_calculation_and_logging(runner)  # todo: check out if it's easier to return just the genic f1 and report from here
