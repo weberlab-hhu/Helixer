@@ -954,7 +954,12 @@ class HelixerTester(HelixerBaseModelRunner):
         self.callbacks = [TimeHelixerCallback(), ConfusionMatrixCallback('test')]
         self.fabric = self.setup_fabric('test', device, num_devices, self.callbacks, float_precision)
         self.current_genic_f1 = None
-        pass
+
+        # Setup data to track (leave as GPU tensors!)
+        # ------------------------------------------------------------
+        self.current_y_true = None
+        self.current_y_pred = None
+        self.current_sample_weights = None
 
     def generate_callbacks(self):
         pass
