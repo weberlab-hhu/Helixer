@@ -131,6 +131,8 @@ class PreshuffleCallback(Callback):
 class HelixerSequence(Sequence):
     def __init__(self, model, h5_files, mode, batch_size, shuffle):
         assert mode in ['train', 'val', 'test']
+        # model != actual model, it's just the default values from HelixerModel,
+        # pool_size is now replaced by the one from the actual model
         self.model = model
         self.h5_files = h5_files
         self.mode = mode
@@ -232,9 +234,9 @@ class HelixerSequence(Sequence):
             mask = np.ones(h5_file['data/X'].shape[0], dtype=bool)
             n_masked = 0
 
-        # load at most 2000 uncompressed samples at a time in memory
-        # todo: seq_len dependent!!!!
-        max_at_once = min(2000, n_seqs)
+        # load at most ~2338 uncompressed samples for the standard subsequence length of 21384 at a time in memory
+        # this is chunk size/subsequence length dependent to not overflow RAM for when using longer subsequences
+        max_at_once = min((50_000_000 // self.chunk_size) + 1, n_seqs)
         for name, data_list in zip(self.data_list_names, self.data_lists):
             start_time_dset = time.time()
             for offset in range(0, n_seqs, max_at_once):
@@ -243,11 +245,35 @@ class HelixerSequence(Sequence):
                     data_slice = h5_file[name][0, offset:offset + max_at_once][step_mask]  # only use one prediction for now
                 else:
                     data_slice = h5_file[name][offset:offset + max_at_once][step_mask]
+                if name in ['data/X', 'data/sample_weights', 'data/y', 'data/phases', 'data/predictions',
+                            'data/transitions', 'scores/by_bp', 'evaluation/rnaseq_coverage',
+                            'evaluation/rnaseq_spliced_coverage']:
+                    data_slice = self._fix_reverse_strand_padding(self.chunk_size,
+                                                                  h5_file['data/start_ends'][offset:offset + max_at_once][step_mask],
+                                                                  data_slice)
                 if self.no_utrs and name == 'data/y':
-                    HelixerSequence._zero_out_utrs(data_slice)
+                    HelixerSequence._zero_out_utrs(self.chunk_size, )
                 data_list.extend([self.compressor.encode(e) for e in data_slice])
             print(f'Data loading of {n_seqs - n_masked} (total so far {len(data_list)}) samples of {name} '
                   f'into memory took {time.time() - start_time_dset:.2f} secs')
+
+    @staticmethod
+    def _fix_reverse_strand_padding(chunk_size, starts_ends, data_slice):
+        # function from Tony
+        out = []
+        for se, data in zip(starts_ends, data_slice):
+            start = se[0]
+            end = se[1]
+
+            if start > end and start - end < chunk_size:  # If reverse and padded
+                idx = start - end
+                valid = data[:idx]  # Valid is at the start
+                padding = data[idx:]  # Followed by padding
+                fixed_data = np.concatenate((padding, valid))  # Move padding to the start of block
+                out.append(fixed_data)
+            else:
+                out.append(data)
+        return out
 
     @staticmethod
     def _zero_out_utrs(y):
@@ -640,6 +666,16 @@ class HelixerModel(ABC):
             print(colored('HelixerModel config: ', 'yellow'))
             pprint(args)
 
+        # this extracts the pool size from the model file without initializing it or any resources
+        # this then sets the pool size to the one inferred from the loaded model
+        if self.load_model_path:
+            import json
+            with h5py.File(self.load_model_path, "r") as f:
+                config = json.loads(f.attrs["model_config"])["config"]
+                for layer in config["layers"]:
+                    if layer['name'] == 'reshape_hat':
+                        self.pool_size = layer['config']['target_shape'][1]  # target shape: [-1, pool_size, n_classes]
+
     def generate_callbacks(self, train_generator):
         callbacks = [ConfusionMatrixTrain(self.save_model_path, train_generator, self.gen_validation_data(),
                                           self.large_eval_folder, self.patience, calc_H=self.calculate_uncertainty,
@@ -871,6 +907,8 @@ class HelixerModel(ABC):
                 raise e
             if isinstance(predictions, list):
                 # when we have two outputs, one is for phase
+                # is dependent on the model with which you predict for Helixer.py
+                # so even though we don't pass in --predict-phase as true, it gets predicted
                 output_names = ['predictions', 'predictions_phase']
             else:
                 # if we just had one output
@@ -1045,7 +1083,10 @@ class HelixerModel(ABC):
     def create_train_model(self):
         if self.resume_training:
             if not self.fine_tune and not self.fine_tune_resume:
-                model = load_model(self.load_model_path)
+                model = load_model(self.load_model_path, compile=False)
+                # is loaded with frozen layers otherwise
+                for layer in model.layers:
+                    layer.trainable = True
             else:
                 # compile=False to prevent loading optimizer state prematurely
                 oldmodel = load_model(self.load_model_path, compile=False)
