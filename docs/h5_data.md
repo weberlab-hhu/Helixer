@@ -113,7 +113,48 @@ If |start - end| is less than the subsequence size then
 there is padding. You can identify where the padding
 is according to data/X or data/y above.
 
-(todo, explain padding better)
+###### chunk order
+The DNA sequence order inside the h5 files is: chromosome 1-positive strand,
+chromosome 1-negative strand, chromosome 2-positive strand,
+chromosome 2-negative strand, etc. (can also be scaffolds/contigs)
+
+Dummy example of one chromosome:
+- sequence length: 21384 bp
+- length of chromosome 1: 51321 bp
+     
+|           |            |                |                |                |                |            |
+|:----------|:-----------|:---------------|:---------------|:---------------|:---------------|:-----------|
+| chunk     | 0          | 1              | 2              | 3              | 4              | 5          |
+| strand    | +          | +              | +              | -              | -              | -          |
+| start/end | [0, 21384] | [21384, 42768] | [42768, 51321] | [51321, 42768] | [42768, 21384] | [21384, 0] |
+
+All strands are represented from 5' to 3', so the negative strand is in descending
+order. Chunks 2 and 3 contain padding.
+      
+###### padding
+bases =  A, T, C, G, N  
+padding = P  
+(both encoded inside the file)  
+      
+positive strand:
+
+|            |                 |                 |                 |
+|:-----------|:----------------|:----------------|:----------------|
+| chunk      | 0               | 1               | 2               |
+| mini_array | [A, A, T, G, A] | [C, A, T, N, C] | [G, T, T, P, P] |
+| start/end  | [0, 5]          | [5, 10]         | [10, 13]        |
+     
+negative strand:
+
+|            |                 |                 |                 |
+|:-----------|:----------------|:----------------|:----------------|
+| chunk      | 3               | 4               | 5               |
+| mini_array | [A, A, C, P, P] | [G, N, A, T, G] | [T, C, A, T, T] |
+| start/end  | [13, 10]        | [10, 5]         | [5, 0]          |
+
+The padding is on the positive and negative strand always at the end of the array,
+so chunk 2 and 3 are **not** exact mirrors/reverse complements of each other, while
+for example chunk 0 and 5 are.
 
 #### Additional
 Various data matrices that were or are used in a
