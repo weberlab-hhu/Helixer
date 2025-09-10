@@ -131,6 +131,8 @@ class PreshuffleCallback(Callback):
 class HelixerSequence(Sequence):
     def __init__(self, model, h5_files, mode, batch_size, shuffle):
         assert mode in ['train', 'val', 'test']
+        # model != actual model, it's just the default values from HelixerModel,
+        # pool_size is now replaced by the one from the actual model
         self.model = model
         self.h5_files = h5_files
         self.mode = mode
@@ -664,6 +666,16 @@ class HelixerModel(ABC):
             print(colored('HelixerModel config: ', 'yellow'))
             pprint(args)
 
+        # this extracts the pool size from the model file without initializing it or any resources
+        # this then sets the pool size to the one inferred from the loaded model
+        if self.load_model_path:
+            import json
+            with h5py.File(self.load_model_path, "r") as f:
+                config = json.loads(f.attrs["model_config"])["config"]
+                for layer in config["layers"]:
+                    if layer['name'] == 'reshape_hat':
+                        self.pool_size = layer['config']['target_shape'][1]  # target shape: [-1, pool_size, n_classes]
+
     def generate_callbacks(self, train_generator):
         callbacks = [ConfusionMatrixTrain(self.save_model_path, train_generator, self.gen_validation_data(),
                                           self.large_eval_folder, self.patience, calc_H=self.calculate_uncertainty,
@@ -895,6 +907,8 @@ class HelixerModel(ABC):
                 raise e
             if isinstance(predictions, list):
                 # when we have two outputs, one is for phase
+                # is dependent on the model with which you predict for Helixer.py
+                # so even though we don't pass in --predict-phase as true, it gets predicted
                 output_names = ['predictions', 'predictions_phase']
             else:
                 # if we just had one output
