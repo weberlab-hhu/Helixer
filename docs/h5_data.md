@@ -154,7 +154,8 @@ negative strand:
 
 The padding is on the positive and negative strand always at the end of the array,
 so chunk 2 and 3 are **not** exact mirrors/reverse complements of each other, while
-for example chunk 0 and 5 are.
+for example chunk 0 and 5 are. During data read-in the padding on the reverse strand
+is moved to the start of the array to simplify overlapping chunks when testing or predicting.
 
 #### Additional
 Various data matrices that were or are used in a
