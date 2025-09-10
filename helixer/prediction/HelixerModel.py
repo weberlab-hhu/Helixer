@@ -232,9 +232,9 @@ class HelixerSequence(Sequence):
             mask = np.ones(h5_file['data/X'].shape[0], dtype=bool)
             n_masked = 0
 
-        # load at most 2000 uncompressed samples at a time in memory
-        # todo: seq_len dependent!!!!
-        max_at_once = min(2000, n_seqs)
+        # load at most ~2338 uncompressed samples for the standard subsequence length of 21384 at a time in memory
+        # this is chunk size/subsequence length dependent to not overflow RAM for when using longer subsequences
+        max_at_once = min((50_000_000 // self.chunk_size) + 1, n_seqs)
         for name, data_list in zip(self.data_list_names, self.data_lists):
             start_time_dset = time.time()
             for offset in range(0, n_seqs, max_at_once):
@@ -243,11 +243,35 @@ class HelixerSequence(Sequence):
                     data_slice = h5_file[name][0, offset:offset + max_at_once][step_mask]  # only use one prediction for now
                 else:
                     data_slice = h5_file[name][offset:offset + max_at_once][step_mask]
+                if name in ['data/X', 'data/sample_weights', 'data/y', 'data/phases', 'data/predictions',
+                            'data/transitions', 'scores/by_bp', 'evaluation/rnaseq_coverage',
+                            'evaluation/rnaseq_spliced_coverage']:
+                    data_slice = self._fix_reverse_strand_padding(self.chunk_size,
+                                                                  h5_file['data/start_ends'][offset:offset + max_at_once][step_mask],
+                                                                  data_slice)
                 if self.no_utrs and name == 'data/y':
-                    HelixerSequence._zero_out_utrs(data_slice)
+                    HelixerSequence._zero_out_utrs(self.chunk_size, )
                 data_list.extend([self.compressor.encode(e) for e in data_slice])
             print(f'Data loading of {n_seqs - n_masked} (total so far {len(data_list)}) samples of {name} '
                   f'into memory took {time.time() - start_time_dset:.2f} secs')
+
+    @staticmethod
+    def _fix_reverse_strand_padding(chunk_size, starts_ends, data_slice):
+        # function from Tony
+        out = []
+        for se, data in zip(starts_ends, data_slice):
+            start = se[0]
+            end = se[1]
+
+            if start > end and start - end < chunk_size:  # If reverse and padded
+                idx = start - end
+                valid = data[:idx]  # Valid is at the start
+                padding = data[idx:]  # Followed by padding
+                fixed_data = np.concatenate((padding, valid))  # Move padding to the start of block
+                out.append(fixed_data)
+            else:
+                out.append(data)
+        return out
 
     @staticmethod
     def _zero_out_utrs(y):
