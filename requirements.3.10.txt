@@ -41,7 +41,7 @@ ml-dtypes==0.3.2
 multiprocess==0.70.16
 numcodecs==0.12.1
 numpy==1.26.4
-oauthlib==3.2.2
+oauthlib==4.0.0
 opt-einsum==3.3.0
 packaging==24.0
 pandas==2.2.1
