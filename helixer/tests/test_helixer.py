@@ -1,4 +1,5 @@
 import os
+import pathlib
 from shutil import copy
 from sklearn.metrics import precision_recall_fscore_support as f1_scores
 from sklearn.metrics import accuracy_score
@@ -421,6 +422,29 @@ def test_coord_numerifier_and_h5_gen_minus_strand() -> None:
     sample_weight_expect = np.insert(sample_weight_expect, 155, np.zeros((45,)), axis=0)
     assert np.array_equal(sample_weights[0], sample_weight_expect[:200])
     assert np.array_equal(sample_weights[1][:50], sample_weight_expect[200:250])
+
+
+def test_export_does_not_depend_on_write_by(tmp_path: pathlib.Path) -> None:
+    """A coordinate is numerified in write_by sized regions. Features spanning several regions, e.g. the
+    long overlap masks of overlapping_loci_pairs.gff3 (e.g. 2699 to 3600), continue into every region
+    they reach, so a small write_by gives the same h5 as one covering the whole coordinate."""
+    geenuff_testdata = os.path.dirname(geenuff.__file__) + '/testdata/'
+    db_path = str(tmp_path / 'overlapping_loci_pairs.sqlite3')
+    controller = ImportController(database_path='sqlite:///' + db_path, config={})
+    controller.add_genome(geenuff_testdata + 'overlapping_loci_chain.fa',
+                          geenuff_testdata + 'overlapping_loci_pairs.gff3', genome_args={'species': 'dummy'})
+
+    exports = []
+    for write_by in [100, 21_384_000_000]:
+        h5_path = str(tmp_path / f'write_by_{write_by}.h5')
+        HelixerExportController(db_path, h5_path).export(chunk_size=100, write_by=write_by, multiprocess=False)
+        with h5py.File(h5_path, 'r') as h5:
+            exports.append({key: h5[f'data/{key}'][:] for key in h5['data']})
+    split, whole = exports
+
+    assert split.keys() == whole.keys()
+    for key in whole:
+        assert np.array_equal(split[key], whole[key]), key
 
 
 def test_numerify_with_end_neg1() -> None:

@@ -209,8 +209,8 @@ class HelixerExportController(HelixerExportControllerBase):
 
             # n_bases can be zero if one_hot = False, as fully intergenic subsequences are indistinguishable
             # from padding then (e.g. [0,0,0])
-            masked_bases_perc = n_masked_bases / ((n_bases * 100) + 1e-6)  # avoid division by 0
-            ig_bases_perc = n_ig_bases / ((n_bases * 100) + 1e-6)
+            masked_bases_perc = n_masked_bases / n_bases * 100 if n_bases else 0.0
+            ig_bases_perc = n_ig_bases / n_bases * 100 if n_bases else 0.0
 
             yield coord_data, coord, masked_bases_perc, ig_bases_perc, h5_coord
 

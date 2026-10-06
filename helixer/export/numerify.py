@@ -491,18 +491,17 @@ class SplitFinder:
         """get all features from start of list that aren't passed _to_"""
         i = 0
         in_split = []
-        in_next_split = []
         for end in self.splits:
             feature = self._ith_feature_or_none(i)
             while self._feature_not_past(feature, end):
                 in_split.append(feature)
-                if self._feature_ends_after(feature, end):  # basically this is 'if overlaps end' in context
-                    in_next_split.append(feature)
                 i += 1
                 feature = self._ith_feature_or_none(i)
             yield in_split
-            in_split = in_next_split
-            in_next_split = []
+            # every feature still reaching past this split is carried into the next one, the
+            # ones carried here included, so that a feature spanning any number of splits is
+            # given to each of them and gets written over its whole length
+            in_split = [f for f in in_split if self._feature_ends_after(f, end)]
 
     def _ith_feature_or_none(self, i: int) -> object | None:
         try:
