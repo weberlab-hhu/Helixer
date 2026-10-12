@@ -227,7 +227,7 @@ class AnnotationNumerifier(Numerifier):
             if feature.type in AnnotationNumerifier.feature_to_col.keys():
                 col = AnnotationNumerifier.feature_to_col[feature.type]
                 self.matrix[start:end, col] = 1
-            elif feature.type.value in types.geenuff_error_type_values:
+            elif feature.type.value == types.GEENUFF_MASK:
                 self.error_mask[start:end] = 0
             else:
                 raise ValueError('Unknown feature type found: {}'.format(feature.type.value))

@@ -164,7 +164,7 @@ def test_copy_n_import() -> None:
         assert len(transcript.transcript_pieces) == 1
         piece = transcript.transcript_pieces[0]
         for feature in piece.features:
-            if feature.type.value not in types.geenuff_error_type_values:
+            if feature.type.value != types.GEENUFF_MASK:
                 all_features.append(feature)
         print('{}: {}'.format(transcript.given_name, [x.type.value for x in piece.features]))
     for protein in sl.proteins:
@@ -431,7 +431,7 @@ def test_export_does_not_depend_on_write_by(tmp_path: pathlib.Path) -> None:
     geenuff_testdata = os.path.dirname(geenuff.__file__) + '/testdata/'
     db_path = str(tmp_path / 'overlapping_loci_pairs.sqlite3')
     controller = ImportController(database_path='sqlite:///' + db_path, config={})
-    controller.add_genome(geenuff_testdata + 'overlapping_loci_chain.fa',
+    controller.add_genome(geenuff_testdata + 'overlapping_loci_pairs.fa',
                           geenuff_testdata + 'overlapping_loci_pairs.gff3', genome_args={'species': 'dummy'})
 
     exports = []
