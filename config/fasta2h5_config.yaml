@@ -4,4 +4,3 @@
 #
 # chunk_size: 20000
 # compression: 'gzip'  # on of 'gzip' or 'lzf'
-# no_multiprocess: false

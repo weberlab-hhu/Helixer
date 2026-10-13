@@ -115,8 +115,7 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
         def __repr__(self) -> str:
             return f'Fasta only Coordinate (seqid: {self.seqid}, len: {self.length})'
 
-    def export_fasta_to_h5(self, chunk_size: int, compression: str, multiprocess: bool,
-                           species: str, write_by: int) -> None:
+    def export_fasta_to_h5(self, chunk_size: int, compression: str, species: str, write_by: int) -> None:
         assert write_by >= chunk_size, ("when specifying '--write-by' it needs to be larger than "
                                         "or equal to '--subsequence-length'")
         fasta_importer = FastaImporter(None)
@@ -132,8 +131,7 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
             start_time = time.time()
             coord = HelixerFastaToH5Controller.CoordinateSurrogate(seqid, seq)
             n_chunks = HelixerExportControllerBase.calc_n_chunks(coord.length, chunk_size)
-            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species,
-                                                           use_multiprocess=multiprocess, write_by=write_by)
+            data_gen = CoordNumerifier.numerify_only_fasta(coord, chunk_size, species, write_by=write_by)
             for j, strand_res in enumerate(data_gen):
                 data, h5_coords = strand_res
                 self._save_data(data, h5_coords=h5_coords, n_chunks=n_chunks,
@@ -187,11 +185,11 @@ class HelixerExportController(HelixerExportControllerBase):
         return coord_info
 
     def _numerify_coord(self, coord: object, coord_features: list, chunk_size: int, one_hot: bool,
-                        write_by: int, modes: tuple[str, ...],
-                        multiprocess: bool) -> Iterator[tuple[tuple[MatAndInfo, ...], object, float, float, tuple[int, int]]]:
+                        write_by: int, modes: tuple[str, ...]
+                        ) -> Iterator[tuple[tuple[MatAndInfo, ...], object, float, float, tuple[int, int]]]:
         """filtering and stats"""
         coord_data_gen = CoordNumerifier.numerify(coord, coord_features, chunk_size, write_by,
-                                                  one_hot=one_hot, mode=modes, use_multiprocess=multiprocess)
+                                                  one_hot=one_hot, mode=modes)
         # the following will all be used to calculated a percentage, which is yielded but ignored until the end
         n_chunks = n_bases = n_ig_bases = n_masked_bases = 0
 
@@ -216,7 +214,7 @@ class HelixerExportController(HelixerExportControllerBase):
 
     def export(self, chunk_size: int, write_by: int, one_hot: bool = True, longest_only: bool = True,
                modes: tuple[str, ...] = ('X', 'y', 'anno_meta', 'transitions'),
-               compression: str = 'gzip', multiprocess: bool = True) -> int:
+               compression: str = 'gzip') -> int:
         coords_features = self.exporter.genome_query(longest_only=longest_only)
         logger.info(f'\n{len(coords_features)} coordinates chosen to numerify')
         if self.match_existing:
@@ -237,7 +235,7 @@ class HelixerExportController(HelixerExportControllerBase):
             n_chunks = HelixerExportControllerBase.calc_n_chunks(coord_len, chunk_size)
             coord = self.exporter.get_coord_by_id(coord_id)
             numerify_outputs = self._numerify_coord(coord, one_coord_features, chunk_size, one_hot, write_by=write_by,
-                                                    modes=modes, multiprocess=multiprocess)
+                                                    modes=modes)
 
             for i, (flat_data, coord, masked_bases_perc, ig_bases_perc, h5_coord) in enumerate(numerify_outputs):
                 self._save_data(flat_data, h5_coords=h5_coord, n_chunks=n_chunks, first_round_for_coordinate=(i == 0),
@@ -245,7 +243,7 @@ class HelixerExportController(HelixerExportControllerBase):
                 n_writing_chunks += 1
 
             logger.info(f'{n_coords_done}/{len(coords_features)} Numerified {coord} '
-                        f'with {len(coord.features)} features in {flat_data[0].matrix.shape[0]} chunks, '
+                        f'with {len(one_coord_features)} features in {flat_data[0].matrix.shape[0]} chunks, '
                         f'masked rate: {masked_bases_perc:.2f}%, ig rate: {ig_bases_perc:.2f}%, '
                         f'({time.time() - start_time:.2f} secs)\n')
             n_coords_done += 1

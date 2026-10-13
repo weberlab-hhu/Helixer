@@ -4,7 +4,6 @@
 # species_category: 'vertebrate'  # one of 'vertebrate', 'land_plant' or 'fungi'
 #
 # compression: 'gzip'  # one of 'gzip' or 'lzf'
-# no_multiprocess: False
 #
 # window_size: 100
 # edge_threshold: 0.1

@@ -75,7 +75,7 @@ def geenuff_h5(tmp_dir: pathlib.Path, geenuff_db: str) -> str:
     """Export the geenuff database to h5 via the Python API."""
     h5_path = f'{tmp_dir}/geenuff.h5'
     controller = HelixerExportController(geenuff_db, h5_path)
-    controller.export(chunk_size=CHUNK_SIZE, write_by=21_384_000_000, one_hot=True, longest_only=False)
+    controller.export(chunk_size=CHUNK_SIZE, write_by=5_346_000, one_hot=True, longest_only=False)
     return h5_path
 
 
@@ -86,8 +86,7 @@ def fasta_h5(tmp_dir: pathlib.Path) -> str:
     fa = os.path.join(HELIXER_TESTDATA, 'mini_test_data.fa')
     controller = HelixerFastaToH5Controller(fa, h5_path)
     controller.export_fasta_to_h5(
-        chunk_size=CHUNK_SIZE, compression='gzip',
-        multiprocess=True, species=SPECIES,
+        chunk_size=CHUNK_SIZE, compression='gzip', species=SPECIES,
         write_by=CHUNK_SIZE * 10,
     )
     return h5_path

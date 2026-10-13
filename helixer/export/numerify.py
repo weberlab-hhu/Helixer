@@ -4,7 +4,6 @@ import logging
 import geenuff.base.types
 import numpy as np
 import math
-import multiprocess
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 
@@ -29,6 +28,11 @@ AMBIGUITY_DECODE = {
     'B': [0.33, 0., 0.33, 0.33],
     'N': [0.25, 0.25, 0.25, 0.25]
 }
+# AMBIGUITY_DECODE as a table indexed by a base's byte value, to encode a whole sequence at once
+SEQUENCE_ENCODING = np.zeros((256, 4), np.float16)
+SEQUENCE_ENCODING[[ord(base) for base in AMBIGUITY_DECODE]] = list(AMBIGUITY_DECODE.values())
+KNOWN_BASES = np.zeros(256, bool)
+KNOWN_BASES[[ord(base) for base in AMBIGUITY_DECODE]] = True
 
 
 class Stepper(object):
@@ -94,47 +98,31 @@ class Numerifier(ABC):
         self.matrix = np.zeros((self.length, self.n_cols,), self.dtype)
 
 def seq_numerify(seq_part: str) -> np.ndarray:
-    as_list = [AMBIGUITY_DECODE[c] for c in seq_part]
-    return np.array(as_list, np.float16)
+    """Encodes a sequence as one AMBIGUITY_DECODE row per base, by indexing SEQUENCE_ENCODING with its
+    bytes. Raises KeyError for a character AMBIGUITY_DECODE does not know."""
+    codes = np.frombuffer(seq_part.encode('ascii'), np.uint8)
+    unknown = ~KNOWN_BASES[codes]
+    if unknown.any():
+        raise KeyError(seq_part[int(np.argmax(unknown))])
+    return SEQUENCE_ENCODING[codes]
 
 
 class SequenceNumerifier(Numerifier):
-    def __init__(self, coord: object, max_len: int, start: int = 0, end: int | None = None,
-                 use_multiprocess: bool = True) -> None:
-        self.use_multiprocess = use_multiprocess
+    def __init__(self, coord: object, max_len: int, start: int = 0, end: int | None = None) -> None:
         super().__init__(n_cols=4, coord=coord, max_len=max_len, dtype=np.float16, start=start, end=end)
 
     def coord_to_matrices(self) -> dict[str, list[np.ndarray]]:
         """Does not alter the error mask unlike in AnnotationNumerifier"""
-
-        # plus strand, actual numerification of the sequence
         start_time = time.time()
-        seq = self.coord.sequence[self.start:self.end]
-        seq_len = len(seq)  # can be slow
-        if seq_len < int(1e6) or not self.use_multiprocess:
-            # numerify short sequences sequentially
-            as_list = [AMBIGUITY_DECODE[c] for c in seq]
-            self.matrix = np.array(as_list, self.dtype)
+        encoded = seq_numerify(self.coord.sequence[self.start:self.end])
+        # both strands' slices are views of it, so it is made read-only: changing it in place would
+        # silently change what was sliced before, and now raises an error instead
+        encoded.flags.writeable = False
+        data_plus = self._slice_matrices(True, encoded)[0]
 
-        else:
-            # numerify longer sequences in parallel
-            # use one less cpu than possible, with minimum 500K chars per process
-            n_processes = min(multiprocess.cpu_count(), seq_len // int(5e5)) - 1
-            with multiprocess.Pool(n_processes) as p:
-                max_seq_part_len = int(np.ceil(seq_len / n_processes))
-                seq_parts = [seq[offset:offset + max_seq_part_len]
-                             for offset in range(0, seq_len, max_seq_part_len)]
-                numerified_parts = p.map(seq_numerify, seq_parts)
-            assert seq_len == sum([len(p) for p in numerified_parts])
-            self.matrix = np.concatenate(numerified_parts)
-
-        # very important to copy here
-        data_plus = self._slice_matrices(True, np.copy(self.matrix))[0]
-
-        # minus strand
-        self.matrix = np.flip(self.matrix, axis=1)  # complementary base
-        # slice matrix will reverse direction
-        data_minus = self._slice_matrices(False,  self.matrix)[0]
+        # minus strand: complementary base by flipping the columns, _slice_matrices reverses direction
+        self.matrix = np.flip(encoded, axis=1)
+        data_minus = self._slice_matrices(False, self.matrix)[0]
 
         # put everything together
         data = {'plus': data_plus, 'minus': data_minus}
@@ -267,51 +255,25 @@ class AnnotationNumerifier(Numerifier):
             self.phases[start:end][cds_idx] = cds_phase_one_hot
 
     def _encode_onehot4(self) -> np.ndarray:
-        # Class order: Intergenic, UTR, CDS, (non-coding Intron), Intron
-        # This could be done in a more efficient way, but this way we may catch bugs
-        # where non-standard classes are output in the multiclass output
-        one_hot_matrix = np.zeros((self.matrix.shape[0], 4), dtype=bool)
-        col_0, col_1, col_2 = self.matrix[:, 0], self.matrix[:, 1], self.matrix[:, 2]
-        # Intergenic
-        one_hot_matrix[:, 0] = np.logical_not(col_0)
-        # UTR
-        genic_non_coding = np.logical_and(col_0, np.logical_not(col_1))
-        one_hot_matrix[:, 1] = np.logical_and(genic_non_coding, np.logical_not(col_2))
-        # CDS
-        one_hot_matrix[:, 2] = np.logical_and(np.logical_and(col_0, col_1), np.logical_not(col_2))
-        # Introns
-        one_hot_matrix[:, 3] = np.logical_and(col_0, col_2)
-        assert np.all(np.count_nonzero(one_hot_matrix, axis=1) == 1)
-
-        one_hot4_matrix = one_hot_matrix.astype(np.int8)
-        return one_hot4_matrix
+        # Class order: Intergenic, UTR, CDS, Intron. Each base gets the index of its one class, from
+        # the binary [transcript, CDS, intron] encoding: outside a transcript intergenic (0), else an
+        # intron (3) over CDS (2) over UTR (1), so exactly one class is set per base by construction
+        col_0, col_1, col_2 = (self.matrix[:, i].astype(np.int8) for i in range(3))
+        classes = col_0 * (1 + col_1 * (1 - col_2) + 2 * col_2)
+        return (classes[:, None] == np.arange(4, dtype=np.int8)).astype(np.int8)
 
     def _encode_transitions(self) -> np.ndarray:
-        # self.matrix has base-wise binary encoding of [geenuff_transcript, geenuff_cds, geenuff_intron]
-        # shift by one and subtract to get transitions out
-        diffs = self.matrix - np.roll(self.matrix, shift=-1, axis=0)  # roll is fine, bc last position is never used
-        diffs = diffs[:-1]
-
-        # where there's -1, a feature has started
-        f_starts = np.zeros(diffs.shape).astype(np.int8)
-        f_starts[diffs < 0] = 1
-
-        # where there's 1, a feature has ended
-        f_ends = np.zeros(diffs.shape).astype(np.int8)
-        f_ends[diffs > 0] = 1
-
-        # stack has all positions _before_ a transition marked with 1
-        stack = np.hstack((f_starts, f_ends))
-
-        # we however want both before and at the position of transitions ot be marked
-        # so that the transition weight will be set on the last bp of the preceding
-        # class and the first bp of the new class
-
-        # restore original shape
-        stack = np.insert(stack, len(stack), [[0, 0, 0, 0, 0, 0]], axis=0)
-
-        # add before and after transitions to get both in on array
-        binary_transitions = stack + np.roll(stack, shift=1, axis=0)
+        # self.matrix has base-wise binary encoding of [geenuff_transcript, geenuff_cds, geenuff_intron];
+        # a feature starts before a position where the value rises (-1 difference to the next base)
+        # and ends before one where it falls (1)
+        diffs = self.matrix[:-1] - self.matrix[1:]
+        stack = np.zeros((self.matrix.shape[0], 6), np.int8)
+        stack[:-1, :3] = diffs < 0
+        stack[:-1, 3:] = diffs > 0
+        # mark both the last bp of the preceding class and the first bp of the new class, so the
+        # transition weight lies on both sides; the last row of stack is always 0, so nothing wraps
+        binary_transitions = stack.copy()
+        binary_transitions[1:] += stack[:-1]
         return binary_transitions  # 6 columns, one for each switch (+TR, +CDS, +In, -TR, -CDS, -In)
 
 
@@ -363,8 +325,7 @@ class CoordNumerifier(object):
 
     @staticmethod
     def numerify_only_fasta(coord: object, max_len: int, genome: str, write_by: int,
-                            one_hot: bool = True,
-                            use_multiprocess: bool = False) -> Iterator[tuple[tuple[MatAndInfo, ...], tuple[int, int]]]:
+                            one_hot: bool = True) -> Iterator[tuple[tuple[MatAndInfo, ...], tuple[int, int]]]:
         """export the FASTA sequence only"""
         # passing empty features causes SplitFinder to consider noting more than splitting
         # to max length of write_by and end of sequence handling.
@@ -372,8 +333,7 @@ class CoordNumerifier(object):
                                    chunk_size=max_len)
         for _, bp_coord, h5_coord in split_finder.feature_n_coord_gen():
             start, end = bp_coord
-            seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=start, end=end,
-                                                use_multiprocess=use_multiprocess)
+            seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=start, end=end)
             xb = seq_numerifier.coord_to_matrices()
             for strand in ['plus', 'minus']:
                 x = CoordNumerifier.pad(xb[strand], max_len)
@@ -386,31 +346,28 @@ class CoordNumerifier(object):
     @staticmethod
     def numerify(coord: object, coord_features: list, max_len: int, write_by: int,
                  one_hot: bool = True,
-                 mode: tuple[str, ...] = ('X', 'y', 'anno_meta', 'transitions'),
-                 use_multiprocess: bool = True) -> Iterator[tuple[tuple[MatAndInfo, ...], tuple[int, int]]]:
+                 mode: tuple[str, ...] = ('X', 'y', 'anno_meta', 'transitions')
+                 ) -> Iterator[tuple[tuple[MatAndInfo, ...], tuple[int, int]]]:
         assert isinstance(max_len, int) and max_len > 0, 'what is {} of type {}'.format(max_len, type(max_len))
         coord_features = sorted(coord_features, key=lambda f: min(f.start, f.end))  # sort by ~ +strand start
         split_finder = SplitFinder(features=coord_features, write_by=write_by, coord_length=coord.length,
                                    chunk_size=max_len)
         for f_set, bp_coord, h5_coord in split_finder.feature_n_coord_gen():
             for strand_res in CoordNumerifier._numerify_super_write_chunk(f_set, bp_coord, h5_coord, coord, max_len,
-                                                                          one_hot, coord_features, mode,
-                                                                          use_multiprocess):
+                                                                          one_hot, coord_features, mode):
                 yield strand_res
 
     @staticmethod
     def _numerify_super_write_chunk(f_set: list, bp_coord: tuple[int, int],
                                     h5_coord: dict[str, tuple[int, int]], coord: object,
                                     max_len: int, one_hot: bool, coord_features: list,
-                                    mode: tuple[str, ...],
-                                    use_multiprocess: bool) -> Iterator[tuple[tuple[MatAndInfo, ...], tuple[int, int]]]:
+                                    mode: tuple[str, ...]) -> Iterator[tuple[tuple[MatAndInfo, ...], tuple[int, int]]]:
         export_x = 'X' in mode
         start, end = bp_coord
 
         anno_numerifier = AnnotationNumerifier(coord=coord, features=f_set, max_len=max_len,
                                                one_hot=one_hot, start=start, end=end)
-        seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=start, end=end,
-                                            use_multiprocess=use_multiprocess)
+        seq_numerifier = SequenceNumerifier(coord=coord, max_len=max_len, start=start, end=end)
 
         # everything with _b below is for "both strands" and is {"plus": +_np_array, "minus": -_np_array }
         # todo, make mode more elegant / extensible

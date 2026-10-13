@@ -10,7 +10,6 @@ colorama==0.4.6
 contextlib2==21.6.0
 contourpy==1.2.0
 cycler==0.12.1
-dill==0.3.8
 #dustdas @ git+https://github.com/gglyptodon/dustdas@d95083163eae361853ad8ef967ed30224a9695ea
 exceptiongroup==1.2.0
 filelock==3.20.3
@@ -38,7 +37,6 @@ Markdown==3.8.1
 MarkupSafe==2.1.5
 matplotlib==3.8.3
 ml-dtypes==0.3.2
-multiprocess==0.70.16
 numcodecs==0.12.1
 numpy==1.26.4
 oauthlib==3.2.2

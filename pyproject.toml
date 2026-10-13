@@ -26,7 +26,6 @@ dependencies = [
     "intervaltree",
     "numpy",
     "h5py",
-    "multiprocess",
     "numcodecs",
     "appdirs"
 ]

@@ -279,11 +279,11 @@ def test_coherent_slicing() -> None:
     # testing sequence error masks
     expect = np.ones((1801 * 2,), dtype=np.int8)
 
-    # annotation error mask of test case 1 should reflect faulty exon/CDS ranges
-    expect[:110] = 0
-    expect[120:499] = 0  # error from test case 1
-    # expect[499:1099] = 0  # error from test case 2, which we do not mark atm
-    # test equality for correct error ranges of first two test cases + some correct bases
+    # test case 1: y1 (a CDS of 122 bp, no whole number of codons, with a stop codon at 118-120) and
+    # z1 (no start codon) are masked whole, and the mask runs on into the gap to the next coding gene
+    # (gene_no_ATG at 1600) by min(gap // 2, int(sqrt(gap)) * 10) = 340 bp of the 1199 bp gap, up to
+    # base 740 (see GeenuFF's docs/overlap_masking.md)
+    expect[:740] = 0
     assert np.array_equal(expect[:1150], np.concatenate(anno_error_masks)[:1150])
 
 
@@ -322,7 +322,7 @@ def test_minus_strand_numerify() -> None:
 def test_coord_numerifier_and_h5_gen_plus_strand() -> None:
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=400, write_by=21_384_000_000, one_hot=False, longest_only=False)
+    controller.export(chunk_size=400, write_by=5_346_000, one_hot=False, longest_only=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     x = f['/data/X'][:]
@@ -357,10 +357,9 @@ def test_coord_numerifier_and_h5_gen_plus_strand() -> None:
     assert np.array_equal(y[0], y_expect[:400])
     assert np.array_equal(y[1][:5], y_expect[400:])
 
-    # prep anno mask
-    sample_weight_expect = np.ones((405,), dtype=np.int8)
-    sample_weight_expect[:110] = 0
-    sample_weight_expect[120:] = 0
+    # prep anno mask: test case 1 is masked up to base 740, beyond these 405 bases (see
+    # test_coherent_slicing)
+    sample_weight_expect = np.zeros((405,), dtype=np.int8)
     assert np.array_equal(sample_weights[0], sample_weight_expect[:400])
     assert np.array_equal(sample_weights[1][:5], sample_weight_expect[400:])
 
@@ -369,7 +368,7 @@ def test_coord_numerifier_and_h5_gen_minus_strand() -> None:
     """Tests numerification of test case 8 on coordinate 2"""
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=200, write_by=21_384_000_000, one_hot=False, longest_only=False)
+    controller.export(chunk_size=200, write_by=5_346_000, one_hot=False, longest_only=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     x = f['/data/X'][:]
@@ -415,13 +414,43 @@ def test_coord_numerifier_and_h5_gen_minus_strand() -> None:
     assert np.array_equal(y[0], y_expect[:200])
     assert np.array_equal(y[1][:50], y_expect[200:250])
 
+    # x8 has overlapping exons and CDS pieces, so it is masked whole (1550-1750), with the flanks
+    # min(gap // 2, int(sqrt(gap)) * 10): 99 bp of the 199 bp gap down to x7 and 2 bp of the 5 bp up to
+    # the sequence end; x7 lacks its 5' UTR, whose flank takes the other 99 bp of that gap (1351-1449),
+    # leaving base 1450 between them unmasked. The 955 bases here are 800-1755 of the sequence
     sample_weight_expect = np.ones((955,), dtype=np.int8)
-    sample_weight_expect[925:] = 0
-    sample_weight_expect[749:850] = 0
+    sample_weight_expect[550:649] = 0
+    sample_weight_expect[650:952] = 0
     sample_weight_expect = np.flip(sample_weight_expect)
     sample_weight_expect = np.insert(sample_weight_expect, 155, np.zeros((45,)), axis=0)
     assert np.array_equal(sample_weights[0], sample_weight_expect[:200])
     assert np.array_equal(sample_weights[1][:50], sample_weight_expect[200:250])
+
+
+def test_minus_strand_gene_without_errors() -> None:
+    """Test case 9 of dummyloci (GFF 701-900 on the minus strand of sequence 1) is exported in reading
+    direction with its UTR, CDS and intron classes, unmasked, and with phases 0, 2, 1, ... from its
+    start codon on."""
+    _, controller, _ = setup_dummyloci()
+    controller.export(chunk_size=2000, write_by=5_346_000, one_hot=True, longest_only=True)
+    with h5py.File(H5_OUT_FILE, 'r') as f:
+        # sequence 1 (1801 bp) is the longest, so its minus strand is the second row
+        y, sample_weights, phases = (f[f'/data/{key}'][1][:1801] for key in ('y', 'sample_weights', 'phases'))
+
+    # classes by 0-based position on the plus strand: intergenic 0, UTR 1, CDS 2, intron 3
+    classes = np.zeros(1801, dtype=np.int8)
+    classes[700:730] = classes[871:900] = 1
+    classes[730:760] = classes[841:871] = 2
+    classes[760:841] = 3
+    # the minus strand is exported reversed, from the end of the sequence on
+    classes = classes[::-1]
+    assert np.array_equal(np.argmax(y, axis=1), classes)
+    assert np.all(sample_weights == 1)
+
+    # the phase class (1 + phase) of each CDS base in reading direction, starting at the start codon
+    cds = classes == 2
+    assert np.array_equal(np.argmax(phases[cds], axis=1), 1 + np.tile([0, 2, 1], 20))
+    assert np.all(phases[~cds, 0] == 1)
 
 
 def test_export_does_not_depend_on_write_by(tmp_path: pathlib.Path) -> None:
@@ -435,9 +464,9 @@ def test_export_does_not_depend_on_write_by(tmp_path: pathlib.Path) -> None:
                           geenuff_testdata + 'overlapping_loci_pairs.gff3', genome_args={'species': 'dummy'})
 
     exports = []
-    for write_by in [100, 21_384_000_000]:
+    for write_by in [100, 5_346_000]:
         h5_path = str(tmp_path / f'write_by_{write_by}.h5')
-        HelixerExportController(db_path, h5_path).export(chunk_size=100, write_by=write_by, multiprocess=False)
+        HelixerExportController(db_path, h5_path).export(chunk_size=100, write_by=write_by)
         with h5py.File(h5_path, 'r') as h5:
             exports.append({key: h5[f'data/{key}'][:] for key in h5['data']})
     split, whole = exports
@@ -471,6 +500,9 @@ def test_numerify_with_end_neg1() -> None:
                     print("masks[i] != maskexpect[i]: {} != {}, @ {}".format(masks[i], maskexpect[i], i))
             assert False, "mask arrays not equal, see above"
 
+    # in the error cases a gene lacks the UTR toward the nearby sequence edge; the flank masked for it
+    # reaches min(gap // 2, int(sqrt(gap)) * 10) toward the edge, i.e. the 25 bp of the 50 bp gap next
+    # to the gene (see GeenuFF's docs/overlap_masking.md); the "err" rows below draw it as one 0
     def expect0() -> np.ndarray:
         return np.zeros([1000, 3], dtype=np.float32)
 
@@ -510,7 +542,7 @@ def test_numerify_with_end_neg1() -> None:
     expect[50:200, 0] = 1.
     expect[50:149, 1] = 1.
     maskexpect = masks1()
-    maskexpect[0:50] = 0
+    maskexpect[25:50] = 0
     check_one(coord, True, expect, maskexpect)
     # - strand
     expect = expect0()
@@ -550,7 +582,7 @@ def test_numerify_with_end_neg1() -> None:
     expect = np.flip(expect, axis=0)
 
     maskexpect = masks1()
-    maskexpect[0:50] = 0
+    maskexpect[25:50] = 0
     maskexpect = np.flip(maskexpect, axis=0)
     check_one(coord, False, expect, maskexpect)
     # + strand, as above, but expect all 0s no masking
@@ -588,7 +620,7 @@ def test_numerify_with_end_neg1() -> None:
     expect[799:950, 0] = 1.  # transcribed
     expect[851:950, 1] = 1.
     maskexpect = masks1()
-    maskexpect[950:1000] = 0
+    maskexpect[950:975] = 0
     check_one(coord, True, expect, maskexpect)
     # - strand, as above, but expect all 0s no masking
     expect = expect0()
@@ -627,7 +659,7 @@ def test_numerify_with_end_neg1() -> None:
     expect[851:950, 1] = 1.
     expect = np.flip(expect, axis=0)
     maskexpect = masks1()
-    maskexpect[950:1000] = 0
+    maskexpect[950:975] = 0
     maskexpect = np.flip(maskexpect, axis=0)
     check_one(coord, False, expect, maskexpect)
     # + strand, as above, but expect all 0s no masking
@@ -856,7 +888,7 @@ def test_gene_lengths() -> None:
     """Tests the '/data/gene_lengths' array"""
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=5000, write_by=21_384_000_000, one_hot=True, longest_only=False)
+    controller.export(chunk_size=5000, write_by=5_346_000, one_hot=True, longest_only=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     gl = f['/data/gene_lengths']
@@ -898,7 +930,7 @@ def test_gene_lengths() -> None:
 
 def test_seqids_start_ends() -> None:
     _, controller, _ = setup_dummyloci()
-    controller.export(chunk_size=400, write_by=21_384_000_000, one_hot=False, longest_only=False)
+    controller.export(chunk_size=400, write_by=5_346_000, one_hot=False, longest_only=False)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     seqids = f['/data/seqids'][:]
@@ -945,7 +977,7 @@ def test_phases() -> None:
 
     _, controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    controller.export(chunk_size=5000, write_by=21_384_000_000, one_hot=True, longest_only=True)
+    controller.export(chunk_size=5000, write_by=5_346_000, one_hot=True, longest_only=True)
 
     f = h5py.File(H5_OUT_FILE, 'r')
     ph = f['/data/phases'][:]
@@ -963,15 +995,18 @@ def test_phases() -> None:
     ]
 
     # change coordinates on minus strand as we changed direction during numerification
+    chunk_1_len = np.count_nonzero(padding[1] == 0)
     chunk_3_len = np.count_nonzero(padding[3] == 0)
     cds_regions_minus = [
+        (1, slice(chunk_1_len - 871, chunk_1_len - 730)),  # test case 9
         (3, slice(chunk_3_len - 1350, chunk_3_len - 974)),
         (3, slice(chunk_3_len - 1725, chunk_3_len - 1574)),
     ]
 
-    for i, region in enumerate(cds_regions_plus):
-        phase = 0 if i != 3 else 1  # the 4th cds region has phase 1 (this should be 'test case 6'?)
-        check_phase_in_cds(ph[region], y[region][..., 3].astype(bool), True, phase)
+    # every CDS starts a fresh codon, phase 0, also test case 6 (the 4th region), whose starting phase 1 in
+    # the file GeenuFF only records as a wrong_starting_phase error (see GeenuFF's docs/spec_vs_gff.md)
+    for region in cds_regions_plus:
+        check_phase_in_cds(ph[region], y[region][..., 3].astype(bool), True)
     for region in cds_regions_minus:
         check_phase_in_cds(ph[region], y[region][..., 3].astype(bool), False)
 
@@ -1484,12 +1519,11 @@ def test_ol_overlap_seq_helper() -> None:
 
 def test_direct_fasta_export() -> None:
     fasta_controller = HelixerFastaToH5Controller('testdata/dummyloci.fa', FASTA_OUT_FILE)
-    fasta_controller.export_fasta_to_h5(chunk_size=400, compression='gzip', multiprocess=True,
-                                        species='dummy', write_by=800)
+    fasta_controller.export_fasta_to_h5(chunk_size=400, compression='gzip', species='dummy', write_by=800)
 
     _, geenuff_controller, _ = setup_dummyloci()
     # dump the whole db in chunks into a .h5 file
-    geenuff_controller.export(chunk_size=400, write_by=21_384_000_000, one_hot=False, longest_only=False)
+    geenuff_controller.export(chunk_size=400, write_by=5_346_000, one_hot=False, longest_only=False)
 
     h5_fasta = h5py.File(FASTA_OUT_FILE, 'r')
     h5_db = h5py.File(H5_OUT_FILE, 'r')

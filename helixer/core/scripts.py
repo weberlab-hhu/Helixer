@@ -27,12 +27,9 @@ class ParameterParser(ABC):
                                      help='Compression algorithm used for the intermediate .h5 output '
                                           'files with a fixed compression level of 4. '
                                           '(Default is "gzip", which is much slower than "lzf".)')
-        self.data_group.add_argument('--no-multiprocess', action='store_true',
-                                     help='Whether to not parallize the numerification of large sequences. Uses half'
-                                          'the memory but can be much slower when many CPU cores can be utilized.')
         self.parser.add_argument('--version', action='version', version='%(prog)s ' + version('helixer'))
         # Default values have to be specified - and potentially added - here
-        self.defaults = {'compression': 'gzip', 'no_multiprocess': False}
+        self.defaults = {'compression': 'gzip'}
 
     @abstractmethod
     def check_args(self, args):

@@ -241,8 +241,7 @@ def main() -> None:
         controller = HelixerFastaToH5Controller(args.fasta_path, tmp_genome_h5_path)
         # hard coded subsequence length due to how the models have been created
         controller.export_fasta_to_h5(chunk_size=args.subsequence_length, compression=args.compression,
-                                      multiprocess=not args.no_multiprocess, species=args.species,
-                                      write_by=args.write_by)
+                                      species=args.species, write_by=args.write_by)
 
         msg = 'with' if args.overlap else 'without'
         msg = 'FASTA to H5 conversion done. Starting neural network prediction ' + msg + ' overlapping.'

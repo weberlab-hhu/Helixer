@@ -155,7 +155,7 @@ def train_h5_dir(wdir: pathlib.Path, geenuff_dbs: dict[str, str]) -> str:
     name_map = {'train': 'training_data.h5', 'validation': 'validation_data.h5'}
     for role, h5_name in name_map.items():
         controller = HelixerExportController(geenuff_dbs[role], f'{h5_dir}/{h5_name}')
-        controller.export(chunk_size=21384, write_by=21_384_000_000, one_hot=True)
+        controller.export(chunk_size=21384, write_by=5_346_000, one_hot=True)
     return h5_dir
 
 
@@ -164,7 +164,7 @@ def test_h5_path(wdir: pathlib.Path, geenuff_dbs: dict[str, str]) -> str:
     """Export the test chromosome to a standalone h5 file; return the path."""
     h5_path = f'{wdir}/test_data.h5'
     controller = HelixerExportController(geenuff_dbs['test'], h5_path)
-    controller.export(chunk_size=21384, write_by=21_384_000_000, one_hot=True)
+    controller.export(chunk_size=21384, write_by=5_346_000, one_hot=True)
     return h5_path
 
 

@@ -4,6 +4,5 @@
 #
 # chunk_size: 20000
 # modes: 'all'
-# write_by: 10000000000
+# write_by: 5346000
 # compression: 'gzip'  # on of 'gzip' or 'lzf'
-# no_multiprocess: false
