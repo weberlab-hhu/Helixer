@@ -1,12 +1,12 @@
 ##gff-version 3
-# test case 1: CDS and exon lines ending together (no UTR), a stop codon inside a CDS and a missing
-# start codon
+# test case 1: CDS and exon lines ending together (no UTR), a stop codon inside a CDS, a missing
+# start codon and CDS shorter than 60 bp
 #
-# the first transcript lacks its 3' UTR, its CDS ending with the transcript
+# the first transcript lacks its 3' UTR, its CDS ending with the transcript, and has 21 bp of CDS
 # the second transcript has its CDS run on past the first transcript's stop codon (118-120), a stop
 # codon inside the CDS, and 122 bp of CDS, no whole number of codons
 # the third transcript lacks both UTRs and its start codon, and its 10 bp of CDS are no whole number
-# of codons
+# of codons and too short
 1	manual	gene	1	400	.	+	.	ID=gene0
 1	manual	mRNA	1	120	.	+	.	ID=x1;Parent=gene0
 1	manual	exon	1	21	.	+	.	ID=ftr000000;Parent=x1
@@ -65,7 +65,7 @@
 2	manual	exon	120	161	.	+	.	ID=e2;Parent=y5
 2	manual	CDS	140	161	.	+	0	ID=c2;Parent=y5
 2	manual	exon	239	280	.	+	.	ID=e3;Parent=y5
-2	manual	CDS	239	270	.	+	2	ID=c3;Parent=y5
+2	manual	CDS	239	276	.	+	2	ID=c3;Parent=y5
 # 
 # test case 6: 5p phase != 0 and intron below 60 bp
 # the first transcript starts with the wrong phase
@@ -111,8 +111,8 @@
 2	manual	CDS	1720	1725	.	-	0	ID=c2;Parent=x8;protein_id=x8.p
 2	manual	mRNA	1550	1750	.	-	.	ID=y8;Parent=gene_overlapping_exons_missing_start	
 2	manual	exon	1550	1600	.	-	.	ID=e3;Parent=y8
-2	manual	exon	1680	1750	.	-	.	ID=e4;Parent=y8
-2	manual	CDS	1701	1730	.	-	0	ID=c4;Parent=y8;protein_id=y8.p
+2	manual	exon	1660	1750	.	-	.	ID=e4;Parent=y8
+2	manual	CDS	1671	1730	.	-	0	ID=c4;Parent=y8;protein_id=y8.p
 #
 # test case 9: a gene without errors on the minus strand
 # both UTRs, a start codon (871-869) and a stop codon (733-731), 60 bp of CDS in two pieces and an

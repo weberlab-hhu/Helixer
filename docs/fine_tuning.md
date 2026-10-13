@@ -90,7 +90,7 @@ data with you can acquire the better.
   ```
   The training data can be created following these steps
   (`import2geenuff.py` can be found in the
-  [GeenuFF repository](https://github.com/weberlab-hhu/GeenuFF)):
+  [GeenuFF repository](https://github.com/usadellab/GeenuFF)):
   ```bash
   # conversion of the assembly and annotation to a sqlite database
   import2geenuff.py --gff3 <genome_annotation>.gff3 --fasta <genome_assembly>.fa.gz \
@@ -222,7 +222,7 @@ and the fasta file to Helixer's training data format
       only use the 'most certain' ones (see
       [here](#interlude-select-the-most-confident-predictions)), you
       _need_ to use the [3-step method](../README.md#3-step-inference).
-   - You can find `import2geenuff.py` in the [GeenuFF repository](https://github.com/weberlab-hhu/GeenuFF).
+   - You can find `import2geenuff.py` in the [GeenuFF repository](https://github.com/usadellab/GeenuFF).
       ```bash
       # read into the GeenuFF database
       import2geenuff.py --fasta <genome_assembly.fa> --gff3 <helixer_post_output.gff3> \

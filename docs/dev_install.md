@@ -21,7 +21,7 @@ First `cd` into the directory where you want the repositories, then
 
 ```
 # GeenuFF (for data management)
-git clone https://github.com/weberlab-hhu/GeenuFF
+git clone https://github.com/usadellab/GeenuFF
 cd GeenuFF/
 git checkout dev
 pip install -r requirements.txt

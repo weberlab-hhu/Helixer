@@ -163,7 +163,7 @@ We used precision, recall and F1  to evaluate the accuracy of the gene
 predictions of AUGUSTUS, GeneMark and Helixer versus the reference.
 To calculate these metrics base-wise, we followed a three-step workflow:
    
-1. Converting the genome annotations to sqlite3 with [GeenuFF](https://github.com/weberlab-hhu/GeenuFF)
+1. Converting the genome annotations to sqlite3 with [GeenuFF](https://github.com/usadellab/GeenuFF)
     
    ```bash
    import2geenuff.py --gff3 <genome_annotation.gff> --fasta <genome_assembly.fa> --db-path <species.sqlite3> --log-file import.log --species <species>

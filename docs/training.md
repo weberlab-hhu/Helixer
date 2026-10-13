@@ -14,10 +14,12 @@ the numerical matrices that will be directly used during training.
 
 First we will need to pre-process the data (FASTA & GFF3 files) using GeenuFF. It imports them
 into a database, checks every gene model and masks what it cannot trust, so that Helixer is not
-trained on it: e.g. a gene whose start codon is not ATG or whose exons overlap is masked whole, and
-beyond a gene without an annotated UTR the stretch where it potentially really ends is masked.
+trained on it: e.g. a gene whose start codon is not ATG, whose exons overlap or whose CDS is
+shorter than 60 bp is masked whole, and for a gene without an annotated UTR a part of the stretch
+between its CDS and the next coding gene is masked (see
+[GeenuFF docs](https://github.com/usadellab/GeenuFF/blob/main/docs/spec_vs_gff.md)).
 Of overlapping genes one is kept (if possible) and the other left out. See the
-[GeenuFF docs](https://github.com/weberlab-hhu/GeenuFF/tree/main/docs) for what is checked and masked.
+[GeenuFF docs](https://github.com/usadellab/GeenuFF/tree/main/docs) for what is checked and masked.
 
 > [!WARNING]  
 > Helixer needs GeenuFF 0.4.0 or newer (installed with it); databases imported with an
@@ -29,7 +31,7 @@ download and pre-process our example algae data.
 ```shell script
 # this script downloads + organizes data
 # and then runs import2geenuff.py for three algae genomes
-wget https://raw.githubusercontent.com/weberlab-hhu/GeenuFF/main/example.sh
+wget https://raw.githubusercontent.com/usadellab/GeenuFF/main/example.sh
 # execution will take ~ 1-2 minutes depending on your system
 bash example.sh
 # store full path in a variable for later usage
@@ -48,7 +50,7 @@ and supply a species name. The example.sh shows one way to do so.
 Take the FASTA and GFF3 files of a genome from the same source and assembly version wherever
 possible. GeenuFF installs a few scripts beside `import2geenuff.py` that check and prepare the
 files before import (see the GeenuFF
-[scripts documentation](https://github.com/weberlab-hhu/GeenuFF/blob/main/docs/scripts.md)):
+[scripts documentation](https://github.com/usadellab/GeenuFF/blob/main/docs/scripts.md)):
 
 | script                       | use it                                                                                                                                                                                                                               |
 |:-----------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|

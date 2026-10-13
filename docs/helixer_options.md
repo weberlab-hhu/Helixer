@@ -139,7 +139,7 @@ helixer_post_bin <genome.h5> <predictions.h5> <window_size> <edge_threshold> <pe
 ```
 
 ## 5. import2geenuff.py options
-(see [GeenuFF repository](https://github.com/weberlab-hhu/GeenuFF/tree/main))
+(see [GeenuFF repository](https://github.com/usadellab/GeenuFF/tree/main))
 ### Configuration parameters
 | Parameter     | Default           | Explanation                                                                                             |
 |:--------------|:------------------|:--------------------------------------------------------------------------------------------------------|

@@ -16,7 +16,7 @@ filelock==3.20.3
 flatbuffers==24.3.7
 fonttools==4.60.2
 gast==0.5.4
-#geenuff @ git+https://github.com/weberlab-hhu/GeenuFF@702cbf3c2a8eba05dc2f26038a0d3aa0da8242b8
+#geenuff @ git+https://github.com/usadellab/GeenuFF@702cbf3c2a8eba05dc2f26038a0d3aa0da8242b8
 google-auth==2.29.0
 google-auth-oauthlib==1.2.0
 google-pasta==0.2.0
