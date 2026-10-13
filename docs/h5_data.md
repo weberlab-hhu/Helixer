@@ -91,7 +91,7 @@ the network can avoid learning from regions that
 are 
 
  - 1 if base pair is valid
- - 0 if base pair is invalid (in GeenuFF error mask)
+ - 0 if base pair is invalid (masked by GeenuFF, i.e. in a geenuff_mask feature)
 
 #### Where the subsequence are in the genome(s)
 Critical for interpreting anything / quickly knowing
@@ -176,7 +176,7 @@ One value per subsequence, derived from sample_weights
  - 0 if the subsequence contains only invalid data
 
 (where valid is the default and invalid means 
-any base pairs where GeenuFF masked an error)
+any base pairs GeenuFF masked)
 
 
 ##### fully_intergenic_samples 

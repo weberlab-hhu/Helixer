@@ -12,16 +12,16 @@ the numerical matrices that will be directly used during training.
 > only wish to predict, and not train. See instead the
 > [fasta2h5.py options](helixer_options.md#2-fasta2h5py-options).
 
-First we will need to pre-process the data (Fasta & GFF3 files)
-using GeenuFF. This provides a more biologically-realistic
-representation of gene structures, and, most importantly
-right now, provides identification and masking of invalid
-gene structures from the gff file (e.g. those that don't
-have _any_ UTR between coding and intergenic, those where
-the start codon is not ATG, or those that
-have overlapping exons within one transcript). 
+First we will need to pre-process the data (FASTA & GFF3 files) using GeenuFF. It imports them
+into a database, checks every gene model and masks what it cannot trust, so that Helixer is not
+trained on it: e.g. a gene whose start codon is not ATG or whose exons overlap is masked whole, and
+beyond a gene without an annotated UTR the stretch where it potentially really ends is masked.
+Of overlapping genes one is kept (if possible) and the other left out. See the
+[GeenuFF docs](https://github.com/weberlab-hhu/GeenuFF/tree/main/docs) for what is checked and masked.
 
-See the GeenuFF repository for more information.
+> [!WARNING]  
+> Helixer needs GeenuFF 0.4.0 or newer (installed with it); databases imported with an
+> older GeenuFF version have to be imported again.
 
 For now, we can just run the provided example script to
 download and pre-process our example algae data.
@@ -43,6 +43,36 @@ as you can see with `ls $data_at`.
 To run other genomes, simply provide a fasta and gff3 
 file to the `import2geenuff.py` script according to the help function/the [Helixer options documentation](helixer_options.md#5-import2geenuffpy-options),
 and supply a species name. The example.sh shows one way to do so.
+
+#### Preparing your own genomes
+Take the FASTA and GFF3 files of a genome from the same source and assembly version wherever
+possible. GeenuFF installs a few scripts beside `import2geenuff.py` that check and prepare the
+files before import (see the GeenuFF
+[scripts documentation](https://github.com/weberlab-hhu/GeenuFF/blob/main/docs/scripts.md)):
+
+| script                       | use it                                                                                                                                                                                                                               |
+|:-----------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `check_seqids.py`            | first, on every genome: checks that the GFF3 sequence IDs are FASTA IDs; where they are not, the import fails                                                                                                                        |
+| `rename_gff_seqids.py`       | where the IDs differ because the files come from different sources (e.g. a FASTA file renamed on upload to NCBI): pairs them by ID, header name or sequence, checked against the start and stop codons and splice sites of the genes |
+| `add_gene_lines.py`          | for GFF3 files of gene predictors such as AUGUSTUS, BRAKER or Tiberius, whose transcripts have no gene lines or `Parent=` attributes, which stops the import                                                                         |
+| `filter_sequence_lengths.py` | to remove organelle genomes and small unplaced scaffolds before import; organelle genes give little training data that fits a nuclear model, and their many overlaps are mostly masked                                               |
+
+#### Checking the import summary
+Each import ends with a summary in its log file, which `summarize_geenuff_db.py` rebuilds from the
+database. Read it before training on a genome, and compare it across the species of your dataset,
+as an outlier usually points to a problem with the files rather than with the biology:
+
+- **bases masked**, as a share of both strands: a genome masked far more than the others gives
+  little training data and is a candidate to fix or leave out
+- **genes masked in full** and the errors behind them: many missing start or stop codons or
+  truncated CDS point to partial gene models, or to an annotation of another assembly version
+- **GFF lines left out** while grouping lines into genes, and the coding transcripts lost through
+  them: usually an ID or Parent problem of the file
+- **stop codons added past the exons**: typical of a file converted from GTF, worth a look
+- a **NO TRAINING DATA** warning: the GFF3 file has no CDS lines
+
+`list_transcripts.py` lists the transcripts behind a count, e.g. by error type, to look at in a
+genome browser.
 
 ### numeric encoding of data
 To actually train (or predict) we will need to encode the
@@ -244,7 +274,8 @@ but nevertheless some patterns are clear. You will probably want to:
   you need the model to predict on (e.g. not 50% mice for a vertebrate model)
 - include more and _more diverse_ species to boost performance (current performant released models were trained
   on many dozens of species)
-- include only higher quality annotations to boost performance
+- include only higher quality annotations to boost performance; the share masked in the import
+  summary (see [above](#checking-the-import-summary)) is a quick first measure
 - figure out the best tradeoff between phylogenetic variety and availability of high quality annotations
 
 Trial and error has been a major part of the training process, 
@@ -262,7 +293,13 @@ range than narrower. While model parameters are not directly optimized
 for validation species, these species _are_ used to select the best
 model; so it is critical that they are of high enough quality that
 metrics improve when the model is improving and get worse when the model is getting
-worse. Validation files _can_ be 
+worse. A heavily masked validation genome weakens that signal, so check the import summary of
+validation species as for training ones. Validation files _can_ be 
 [down sampled](https://github.com/weberlab-hhu/helixer_scratch/blob/master/data_scripts/sample-single-genomes.py)
-for speed purposes. 
+for speed purposes.
+
+### Evaluating against the reference
+To compare a prediction with the reference Helixer was trained on, GeenuFF's
+`dump_filtered_gff3.py` writes exactly the genes the h5 export gives labels from, one transcript per
+gene. This way, Helixer's predictions are not compared to reference genes with structural defects.
 

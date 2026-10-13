@@ -143,18 +143,18 @@ helixer_post_bin <genome.h5> <predictions.h5> <window_size> <edge_threshold> <pe
 ### Configuration parameters
 | Parameter     | Default           | Explanation                                                                                             |
 |:--------------|:------------------|:--------------------------------------------------------------------------------------------------------|
-| --base-dir    | /                 | Organized output (& input) directory. If this is not set, all four custom input parameters must be set. |
+| --basedir     | /                 | Organized output (& input) directory. If this is not set, all four custom input parameters must be set. |
 | --config-file | config/import.yml | .yml file containing configuration parameters                                                           |
 
 ### Override default with custom parameters
-These parameters are **required** if ``--base-dir`` is not set.
+These parameters are **required** if ``--basedir`` is not set.
 
-| Parameter  | Default                                                | Explanation                                                                    |
-|:-----------|:-------------------------------------------------------|:-------------------------------------------------------------------------------|
-| --gff3     | /                                                      | GFF3 formatted file to parse / standardize                                     |
-| --fasta    | /                                                      | Fasta file to parse standardize (has to be the same assembly as the GFF3 file) |
-| --db-path  | /                                                      | Output path of the GeenuFF database                                            |
-| --log-file | basedir/output/import.log (when ``--base-dir`` is set) | Output path for import2geenuff log file                                        |
+| Parameter  | Default                                               | Explanation                                                                    |
+|:-----------|:------------------------------------------------------|:-------------------------------------------------------------------------------|
+| --gff3     | /                                                     | GFF3 formatted file to parse / standardize                                     |
+| --fasta    | /                                                     | Fasta file to parse standardize (has to be the same assembly as the GFF3 file) |
+| --db-path  | /                                                     | Output path of the GeenuFF database                                            |
+| --log-file | basedir/output/import.log (when ``--basedir`` is set) | Output path for import2geenuff log file; it ends with the import summary       |
 
 ### Possible genome attribute parameters
 | Parameter       | Default | Explanation                                    |
@@ -165,20 +165,21 @@ These parameters are **required** if ``--base-dir`` is not set.
 | --acquired-from | /       | Genome source (example: NCBI_RefSeq)           |
 
 ### Miscellaneous parameter
-| Parameter    | Default | Explanation                                                                                            |
-|:-------------|:--------|:-------------------------------------------------------------------------------------------------------|
-| --replace-db | /       | Whether to override a GeenuFF database file found at the default location/at the location of --db_path |
+| Parameter    | Default | Explanation                                                                                              |
+|:-------------|:--------|:---------------------------------------------------------------------------------------------------------|
+| --replace-db | /       | Whether to override a GeenuFF database file found at the default location/at the location of --db_path   |
+| --verbose    | /       | Log every individual error as it is found, instead of only the summary at the end (can be a lot of text) |
 
 ## 6. geenuff2h5.py options
 geenuff2h5.py always searches for the configuration file ``config/fasta2h5_config.yaml`` in the current
 working directory. If that file isn't provided, the parameters are expected to be given via the
 command line.
 
-| Parameter            | Default        | Explanation                                                                                                                                                                                                                                                                                                                                                             |
-|:---------------------|:---------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| --input-db-path      | /              | **Required**; Path to the GeenuFF SQLite input file/database (has to contain only one genome)                                                                                                                                                                                                                                                                           |
-| --h5-output-path     | /              | **Required**; HDF5 output file for the encoded data. Must end with ".h5"                                                                                                                                                                                                                                                                                                |
-| --add-additional     | /              | Outputs the datasets under alternatives/{add-additional}/ (and checks sort order against existing "data" datasets). Use to add e.g. additional annotations from Augustus                                                                                                                                                                                                |
-| --subsequence-length | 21384          | Length of the subsequences that the model will use at once.                                                                                                                                                                                                                                                                                                             |
-| --modes              | all            | Either "all" (default), or a comma separated list with desired members of the following {X, y, anno_meta, transitions} that should be exported. This can be useful, for instance when skipping transitions (to reduce size/mem) or skipping X because you are adding an additional annotation set to an existing file (i.e. y,anno_meta,transitions <- no whitespaces!) |
-| --write-by           | 5,346,000      | Write in super-chunks with this many base pairs, which will be rounded to be divisible by subsequence-length; needs to be equal to or larger than subsequence length; peak memory grows with it, not with the chromosome length                                                                                                                                          |
+| Parameter            | Default   | Explanation                                                                                                                                                                                                                                                                                                                                                             |
+|:---------------------|:----------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| --input-db-path      | /         | **Required**; Path to the GeenuFF SQLite input file/database (has to contain only one genome)                                                                                                                                                                                                                                                                           |
+| --h5-output-path     | /         | **Required**; HDF5 output file for the encoded data. Must end with ".h5"                                                                                                                                                                                                                                                                                                |
+| --add-additional     | /         | Outputs the datasets under alternatives/{add-additional}/ (and checks sort order against existing "data" datasets). Use to add e.g. additional annotations from Augustus                                                                                                                                                                                                |
+| --subsequence-length | 21384     | Length of the subsequences that the model will use at once.                                                                                                                                                                                                                                                                                                             |
+| --modes              | all       | Either "all" (default), or a comma separated list with desired members of the following {X, y, anno_meta, transitions} that should be exported. This can be useful, for instance when skipping transitions (to reduce size/mem) or skipping X because you are adding an additional annotation set to an existing file (i.e. y,anno_meta,transitions <- no whitespaces!) |
+| --write-by           | 5,346,000 | Write in super-chunks with this many base pairs, which will be rounded to be divisible by subsequence-length; needs to be equal to or larger than subsequence length; peak memory grows with it, not with the chromosome length                                                                                                                                         |
