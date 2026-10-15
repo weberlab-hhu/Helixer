@@ -94,6 +94,14 @@ of Helixer which you can use for inference.
 ## Example usage/inference (gene calling)
 If you want to use Helixer to annotate a genome with a provided model, start here.
 
+To skip junk fragments such as organelle genomes or small unplaced scaffolds, the FASTA file can be
+cleaned first with GeenuFF's `filter_sequence_lengths.py --fasta <genome.fa>` (GeenuFF is
+always installed with Helixer, see the
+[GeenuFF scripts documentation](https://github.com/usadellab/GeenuFF/blob/main/docs/scripts.md)).
+It writes `<genome>_length_filtered.fa` (or the path given with `--fasta-out`), which is then the
+FASTA file to predict on; where nothing is removed, no file is written and the original needs to
+be used.
+
 > **Reproducibility note:** On most GPU architectures, repeated Helixer runs on the same machine
 > produce identical predictions without any special configuration. This has been confirmed for the
 > NVIDIA RTX PRO 6000, NVIDIA H100, and NVIDIA GeForce RTX 4080 SUPER. On some GPUs (e.g. NVIDIA

@@ -16,7 +16,7 @@ classifiers = [
 dependencies = [
     "geenuff @ git+https://github.com/usadellab/GeenuFF@v0.3.2",
     "sqlalchemy==1.3.22",
-    "tensorflow>=2.6.2",
+    "tensorflow>=2.13,<2.16",
     "tensorflow-addons>=0.21.0",
     "seaborn",
     "Keras<3.0.0",
@@ -27,7 +27,12 @@ dependencies = [
     "numpy",
     "h5py",
     "numcodecs",
-    "appdirs"
+    "appdirs",
+    "scikit-learn",
+    "scipy",
+    "termcolor",
+    "requests",
+    "pyyaml"
 ]
 authors = [
   {name = "Alisandra K. Denton"},

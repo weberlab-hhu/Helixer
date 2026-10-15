@@ -68,7 +68,7 @@
 2	manual	CDS	239	276	.	+	2	ID=c3;Parent=y5
 # 
 # test case 6: 5p phase != 0 and intron below 60 bp
-# the first transcript starts with the wrong phase
+# the first transcript starts with the wrong phase, and its CDS 25 bp before its exon (cds_outside_exons)
 # the second transcript has the short intron (576-579) and 98 bp of CDS, no whole number of codons
 2	manual	gene	550	750	.	+	.	ID=gene_phase_0_short_intron
 2	manual	mRNA	550	750	.	+	.	ID=x6;Parent=gene_phase_0_short_intron	

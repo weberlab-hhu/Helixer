@@ -17,10 +17,13 @@ All tests are marked pytest.mark.training and are not part of the default suite.
 
 Run from the Helixer/helixer directory with:
     pytest --verbose tests/test_training.py
+Add --training-logs to write the output of each HybridModel.py run to training.log, tuning.log,
+eval.log and eval_overlap.log in the test's working directory (under pytest's basetemp).
 """
 import gzip
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import urllib.request
@@ -169,75 +172,94 @@ def test_h5_path(wdir: pathlib.Path, geenuff_dbs: dict[str, str]) -> str:
 
 
 @pytest.fixture(scope='session')
-def training_result(wdir: pathlib.Path, train_h5_dir: str) -> tuple[str, subprocess.CompletedProcess[str]]:
+def log_dir(pytestconfig: pytest.Config, wdir: pathlib.Path) -> pathlib.Path | None:
+    """The directory to write the HybridModel.py logs to, given --training-logs; None otherwise."""
+    return wdir if pytestconfig.getoption('--training-logs') else None
+
+
+def readable_output(output: str) -> str:
+    """Keras' progress bar reduced to the last line of each epoch: the bar's updates, each ending in
+    backspaces and some running straight into the next log message, are dropped."""
+    output = output.replace('\b', '')
+    output = re.sub(r'(?<=\S)(?=\d{4}-\d\d-\d\d \d\d:\d\d:\d\d, [A-Z]: )', '\n', output)
+    return '\n'.join(line for line in output.split('\n') if ' - ETA: ' not in line)
+
+
+def run_logged(cmd: list[str], log_dir: pathlib.Path | None, name: str) -> subprocess.CompletedProcess[str]:
+    """Runs a command; with a log_dir, writes its stdout and stderr to <log_dir>/<name>.log."""
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if log_dir is not None:
+        with open(log_dir / f'{name}.log', 'w') as f:
+            f.write(f'$ {" ".join(cmd)}\n\n--- stdout ---\n{readable_output(result.stdout)}\n'
+                    f'--- stderr ---\n{readable_output(result.stderr)}')
+    return result
+
+
+@pytest.fixture(scope='session')
+def training_result(wdir: pathlib.Path, train_h5_dir: str, log_dir: pathlib.Path | None
+                    ) -> tuple[str, subprocess.CompletedProcess[str]]:
     """Train HybridModel.py for 5 epochs; return (model_path, CompletedProcess)."""
     model_path = f'{wdir}/training_model.h5'
-    result = subprocess.run(
+    result = run_logged(
         ['HybridModel.py',
          '--data-dir', train_h5_dir,
          '--class-weights', '[0.7, 1.6, 1.2, 1.2]',
          '--transition-weights', '[1, 12, 3, 1, 12, 3]',
          '--epochs', '5',
-         '--learning-rate', '1e-2',
          '--save-model-path', model_path],
-        capture_output=True,
-        text=True,
+        log_dir, 'training',
     )
     return model_path, result
 
 
 @pytest.fixture(scope='session')
-def tuning_result(wdir: pathlib.Path, train_h5_dir: str, training_result: tuple[str, subprocess.CompletedProcess[str]]
-                  ) -> tuple[str, subprocess.CompletedProcess[str]]:
+def tuning_result(wdir: pathlib.Path, train_h5_dir: str, training_result: tuple[str, subprocess.CompletedProcess[str]],
+                  log_dir: pathlib.Path | None) -> tuple[str, subprocess.CompletedProcess[str]]:
     """Resume training (tune) for 2 epochs; return (model_path, CompletedProcess)."""
     trained_model_path, _ = training_result
     tuned_model_path = f'{wdir}/tuned_model.h5'
-    result = subprocess.run(
+    result = run_logged(
         ['HybridModel.py',
          '--data-dir', train_h5_dir,
          '--class-weights', '[0.7, 1.6, 1.2, 1.2]',
          '--transition-weights', '[1, 12, 3, 1, 12, 3]',
          '--epochs', '2',
-         '--learning-rate', '1e-2',
          '--load-model-path', trained_model_path,
          '--patience', '10',
          '--check-every-nth-batch', '150',
          '--resume-training',
          '--save-model-path', tuned_model_path],
-        capture_output=True,
-        text=True,
+        log_dir, 'tuning',
     )
     return tuned_model_path, result
 
 
 @pytest.fixture(scope='session')
-def eval_result(test_h5_path: str, tuning_result: tuple[str, subprocess.CompletedProcess[str]]
-                ) -> subprocess.CompletedProcess[str]:
+def eval_result(test_h5_path: str, tuning_result: tuple[str, subprocess.CompletedProcess[str]],
+                log_dir: pathlib.Path | None) -> subprocess.CompletedProcess[str]:
     """Run eval (no overlap) with the tuned model; return CompletedProcess."""
     tuned_model_path, _ = tuning_result
-    return subprocess.run(
+    return run_logged(
         ['HybridModel.py',
          '--test-data', test_h5_path,
          '--eval',
          '--load-model-path', tuned_model_path],
-        capture_output=True,
-        text=True,
+        log_dir, 'eval',
     )
 
 
 @pytest.fixture(scope='session')
-def eval_overlap_result(test_h5_path: str, tuning_result: tuple[str, subprocess.CompletedProcess[str]]
-                        ) -> subprocess.CompletedProcess[str]:
+def eval_overlap_result(test_h5_path: str, tuning_result: tuple[str, subprocess.CompletedProcess[str]],
+                        log_dir: pathlib.Path | None) -> subprocess.CompletedProcess[str]:
     """Run eval with overlap with the tuned model; return CompletedProcess."""
     tuned_model_path, _ = tuning_result
-    return subprocess.run(
+    return run_logged(
         ['HybridModel.py',
          '--test-data', test_h5_path,
          '--eval',
          '--overlap',
          '--load-model-path', tuned_model_path],
-        capture_output=True,
-        text=True,
+        log_dir, 'eval_overlap',
     )
 
 
@@ -298,7 +320,8 @@ class TestTraining:
 
     def test_model_file_created(self, training_result: tuple[str, subprocess.CompletedProcess[str]]) -> None:
         model_path, _ = training_result
-        assert os.path.exists(model_path)
+        assert os.path.exists(model_path), ('no model saved, the validation genic F1 never rose above 0; rerun with '
+                                            '--training-logs to see the training output')
 
     def test_model_is_valid_h5(self, training_result: tuple[str, subprocess.CompletedProcess[str]]) -> None:
         model_path, _ = training_result
@@ -318,7 +341,7 @@ class TestTuning:
 
     def test_model_file_created(self, tuning_result: tuple[str, subprocess.CompletedProcess[str]]) -> None:
         model_path, _ = tuning_result
-        assert os.path.exists(model_path)
+        assert os.path.exists(model_path), 'no model saved; rerun with --training-logs to see the tuning output'
 
     def test_model_is_valid_h5(self, tuning_result: tuple[str, subprocess.CompletedProcess[str]]) -> None:
         model_path, _ = tuning_result
