@@ -14,6 +14,7 @@ import geenuff
 import helixer
 from geenuff.applications.exporter import GeenuffExportController
 from geenuff.applications.importer import FastaImporter
+from geenuff.base.orm import Genome
 from .numerify import CoordNumerifier, MatAndInfo
 
 logger = logging.getLogger('HelixerLogger')
@@ -182,6 +183,17 @@ class HelixerExportController(HelixerExportControllerBase):
         else:
             self.h5 = h5py.File(output_path, 'w')
         logger.info(f'Exporting all data to {output_path}')
+
+    def _add_data_attrs(self) -> None:
+        """Adds where GeenuFF imported the genome from, so the h5 file names its sources even where the
+        database is gone."""
+        super()._add_data_attrs()
+        genome = self.exporter.session.query(Genome).one()
+        for key, value in (('fasta_path', genome.fasta_path), ('gff_path', genome.gff_path),
+                           ('geenuff_import_version', genome.geenuff_version),
+                           ('geenuff_imported', genome.imported)):
+            if value is not None:
+                self.h5.attrs[key] = value
 
     def _coord_info(self, coords_features: dict[tuple[int, int], list]) -> dict[bytes, tuple[int, int]]:
         coord_info = {}
