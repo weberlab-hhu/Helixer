@@ -12,7 +12,7 @@ from termcolor import colored
 from pprint import pformat
 import logging.config
 
-from helixer.core.scripts import ParameterParser
+from helixer.core.scripts import ParameterParser, check_fasta_path
 from helixer.core.data import prioritized_models, report_if_current_not_best, identify_current, set_model_path
 from helixer.prediction.HybridModel import HybridModel
 from helixer.export.exporter import HelixerFastaToH5Controller
@@ -121,7 +121,7 @@ class HelixerParameterParser(ParameterParser):
         return os.path.join(model_path, lineage, current_model)
 
     def check_args(self, args: argparse.Namespace) -> None:
-
+        check_fasta_path(self.parser, args.fasta_path)
         if args.model_filepath is not None:
             print(f'overriding the lineage based model, '
                   f'with the manually specified {args.model_filepath}', file=sys.stderr)

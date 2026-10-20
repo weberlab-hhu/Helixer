@@ -6,7 +6,16 @@ from termcolor import colored
 from abc import ABC, abstractmethod
 from importlib.metadata import version
 
+from geenuff.base.helpers import require_fasta_and_gff, require_input_files
+
 logger = logging.getLogger('HelixerLogger')
+
+
+def check_fasta_path(parser: argparse.ArgumentParser, fasta_path: str) -> None:
+    """Stops with a usage error, before anything is written, where the FASTA file does not exist, is
+    named like a GFF3 file or does not start with '>' (see geenuff.base.helpers.require_fasta_and_gff)."""
+    require_input_files(parser, [fasta_path])
+    require_fasta_and_gff(parser, fasta_path, None)
 
 
 class ParameterParser(ABC):
@@ -76,4 +85,7 @@ class ExportParameterParser(ParameterParser):
 
     def check_args(self, args):
         assert args.h5_output_path.endswith('.h5'), '--output-path must end with ".h5"'
+        # only fasta2h5.py, of the export scripts, reads a FASTA file
+        if getattr(args, 'fasta_path', None):
+            check_fasta_path(self.parser, args.fasta_path)
 
