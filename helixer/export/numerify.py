@@ -114,7 +114,7 @@ class SequenceNumerifier(Numerifier):
     def coord_to_matrices(self) -> dict[str, list[np.ndarray]]:
         """Does not alter the error mask unlike in AnnotationNumerifier"""
         start_time = time.time()
-        encoded = seq_numerify(self.coord.sequence[self.start:self.end])
+        encoded = seq_numerify(self.coord.sequence_range(self.start, self.end))
         # both strands' slices are views of it, so it is made read-only: changing it in place would
         # silently change what was sliced before, and now raises an error instead
         encoded.flags.writeable = False

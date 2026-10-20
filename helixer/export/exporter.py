@@ -112,6 +112,13 @@ class HelixerFastaToH5Controller(HelixerExportControllerBase):
             self.sequence = seq
             self.length = len(seq)
 
+        def sequence_range(self, start: int, end: int) -> str:
+            """GeenuFF uses sequence_range for reading only the chunks of a stored sequence that a range
+            overlaps ever since it is stored in chunks in the SQLite table. This function is named the
+            same, so that SequenceNumerifier.coord_to_matrices in numerify.py reads FASTA-only and GeenuFF
+            coordinates alike """
+            return self.sequence[start:end]
+
         def __repr__(self) -> str:
             return f'Fasta only Coordinate (seqid: {self.seqid}, len: {self.length})'
 
