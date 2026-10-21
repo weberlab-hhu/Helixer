@@ -2,7 +2,7 @@
 Run all tests from the `Helixer/helixer` directory.
 
 ## Dependency checks — `test_imports.py`
-Verifies that all required Python packages (`helixer`, `geenuff`, `dustdas`) are importable
+Verifies that all required Python packages (`helixer`, `geenuff`) are importable
 and that the `helixer_post_bin` binary is on PATH. Run this first after a fresh install to
 get actionable error messages for missing dependencies.
 

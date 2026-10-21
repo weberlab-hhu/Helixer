@@ -10,7 +10,6 @@ colorama==0.4.6
 contextlib2==21.6.0
 contourpy==1.2.0
 cycler==0.12.1
-#dustdas @ git+https://github.com/gglyptodon/dustdas@d95083163eae361853ad8ef967ed30224a9695ea
 exceptiongroup==1.2.0
 filelock==3.20.3
 flatbuffers==24.3.7
