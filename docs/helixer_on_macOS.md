@@ -24,14 +24,16 @@ HTSeq==2.0.8
 ````
 
 ### 1.2 Install Helixer as usual
+Upgrade pip first in every new environment, from the hash-pinned URL below: older pip versions
+trust a compromised root certificate (see the
+[security warning in the manual installation](manual_install.md#upgrade-pip-first)).
 ````bash
 # create a virtual environment before the next steps (recommended but not necessary)
 python3.10 -m venv <name/path_of_your_environment>
 source <name/path_of_your_environment>/bin/activate
 
-pip install wheel
-# usually not necessary, but just in case:
-pip install --upgrade pip
+# upgrade pip first (see the security warning linked above)
+pip install "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
 
 # install the edited requirements
 pip install -r requirements.3.10.txt

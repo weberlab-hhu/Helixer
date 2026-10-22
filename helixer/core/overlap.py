@@ -155,20 +155,20 @@ class OverlapSeqHelper(object):
         # make sure we can drop first and last (to produce same results, regardless of batch size)
         # and still have one chunk
         assert max_n_chunks >= 3, "batch_size is set too small to functionally overlap, " \
-                                 "either a) set higher (to ~ 2 * chunk_size / overlap_offset + 1), " \
-                                 "b) increase overlap_offset, or c) don't overlap"
-        step = max_n_chunks - 2   # -2 bc ends will be cropped
+                                  "either a) set higher (to ~ 2 * chunk_size / overlap_offset + 1), " \
+                                  "b) increase overlap_offset, or c) don't overlap"
+        step = max_n_chunks - 2  # -2 bc ends will be cropped
         # most of these will effectively be final batches, but short seqs/ends may be grouped together (for efficiency)
         sub_batches = []
 
         for crange in contiguous_ranges:
             # step through sequence so that non-edges can have 1-chunk cropped off start/end
-            # and regenerate original sequence with a simple concatenation there after
+            # and regenerate original sequence with a simple concatenation after
             for i in range(crange['start_i'], crange['end_i'], step):
                 sub_batch_start = max(i - 1, crange['start_i'])  # pad 1 left (except seq edge)
                 keep_start = max(i, crange['start_i'])
                 keep_end = min(i + step, crange['end_i'])
-                sub_batch_end = min(i + step + 1, crange['end_i'])   # pad 1 right (except seq edge)
+                sub_batch_end = min(i + step + 1, crange['end_i'])  # pad 1 right (except seq edge)
                 h5_indices = tuple(range(sub_batch_start, sub_batch_end))
                 sub_batches.append(
                     SubBatch(h5_indices, is_plus_strand=crange['is_plus_strand'],

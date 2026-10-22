@@ -41,10 +41,29 @@ Setup according to included instructions and
 further add the compiled `helixer_post_bin` to 
 your system PATH. 
 
+### Upgrade pip first
+
+> [!WARNING]
+> Upgrade pip in every new virtual environment before installing anything else. pip versions
+> older than 26.2.2 trust the compromised eMudhra emSign root certificate through their
+> bundled `certifi`, even when the operating system no longer does (see the
+> [Python advisory](https://discuss.python.org/t/information-for-python-users-regarding-emudhra-emsign-ca-certificate-security-incident/109576)).
+> Only Python 3.13.17, 3.14.9, 3.15.1 and newer bundle a fixed pip. No release of Python 3.10
+> or 3.12 will: 3.10 reached its end of life in October 2026, and security-only releases such
+> as 3.12 do not receive pip updates. Python installed from Linux distribution packages takes
+> the pip for new environments from those packages, which are equally affected until the
+> distribution updates them. `python3 -m venv` therefore still installs an affected pip.
+>
+> Install pip 26.2.2 from its direct URL with the hash given in the advisory, so the download
+> does not depend on the old certificates, then upgrade `certifi` and install pip from the
+> same URL again:
+> ```shell script
+> pip install "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
+> ```
+> Once pip is at 26.2.2 or newer, `pip install --upgrade pip` works as usual again.
+
 ### Most python dependencies of Helixer
-We recommend to run `pip install --upgrade pip`<sup>1</sup> and `pip install wheel` first before
-continuing with installing Helixer and it's requirements. So when in doubt, just run
-these commands first.
+After upgrading pip as described above<sup>1</sup>, install Helixer's requirements.
 
 _<sup>1</sup> (required if instead of installing Helixer the output from pip is
 `successfully installed UNKNOWN 0.0.0` or you get the error `name, version not

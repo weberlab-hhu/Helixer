@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools < 72.0"]
+# setuptools before 70.1 needs the wheel package to build a wheel
+requires = ["setuptools < 72.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
