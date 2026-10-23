@@ -3,7 +3,7 @@ The most important scripts and their options are listed.
 1. [Helixer.py](#1-helixerpy-options)
 2. [fasta2h5.py](#2-fasta2h5py-options)
 3. [HybridModel.py](#3-hybridmodelpy-options)
-4. [HelixerPost](#4-helixerpost-options) (the same as the [post-processing parameters](#post-processing-parameters) for Helixer.py)
+4. [HelixerPost](#4-helixerpost-options) (the same as the [post-processing parameters](#post-processing-parameters) for Helixer.py, plus further tuning options)
 5. [import2geenuff.py](#5-import2geenuffpy-options)
 6. [geenuff2h5.py](#6-geenuff2h5py-options)
 
@@ -35,25 +35,44 @@ command line.
 | --overlap-core-length | vertebrate: 160380, land_plant: 48114, fungi: 16038, invertebrate: 160380 (i.e. subsequence_length * 3 / 4) | Predicted sequences will be cut to this length to increase prediction quality if overlapping is enabled. Smaller values may lead to better predictions but will take longer. Has to be smaller than subsequence_length.                                                                                                                                                                     |
 
 ### Post-processing parameters
-| Parameter           | Default | Explanation                                                                                                                                                                                           |
-|:--------------------|:--------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| --window-size       | 100     | Width of the sliding window that is assessed for intergenic vs genic (UTR/Coding Sequence/Intron) content                                                                                             |
-| --edge-threshold    | 0.1     | Threshold specifies the genic score which defines the start/end boundaries of each candidate region within the sliding window                                                                         |
-| --peak-threshold    | 0.8     | Threshold specifies the minimum peak genic score required to accept the candidate region; the candidate region is accepted if it contains at least one window with a genic score above this threshold |
-| --min-coding-length | 60      | Output is filtered to remove genes with a total coding length shorter than this value                                                                                                                 |
+| Parameter               | Default | Explanation                                                                                                                                                                                           |
+|:------------------------|:--------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| --window-size           | 100     | Width of the sliding window that is assessed for intergenic vs genic (UTR/Coding Sequence/Intron) content                                                                                             |
+| --edge-threshold        | 0.1     | Threshold specifies the genic score which defines the start/end boundaries of each candidate region within the sliding window                                                                         |
+| --peak-threshold        | 0.8     | Threshold specifies the minimum peak genic score required to accept the candidate region; the candidate region is accepted if it contains at least one window with a genic score above this threshold |
+| --min-coding-length     | 60      | Output is filtered to remove genes with a total coding length shorter than this value                                                                                                                 |
+| --min-intron-length     | 50      | Minimum intron length in bp for U2-type introns (GT-AG and GC-AG; also covers U12-type GT-AG introns). Values below 2 act as 2                                                                        |
+| --min-intron-length-u12 | 30      | Minimum intron length in bp for U12-type AT-AC introns. Values below 2 act as 2                                                                                                                       |
+| --post-config-path      | /       | YAML config file for helixer_post_bin with further post-processing parameters, see [HelixerPost options](#4-helixerpost-options)                                                                      |
+| --post-threads          | 4       | Number of CPU threads for post-processing; 0 uses all available cores                                                                                                                                 |
+
+For each post-processing parameter, the first of these sources that sets it is used:
+1. Helixer.py command line
+2. Helixer.py config file (`config/helixer_config.yaml` or `--config-path`)
+3. The `--post-config-path` file
+4. The defaults in the table above
+
+The defaults for the two minimum intron lengths suit most species. They only need to be lowered for
+species with introns shorter than 50 bp. In that case, setting both to the same lower value
+(e.g. `--min-intron-length 30 --min-intron-length-u12 30`) is sufficient; it is not necessary to
+find out which spliceosome (U2 or U12) splices the short introns of the species.
+
+Values below 20 bp are not recommended, and Helixer.py logs a warning for them: transcripts with
+introns shorter than 20 bp are masked in the training data (GeenuFF's `too_short_intron` check),
+so the Helixer models never learned such introns.
 
 ## 2. fasta2h5.py options
 fasta2h5.py always searches for the configuration file ``config/fasta2h5_config.yaml`` in the current
 working directory. If that file isn't provided, the parameters are expected to be given via the
 command line.
 
-| Parameter            | Default    | Explanation                                                                                                                                                                                                                         |
-|:---------------------|:-----------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| --fasta-path         | /          | **Required**; FASTA input file                                                                                                                                                                                                      |
-| --h5-output-path     | /          | **Required**; HDF5 output file for the encoded data. Must end with ".h5".                                                                                                                                                           |
-| --species            | /          | **Required**; Species name. Will be added to the .h5 file.                                                                                                                                                                          |
-| --subsequence-length | 21384      | Size of the chunks each genomic sequence gets cut into.                                                                                                                                                                             |
-| --write-by           | 5_346_000  | Write in super-chunks with this many base pairs, which will be rounded to be divisible by subsequence-length; needs to be equal to or larger than subsequence length; peak memory grows with it, not with the chromosome length |
+| Parameter            | Default   | Explanation                                                                                                                                                                                                                     |
+|:---------------------|:----------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| --fasta-path         | /         | **Required**; FASTA input file                                                                                                                                                                                                  |
+| --h5-output-path     | /         | **Required**; HDF5 output file for the encoded data. Must end with ".h5".                                                                                                                                                       |
+| --species            | /         | **Required**; Species name. Will be added to the .h5 file.                                                                                                                                                                      |
+| --subsequence-length | 21384     | Size of the chunks each genomic sequence gets cut into.                                                                                                                                                                         |
+| --write-by           | 5_346_000 | Write in super-chunks with this many base pairs, which will be rounded to be divisible by subsequence-length; needs to be equal to or larger than subsequence length; peak memory grows with it, not with the chromosome length |
 ## 3. HybridModel.py options
 (for training and evaluation)
 ### General parameters
@@ -132,11 +151,21 @@ command line.
 ## 4. HelixerPost options
 The options for HelixerPost are either chosen when directly using Helixer.py (see 
 [post-processing parameters](#post-processing-parameters)) or by using HelixerPost directly after
-HybridModel.py. In that case the parameters are not defined by name but position.
+HybridModel.py, with the same parameter names and defaults. The three file paths are positional.
+This requires HelixerPost 0.4.0 or newer; older versions only accept positional parameters.
 ```bash
-helixer_post_bin <genome.h5> <predictions.h5> <window_size> <edge_threshold> <peak_threshold> \
-<min_coding_length> <output.gff3>
+helixer_post_bin [OPTIONS] <genome.h5> <predictions.h5> <output.gff3>
+# e.g.
+helixer_post_bin --peak-threshold 0.9 --min-intron-length 30 --min-intron-length-u12 30 \
+  genome.h5 predictions.h5 output.gff3
 ```
+`helixer_post_bin --help` lists all options, including further hidden Markov model tuning
+parameters, the number of threads (`--threads`), a per-base rating output file (`--rating`, only
+written when given; very large, roughly 230 bytes per bp) and a YAML config file (`--config`).
+`helixer_post_bin --print-default-config > helixer_post_config.yml` writes all defaults as a config
+file template; after editing, it can be passed to Helixer.py with `--post-config-path`. The
+[HelixerPost README](https://github.com/usadellab/HelixerPost#parameters) describes the config
+options in more detail.
 
 ## 5. import2geenuff.py options
 (see [GeenuFF repository](https://github.com/usadellab/GeenuFF/tree/main))

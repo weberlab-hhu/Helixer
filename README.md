@@ -182,7 +182,7 @@ The three main steps the command above executes can also be run separately:
 - [HybridModel.py](helixer/prediction/HelixerModel.py): prediction of base-wise
 probabilities with the Deep Learning based model defined/programmed in this file
 - [helixer_post_bin](https://github.com/usadellab/HelixerPost) (part of another
-repository): post-processing into primary gene models
+repository, version 0.4.0 or newer): post-processing into primary gene models
 
 Explanations for the parameters used in this example can be found
 [a little further down below](#3-step-inference-parameters). You can also check out
@@ -207,9 +207,11 @@ fasta2h5.py --species Arabidopsis_lyrata --h5-output-path Arabidopsis_lyrata.h5 
 HybridModel.py --load-model-path $HOME/.local/share/Helixer/models/land_plant/land_plant_v0.3_a_0080.h5 \
      --test-data Arabidopsis_lyrata.h5 --overlap --val-test-batch-size 32 -v
 
-# order of input parameters:
-# helixer_post_bin <genome.h5> <predictions.h5> <window_size> <edge_threshold> <peak_threshold> <min_coding_length> <output.gff3>
-helixer_post_bin Arabidopsis_lyrata.h5 predictions.h5 100 0.1 0.8 60 Arabidopsis_lyrata_chromosome8_helixer.gff3
+# helixer_post_bin [OPTIONS] <genome.h5> <predictions.h5> <output.gff3>
+# (all options are optional; the values below are the defaults)
+helixer_post_bin --window-size 100 --edge-threshold 0.1 --peak-threshold 0.8 --min-coding-length 60 \
+  --min-intron-length 50 --min-intron-length-u12 30 \
+  Arabidopsis_lyrata.h5 predictions.h5 Arabidopsis_lyrata_chromosome8_helixer.gff3
 ```
 
 **Output:** The main output of the above commands is the gff3 file
@@ -236,17 +238,20 @@ the transcriptome, using a standard parser, for instance [gffread](https://githu
 | --val-test-batch-size | 32      | Batch size for validation/test data                                                                                                                                                                                          |
 | -v/--verbose          | False   | Add to run HybridModel.py in verbosity mode (additional information will be printed)                                                                                                                                         |
 ###### helixer_post_bin
-(positional arguments, not specified via name but order)   
+(the three file paths are positional, all other parameters are options; `helixer_post_bin --help`
+lists further tuning options, see the [Helixer options documentation](docs/helixer_options.md#4-helixerpost-options))   
    
-| Parameter         | Parameter position | Default | Explanation                                                                                                                                                                                           |
-|:------------------|:-------------------|:--------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| genome.h5         | 1                  | /       | HDF5 file containing the genome assembly; output of `fasta2h5.py`                                                                                                                                     |
-| predictions.h5    | 2                  | /       | HDF5 file containing the predictions from Helixer; output of `HybridModel.py`                                                                                                                         |
-| window-size       | 3                  | 100     | Width of the sliding window that is assessed for intergenic vs genic (UTR/Coding Sequence/Intron) content                                                                                             |
-| edge-threshold    | 4                  | 0.1     | Threshold specifies the genic score which defines the start/end boundaries of each candidate region within the sliding window                                                                         |
-| peak-threshold    | 5                  | 0.8     | Threshold specifies the minimum peak genic score required to accept the candidate region; the candidate region is accepted if it contains at least one window with a genic score above this threshold |
-| min-coding-length | 6                  | 60      | Output is filtered to remove genes with a total coding length shorter than this value                                                                                                                 |
-| output.gff3       | 7                  | /       | Output GFF3 file path                                                                                                                                                                                 |
+| Parameter               | Parameter position | Default | Explanation                                                                                                                                                                                           |
+|:------------------------|:-------------------|:--------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| genome.h5               | 1                  | /       | HDF5 file containing the genome assembly; output of `fasta2h5.py`                                                                                                                                     |
+| predictions.h5          | 2                  | /       | HDF5 file containing the predictions from Helixer; output of `HybridModel.py`                                                                                                                         |
+| output.gff3             | 3                  | /       | Output GFF3 file path                                                                                                                                                                                 |
+| --window-size           | option             | 100     | Width of the sliding window that is assessed for intergenic vs genic (UTR/Coding Sequence/Intron) content                                                                                             |
+| --edge-threshold        | option             | 0.1     | Threshold specifies the genic score which defines the start/end boundaries of each candidate region within the sliding window                                                                         |
+| --peak-threshold        | option             | 0.8     | Threshold specifies the minimum peak genic score required to accept the candidate region; the candidate region is accepted if it contains at least one window with a genic score above this threshold |
+| --min-coding-length     | option             | 60      | Output is filtered to remove genes with a total coding length shorter than this value                                                                                                                 |
+| --min-intron-length     | option             | 50      | Minimum intron length in bp for U2-type introns (GT-AG and GC-AG; also covers U12-type GT-AG introns). Values below 2 act as 2                                                                        |
+| --min-intron-length-u12 | option             | 30      | Minimum intron length in bp for U12-type AT-AC introns. Values below 2 act as 2                                                                                                                       |
 
 ### Genome dependent parameters
 Most parameters from `Helixer.py` have been set to a reasonable default (again you can look
@@ -297,6 +302,16 @@ and `fungi`.).
 In particular, increasing the peak threshold from the default of 0.8 has been reported to increase the precision
 of predictions, with very minimal reduction in e.g. [BUSCO](https://busco.ezlab.org/) scores. Values such as 0.9, 0.95 and 0.975 are 
 very reasonable to try. 
+
+4. `--min-intron-length` and `--min-intron-length-u12` for species with very short introns  
+The decoder never predicts introns shorter than these lengths (defaults: 50 bp for U2-type introns,
+30 bp for the rare U12-type AT-AC introns), which suits most species. Only lower them for species
+known to have introns shorter than 50 bp. Setting both to the same lower value, e.g.
+`--min-intron-length 30 --min-intron-length-u12 30`, is sufficient; there is no need to research
+which spliceosome (U2 or U12) splices the short introns of the species. Values below 20 bp are not
+recommended, as the models were never trained on such introns (see the
+[Helixer options documentation](docs/helixer_options.md#post-processing-parameters) for the
+shortest introns reported in the literature).
 
 ## Expert mode
 ### Developer installation

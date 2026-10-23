@@ -39,6 +39,8 @@ class ParameterParser(ABC):
         self.parser.add_argument('--version', action='version', version='%(prog)s ' + version('helixer'))
         # Default values have to be specified - and potentially added - here
         self.defaults = {'compression': 'gzip'}
+        # names of the parameters given on the command line or in the config file, i.e. not defaulted
+        self.user_set: set[str] = set()
 
     @abstractmethod
     def check_args(self, args):
@@ -67,6 +69,7 @@ class ParameterParser(ABC):
 
         # merge the config and cli parameters with the cli parameters having priority
         # there are no type checks being done for config parameters
+        self.user_set = set(config) | set(vars(args))
         config = {**self.defaults, **config, **vars(args)}
         return argparse.Namespace(**config)
 

@@ -9,3 +9,7 @@
 # edge_threshold: 0.1
 # peak_threshold: 0.8
 # min_coding_length: 60
+# min_intron_length: 50  # U2-type introns (GT-AG, GC-AG)
+# min_intron_length_u12: 30  # U12-type AT-AC introns; may simply be set to the same value as min_intron_length
+# post_config_path: '/path/to/helixer_post_config.yml'  # see helixer_post_bin --print-default-config
+# post_threads: 4  # 0 uses all available CPU cores

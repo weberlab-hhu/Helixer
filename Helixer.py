@@ -18,6 +18,13 @@ from helixer.prediction.HybridModel import HybridModel
 from helixer.export.exporter import HelixerFastaToH5Controller
 from helixer.core.helpers import get_log_dict
 
+# Helixer.py parameters passed on to helixer_post_bin under the same name (as --kebab-case flags)
+POST_PARAMS = ('window_size', 'edge_threshold', 'peak_threshold', 'min_coding_length', 'min_intron_length',
+               'min_intron_length_u12')
+# transcripts with shorter introns are masked by GeenuFF (too_short_intron, default min_intron_length),
+# so the models never learned such introns
+MIN_TRAINED_INTRON_LENGTH = 20
+
 
 class HelixerParameterParser(ParameterParser):
     def __init__(self, config_file_path: str = '') -> None:
@@ -87,6 +94,21 @@ class HelixerParameterParser(ParameterParser):
         self.post_group.add_argument('--min-coding-length', type=int,
                                      help='output is filtered to remove genes with a total coding length shorter '
                                           'than this value')
+        self.post_group.add_argument('--min-intron-length', type=int,
+                                     help='minimum intron length in bp for U2-type introns (GT-AG and GC-AG, also '
+                                          'covers U12-type GT-AG introns); values below 2 act as 2. (Default is 50.)')
+        self.post_group.add_argument('--min-intron-length-u12', type=int,
+                                     help='minimum intron length in bp for U12-type AT-AC introns; values below 2 '
+                                          'act as 2. Setting it to the same value as --min-intron-length is a '
+                                          'reasonable choice. (Default is 30.)')
+        self.post_group.add_argument('--post-config-path', type=str,
+                                     help='YAML config file for helixer_post_bin with further post-processing '
+                                          'parameters (template: helixer_post_bin --print-default-config); the '
+                                          'post-processing parameters above override its values only when set '
+                                          'explicitly for Helixer.py')
+        self.post_group.add_argument('--post-threads', type=int,
+                                     help='number of CPU threads for post-processing; 0 uses all available '
+                                          'cores. (Default is 4.)')
 
         helixer_defaults = {
             'fasta_path': '',
@@ -106,6 +128,10 @@ class HelixerParameterParser(ParameterParser):
             'edge_threshold': 0.1,
             'peak_threshold': 0.8,
             'min_coding_length': 60,
+            'min_intron_length': 50,
+            'min_intron_length_u12': 30,
+            'post_config_path': '',
+            'post_threads': 4,
         }
         self.defaults = {**self.defaults, **helixer_defaults}
 
@@ -172,6 +198,14 @@ class HelixerParameterParser(ParameterParser):
         else:
             args.overlap_core_length = int(args.subsequence_length * 3 / 4)
 
+        # checked here, as helixer_post_bin would only reject them after the neural network prediction
+        for name in ('min_intron_length', 'min_intron_length_u12', 'post_threads'):
+            value = getattr(args, name)
+            assert value >= 0, f'--{name.replace("_", "-")} must not be negative, got {value}'
+        if args.post_config_path:
+            assert os.path.isfile(args.post_config_path), \
+                f'--post-config-path {args.post_config_path} does not exist or is not a file'
+
         # check if custom temporary dir actually exists
         if args.temporary_dir is not None:
             try:
@@ -191,6 +225,14 @@ def main() -> None:
     pp = HelixerParameterParser('config/helixer_config.yaml')
     args = pp.get_args()
     args.overlap = not args.no_overlap  # minor overlapping is a far better default for inference. Thus, this hack.
+    short = [f'--{name.replace("_", "-")} {getattr(args, name)}'
+             for name in ('min_intron_length', 'min_intron_length_u12')
+             if getattr(args, name) < MIN_TRAINED_INTRON_LENGTH]
+    if short:
+        logger.warning(colored(f'{", ".join(short)}: introns shorter than {MIN_TRAINED_INTRON_LENGTH} bp were '
+                               f'excluded from the training data of the Helixer models and are only known from a few '
+                               f'unusual genomes, so predicted introns this short are unreliable (see '
+                               f'docs/helixer_options.md, post-processing parameters)', 'yellow'))
     # before we start, check if helixer_post_bin will (presumably) be able to run
     # first, is it there
     logger.info(colored('\nHelixer.py config:\n', 'yellow') + f'{pformat(vars(args))}\n')
@@ -204,12 +246,14 @@ def main() -> None:
         print('Remember to add the compiled binary to a folder in your PATH variable.', file=sys.stderr)
         sys.exit(1)
     else:
-        run = subprocess.run([helixer_post_bin])
-        # we should get the help function and return code 1 if helixer_post_bin is fully installed
-        if run.returncode != 1:
-            # if we get anything else, subprocess will have shown the error (I hope),
-            # so just exit with the return code
-            sys.exit(run.returncode)
+        run = subprocess.run([helixer_post_bin, '--help'], capture_output=True, text=True)
+        # a fully installed helixer_post_bin prints its help and returns 0; the flag-based CLI
+        # (--window-size etc.) of HelixerPost >= 0.4.0 is required, older versions only accept positional parameters
+        if run.returncode != 0 or '--min-intron-length' not in run.stdout:
+            print(colored(f'\nError: {helixer_post_bin} --help failed or {helixer_post_bin} is outdated; '
+                          f'HelixerPost 0.4.0 or newer is required.\n', 'red'), file=sys.stderr)
+            print(run.stderr, file=sys.stderr)
+            sys.exit(run.returncode or 1)
     # second, are we able to write the (or rather a dummy) output file to the directory
     out_dir = os.path.dirname(args.gff_output_path)
     out_dir = os.path.join(out_dir, '.')  # dodges checking existence of directory '' for the current directory
@@ -266,10 +310,18 @@ def main() -> None:
 
         logger.info(colored('Neural network prediction done. Starting post processing.', 'green'))
 
-        # call to HelixerPost, has to be in PATH
-        helixerpost_cmd = [helixer_post_bin, tmp_genome_h5_path, tmp_pred_h5_path]
-        helixerpost_params = [args.window_size, args.edge_threshold, args.peak_threshold, args.min_coding_length]
-        helixerpost_cmd += [str(e) for e in helixerpost_params] + [args.gff_output_path]
+        # call to HelixerPost, has to be in PATH; only explicitly set parameters are passed, so that
+        # values from --post-config-path are not overridden by Helixer.py defaults (which equal HelixerPost's)
+        helixerpost_cmd = [helixer_post_bin]
+        for name in POST_PARAMS:
+            if name in pp.user_set:
+                helixerpost_cmd += [f'--{name.replace("_", "-")}', str(getattr(args, name))]
+        if args.post_config_path:
+            helixerpost_cmd += ['--config', args.post_config_path]
+        if args.post_threads > 0:
+            helixerpost_cmd += ['--threads', str(args.post_threads)]
+        helixerpost_cmd += [tmp_genome_h5_path, tmp_pred_h5_path, args.gff_output_path]
+        logger.info(f'Post-processing command: {" ".join(helixerpost_cmd)}')
 
         helixerpost_out = subprocess.run(helixerpost_cmd)
         if helixerpost_out.returncode == 0:

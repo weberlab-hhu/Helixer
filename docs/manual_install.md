@@ -37,9 +37,9 @@ The steps below assume you are working in the same environment.
 
 https://github.com/usadellab/HelixerPost
 
-Setup according to included instructions and
-further add the compiled `helixer_post_bin` to 
-your system PATH. 
+Setup according to included instructions and further add the compiled `helixer_post_bin` to 
+your system PATH. This version of Helixer (0.3.8) requires HelixerPost 0.4.0 or newer
+(check with `helixer_post_bin --version`); Helixer 0.3.7 and older require HelixerPost 0.3.0.
 
 ### Upgrade pip first
 

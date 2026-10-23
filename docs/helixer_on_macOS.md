@@ -49,7 +49,7 @@ pip install tensorflow-metal tensorflow-macos==2.15.1
 ```
 
 ## 2. Install HelixerPost
-This only aspect that differs from the
+HelixerPost 0.4.0 or newer is required. The only aspect that differs from the
 [HelixerPost installation instructions](https://github.com/usadellab/HelixerPost)
 is the installation of the H5DF libraries (optional lzf support was not tested):
 ```bash
