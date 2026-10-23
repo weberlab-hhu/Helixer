@@ -46,7 +46,7 @@ def mk_ensembled_dset(h5_ensembled, key, dset):
                                 shape=(dset.shape[0],) + dset.shape[1:],
                                 chunks=(1,) + dset.shape[1:],
                                 dtype='float16',
-                                compression='lzf',
+                                compression='gzip',
                                 shuffle=True)
 
 
@@ -71,6 +71,8 @@ for i in range(n_seqs):
 # also save some model attrs
 h5_ensembled.attrs['timestamp'] = str(datetime.datetime.now())
 h5_ensembled.attrs['model_md5sum'] = ','.join([dset.attrs['model_md5sum'] for dset in h5_pred_files])
+h5_ensembled.attrs['helixer_version'] = ','.join(sorted({str(dset.attrs.get('helixer_version', 'unknown'))
+                                                         for dset in h5_pred_files}))
 h5_ensembled.attrs['model_path'] = ','.join([dset.attrs['model_path'] for dset in h5_pred_files])
 h5_ensembled.attrs['test_data_path'] = ','.join([dset.attrs['test_data_path'] for dset in h5_pred_files])
 
