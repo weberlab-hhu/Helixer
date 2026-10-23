@@ -264,6 +264,25 @@ data.
 Any of these that have been added will be in alternative/<your name here>
 and from there have the same format as the original 'data' group.
 
+### File attributes (HDF5)
+Attributes of the file itself (not of a dataset) record where the data came from, see
+[reading file attributes](#reading-file-attributes).
+
+| Attribute                | Written by                 | Content                                                                                     |
+|:-------------------------|:---------------------------|:--------------------------------------------------------------------------------------------|
+| `input_path`             | fasta2h5.py, geenuff2h5.py | Input path as given: the FASTA file (fasta2h5.py) or the GeenuFF database (geenuff2h5.py)   |
+| `fasta_path`, `gff_path` | geenuff2h5.py              | FASTA and GFF3 files the GeenuFF database was imported from (absolute paths at import time) |
+| `geenuff_import_version` | geenuff2h5.py              | GeenuFF version that imported the database                                                  |
+| `geenuff_imported`       | geenuff2h5.py              | Date and time of the GeenuFF import                                                         |
+| `helixer_version`        | fasta2h5.py, geenuff2h5.py | Helixer version at export                                                                   |
+| `geenuff_version`        | fasta2h5.py, geenuff2h5.py | GeenuFF version at export                                                                   |
+| `timestamp`              | fasta2h5.py, geenuff2h5.py | Date and time of the export                                                                 |
+
+`fasta_path`, `gff_path`, `geenuff_import_version` and `geenuff_imported` are only present in
+files exported by Helixer 0.3.8 or newer from a database imported by GeenuFF 0.4.0 or newer.
+Files exported by Helixer 0.3.7 or older have `helixer_commit` and `geenuff_commit` instead of the
+two version attributes: the git commit (`git describe`) or, without git, the installed version.
+
 ## predictions output
 The predictions file holds, well, the predictions. It does not stand 
 alone, but rather requires the sequence location and padding information
@@ -277,4 +296,32 @@ from the input data, thus its categories are [intergenic, UTR, CDS, intron]
 ### predictions_phase
 This is output of the network that has been trained to predict `data/phase`
 from the input data, thus its categories are [None, 0, 1, 2]
+
+### File attributes (GFF3)
+| Attribute         | Content                                                                                                      |
+|:------------------|:-------------------------------------------------------------------------------------------------------------|
+| `helixer_version` | Helixer version that made the predictions (Helixer 0.3.8 or newer); HelixerPost writes it to the GFF3 header |
+| `model_md5sum`    | md5 checksum and path of the model file; HelixerPost writes it to the GFF3 header                            |
+| `model_path`      | Path of the model file                                                                                       |
+| `model_config`    | Keras configuration of the model                                                                             |
+| `test_data_path`  | Input data file the predictions were made for, as given                                                      |
+| `n_bases_removed` | Number of bases removed from the predictions                                                                 |
+| `timestamp`       | Date and time of the prediction                                                                              |
+
+## Reading file attributes
+With `h5dump` (part of the HDF5 command line tools; `hdf5-tools` on Ubuntu, `hdf5` on Fedora),
+the value of one attribute is printed in the `(0): "..."` line:
+```bash
+h5dump -a /fasta_path training_data.h5
+h5dump -a /gff_path training_data.h5
+h5dump -a /helixer_version predictions.h5
+# all attributes of all groups and datasets, without the data
+h5dump -A predictions.h5
+```
+With h5py, which is installed with Helixer:
+```bash
+python -c "import h5py; print(dict(h5py.File('predictions.h5', 'r').attrs))"
+```
+Files from older versions lack some attributes; `h5dump` then reports
+`unable to open attribute`.
 

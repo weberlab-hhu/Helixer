@@ -5,13 +5,10 @@ import h5py
 import numpy as np
 import sqlite3
 import datetime
-import subprocess
 import logging
 from collections.abc import Iterator
 from importlib.metadata import version
 
-import geenuff
-import helixer
 from geenuff.applications.exporter import GeenuffExportController
 from geenuff.applications.importer import FastaImporter
 from geenuff.base.orm import Genome
@@ -83,22 +80,10 @@ class HelixerExportControllerBase(object):
     def _add_data_attrs(self) -> None:
         attrs = {
             'timestamp': str(datetime.datetime.now()),
-            'input_path': self.input_path
+            'input_path': self.input_path,
+            'helixer_version': version('helixer'),
+            'geenuff_version': version('geenuff'),
         }
-        # get GeenuFF and Helixer commit hashes
-        pwd = os.getcwd()
-        for module in [geenuff, helixer]:
-            os.chdir(os.path.dirname(module.__file__))
-            cmd = ['git', 'describe', '--always']  # show tag or hash if no tag available
-            try:
-                attrs[module.__name__ + '_commit'] = subprocess.check_output(cmd, stderr=subprocess.STDOUT).\
-                    strip().decode()
-            except subprocess.CalledProcessError:
-                attrs[module.__name__ + '_commit'] = 'commit not found, version: {}'.format(
-                    version(module.__name__)
-                )
-                logger.info('logged installed version in place of git commit for {}'.format(module.__name__))
-        os.chdir(pwd)
         # insert attrs into .h5 file
         for key, value in attrs.items():
             self.h5.attrs[key] = value
